@@ -4,38 +4,42 @@
 
 ## 🎯 當前焦點
 
-<!-- 一句話描述正在做什麼 -->
-- 建立 AI 輔助開發專案模板
+- 完成 Skills 品質審查，準備 Git 提交
 
 ## 📝 進行中的變更
 
-<!-- 具體的檔案和修改 -->
 | 檔案 | 變更內容 |
 |------|----------|
-| `example.py` | 範例變更 |
+| `.claude/skills/memory-updater/SKILL.md` | 增強至 212 行 |
+| `.claude/skills/roadmap-updater/SKILL.md` | 增強至 206 行 |
+| `.claude/skills/changelog-updater/SKILL.md` | 增強至 217 行 |
+| `.claude/skills/code-reviewer/SKILL.md` | 增強至 194 行 |
+| `.claude/skills/readme-updater/SKILL.md` | 增強至 203 行 |
+| `.claude/skills/project-init/SKILL.md` | 增強至 255 行 |
+| `.claude/skills/git-precommit/SKILL.md` | 增強至 245 行 |
+| `memory-bank/progress.md` | 記錄完成項目 |
 
 ## ⚠️ 待解決
 
-<!-- 遇到的問題或阻礙 -->
 - (無)
 
 ## 💡 重要決定
 
-<!-- 本次工作階段做的決定 -->
-- (記錄決策，詳細原因寫到 decisionLog.md)
+- test-generator (729行) 決定保留不拆分
+  - 原因：內容完整、用戶允許寬容、拆分會破壞可讀性
+- Skills 增強策略：新增 Agent 友善內容（操作步驟、範例、工具指引）
 
 ## 📁 相關檔案
 
-<!-- 涉及的檔案路徑 -->
 ```
-src/
-tests/
+.claude/skills/*/SKILL.md
+memory-bank/
 ```
 
 ## 🔜 下一步
 
-<!-- 接下來要做什麼 -->
-1. (下一步動作)
+1. Git add + commit + push
+2. 驗證 GitHub 上的變更
 
 ---
-*Last updated: YYYY-MM-DD HH:MM*
+*Last updated: 2026-01-15*

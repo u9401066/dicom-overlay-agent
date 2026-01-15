@@ -1,6 +1,24 @@
 ---
 name: git-doc-updater
-description: Auto-check and update key documentation before Git commits to keep docs in sync with code. Triggers: docs, 文檔, 更新文檔, sync docs, release, 發布.
+description: Auto-check and update key documentation before Git commits to keep docs in sync with code. Triggers: docs, 文檔, 更新文檔, sync docs, release, 發布, documentation, 同步文件, 文件檢查, doc check, 發布前, before release, 準備發布.
+version: 2.1.0
+category: documentation
+compatibility:
+  - claude-code
+  - github-copilot
+  - vscode
+  - codex-cli
+dependencies:
+  - readme-updater
+  - changelog-updater
+  - roadmap-updater
+  - memory-updater
+allowed-tools:
+  - read_file
+  - write_file
+  - replace_string_in_file
+  - get_changed_files
+  - list_dir
 ---
 
 # Git 文檔自動更新技能

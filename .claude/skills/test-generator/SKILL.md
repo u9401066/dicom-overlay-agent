@@ -1,6 +1,23 @@
 ---
 name: test-generator
-description: Generate comprehensive test suites including static analysis, unit tests, integration tests, E2E tests, and coverage reports. Triggers: TG, test, 測試, 寫測試, coverage, 覆蓋率, pytest, unittest, 驗證.
+description: Generate comprehensive test suites including static analysis (vulture dead code), unit tests, integration tests, E2E tests, and coverage reports. Triggers: TG, test, 測試, 寫測試, coverage, 覆蓋率, pytest, unittest, 驗證, check, 檢查, quality, 品質, dead code, 死碼, vulture, static analysis, 靜態分析, lint, type check.
+version: 2.1.0
+category: quality
+compatibility:
+  - claude-code
+  - github-copilot
+  - vscode
+  - codex-cli
+dependencies:
+  - ddd-architect
+allowed-tools:
+  - read_file
+  - write_file
+  - create_file
+  - list_dir
+  - grep_search
+  - semantic_search
+  - run_in_terminal
 ---
 
 # 測試生成技能
@@ -42,6 +59,49 @@ description: Generate comprehensive test suites including static analysis, unit 
 | **mypy** | 類型檢查 | `pyproject.toml` / `mypy.ini` |
 | **ruff** | Linting + Formatting (取代 pylint/flake8/black) | `pyproject.toml` |
 | **bandit** | 安全性掃描 | `.bandit` |
+| **vulture** | 死碼檢測 (dead code) | `pyproject.toml` |
+
+#### vulture 配置範例
+```toml
+# pyproject.toml
+[tool.vulture]
+min_confidence = 80
+paths = ["src"]
+exclude = ["tests/", "**/migrations/"]
+ignore_names = ["visit_*", "do_*"]  # 常見動態呼叫的 patterns
+```
+
+#### vulture 執行指令
+```bash
+# 基本掃描
+vulture src/ --min-confidence 80
+
+# 生成白名單
+vulture src/ --make-whitelist > .vulture_allowlist.py
+
+# 使用白名單掃描
+vulture src/ .vulture_allowlist.py --min-confidence 80
+```
+
+#### vulture 白名單範例
+```python
+# .vulture_allowlist.py
+# 此檔案用於標記 vulture 誤判的「假陽性」
+
+# Framework callbacks (動態呼叫)
+_.on_startup  # unused method
+_.on_shutdown  # unused method
+_.setup  # unused method
+
+# CLI entry points
+_.main  # unused function
+
+# Test fixtures (pytest)
+_.fixture_*  # unused function
+
+# Abstract methods
+_.abstract_method  # unused method
+```
 
 #### mypy 配置範例
 ```toml
@@ -553,6 +613,42 @@ pytest --cov=src --cov-report=term-missing --cov-report=html --cov-report=xml
 - [ ] CI workflow 包含所有測試階段
 - [ ] 覆蓋率門檻已設定（建議 ≥ 80%）
 - [ ] 測試報告上傳至 CI artifacts
+- [ ] vulture 死碼檢測已加入 CI pipeline
+
+### CI Workflow 範例 (GitHub Actions)
+
+```yaml
+# .github/workflows/test.yml
+name: Test & Quality
+
+on: [push, pull_request]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      
+      - name: Install dependencies
+        run: uv sync --all-extras
+      
+      - name: Static Analysis
+        run: |
+          uv run ruff check src/
+          uv run mypy src/
+          uv run bandit -r src/
+          uv run vulture src/ --min-confidence 80
+      
+      - name: Unit Tests
+        run: uv run pytest tests/unit -v --cov=src --cov-report=xml
+      
+      - name: Integration Tests
+        run: uv run pytest tests/integration -v
+      
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v4
+```
 
 ---
 
@@ -582,6 +678,7 @@ dev = [
     "mypy>=1.5.0",
     "ruff>=0.0.290",
     "bandit[toml]>=1.7.5",
+    "vulture>=2.10",            # Dead code detection
     
     # Type stubs
     "types-requests",

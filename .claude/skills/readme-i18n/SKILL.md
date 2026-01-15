@@ -1,6 +1,18 @@
 ---
 name: readme-i18n
-description: Maintain multilingual README versions (English primary, Chinese translation). Triggers: i18n, 翻譯, translate, 多語言, sync readme, 中英文, bilingual.
+description: Maintain multilingual README versions (English primary, Chinese translation). Triggers: i18n, 翻譯, translate, 多語言, sync readme, 中英文, bilingual, localization, l10n, 國際化, 本地化, multilingual, 雙語, 語言, language, 英文版, 中文版, translation.
+version: 2.1.0
+category: documentation
+compatibility:
+  - claude-code
+  - github-copilot
+  - vscode
+  - codex-cli
+dependencies: []
+allowed-tools:
+  - read_file
+  - write_file
+  - replace_string_in_file
 ---
 
 # Skill: README 國際化 (i18n)
