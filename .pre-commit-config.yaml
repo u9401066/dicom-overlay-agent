@@ -1,0 +1,157 @@
+# ============================================================
+# Pre-commit Hooks 配置範本
+# 使用方式：
+#   uv add --dev pre-commit
+#   uv run pre-commit install
+#   uv run pre-commit install --hook-type commit-msg
+#   uv run pre-commit run --all-files  (首次全量檢查)
+# ============================================================
+
+default_language_version:
+  python: python3.11
+
+# 定義 CI 跳過的 hooks（CI 另有 workflow 負責）
+ci:
+  skip: [mypy, bandit, pytest-unit]
+
+repos:
+  # ==========================================
+  # 基礎格式檢查
+  # ==========================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  # ==========================================
+  # Python: Ruff (Linter + Formatter)
+  # ==========================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # ==========================================
+  # Python: MyPy 型別檢查
+  # ==========================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-error-summary]
+        additional_dependencies: []  # 在此添加 type stubs
+        pass_filenames: false
+        # 僅在 src/ 目錄有 Python 檔案時启用
+        files: ^src/
+
+  # ==========================================
+  # Python: Bandit 安全掃描
+  # ==========================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, -r, -ll]
+        additional_dependencies: ["bandit[toml]"]
+        files: ^src/
+
+  # ==========================================
+  # Secrets 偵測（防止提交密鑰/密碼）
+  # ==========================================
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # ==========================================
+  # Conventional Commits 格式檢查
+  # ==========================================
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - refactor
+          - test
+          - chore
+          - style
+          - perf
+          - ci
+          - build
+          - revert
+
+  # ==========================================
+  # 本地自訂 Hooks
+  # ==========================================
+  - repo: local
+    hooks:
+      # --- Commit 大小限制 ---
+      - id: commit-size-guard
+        name: "🛡️ Commit Size Guard (max 30 files)"
+        entry: python scripts/hooks/commit_size_guard.py
+        language: python
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # --- Memory Bank 提醒 ---
+      - id: memory-bank-reminder
+        name: "🧠 Memory Bank Sync Reminder"
+        entry: python scripts/hooks/memory_bank_reminder.py
+        language: python
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # --- Skill 健康度檢查（每次 commit 快速檢查）---
+      - id: skill-freshness-check
+        name: "🔍 Skill & Instruction Freshness"
+        entry: python scripts/hooks/skill_freshness_check.py
+        language: python
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true
+
+      # --- Agent 健康度檢查（模型/工具過時偵測）---
+      - id: agent-freshness-check
+        name: "🤖 Agent Model & Tool Freshness"
+        entry: python scripts/hooks/agent_freshness_check.py
+        language: python
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true
+
+      # --- 快速 pytest（僅 unit tests）---
+      # 取消註解以啟用
+      # - id: pytest-unit
+      #   name: "🧪 Quick Unit Tests"
+      #   entry: uv run pytest tests/unit -x -q --no-header --timeout=30
+      #   language: system
+      #   always_run: true
+      #   pass_filenames: false
+      #   stages: [pre-commit]
