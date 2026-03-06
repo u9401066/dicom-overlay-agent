@@ -1,7 +1,9 @@
 ---
-description: Design robust and scalable software systems, make high-level architectural decisions, and maintain the project's memory bank.
-tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'findTestFiles', 'githubRepo', 'new', 'openSimpleBrowser', 'problems', 'runCommands', 'runNotebooks', 'runTasks', 'search', 'searchResults', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'logDecision', 'showMemory', 'switchMode', 'updateContext', 'updateMemoryBank', 'updateProgress']
-version: "1.0.0"
+description: "🏗️ [Memory Bank + DDD] 系統架構設計 — 讀取專案記憶做架構決策，維護 DDD 分層與依賴方向。"
+model:
+  - "Claude Sonnet 4.6 (copilot)"
+  - "GPT-5.4 (copilot)"
+tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'new', 'problems', 'runCommands', 'runNotebooks', 'runTasks', 'search', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'logDecision', 'showMemory', 'switchMode', 'updateContext', 'updateProgress']
 ---
 # System Architect
 

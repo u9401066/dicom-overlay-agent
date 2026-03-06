@@ -9,11 +9,13 @@
 ## ✨ Features
 
 - 🏛️ **Constitution-Bylaw Architecture** - Hierarchical rule system inspired by speckit
-- 🤖 **Claude Skills** - 12+ modular AI skills for development automation
+- 🤖 **Claude Skills** - 20+ modular AI skills for development automation
 - 📝 **Memory Bank** - Cross-conversation project memory system
 - 🏗️ **DDD Architecture** - Domain-Driven Design with independent DAL
 - 🔄 **Git Automation** - Auto-update documentation before commits
 - 🐍 **Python Environment** - uv-first package management
+- 🎯 **Copilot Agents** - 14 custom agents with model cost strategy
+- 🔒 **Pre-commit Hooks** - 16+ hooks for code quality and security
 
 ## 📁 Project Structure
 
@@ -21,6 +23,8 @@
 template-is-all-you-need/
 ├── CONSTITUTION.md          # 📜 Project Constitution (Highest Principles)
 ├── .github/
+│   ├── agents/              # 🤖 Copilot Custom Agents (14)
+│   ├── prompts/             # 📋 Copilot Reusable Prompts (5)
 │   ├── bylaws/              # 📋 Bylaws
 │   │   ├── ddd-architecture.md
 │   │   ├── git-workflow.md
@@ -33,6 +37,8 @@ template-is-all-you-need/
 │   ├── git-precommit/       # Git commit orchestrator
 │   ├── ddd-architect/       # DDD architecture assistant
 │   ├── code-refactor/       # Code refactoring
+│   ├── code-audit/          # Deep code audit (5 dimensions)
+│   ├── skill-health-check/  # Skill & instruction health check
 │   ├── memory-updater/      # Memory Bank sync
 │   ├── memory-checkpoint/   # Pre-summarization checkpoint
 │   ├── readme-updater/      # README updates
@@ -42,6 +48,8 @@ template-is-all-you-need/
 │   ├── code-reviewer/       # Code review
 │   ├── test-generator/      # Test generation
 │   └── project-init/        # Project initialization
+├── scripts/hooks/           # 🔧 Custom Git Hooks
+├── .pre-commit-config.yaml  # 🔒 Pre-commit Configuration
 ├── memory-bank/             # 🧠 Project Memory
 ├── README.md                # This file (English)
 ├── README.zh-TW.md          # Chinese version
@@ -106,6 +114,35 @@ See [CONSTITUTION.md](CONSTITUTION.md) for details.
 - [Contributing](CONTRIBUTING.md) - How to contribute
 - [CLAUDE.md](CLAUDE.md) - Claude Code guidelines
 - [AGENTS.md](AGENTS.md) - VS Code Copilot Agent guidelines
+
+## 🎯 Copilot Custom Agents
+
+14 custom agents with a model cost optimization strategy:
+
+| Agent | Role | Model |
+|-------|------|-------|
+| `architect` | System architecture + DDD | Sonnet 4.6 → GPT-5.4 |
+| `code` | Feature implementation | Sonnet 4.6 → GPT-5.4 |
+| `debug` | Root cause analysis | Sonnet 4.6 → GPT-5.4 |
+| `audit` | Deep code audit (5 dimensions) | Opus 4.6 → Sonnet 4.6 |
+| `orchestrator` | Task decomposition + delegation | Opus 4.6 → GPT-5.4 |
+| `deep-thinker` | Complex reasoning + algorithms | Opus 4.6 → GPT-5.4 |
+| `researcher` | Read-only codebase exploration | Gemini 3.1 Pro → Sonnet 4.6 |
+| `test-runner` 🆓 | Run tests + iterate fixes | GPT-5 mini → GPT-4.1 |
+| `context-loader` 🆓 | Load Memory Bank + summarize | GPT-4.1 → GPT-5 mini |
+| `ask` 🆓 | Project Q&A | GPT-4.1 → Haiku 4.5 |
+| `review-panel` | Multi-model review committee | Opus 4.6 (3 AI cross-review) |
+
+> 🆓 = Free model agents for high-volume, repetitive tasks
+
+## 🔒 Pre-commit Hooks
+
+16+ hooks via `.pre-commit-config.yaml`:
+
+- **Code Quality**: ruff lint + format, mypy
+- **Security**: bandit, gitleaks
+- **Conventions**: conventional-commits, commit-size-guard (≤30 files)
+- **AI Maintenance**: skill-freshness-check, agent-freshness-check, memory-bank-reminder
 
 ## 🧪 Testing Support
 

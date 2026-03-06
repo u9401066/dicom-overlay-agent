@@ -1,7 +1,9 @@
 ---
-description: Identify, analyze, and fix issues by leveraging project history and context.
-tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'findTestFiles', 'githubRepo', 'new', 'openSimpleBrowser', 'problems', 'runCommands', 'runNotebooks', 'runTasks', 'search', 'searchResults', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'logDecision', 'showMemory', 'switchMode', 'updateContext', 'updateMemoryBank', 'updateProgress']
-version: "1.0.0"
+description: "🐛 [Memory Bank + 歷史] 除錯分析 — 利用專案歷史脈絡和 decisionLog 定位問題根因。"
+model:
+  - "Claude Sonnet 4.6 (copilot)"
+  - "GPT-5.4 (copilot)"
+tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'new', 'problems', 'runCommands', 'runNotebooks', 'runTasks', 'search', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'logDecision', 'showMemory', 'switchMode', 'updateContext', 'updateProgress']
 ---
 # Debug Expert
 

@@ -6,6 +6,10 @@
 | 2025-12-15 | DDD + DAL 獨立架構 | 業務邏輯與資料存取分離，提高可測試性 |
 | 2025-12-15 | Skills 模組化拆分 | 單一職責，可組合使用，易於維護 |
 | 2025-12-15 | Memory Bank 與操作綁定 | 確保專案記憶即時更新，不遺漏 |
+| 2026-03-06 | chatmode 遷移至 .agent.md | chatmode 已 deprecated，統一用 agent 格式 |
+| 2026-03-06 | 免費模型獨立為專職 agent | GPT-5 mini/4.1 不當 fallback，跑量用獨立 agent（test-runner、context-loader） |
+| 2026-03-06 | 多模型審查委員會 | Claude + GPT + Gemini 交叉審查，減少單一模型盲區 |
+| 2026-03-06 | agent-freshness-check hook | 自動偵測退役模型、deprecated tools，維持 agent 配置健康 |
 
 ---
 

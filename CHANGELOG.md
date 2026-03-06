@@ -5,6 +5,30 @@
 格式基於 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.0.0/)，
 專案遵循 [語義化版本](https://semver.org/lang/zh-TW/)。
 
+## [Unreleased]
+
+### Added
+
+- **Pre-commit Hooks**: 新增 `.pre-commit-config.yaml`（16+ hooks）
+  - ruff lint + format、mypy、bandit、gitleaks、conventional-commits
+  - 4 個自訂 hook：commit-size-guard、memory-bank-reminder、skill-freshness-check、agent-freshness-check
+- **Copilot Agents**: 14 個 `.agent.md` 自訂 agent
+  - 付費 agent：architect、code、debug、audit、orchestrator、deep-thinker、researcher
+  - 免費 agent：test-runner（GPT-5 mini）、context-loader（GPT-4.1）、ask
+  - 審查委員會：review-panel + 3 reviewer subagents（Claude + GPT + Gemini 交叉審查）
+- **Copilot Prompts**: 5 個可重複使用 prompt（code-audit、code-review、pre-commit、security-scan、skill-health-check）
+- **新 Skills**: code-audit（深度審計）、skill-health-check（健康檢查）
+
+### Changed
+
+- 遷移 4 個 `.chatmode.md` 至 `.agent.md` 格式
+- 更新 `copilot-instructions.md`（agents 表、免費模型策略、hook 表）
+- 更新 `git-workflow.md` bylaws（Pre-commit Hooks 章節）
+
+### Removed
+
+- 移除已 deprecated 的 `.chatmode.md` 檔案（architect、ask、code、debug）
+
 ## [0.1.0] - 2025-12-15
 
 ### Added

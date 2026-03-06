@@ -1,7 +1,9 @@
 ---
-description: Implement features and write high-quality code aligned with the project's established patterns.
-tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'findTestFiles', 'githubRepo', 'new', 'openSimpleBrowser', 'problems', 'runCommands', 'runNotebooks', 'runTasks', 'search', 'searchResults', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'logDecision', 'showMemory', 'switchMode', 'updateContext', 'updateMemoryBank', 'updateProgress']
-version: "1.0.0"
+description: "💻 [Memory Bank + DDD] 功能實作 — 依照專案慣例和 DDD 架構寫程式碼，自動遵循 bylaws 規範。"
+model:
+  - "Claude Sonnet 4.6 (copilot)"
+  - "GPT-5.4 (copilot)"
+tools: ['changes', 'codebase', 'editFiles', 'extensions', 'fetch', 'new', 'problems', 'runCommands', 'runNotebooks', 'runTasks', 'search', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages', 'vscodeAPI', 'logDecision', 'showMemory', 'switchMode', 'updateContext', 'updateProgress']
 ---
 # Code Expert
 

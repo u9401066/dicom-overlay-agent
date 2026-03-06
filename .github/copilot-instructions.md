@@ -121,6 +121,29 @@ uv add --dev pytest ruff mypy bandit vulture
 3. 📋 CHANGELOG 更新（如需要）
 4. 🗺️ ROADMAP 標記（如需要）
 
+### Pre-commit Hooks
+
+專案使用 `pre-commit` 框架管理 Git hooks（見 `.pre-commit-config.yaml`）：
+
+```bash
+# 安裝 hooks
+uv add --dev pre-commit
+uv run pre-commit install
+uv run pre-commit install --hook-type commit-msg
+```
+
+| Hook | 描述 |
+|------|------|
+| ruff (lint+format) | Python 程式碼品質 |
+| mypy | 型別檢查 |
+| bandit | 安全掃描 |
+| gitleaks | Secrets 偵測 |
+| conventional-pre-commit | Commit message 格式 |
+| commit-size-guard | 限制每次 commit ≤ 30 檔案 |
+| memory-bank-reminder | 提醒同步 Memory Bank |
+| skill-freshness-check | 檢查 Skill/Instruction 健康度 |
+| agent-freshness-check | 檢查 Agent 模型/工具是否過時 |
+
 詳見：`.github/bylaws/git-workflow.md`
 
 ---
@@ -153,6 +176,12 @@ uv add --dev pytest ruff mypy bandit vulture
 | **changelog-updater** | CHANGELOG 更新 | CL, changelog, 變更, 版本 |
 | **roadmap-updater** | ROADMAP 狀態追蹤 | RM, roadmap, 路線, 里程碑 |
 | **git-doc-updater** | Git 提交前文檔檢查 | docs, 文檔, sync docs, release |
+
+### 品質與審計
+| Skill | 用途 | 觸發詞 |
+|-------|------|--------|
+| **code-audit** | 深度程式碼審計（5 維度） | AUDIT, 審計, 全面審查, deep review, 健檢 |
+| **skill-health-check** | Skill 與 Instruction 健康檢查 | SHC, health, 翻新, 過期, audit skills |
 
 ### 專案管理
 | Skill | 用途 | 觸發詞 |
@@ -203,7 +232,69 @@ uv add --dev pytest ruff mypy bandit vulture
 「checkpoint」        → 記憶檢查點
 「新功能開發」        → 完整功能開發流程
 「修 bug」            → 結構化 Bug 修復
+「審計」              → 深度程式碼審計
+「檢查 skill 健康」   → Skill & Instruction 健康檢查
 ```
+
+---
+
+## 📎 Copilot Prompts（可重複使用）
+
+位於 `.github/prompts/` 目錄：
+
+| Prompt | 用途 | 使用方式 |
+|--------|------|----------|
+| `code-audit.prompt.md` | 深度程式碼審計 | Agent 面板中選擇 |
+| `code-review.prompt.md` | 快速程式碼審查 | Agent 面板中選擇 |
+| `skill-health-check.prompt.md` | Skill 翻新檢查 | Agent 面板中選擇 |
+| `pre-commit.prompt.md` | 提交前工作流 | Agent 面板中選擇 |
+| `security-scan.prompt.md` | 安全掃描 | Agent 面板中選擇 |
+
+---
+
+## 🤖 Copilot Agents / Chat Modes
+
+位於 `.github/agents/`：
+
+| Agent/Mode | 用途 | 預設模型 |
+|------------|------|----------|
+| `architect` | 系統架構設計 + Memory Bank | Claude Sonnet 4.6 → GPT-5.4 |
+| `code` | 實作功能 + 程式碼編寫 | Claude Sonnet 4.6 → GPT-5.4 |
+| `ask` | 專案問答 + 知識查詢 | GPT-4.1 → Claude Haiku 4.5 |
+| `debug` | 除錯分析 + 問題修復 | Claude Sonnet 4.6 → GPT-5.4 |
+| `audit` | 深度程式碼審計（5 維度） | Claude Opus 4.6 → Claude Sonnet 4.6 |
+| `orchestrator` | 總指揮 — 拆解需求、委派、追蹤 | Claude Opus 4.6 → GPT-5.4 |
+| `deep-thinker` | 深度推理 — 算法、根因、架構權衡 | Claude Opus 4.6 → GPT-5.4 |
+| `researcher` | 只讀探索 — codebase 調查、依賴分析 | Gemini 3.1 Pro → Claude Sonnet 4.6 → GPT-5.4 |
+| `test-runner` | 🏃 跑測試 + 迭代修復（免費跑量） | GPT-5 mini → GPT-4.1 |
+| `context-loader` | 📥 讀取 Memory Bank + codebase 摘要（免費讀取） | GPT-4.1 → GPT-5 mini |
+| `review-panel` | 🏛️ 多模型審查委員會（3 AI 交叉審查） | Claude Opus 4.6 → GPT-5.4 |
+
+> 💡 每個 agent 的 `model` 欄位使用優先陣列，若第一個模型不可用會自動 fallback。
+
+### 免費模型策略
+
+GPT-5 mini (0x) 和 GPT-4.1 (0x) 等免費模型**不作為 fallback**，而是獨立為專職 agent：
+
+| Agent | 模型 | 定位 |
+|-------|------|------|
+| `test-runner` | GPT-5 mini / GPT-4.1 | 反覆跑測試、嘗試修復，不浪費昂貴 token |
+| `context-loader` | GPT-4.1 / GPT-5 mini | 批量讀取 Memory Bank 和 codebase，整理摘要 |
+| `ask` | GPT-4.1 / GPT-5 mini / Haiku 4.5 | 全免費/低成本問答 |
+
+> **原則**：重複性高、嘗試次數多的工作用免費模型；需要推理和判斷的工作用付費模型。
+
+### 多模型審查委員會（Review Panel）
+
+`review-panel` agent 實現**多 AI 模型交叉審查**：
+
+| Subagent | 模型 | 審查重點 |
+|----------|------|----------|
+| `reviewer-anthropic` | Claude Sonnet 4.6 | 安全性、型別正確性、邊界條件 |
+| `reviewer-openai` | GPT-5.4 | 效能、可讀性、設計模式 |
+| `reviewer-google` | Gemini 3.1 Pro | 架構合規、測試品質、文件一致性 |
+
+流程：review-panel 委派 3 個 reviewer → 收集報告 → 分析共識/分歧 → 產出最終報告 → 可 handoff 給 `code` 或 `architect` 修正
 
 ---
 
