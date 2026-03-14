@@ -10,6 +10,24 @@
 | 2026-03-06 | 免費模型獨立為專職 agent | GPT-5 mini/4.1 不當 fallback，跑量用獨立 agent（test-runner、context-loader） |
 | 2026-03-06 | 多模型審查委員會 | Claude + GPT + Gemini 交叉審查，減少單一模型盲區 |
 | 2026-03-06 | agent-freshness-check hook | 自動偵測退役模型、deprecated tools，維持 agent 配置健康 |
+| 2026-03-12 | OpenClaw Gateway 作為 Agent Runtime | 管理 Vision API 呼叫、模型 failover、session memory，Python 只做 Eyes+Hands |
+| 2026-03-12 | PHI 簡化為 ROI 設定 | DICOM viewer 版面固定，PHI 位置可預測，一次設定即可，移除 EasyOCR |
+| 2026-03-12 | WebSocket 雙向通訊 | 非傳統MCP等待被呼叫，而是 local→agent→local 雙向流 |
+| 2026-03-12 | Portable 部署模式 | Node.js portable + PyInstaller exe，USB 隨插即用 <150MB，不需 admin 安裝 |
+| 2026-03-12 | 透明 Overlay（非 Side Panel） | 醫師判讀中無法切換視窗，必須疊在 DICOM viewer 上方且 click-through |
+| 2026-03-12 | 自寫 PyQt6 Overlay | 市面無工具同時支援透明+click-through+部分互動區，~300 行即可實現 |
+| 2026-03-12 | Region 語義名稱映射 | Vision LLM 回傳語義區域名（lead_V4、right_lower_lung），本地 RegionMapper 查表轉換為螢幕座標 |
+| 2026-03-12 | 百分比矩形座標系 | 區域用 {x, y, w, h} 百分比表示，相對於 ROI 裁切後影像，定義在 config.yaml region_maps |
+| 2026-03-12 | 新增 WS 訊息協定 | 定義 vision.analyze/result/error + model.failover 四種訊息類型 |
+| 2026-03-12 | OpenClaw Skills 規劃 | 三個模態專用 skill（dicom-ekg/cxr/ct-brain-analysis），每個包含 prompt + 合法區域清單 |
+| 2026-03-12 | 先用 mock OpenClaw 驗證 MVP | smoke test 採本地 websocket server 模擬 Gateway，先驗證 Python pipeline 與狀態機，再對接真實 OpenClaw |
+| 2026-03-12 | debounce=0 視為即時觸發 | 便於 smoke test 與手動觸發場景，避免多一個 tick 才能送出分析請求 |
+| 2026-03-12 | ROI wizard 先採單步拖曳式設計 | 優先落地 PHI-safe 設定流程，先不做多頁精靈，降低實作與測試成本 |
+| 2026-03-12 | skills 先存放於 repo 內 openclaw/workspace | 便於版本控管與 portable 部署，之後再視實際 Gateway 安裝方式調整同步策略 |
+| 2026-03-12 | OpenClaw 採 workspace-local 安裝 | 避免 `npm install -g` 汙染系統，CLI 改由 `openclaw/node_modules/.bin/openclaw.cmd` 啟動，並將 `HOME/USERPROFILE` 指向 repo 內 `openclaw-home` |
+| 2026-03-14 | Hook/Guardrail 系統（類 MCP 防呆）| OpenClaw 操作軟體時沒有 MCP 強制驗證，自建 AnalyzeHook pipeline（pre/post）作為防呆層 |
+| 2026-03-14 | MCP Adapter 對齊 openclaw-mcp-adapter | Python 側 McpAdapter 鏡像 OpenClaw 的 McpClientPool 架構（同 config schema、同 lifecycle、同 reconnect），確保與 gateway 插件一致 |
+| 2026-03-14 | ToolCallResult 改為 content[] 格式 | 對齊 MCP 協議標準回傳格式（content blocks），而非自訂 success/data/error |
 
 ---
 

@@ -4,48 +4,46 @@
 
 ## 🎯 當前焦點
 
-- Pre-commit hooks 與 AI Agent 系統建設完成，準備提交
+- 初次 Git push：分段 commit 到私人 GitHub Repo
+- 全部 125 個 pytest 測試通過 + 4/4 real gateway 測試通過
+- 端到端功能驗證完成：OpenClaw Gateway → AI 分析 → AnalysisResult parsing
 
-## 📝 進行中的變更
+## 📝 最近完成的變更
 
 | 檔案/目錄 | 變更內容 |
 |-----------|----------|
-| `.pre-commit-config.yaml` | 新增 16+ hooks 配置 |
-| `scripts/hooks/` | 4 個自訂 hook（commit-size-guard、memory-bank-reminder、skill/agent-freshness-check） |
-| `.github/agents/` | 14 個 agent（含 test-runner、context-loader 免費模型 agent） |
-| `.github/prompts/` | 5 個可重複使用 prompt |
-| `.claude/skills/code-audit/` | 新增深度審計 skill |
-| `.claude/skills/skill-health-check/` | 新增 skill 健康檢查 |
-| `.github/copilot-instructions.md` | 全面更新（agents 表、免費模型策略、hook 表） |
-| `.github/bylaws/git-workflow.md` | 新增 Pre-commit Hooks 章節 |
+| `tests/unit/test_display_pipeline.py` | 21 個 display pipeline 測試 |
+| `tests/integration/test_openclaw_overlay.py` | 42 個 mock WS 整合測試 |
+| `tests/integration/_run_real_test.py` | Raw WS real gateway 測試 |
+| `tests/integration/_test_openclaw_client_real.py` | OpenClawClient real gateway 測試 (4/4) |
+| `.gitignore` | 加入 OpenClaw 敏感檔案排除 |
 
 ## ⚠️ 待解決
 
-- `ask` agent 與內建 Ask 名稱衝突（功能有差異化，暫保留）
+- 舊 `infrastructure/mcp_bridge.py` 可清理（已被 `mcp_adapter.py` 取代）
+- MCP adapter `_StubProvider` 需替換為真正的 MCP SDK client（Python mcp SDK）
+- 真實 MCP server 連接測試（如 pubmed-search-mcp）
+- Node.js portable binary 尚未下載
+- PyInstaller 打包尚未實作
 
-## 💡 重要決定
+## 🔧 Gateway 啟動要點
 
-- 免費模型不當 fallback，獨立為專職 agent（test-runner、context-loader）
-- 付費模型做推理/判斷，免費模型跑量/讀取
-- 多模型審查委員會：Claude + GPT + Gemini 交叉審查
-- chatmode 全面遷移到 .agent.md 格式
-- agent-freshness-check hook 自動偵測退役模型
+- 正確指令：`gateway run`（非 `gateway start`，後者會建立 Windows service）
+- 必須設定環境變數：`OPENCLAW_STATE_DIR`、`OPENCLAW_CONFIG_PATH`、`HOME`、`USERPROFILE`
+- Gateway port: 18789, auth token: `aa1d6c0c9ee5a36df1446e0dc0266bc0f7319ecb93fd82ba`
+- 模型：`github-copilot/gpt-5-mini`
 
-## 📁 相關檔案
+## 📁 Portable 架構狀態
 
-```
-.github/agents/*.agent.md
-.github/prompts/*.prompt.md
-.claude/skills/code-audit/
-.claude/skills/skill-health-check/
-scripts/hooks/
-.pre-commit-config.yaml
-```
-
-## 🔜 下一步
-
-1. Git commit + push（拆分為 2 個 commit）
-2. 完整度審查 + 套件更新 hook
+| 元件 | 狀態 |
+|------|------|
+| OpenClaw 本地安裝 (`openclaw/node_modules/`) | ✅ 完成 |
+| HOME 隔離 (`openclaw-home/`) | ✅ 完成 |
+| Credentials (`github-copilot.token.json`) | ✅ 完成 |
+| Skills 同步 (robocopy) | ✅ 完成 |
+| `start.bat` 一鍵啟動 | ✅ 完成 |
+| Node.js portable binary | 🔲 待做 |
+| PyInstaller 打包 | 🔲 待做 |
 
 ---
-*Last updated: 2026-03-06*
+*Last updated: 2026-03-14*

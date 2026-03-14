@@ -1,0 +1,205 @@
+"""Unit tests for OverlayAgent state machine."""
+
+from __future__ import annotations
+
+import base64
+
+import pytest
+
+from dicom_overlay.domain.entities import (
+    AgentState,
+    AnalysisResult,
+    AppConfig,
+    ChecklistItem,
+    Modality,
+    ROICrop,
+    RegionRect,
+    Severity,
+    WindowRect,
+)
+from dicom_overlay.domain.services import (
+    ImageProcessorService,
+    RegionMapperService,
+    ScreenMonitorService,
+    VisionAnalyzerService,
+)
+
+
+# --- Mock implementations ---
+
+
+class MockScreenMonitor(ScreenMonitorService):
+    def __init__(self):
+        self.window: WindowRect | None = None
+        self.screenshot: bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII="
+        )
+        self.hash_value: str = "0000000000000000"
+        self.hash_changed: bool = False
+
+    def find_target_window(self, keywords: list[str]) -> WindowRect | None:
+        return self.window
+
+    def capture_region(self, rect: WindowRect) -> bytes:
+        return self.screenshot
+
+    def compute_hash(self, image_data: bytes) -> str:
+        return self.hash_value
+
+    def has_changed(self, hash1: str, hash2: str, threshold: int) -> bool:
+        return self.hash_changed
+
+
+class MockImageProcessor(ImageProcessorService):
+    def crop_roi(
+        self, image_data: bytes, top: int, bottom: int, left: int, right: int
+    ) -> bytes:
+        return image_data
+
+    def to_base64(self, image_data: bytes) -> str:
+        return "ZmFrZQ=="
+
+
+class MockVisionAnalyzer(VisionAnalyzerService):
+    def __init__(self):
+        self._connected = False
+        self.should_fail = False
+        self.result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Normal sinus rhythm",
+            severity=Severity.NORMAL,
+            findings=[],
+            checklist={"rate": ChecklistItem(value="72", status=Severity.NORMAL)},
+            analysis_time_ms=100,
+        )
+
+    async def connect(self) -> None:
+        if self.should_fail:
+            raise ConnectionError("Mock connection failed")
+        self._connected = True
+
+    async def disconnect(self) -> None:
+        self._connected = False
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    async def analyze(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        return self.result
+
+    async def chat(self, message: str) -> str:
+        return "Mock chat response"
+
+
+class MockRegionMapper(RegionMapperService):
+    def get_region_rect(
+        self, region_name: str, modality: Modality
+    ) -> RegionRect | None:
+        return RegionRect(x=0.0, y=0.0, w=0.25, h=0.27)
+
+    def get_valid_regions(self, modality: Modality) -> list[str]:
+        return ["lead_I", "lead_II"]
+
+    def to_screen_rect(
+        self,
+        region: RegionRect,
+        image_rect: WindowRect,
+    ) -> tuple[int, int, int, int]:
+        return (0, 0, 100, 100)
+
+
+# --- Tests ---
+
+
+class TestOverlayAgent:
+    @pytest.fixture()
+    def agent_deps(self):
+        return {
+            "screen_monitor": MockScreenMonitor(),
+            "image_processor": MockImageProcessor(),
+            "vision_analyzer": MockVisionAnalyzer(),
+            "region_mapper": MockRegionMapper(),
+        }
+
+    @pytest.fixture()
+    def agent(self, agent_deps):
+        from dicom_overlay.application.overlay_agent import OverlayAgent
+
+        config = AppConfig()
+        return OverlayAgent(config=config, **agent_deps)
+
+    @pytest.mark.asyncio
+    async def test_init_state(self, agent):
+        assert agent.state == AgentState.INIT
+
+    @pytest.mark.asyncio
+    async def test_start_without_roi(self, agent):
+        agent._config.phi_roi = ROICrop(top=0, bottom=0, left=0, right=0)
+        await agent.start()
+        assert agent.state == AgentState.SETUP
+
+    @pytest.mark.asyncio
+    async def test_start_with_roi(self, agent):
+        await agent.start()
+        # Should move to WAITING (OpenClaw may not connect)
+        assert agent.state == AgentState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_waiting_finds_window(self, agent, agent_deps):
+        await agent.start()
+        assert agent.state == AgentState.WAITING
+
+        # Simulate window appearing
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        assert agent.state == AgentState.MONITORING
+
+    @pytest.mark.asyncio
+    async def test_waiting_no_window(self, agent):
+        await agent.start()
+        await agent.tick()
+        assert agent.state == AgentState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_pause_resume(self, agent, agent_deps):
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        assert agent.state == AgentState.MONITORING
+
+        agent.pause()
+        assert agent.state == AgentState.PAUSED
+
+        agent.resume()
+        assert agent.state == AgentState.MONITORING
+
+    @pytest.mark.asyncio
+    async def test_modality_change(self, agent):
+        assert agent.current_modality == Modality.EKG
+        agent.set_modality(Modality.CXR)
+        assert agent.current_modality == Modality.CXR
+
+    @pytest.mark.asyncio
+    async def test_display_timeout(self, agent):
+        agent._transition(AgentState.DISPLAYING)
+        agent.on_display_timeout()
+        assert agent.state == AgentState.MONITORING
+
+    @pytest.mark.asyncio
+    async def test_has_roi_config(self, agent):
+        assert agent.has_roi_config()  # defaults have top=60
+
+    @pytest.mark.asyncio
+    async def test_stop(self, agent):
+        await agent.start()
+        await agent.stop()
+        assert not agent._running
