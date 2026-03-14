@@ -47,3 +47,26 @@ htmlcov/
 *.pem
 *.key
 secrets/
+
+# OpenClaw Gateway (敏感：token, credentials, sessions)
+openclaw/*.json
+openclaw/*.json.bak*
+openclaw-home/credentials/
+openclaw-home/identity/
+openclaw-home/agents/
+openclaw-home/devices/
+openclaw-home/update-check.json
+openclaw-home/cron/
+openclaw-home/AppData/
+openclaw-home/canvas/
+openclaw-home/.openclaw/
+
+# 測試產出 (臨時檔案)
+tests/integration/real_result.txt
+tests/integration/real_result.json
+tests/integration/real_result_err.txt
+tests/integration/real_test_output.txt
+tests/integration/client_test_result.json
+tests/ecg_analyze_result.json
+test_output.txt
+test_fence.py

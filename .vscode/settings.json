@@ -14,5 +14,9 @@
     "chat.promptFilesLocations": {
         ".github/prompts": true
     },
-    "chat.useAgentSkills": true
+    "chat.useAgentSkills": true,
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/src"
+    ],
+    "lineCountExplorer.enabled": false
 }

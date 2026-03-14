@@ -1,0 +1,215 @@
+debug:
+  log_file: overlay_agent.log
+  log_level: INFO
+  save_screenshots: false
+hotkeys:
+  dismiss_overlay: ctrl+shift+d
+  toggle_enable: ctrl+shift+e
+  trigger_manual: ctrl+shift+a
+monitor:
+  debounce_stable_sec: 1.5
+  hash_algorithm: ahash
+  hash_threshold: 10
+  polling_interval_ms: 500
+  window_title_keywords:
+  - DICOM
+  - 影像
+  - Viewer
+openclaw:
+  gateway_url: ws://127.0.0.1:18789
+  reconnect_interval_sec: 5
+  timeout_sec: 15
+overlay:
+  control_bar: true
+  control_bar_position: bottom_right
+  critical_persist: true
+  display_duration_sec: 30
+  fade_duration_ms: 500
+  position: right
+  region_highlights: true
+  summary_panel: true
+phi_roi:
+  bottom: 183
+  left: 399
+  right: 400
+  top: 362
+region_maps:
+  CT_BRAIN:
+    layout: axial_standard
+    regions:
+      left_basal_ganglia:
+        h: 0.2
+        w: 0.2
+        x: 0.55
+        y: 0.3
+      left_frontal:
+        h: 0.3
+        w: 0.35
+        x: 0.55
+        y: 0.05
+      left_temporal:
+        h: 0.3
+        w: 0.25
+        x: 0.7
+        y: 0.35
+      midline:
+        h: 0.7
+        w: 0.1
+        x: 0.45
+        y: 0.1
+      posterior_fossa:
+        h: 0.22
+        w: 0.5
+        x: 0.25
+        y: 0.75
+      right_basal_ganglia:
+        h: 0.2
+        w: 0.2
+        x: 0.25
+        y: 0.3
+      right_frontal:
+        h: 0.3
+        w: 0.35
+        x: 0.1
+        y: 0.05
+      right_temporal:
+        h: 0.3
+        w: 0.25
+        x: 0.05
+        y: 0.35
+      ventricles:
+        h: 0.25
+        w: 0.4
+        x: 0.3
+        y: 0.3
+  CXR:
+    layout: standard_pa
+    regions:
+      cardiac_silhouette:
+        h: 0.4
+        w: 0.4
+        x: 0.3
+        y: 0.3
+      diaphragm:
+        h: 0.12
+        w: 0.8
+        x: 0.1
+        y: 0.75
+      left_cp_angle:
+        h: 0.15
+        w: 0.25
+        x: 0.7
+        y: 0.72
+      left_lower_lung:
+        h: 0.23
+        w: 0.3
+        x: 0.65
+        y: 0.55
+      left_middle_lung:
+        h: 0.25
+        w: 0.3
+        x: 0.65
+        y: 0.3
+      left_upper_lung:
+        h: 0.22
+        w: 0.3
+        x: 0.65
+        y: 0.08
+      mediastinum:
+        h: 0.35
+        w: 0.3
+        x: 0.35
+        y: 0.05
+      right_cp_angle:
+        h: 0.15
+        w: 0.25
+        x: 0.05
+        y: 0.72
+      right_lower_lung:
+        h: 0.23
+        w: 0.3
+        x: 0.05
+        y: 0.55
+      right_middle_lung:
+        h: 0.25
+        w: 0.3
+        x: 0.05
+        y: 0.3
+      right_upper_lung:
+        h: 0.22
+        w: 0.3
+        x: 0.05
+        y: 0.08
+      trachea:
+        h: 0.12
+        w: 0.2
+        x: 0.4
+        y: 0.0
+  EKG:
+    layout: standard_4x3
+    regions:
+      lead_I:
+        h: 0.27
+        w: 0.25
+        x: 0.0
+        y: 0.0
+      lead_II:
+        h: 0.27
+        w: 0.25
+        x: 0.0
+        y: 0.27
+      lead_III:
+        h: 0.27
+        w: 0.25
+        x: 0.0
+        y: 0.54
+      lead_V1:
+        h: 0.27
+        w: 0.25
+        x: 0.5
+        y: 0.0
+      lead_V2:
+        h: 0.27
+        w: 0.25
+        x: 0.5
+        y: 0.27
+      lead_V3:
+        h: 0.27
+        w: 0.25
+        x: 0.5
+        y: 0.54
+      lead_V4:
+        h: 0.27
+        w: 0.25
+        x: 0.75
+        y: 0.0
+      lead_V5:
+        h: 0.27
+        w: 0.25
+        x: 0.75
+        y: 0.27
+      lead_V6:
+        h: 0.27
+        w: 0.25
+        x: 0.75
+        y: 0.54
+      lead_aVF:
+        h: 0.27
+        w: 0.25
+        x: 0.25
+        y: 0.54
+      lead_aVL:
+        h: 0.27
+        w: 0.25
+        x: 0.25
+        y: 0.27
+      lead_aVR:
+        h: 0.27
+        w: 0.25
+        x: 0.25
+        y: 0.0
+      rhythm_strip:
+        h: 0.19
+        w: 1.0
+        x: 0.0
+        y: 0.81

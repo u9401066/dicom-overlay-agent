@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["modality", "summary", "severity", "findings", "checklist"],
+  "properties": {
+    "modality": {"const": "CT_BRAIN"},
+    "analysis_time_ms": {"type": "integer", "minimum": 0},
+    "summary": {"type": "string"},
+    "severity": {"type": "string", "enum": ["critical", "warning", "normal", "info"]},
+    "findings": {"type": "array"},
+    "checklist": {"type": "object"}
+  }
+}
