@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import (
     QLabel,
     QScrollArea,
@@ -31,11 +31,51 @@ SEVERITY_COLORS: dict[str, QColor] = {
 }
 
 
-class SummaryPanel(QWidget):
-    """Fixed side panel showing analysis checklist (spec §3.4 Element B)."""
+class _DraggableWindowMixin:
+    """Mixin providing drag-to-move for frameless top-level panels."""
+
+    _drag_pos: object = None
+
+    def _init_draggable_window(self) -> None:
+        """Call from __init__ to set up top-level window flags."""
+        self.setWindowFlags(  # type: ignore[attr-defined]
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)  # type: ignore[attr-defined]
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)  # type: ignore[attr-defined]
+
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
+        if a0 is None:
+            return
+        if a0.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = (
+                a0.globalPosition().toPoint()
+                - self.frameGeometry().topLeft()  # type: ignore[attr-defined]
+            )
+            a0.accept()
+
+    def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:
+        if a0 is None:
+            return
+        if self._drag_pos is not None and a0.buttons() & Qt.MouseButton.LeftButton:
+            self.move(a0.globalPosition().toPoint() - self._drag_pos)  # type: ignore[attr-defined]
+            a0.accept()
+
+    def mouseReleaseEvent(self, a0: QMouseEvent | None) -> None:
+        if a0 is None:
+            return
+        self._drag_pos = None
+        a0.accept()
+
+
+class SummaryPanel(_DraggableWindowMixin, QWidget):
+    """Draggable side panel showing analysis checklist (spec §3.4 Element B)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._init_draggable_window()
         self.setFixedWidth(320)
         self.setStyleSheet(
             "background-color: rgba(20, 20, 30, 220); "
@@ -46,6 +86,13 @@ class SummaryPanel(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(12, 12, 12, 12)
         self._layout.setSpacing(4)
+
+        # Drag handle hint
+        drag_hint = QLabel("⠿ 拖曳移動")
+        drag_hint.setFont(QFont("Segoe UI", 8))
+        drag_hint.setStyleSheet("color: #666; padding: 0;")
+        drag_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._layout.addWidget(drag_hint)
 
         self._title_label = QLabel("📊 Analysis")
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
@@ -85,14 +132,21 @@ class SummaryPanel(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        # Checklist items
+        # Partition checklist: abnormal items first, then normal summary
+        abnormal_items: list[tuple[str, object]] = []
+        normal_count = 0
         for key, item in result.checklist.items():
+            if item.status in (Severity.CRITICAL, Severity.WARNING):
+                abnormal_items.append((key, item))
+            else:
+                normal_count += 1
+
+        # Show abnormal items prominently
+        for key, item in abnormal_items:
             status_icon = {
-                Severity.NORMAL: "✅",
                 Severity.WARNING: "⚠️",
                 Severity.CRITICAL: "🔴",
-                Severity.INFO: "🔵",
-            }.get(item.status, "🔵")
+            }.get(item.status, "⚠️")
 
             display_key = _humanize_checklist_key(key)
             display_val = _humanize_checklist_value(item.value)
@@ -105,6 +159,18 @@ class SummaryPanel(QWidget):
                 "padding: 2px 0px;"
             )
             self._content_layout.addWidget(label)
+
+        # Collapse normal items into a single summary line
+        if normal_count > 0:
+            normal_label = QLabel(f"✅ {normal_count} items normal")
+            normal_label.setFont(QFont("Segoe UI", 9))
+            normal_label.setStyleSheet(
+                f"color: rgb({SEVERITY_COLORS['normal'].red()}, "
+                f"{SEVERITY_COLORS['normal'].green()}, "
+                f"{SEVERITY_COLORS['normal'].blue()}); "
+                "padding: 2px 0px;"
+            )
+            self._content_layout.addWidget(normal_label)
 
         # Summary
         sev_icon = {"critical": "🔴", "warning": "⚠️", "normal": "🟢"}.get(
@@ -124,11 +190,12 @@ class SummaryPanel(QWidget):
         self._title_label.setText("📊 Waiting...")
 
 
-class ChatPanel(QWidget):
-    """Panel for displaying chat Q&A on the overlay."""
+class ChatPanel(_DraggableWindowMixin, QWidget):
+    """Draggable panel for displaying chat Q&A."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._init_draggable_window()
         self.setFixedWidth(400)
         self.setStyleSheet(
             "background-color: rgba(20, 20, 30, 230); "
@@ -139,6 +206,13 @@ class ChatPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
+
+        # Drag handle hint
+        drag_hint = QLabel("⠿ 拖曳移動")
+        drag_hint.setFont(QFont("Segoe UI", 8))
+        drag_hint.setStyleSheet("color: #666; padding: 0;")
+        drag_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(drag_hint)
 
         self._title_label = QLabel("💬 AI 對話")
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
@@ -212,12 +286,12 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-        # Summary panel (right side)
-        self.summary_panel = SummaryPanel(self)
+        # Summary panel — independent draggable window (right side)
+        self.summary_panel = SummaryPanel()
         self.summary_panel.setVisible(False)
 
-        # Chat panel (left side)
-        self.chat_panel = ChatPanel(self)
+        # Chat panel — independent draggable window (left side)
+        self.chat_panel = ChatPanel()
         self.chat_panel.setVisible(False)
 
         # Fade timer
@@ -241,17 +315,36 @@ class OverlayWindow(QWidget):
         self._critical_persist = critical_persist
 
     def position_over_window(self, rect: WindowRect) -> None:
-        """Position overlay to match a target window."""
-        self.setGeometry(rect.left, rect.top, rect.width, rect.height)
+        """Position overlay to cover the full screen.
 
-        # Place summary panel on right side
-        panel_x = rect.width - self.summary_panel.width() - 10
+        The overlay spans the entire primary screen so that the summary panel,
+        chat panel, and region highlights are not clipped by the viewer window
+        boundaries.  ``rect`` is kept for reference but no longer constrains
+        the overlay size.
+        """
+        from PyQt6.QtWidgets import QApplication
+
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            # Fallback: use viewer window bounds (should not happen)
+            from dicom_overlay.infrastructure.dpi import physical_to_logical
+
+            logical = physical_to_logical(rect)
+            self.setGeometry(logical.left, logical.top, logical.width, logical.height)
+            sw, sh = logical.width, logical.height
+        else:
+            geo = screen.geometry()
+            self.setGeometry(geo.x(), geo.y(), geo.width(), geo.height())
+            sw, sh = geo.width(), geo.height()
+
+        # Place summary panel on right side of screen
+        panel_x = sw - self.summary_panel.width() - 10
         self.summary_panel.move(panel_x, 10)
-        self.summary_panel.setFixedHeight(rect.height - 70)
+        self.summary_panel.setFixedHeight(sh - 70)
 
-        # Place chat panel on left side
+        # Place chat panel on left side of screen
         self.chat_panel.move(10, 10)
-        self.chat_panel.setFixedHeight(rect.height - 70)
+        self.chat_panel.setFixedHeight(sh - 70)
 
     def show_result(
         self,
@@ -268,10 +361,8 @@ class OverlayWindow(QWidget):
         self.show()
         self.update()
 
-        # Auto-hide timer (unless critical)
-        if self._critical_persist and self._current_severity == "critical":
-            return
-        self._display_timer.start(self._display_duration_sec * 1000)
+        # Results persist until dismissed or new image triggers a new analysis.
+        # No auto-hide timer.
 
     def clear_result(self) -> None:
         self.summary_panel.clear()
@@ -347,15 +438,29 @@ class OverlayWindow(QWidget):
 # ── Checklist display helpers ──
 
 _KEY_DISPLAY_MAP: dict[str, str] = {
-    "stemi_nstemi_pattern": "STEMI/NSTEMI",
-    "arrhythmia": "Arrhythmia",
-    "qtc_prolongation": "QTc Prolong.",
+    # EKG – 16-point systematic checklist
+    "heart_rate": "Heart Rate",
+    "rhythm": "Rhythm",
+    "regularity": "Regularity",
+    "axis": "Axis",
+    "p_wave": "P Wave",
+    "pr_interval": "PR Interval",
+    "qrs_duration": "QRS Duration",
+    "qrs_morphology": "QRS Morph.",
+    "st_segment": "ST Segment",
+    "t_wave": "T Wave",
+    "qtc_interval": "QTc",
+    "chamber_enlargement": "Chamber Enlg.",
+    "conduction": "Conduction",
     "av_block": "AV Block",
-    "bundle_branch_block": "BBB",
+    "stemi_pattern": "STEMI",
+    "ischemia": "Ischemia",
+    # CXR
     "cardiomegaly": "Cardiomegaly",
     "pneumothorax": "Pneumothorax",
     "pleural_effusion": "Pleural Eff.",
     "consolidation": "Consolidation",
+    # CT Brain
     "midline_shift": "Midline Shift",
     "hemorrhage": "Hemorrhage",
 }
