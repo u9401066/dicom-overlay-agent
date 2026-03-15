@@ -57,4 +57,9 @@ def setup_logging(log_level: str = "INFO", log_file: str = "agent.log") -> None:
     root.handlers.clear()
     root.addHandler(console_handler)
     root.addHandler(file_handler)
-    root.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+    # Set root to WARNING so third-party libs (PIL, websockets) stay quiet.
+    # Only our own logger uses the configured level.
+    root.setLevel(logging.WARNING)
+
+    app_logger = logging.getLogger("dicom_overlay")
+    app_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
