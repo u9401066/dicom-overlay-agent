@@ -1,4 +1,4 @@
-# Progress (Updated: 2026-03-14)
+# Progress (Updated: 2026-03-15)
 
 ## Done
 
@@ -20,40 +20,41 @@
 - Code fence regex 改用 `re.search` 支援 `\r\n`
 - 測試隔離修復（monkeypatch _DEFAULT_CONFIG_PATHS）
 - Portable 架構審計完成：OpenClaw 本地安裝 ✅、HOME 隔離 ✅、credentials ✅、skills sync ✅
-- **端到端測試 GPT-5-mini 成功** (2026-03-14)：
-  - Chat 連線測試 ✅（Reply: 'OK'，~7s）
-  - 真實 ECG strip 圖片 analyze 測試 ✅（16.5s，正確辨識 Sinus rhythm + 5 項 checklist 全正常）
-  - AnalysisResult 正確解析為 domain entity（Modality.EKG, Severity.INFO, findings, checklist）
+- **端到端測試 GPT-5-mini 成功** (2026-03-14)
+- **Display Pipeline 深度審查 + 修復** (2026-03-14)
+- **OpenClaw Overlay 完整整合測試** (2026-03-14)：42 個 mock WS 整合測試
+- **Real Gateway 實際測試** (2026-03-14)：4/4 測試通過
+- **Hook/Guardrail 系統** (2026-03-14)
+- **MCP Adapter 對齊 OpenClaw** (2026-03-14)
+- 初次 Git push 到私人 GitHub Repo ✅ (2026-03-14)
+
+## Done (recent) — 2026-03-15
+
+- **Gateway 自動啟動** (2026-03-15)：
+  - `GatewayManager` 類：自動啟動/停止 Gateway subprocess
+  - `dpi.py`：DPI 感知工具函式
+  - `start.bat` 簡化：移除手動 Gateway 啟動步驟
+  - `logging_config.py`：Gateway stdout 重導向至 `gateway.log`
+- **Presentation 層重構** (2026-03-15)：
+  - `DraggableWindowMixin`：SummaryPanel/ChatPanel 改為獨立可拖曳視窗
+  - Smart Display：異常項優先、正常項摺疊為「✅ N items normal」
+  - ROI 設定 DPI 修正
+- **核心功能強化** (2026-03-15)：
+  - EKG checklist 從 5 項擴展到 16 項系統性心臟病學項目
+  - `OutputValidator` 對齊 16 key schema
+  - 可配置 hash 演算法（phash/ahash/dhash/whash），預設 phash + threshold 5
+  - WS frame log noise 修復（過濾 `type=event` 訊息）
+  - 連線 log noise 修復（`logger.exception` → `logger.warning`）
+- **AI 動態 Bounding Box** (2026-03-15)：
+  - `Finding` 新增 `bboxes: list[RegionRect]` 欄位
+  - AI prompt 改要求歸一化 0-1 座標 bounding box
+  - `__main__.py` highlight 優先使用 AI bbox，fallback 到 static region maps
+  - SKILL.md × 2 更新 bbox 指示
+- **測試**：135 個 pytest 測試全部通過 (0.49s)
 
 ## Doing
 
-- 初次 Git push 到私人 GitHub Repo
-
-## Done (recent)
-
-- **Display Pipeline 深度審查 + 修復** (2026-03-14)：
-  - 2 Critical fixes: highlight label 修正 + 未知 region 改用 warning
-  - 21 個 display pipeline 測試
-- **OpenClaw Overlay 完整整合測試** (2026-03-14)：
-  - 42 個 mock WS 整合測試（parse helpers, HookedAnalyzer, e2e, error paths）
-  - 125 個 pytest 測試全部通過 (0.85s)
-- **Real Gateway 實際測試** (2026-03-14)：
-  - Raw WS: connect ✅ → chat.send ✅ → 503 events → final JSON (2067 chars, 25s)
-  - OpenClawClient: connect ✅ → chat ✅ → analyze_ekg ✅ → disconnect ✅ (4/4, 23s)
-  - AI 正確回傳 EKG 分析：4 findings + 5 checklist items
-
-- **Hook/Guardrail 系統** (2026-03-14)：
-  - Domain 介面：`HookError`, `HookEventType`, `HookEvent`, `GatewayHookHandler`, `AnalyzeHook`, `AnalyzeRequest`
-  - Infrastructure hooks：`InputGuard`（影像驗證）、`OutputValidator`（結果驗證）、`RateLimiter`（流量控制）
-  - Application：`HookedVisionAnalyzer`（decorator pipeline：pre → analyze → post）
-  - Gateway hook bridge：`OpenClawHookBridge`（event pub/sub，type:action 格式）
-- **MCP Adapter 對齊 OpenClaw** (2026-03-14)：
-  - 研究 OpenClaw `openclaw-mcp-adapter` 插件源碼（index.ts, mcp-client.ts, config.ts）
-  - Domain：`MCPServerConfig`（stdio/http）、`MCPAdapterConfig`、`MCPToolProvider` ABC、`ToolDefinition`、`ToolCallResult`
-  - Infrastructure：`McpAdapter`（鏡像 McpClientPool：start→discover→call→reconnect→stop）
-  - `__main__.py` wiring：hooks pipeline + McpAdapter lifecycle
-- **測試**：24 個新測試（InputGuard×6 + OutputValidator×3 + RateLimiter×2 + McpAdapter×8 + Config×3 + ToolCallResult×2）
-- 全部 61 個單元測試通過
+（無）
 
 ## Next
 
@@ -63,3 +64,4 @@
 - 更新 `start.bat` 使用 `node\node.exe` 而非系統 `node`
 - PyInstaller 打包 `overlay.exe` 單檔 (<50MB)
 - 最終目標：<150MB USB 隨身碟可直接執行，零安裝
+- Live 測試 AI bbox 精確度與 phash 偵測靈敏度

@@ -28,6 +28,11 @@
 | 2026-03-14 | Hook/Guardrail 系統（類 MCP 防呆）| OpenClaw 操作軟體時沒有 MCP 強制驗證，自建 AnalyzeHook pipeline（pre/post）作為防呆層 |
 | 2026-03-14 | MCP Adapter 對齊 openclaw-mcp-adapter | Python 側 McpAdapter 鏡像 OpenClaw 的 McpClientPool 架構（同 config schema、同 lifecycle、同 reconnect），確保與 gateway 插件一致 |
 | 2026-03-14 | ToolCallResult 改為 content[] 格式 | 對齊 MCP 協議標準回傳格式（content blocks），而非自訂 success/data/error |
+| 2026-03-15 | Gateway 自動啟動由 GatewayManager 管理 | 避免使用者手動啟動 Gateway subprocess，簡化 start.bat |
+| 2026-03-15 | 獨立可拖曳 Panel（非固定在 Overlay） | SummaryPanel/ChatPanel 需要可移動到不遮擋閱讀的位置 |
+| 2026-03-15 | EKG checklist 擴展到 16 項 | 5 項太少，16 項涵蓋系統性心臟病學評估（Rate/Rhythm/Axis/Intervals/ST/Chamber/Conduction/Artifact） |
+| 2026-03-15 | 預設 phash + threshold 5 取代 ahash + 10 | ahash (8x8 brightness) 無法區分結構相似的 EKG 圖（相同 grid/label），phash (DCT) 對空間頻率更敏感 |
+| 2026-03-15 | AI 動態 bounding box 取代固定 region map | 固定 4x3 grid 對不準實際 EKG 佈局，AI 回傳歸一化 0-1 座標更精確、更靈活 |
 
 ---
 
