@@ -12,11 +12,22 @@ logger = structlog.get_logger(__name__)
 # Required checklist keys per modality
 _REQUIRED_CHECKLIST: dict[str, frozenset[str]] = {
     "EKG": frozenset({
-        "stemi_nstemi_pattern",
-        "arrhythmia",
-        "qtc_prolongation",
+        "heart_rate",
+        "rhythm",
+        "regularity",
+        "axis",
+        "p_wave",
+        "pr_interval",
+        "qrs_duration",
+        "qrs_morphology",
+        "st_segment",
+        "t_wave",
+        "qtc_interval",
+        "chamber_enlargement",
+        "conduction",
         "av_block",
-        "bundle_branch_block",
+        "stemi_pattern",
+        "ischemia",
     }),
 }
 

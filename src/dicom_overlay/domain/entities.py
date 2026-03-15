@@ -64,6 +64,7 @@ class Finding:
     label: str
     detail: str
     severity: Severity
+    bboxes: list[RegionRect] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -123,8 +124,8 @@ class MonitorConfig:
         default_factory=lambda: ["DICOM", "影像", "Viewer"]
     )
     polling_interval_ms: int = 500
-    hash_algorithm: str = "ahash"
-    hash_threshold: int = 10
+    hash_algorithm: str = "phash"
+    hash_threshold: int = 5
     debounce_stable_sec: float = 1.5
 
 

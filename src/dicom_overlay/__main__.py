@@ -24,6 +24,7 @@ from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import AgentState, Modality
 from dicom_overlay.infrastructure.async_bridge import AsyncBridge
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
+from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
@@ -68,7 +69,7 @@ def main() -> None:
     logger.info("DICOM Overlay Agent starting...")
 
     # --- Build infrastructure ---
-    screen_monitor = ScreenMonitor()
+    screen_monitor = ScreenMonitor(hash_algorithm=config.monitor.hash_algorithm)
     image_processor = ImageProcessor()
     region_mapper = RegionMapper(config.region_maps)
     openclaw_client = OpenClawClient(
@@ -113,6 +114,11 @@ def main() -> None:
     if screen:
         geo = screen.geometry()
         control_bar.position_bottom_right(geo.width(), geo.height())
+        # Set screen dimensions for screen-based ROI capture
+        dpr = screen.devicePixelRatio()
+        agent._screen_width = int(geo.width() * dpr)
+        agent._screen_height = int(geo.height() * dpr)
+        agent._dpr = dpr
 
     # --- Async bridge (background thread for all agent operations) ---
     bridge = AsyncBridge()
@@ -145,21 +151,56 @@ def main() -> None:
         # Calculate highlight rects
         highlights = []
         if agent.target_window and config.overlay.region_highlights:
+            # Region percentages are relative to the ROI-cropped image,
+            # so map them to the cropped content area — NOT the full window.
+            roi = config.phi_roi
+            from dicom_overlay.domain.entities import Severity
+            from dicom_overlay.domain.entities import WindowRect as WR
+            from dicom_overlay.infrastructure.dpi import get_dpi_scale
+            dpr = get_dpi_scale()
+            # ROI is screen-relative in physical pixels;
+            # content_rect = the captured area in physical pixels.
+            content_rect = WR(
+                left=roi.left,
+                top=roi.top,
+                width=agent._screen_width - roi.left - roi.right,
+                height=agent._screen_height - roi.top - roi.bottom,
+            )
             for finding in result.findings:
-                for region_name in finding.regions:
-                    rect = region_mapper.get_region_rect(
-                        region_name, result.modality
-                    )
-                    if rect and agent.target_window:
-                        sx, sy, sw, sh = region_mapper.to_screen_rect(
-                            rect, agent.target_window
-                        )
-                        # Convert to overlay-local coords
-                        lx = sx - agent.target_window.left
-                        ly = sy - agent.target_window.top
+                # Only highlight abnormal findings (skip normal/info)
+                if finding.severity in (Severity.NORMAL, Severity.INFO):
+                    continue
+                # Prefer AI-provided bboxes (dynamic, precise)
+                if finding.bboxes:
+                    for bbox in finding.bboxes:
+                        sx = int(content_rect.left + bbox.x * content_rect.width)
+                        sy = int(content_rect.top + bbox.y * content_rect.height)
+                        sw = int(bbox.w * content_rect.width)
+                        sh = int(bbox.h * content_rect.height)
+                        lx = round(sx / dpr)
+                        ly = round(sy / dpr)
+                        lw = round(sw / dpr)
+                        lh = round(sh / dpr)
                         highlights.append(
-                            (lx, ly, sw, sh, finding.severity.value, finding.label)
+                            (lx, ly, lw, lh, finding.severity.value, finding.label)
                         )
+                else:
+                    # Fallback: use static region maps from config
+                    for region_name in finding.regions:
+                        rect = region_mapper.get_region_rect(
+                            region_name, result.modality
+                        )
+                        if rect and agent.target_window:
+                            sx, sy, sw, sh = region_mapper.to_screen_rect(
+                                rect, content_rect
+                            )
+                            lx = round(sx / dpr)
+                            ly = round(sy / dpr)
+                            lw = round(sw / dpr)
+                            lh = round(sh / dpr)
+                            highlights.append(
+                                (lx, ly, lw, lh, finding.severity.value, finding.label)
+                            )
 
         if agent.target_window:
             overlay.position_over_window(agent.target_window)
@@ -230,7 +271,11 @@ def main() -> None:
         control_bar.set_modality(mod.value)
 
     def on_dismiss():
+        """Quit the entire application (cleanup runs after app.exec())."""
+        logger.info("User dismissed — shutting down")
         overlay.dismiss()
+        tick_timer.stop()
+        app.quit()
 
     def open_settings_roi_setup() -> None:
         roi = run_roi_setup(app, agent.target_window, config.phi_roi)
@@ -320,7 +365,19 @@ def main() -> None:
     shortcut_toggle.setContext(Qt.ShortcutContext.ApplicationShortcut)
     shortcut_toggle.activated.connect(_toggle_enable)
 
-    # ─── Start agent + MCP adapter (blocking OK — before Qt event loop) ───
+    # ─── Start Gateway + agent + MCP adapter ───
+    gateway = GatewayManager(repo_root=Path.cwd())
+    try:
+        gateway.start()
+        ready = bridge.submit(gateway.wait_ready(timeout_sec=15)).result(timeout=20)
+        if not ready:
+            logger.error("Gateway failed to start — continuing without it")
+        # Let the agent auto-restart Gateway if it crashes during runtime
+        agent._gateway = gateway
+    except FileNotFoundError as exc:
+        logger.warning("Gateway not available: %s", exc)
+        gateway = None  # type: ignore[assignment]
+
     bridge.submit(agent.start()).result(timeout=30)
     bridge.submit(mcp_adapter.start()).result(timeout=10)
 
@@ -348,6 +405,12 @@ def main() -> None:
         bridge.submit(agent.stop()).result(timeout=10)
     except Exception:
         logger.exception("Error during agent shutdown")
+
+    if gateway is not None:
+        try:
+            gateway.stop()
+        except Exception:
+            logger.exception("Error during Gateway shutdown")
 
     bridge.shutdown()
     sys.exit(exit_code)

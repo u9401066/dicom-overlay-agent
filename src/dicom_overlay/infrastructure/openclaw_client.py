@@ -19,6 +19,7 @@ from dicom_overlay.domain.entities import (
     ChecklistItem,
     Finding,
     Modality,
+    RegionRect,
     Severity,
 )
 from dicom_overlay.domain.services import VisionAnalyzerService
@@ -77,6 +78,7 @@ class OpenClawClient(VisionAnalyzerService):
         self._connected = False
         self._request_counter = 0
         self._gateway_token = _load_gateway_token()
+        self._ws_lock = asyncio.Lock()  # Serialize all WebSocket send+recv sequences
 
     async def connect(self) -> None:
         try:
@@ -88,9 +90,9 @@ class OpenClawClient(VisionAnalyzerService):
             await self._handshake()
             self._connected = True
             logger.info("Connected to OpenClaw Gateway at %s", self._url)
-        except Exception:
+        except Exception as exc:
             self._connected = False
-            logger.exception("Failed to connect to OpenClaw Gateway")
+            logger.warning("Failed to connect to OpenClaw Gateway: %s", exc)
             raise
 
     async def disconnect(self) -> None:
@@ -110,26 +112,27 @@ class OpenClawClient(VisionAnalyzerService):
         valid_regions: list[str],
     ) -> AnalysisResult:
         """Analyze with auto-reconnect on connection loss."""
-        try:
-            return await self._do_analyze(image_base64, modality, valid_regions)
-        except websockets.ConnectionClosed:
-            logger.warning("Connection lost during analysis, reconnecting...")
-            self._connected = False
+        async with self._ws_lock:
             try:
-                await self.connect()
                 return await self._do_analyze(image_base64, modality, valid_regions)
-            except websockets.ConnectionClosed:
+            except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+                logger.warning("Connection lost during analysis, reconnecting...")
                 self._connected = False
-                raise ConnectionError(
-                    "Gateway connection lost after reconnect"
-                ) from None
-            except ConnectionError:
-                raise
-            except Exception as exc:
-                self._connected = False
-                raise ConnectionError(
-                    f"Reconnect failed: {exc}"
-                ) from None
+                try:
+                    await self.connect()
+                    return await self._do_analyze(image_base64, modality, valid_regions)
+                except websockets.ConnectionClosed:
+                    self._connected = False
+                    raise ConnectionError(
+                        "Gateway connection lost after reconnect"
+                    ) from None
+                except ConnectionError:
+                    raise
+                except Exception as exc:
+                    self._connected = False
+                    raise ConnectionError(
+                        f"Reconnect failed: {exc}"
+                    ) from None
 
     async def _do_analyze(
         self,
@@ -166,7 +169,12 @@ class OpenClawClient(VisionAnalyzerService):
         }
 
         start = time.monotonic()
-        await self._ws.send(json.dumps(message))
+        payload_json = json.dumps(message)
+        logger.info(
+            "Sending analysis request: id=%s skill=%s payload_size=%dKB",
+            request_id, skill, len(payload_json) // 1024,
+        )
+        await self._ws.send(payload_json)
 
         response = await self._wait_for_chat_result(request_id)
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -174,26 +182,27 @@ class OpenClawClient(VisionAnalyzerService):
 
     async def chat(self, message: str) -> str:
         """Send a free-text question with auto-reconnect on connection loss."""
-        try:
-            return await self._do_chat(message)
-        except websockets.ConnectionClosed:
-            logger.warning("Connection lost during chat, reconnecting...")
-            self._connected = False
+        async with self._ws_lock:
             try:
-                await self.connect()
                 return await self._do_chat(message)
-            except websockets.ConnectionClosed:
+            except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+                logger.warning("Connection lost during chat, reconnecting...")
                 self._connected = False
-                raise ConnectionError(
-                    "Gateway connection lost after reconnect"
-                ) from None
-            except ConnectionError:
-                raise
-            except Exception as exc:
-                self._connected = False
-                raise ConnectionError(
-                    f"Reconnect failed: {exc}"
-                ) from None
+                try:
+                    await self.connect()
+                    return await self._do_chat(message)
+                except websockets.ConnectionClosed:
+                    self._connected = False
+                    raise ConnectionError(
+                        "Gateway connection lost after reconnect"
+                    ) from None
+                except ConnectionError:
+                    raise
+                except Exception as exc:
+                    self._connected = False
+                    raise ConnectionError(
+                        f"Reconnect failed: {exc}"
+                    ) from None
 
     async def _do_chat(self, message: str) -> str:
         if not self.is_connected():
@@ -256,7 +265,10 @@ class OpenClawClient(VisionAnalyzerService):
 
             if frame_type == "event":
                 payload = frame.get("payload", {})
-                if run_id is not None and payload.get("runId") != run_id:
+                # Skip events until we know our run_id (avoid stale events)
+                if run_id is None:
+                    continue
+                if payload.get("runId") != run_id:
                     continue
                 state = payload.get("state")
                 if state == "error":
@@ -304,11 +316,15 @@ class OpenClawClient(VisionAnalyzerService):
         assert self._ws is not None
 
         run_id: str | None = None
+        logger.debug("Waiting for chat result, request_id=%s", request_id)
         while True:
             try:
                 raw = await asyncio.wait_for(self._ws.recv(), timeout=self._timeout)
             except TimeoutError:
-                logger.error("OpenClaw analysis timed out after %ds", self._timeout)
+                logger.error(
+                    "OpenClaw analysis timed out after %ds (request_id=%s, run_id=%s)",
+                    self._timeout, request_id, run_id,
+                )
                 raise TimeoutError(f"Analysis timeout after {self._timeout}s") from None
             except websockets.ConnectionClosed as exc:
                 self._connected = False
@@ -316,6 +332,15 @@ class OpenClawClient(VisionAnalyzerService):
 
             frame = json.loads(raw)
             frame_type = frame.get("type")
+            # Only log non-event frames to avoid flooding logs
+            # (Gateway pushes dozens of event frames per request)
+            if frame_type != "event":
+                logger.debug(
+                    "WS frame: type=%s id=%s method=%s",
+                    frame_type,
+                    frame.get("id"),
+                    frame.get("method", frame.get("payload", {}).get("state", "")),
+                )
 
             if frame_type == "res" and frame.get("id") == request_id:
                 if not frame.get("ok"):
@@ -327,7 +352,7 @@ class OpenClawClient(VisionAnalyzerService):
                 payload = frame.get("payload", {})
                 status = payload.get("status")
                 if payload.get("runId"):
-                    run_id = payload.get("runId")
+                    run_id = payload["runId"]
                 if status == "accepted":
                     continue
 
@@ -342,7 +367,11 @@ class OpenClawClient(VisionAnalyzerService):
 
             if frame_type == "event":
                 payload = frame.get("payload", {})
-                if run_id is not None and payload.get("runId") != run_id:
+                # Skip events until we know our run_id (avoid stale events
+                # from a previous run that are still buffered in the WS).
+                if run_id is None:
+                    continue
+                if payload.get("runId") != run_id:
                     continue
 
                 state = payload.get("state")
@@ -362,6 +391,18 @@ class OpenClawClient(VisionAnalyzerService):
 
         findings = []
         for f in payload.get("findings", []):
+            # Parse AI-provided bounding boxes (normalized 0-1 coords)
+            bboxes: list[RegionRect] = []
+            for b in f.get("bboxes", []):
+                try:
+                    bboxes.append(RegionRect(
+                        x=float(b.get("x", 0)),
+                        y=float(b.get("y", 0)),
+                        w=float(b.get("w", 0)),
+                        h=float(b.get("h", 0)),
+                    ))
+                except (ValueError, TypeError):
+                    pass  # skip malformed bbox
             findings.append(
                 Finding(
                     id=f.get("id", ""),
@@ -369,6 +410,7 @@ class OpenClawClient(VisionAnalyzerService):
                     label=f.get("label", ""),
                     detail=f.get("detail", ""),
                     severity=_parse_severity(f.get("severity", "info")),
+                    bboxes=bboxes,
                 )
             )
 
@@ -420,7 +462,8 @@ def _build_analysis_prompt(
         f"{skill_prompt}\n\n"
         "Return a single JSON object only. Do not wrap it in markdown.\n"
         f"modality must be '{modality.value}'.\n"
-        f"Allowed semantic regions for this image: {', '.join(valid_regions)}"
+        "For each abnormal finding, include 'bboxes' with normalized 0-1 coordinates "
+        "(x, y, w, h) tightly bounding the specific abnormal area in the image."
     )
 
 

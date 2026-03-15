@@ -8,8 +8,8 @@ hotkeys:
   trigger_manual: ctrl+shift+a
 monitor:
   debounce_stable_sec: 1.5
-  hash_algorithm: ahash
-  hash_threshold: 10
+  hash_algorithm: phash
+  hash_threshold: 5
   polling_interval_ms: 500
   window_title_keywords:
   - DICOM
@@ -18,7 +18,7 @@ monitor:
 openclaw:
   gateway_url: ws://127.0.0.1:18789
   reconnect_interval_sec: 5
-  timeout_sec: 15
+  timeout_sec: 30
 overlay:
   control_bar: true
   control_bar_position: bottom_right
@@ -29,10 +29,10 @@ overlay:
   region_highlights: true
   summary_panel: true
 phi_roi:
-  bottom: 183
-  left: 399
-  right: 400
-  top: 362
+  bottom: 329
+  left: 1286
+  right: 4
+  top: 435
 region_maps:
   CT_BRAIN:
     layout: axial_standard

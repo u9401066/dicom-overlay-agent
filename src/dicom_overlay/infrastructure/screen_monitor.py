@@ -26,8 +26,24 @@ except ImportError:
     logger.warning("pywin32 not available — window detection disabled")
 
 
+_HASH_FUNCS = {
+    "ahash": imagehash.average_hash,
+    "phash": imagehash.phash,
+    "dhash": imagehash.dhash,
+    "whash": imagehash.whash,
+}
+
+
 class ScreenMonitor(ScreenMonitorService):
     """Detects DICOM viewer window and captures screen regions (spec §3.1)."""
+
+    def __init__(self, hash_algorithm: str = "phash") -> None:
+        algo = hash_algorithm.lower()
+        if algo not in _HASH_FUNCS:
+            logger.warning("Unknown hash algorithm %r, falling back to phash", algo)
+            algo = "phash"
+        self._hash_func = _HASH_FUNCS[algo]
+        logger.info("Hash algorithm: %s", algo)
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         if not HAS_WIN32 or win32gui is None:
@@ -81,7 +97,7 @@ class ScreenMonitor(ScreenMonitorService):
 
     def compute_hash(self, image_data: bytes) -> str:
         img = Image.open(io.BytesIO(image_data))
-        h = imagehash.average_hash(img)
+        h = self._hash_func(img)
         return str(h)
 
     def has_changed(self, hash1: str, hash2: str, threshold: int) -> bool:

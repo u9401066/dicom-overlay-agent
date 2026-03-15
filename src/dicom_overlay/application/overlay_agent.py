@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         ScreenMonitorService,
         VisionAnalyzerService,
     )
+    from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 
 logger = structlog.get_logger(__name__)
 
@@ -49,18 +50,28 @@ class OverlayAgent:
         image_processor: ImageProcessorService,
         vision_analyzer: VisionAnalyzerService,
         region_mapper: RegionMapperService,
+        gateway_manager: GatewayManager | None = None,
+        screen_width: int = 1920,
+        screen_height: int = 1080,
+        dpr: float = 1.0,
     ) -> None:
         self._config = config
         self._monitor = screen_monitor
         self._processor = image_processor
         self._analyzer = vision_analyzer
         self._mapper = region_mapper
+        self._gateway: GatewayManager | None = gateway_manager
+        self._screen_width = screen_width
+        self._screen_height = screen_height
+        self._dpr = dpr
 
         self._state = AgentState.INIT
         self._current_modality = Modality.EKG
         self._last_hash: str = ""
         self._debounce_start: float = 0.0
         self._last_reconnect_attempt: float = 0.0
+        self._error_time: float = 0.0
+        self._display_enter_time: float = 0.0
         self._target_window: WindowRect | None = None
         self._last_result: AnalysisResult | None = None
         self._running = False
@@ -93,6 +104,13 @@ class OverlayAgent:
     def _transition(self, new_state: AgentState) -> None:
         old = self._state
         self._state = new_state
+        if new_state == AgentState.ERROR:
+            self._error_time = time.monotonic()
+        if new_state == AgentState.DISPLAYING:
+            # Reset hash baseline so first tick after overlay renders
+            # establishes a new baseline (with overlay visible).
+            self._last_hash = ""
+            self._display_enter_time = time.monotonic()
         logger.info("State: %s → %s", old.name, new_state.name)
         if self.on_state_change:
             self.on_state_change(old, new_state)
@@ -142,8 +160,12 @@ class OverlayAgent:
                 await self._tick_waiting()
             case AgentState.MONITORING:
                 await self._tick_monitoring()
+            case AgentState.DISPLAYING:
+                await self._tick_displaying()
             case AgentState.RECONNECTING:
                 await self._tick_reconnecting()
+            case AgentState.ERROR:
+                await self._tick_error()
             case _:
                 pass
 
@@ -162,6 +184,65 @@ class OverlayAgent:
                 window.top,
             )
 
+    def _get_roi_rect(self) -> WindowRect:
+        """Compute the screen-relative ROI capture rectangle."""
+        roi = self._config.phi_roi
+        return WindowRect(
+            left=roi.left,
+            top=roi.top,
+            width=self._screen_width - roi.left - roi.right,
+            height=self._screen_height - roi.top - roi.bottom,
+        )
+
+    async def _tick_displaying(self) -> None:
+        """While results are shown, keep monitoring for image changes.
+
+        When the viewer image changes (new patient/study), automatically
+        dismiss the current result and start a new analysis cycle.
+        If the viewer window disappears, go back to WAITING.
+        """
+        window = self._monitor.find_target_window(
+            self._config.monitor.window_title_keywords
+        )
+        if not window:
+            self._target_window = None
+            self._transition(AgentState.WAITING)
+            return
+        self._target_window = window
+
+        # Settling period: overlay needs time to render on screen.
+        # Skip hash monitoring until overlay is fully visible (~2s).
+        if time.monotonic() - self._display_enter_time < 2.0:
+            return
+
+        try:
+            screenshot = self._monitor.capture_region(self._get_roi_rect())
+            current_hash = self._monitor.compute_hash(screenshot)
+        except Exception:
+            logger.exception("Screenshot failed during display")
+            return
+
+        # First tick after settling: establish baseline with overlay visible.
+        if not self._last_hash:
+            self._last_hash = current_hash
+            return
+
+        threshold = self._config.monitor.hash_threshold
+        if self._monitor.has_changed(self._last_hash, current_hash, threshold):
+            if self._debounce_start == 0.0:
+                self._debounce_start = time.monotonic()
+                logger.debug("Image change detected while displaying")
+            else:
+                elapsed = time.monotonic() - self._debounce_start
+                if elapsed >= self._config.monitor.debounce_stable_sec:
+                    logger.info("New image detected, re-analyzing")
+                    self._debounce_start = 0.0
+                    self._last_hash = current_hash
+                    await self._do_capture_and_analyze()
+        else:
+            self._debounce_start = 0.0
+            self._last_hash = current_hash
+
     async def _tick_monitoring(self) -> None:
         # Re-check window
         window = self._monitor.find_target_window(
@@ -173,9 +254,9 @@ class OverlayAgent:
             return
         self._target_window = window
 
-        # Capture and compute hash
+        # Capture ROI area (same region used for analysis) and compute hash
         try:
-            screenshot = self._monitor.capture_region(window)
+            screenshot = self._monitor.capture_region(self._get_roi_rect())
             current_hash = self._monitor.compute_hash(screenshot)
         except Exception:
             logger.exception("Screenshot failed")
@@ -192,7 +273,7 @@ class OverlayAgent:
                 logger.info("Immediate trigger (debounce disabled)")
                 self._debounce_start = 0.0
                 self._last_hash = current_hash
-                await self._do_capture_and_analyze(screenshot)
+                await self._do_capture_and_analyze()
                 return
             if self._debounce_start == 0.0:
                 self._debounce_start = time.monotonic()
@@ -203,7 +284,7 @@ class OverlayAgent:
                     logger.info("Debounce stable, triggering capture")
                     self._debounce_start = 0.0
                     self._last_hash = current_hash
-                    await self._do_capture_and_analyze(screenshot)
+                    await self._do_capture_and_analyze()
         else:
             self._debounce_start = 0.0
             self._last_hash = current_hash
@@ -214,21 +295,42 @@ class OverlayAgent:
             logger.warning("No viewer window, cannot trigger manually")
             return
         try:
-            screenshot = self._monitor.capture_region(self._target_window)
-            await self._do_capture_and_analyze(screenshot)
+            await self._do_capture_and_analyze()
         except Exception:
             logger.exception("Manual trigger failed")
             self._transition(AgentState.ERROR)
 
-    async def _do_capture_and_analyze(self, screenshot: bytes) -> None:
+    async def _do_capture_and_analyze(self) -> None:
         self._transition(AgentState.CAPTURING)
 
-        # ROI crop
+        # Capture the screen area defined by ROI (screen-relative margins).
+        # ROI margins and screen dimensions are both in physical pixels.
         roi = self._config.phi_roi
-        cropped = self._processor.crop_roi(
-            screenshot, roi.top, roi.bottom, roi.left, roi.right
+        if self._target_window is None:
+            logger.warning("No target window for capture")
+            self._transition(AgentState.WAITING)
+            return
+        capture_rect = WindowRect(
+            left=roi.left,
+            top=roi.top,
+            width=self._screen_width - roi.left - roi.right,
+            height=self._screen_height - roi.top - roi.bottom,
         )
-        image_b64 = self._processor.to_base64(cropped)
+        logger.info(
+            "ROI capture: screen=%dx%d roi=(%d,%d,%d,%d) → rect=(%d,%d,%dx%d)",
+            self._screen_width, self._screen_height,
+            roi.top, roi.bottom, roi.left, roi.right,
+            capture_rect.left, capture_rect.top,
+            capture_rect.width, capture_rect.height,
+        )
+        try:
+            screenshot = self._monitor.capture_region(capture_rect)
+        except Exception:
+            logger.exception("ROI capture failed")
+            self._transition(AgentState.ERROR)
+            return
+        logger.debug("Captured %d bytes", len(screenshot))
+        image_b64 = self._processor.to_base64(screenshot)
 
         # Analyze
         self._transition(AgentState.ANALYZING)
@@ -247,30 +349,63 @@ class OverlayAgent:
 
         try:
             result = await self._analyzer.analyze(image_b64, modality, valid_regions)
+            if self._state != AgentState.ANALYZING:
+                logger.info("Analysis result discarded (state changed to %s)", self._state.name)
+                return
             self._last_result = result
             self._transition(AgentState.DISPLAYING)
             if self.on_analysis_result:
                 self.on_analysis_result(result)
         except TimeoutError:
             logger.error("Analysis timed out")
-            self._transition(AgentState.ERROR)
-            if self.on_error:
-                self.on_error("分析逾時")
+            if self._state == AgentState.ANALYZING:
+                self._transition(AgentState.ERROR)
+                if self.on_error:
+                    self.on_error("分析逾時")
         except ConnectionError:
-            self._transition(AgentState.RECONNECTING)
-            if self.on_error:
-                self.on_error("Gateway 連線中斷")
+            if self._state == AgentState.ANALYZING:
+                self._transition(AgentState.RECONNECTING)
+                if self.on_error:
+                    self.on_error("Gateway 連線中斷")
         except Exception:
             logger.exception("Analysis failed")
-            self._transition(AgentState.ERROR)
-            if self.on_error:
-                self.on_error("分析錯誤")
+            if self._state == AgentState.ANALYZING:
+                self._transition(AgentState.ERROR)
+                if self.on_error:
+                    self.on_error("分析錯誤")
+
+    async def _tick_error(self) -> None:
+        """Auto-recover from ERROR state after a cooldown period (5 seconds)."""
+        elapsed = time.monotonic() - self._error_time
+        if elapsed < 5.0:
+            return  # Wait before retrying
+
+        # Check if viewer is still present
+        window = self._monitor.find_target_window(
+            self._config.monitor.window_title_keywords
+        )
+        if window:
+            self._target_window = window
+            logger.info("Error recovery: viewer found, resuming monitoring")
+            self._transition(AgentState.MONITORING)
+        else:
+            self._target_window = None
+            logger.info("Error recovery: viewer lost, returning to waiting")
+            self._transition(AgentState.WAITING)
 
     async def _tick_reconnecting(self) -> None:
         now = time.monotonic()
         if now - self._last_reconnect_attempt < self._config.openclaw.reconnect_interval_sec:
             return  # Throttle: skip this tick, don't block the event loop
         self._last_reconnect_attempt = now
+
+        # If we have a GatewayManager, ensure the process is alive first
+        if self._gateway is not None:
+            gw_ok = await self._gateway.ensure_running()
+            if not gw_ok:
+                logger.warning("Gateway restart failed, will retry next tick")
+                return
+
         try:
             await self._analyzer.connect()
             self._transition(AgentState.MONITORING)
