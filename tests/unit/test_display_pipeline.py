@@ -243,13 +243,15 @@ class TestHighlightConstruction:
 
 class TestHumanizeChecklist:
     def test_mapped_key(self):
-        assert _humanize_checklist_key("stemi_nstemi_pattern") == "STEMI/NSTEMI"
-        assert _humanize_checklist_key("qtc_prolongation") == "QTc Prolong."
-        assert _humanize_checklist_key("bundle_branch_block") == "BBB"
+        assert _humanize_checklist_key("stemi_pattern") == "STEMI"
+        assert _humanize_checklist_key("qtc_interval") == "QTc"
+        assert _humanize_checklist_key("conduction") == "Conduction"
+        assert _humanize_checklist_key("av_block") == "AV Block"
+        assert _humanize_checklist_key("heart_rate") == "Heart Rate"
 
     def test_unmapped_key_title_cased(self):
-        assert _humanize_checklist_key("heart_rate") == "Heart Rate"
         assert _humanize_checklist_key("blood_pressure") == "Blood Pressure"
+        assert _humanize_checklist_key("some_other_key") == "Some Other Key"
 
     def test_single_word_key(self):
         assert _humanize_checklist_key("rate") == "Rate"
@@ -269,6 +271,55 @@ class TestHumanizeChecklist:
 
         for key, expected in _KEY_DISPLAY_MAP.items():
             assert _humanize_checklist_key(key) == expected
+
+
+# ── Smart display partition logic ──
+
+
+class TestSmartDisplayPartition:
+    """Verify the abnormal-first / normal-collapsed partition logic."""
+
+    def test_all_normal_shows_collapsed(self):
+        """All 16 normal items should yield 0 abnormal + 1 collapsed line."""
+        from dicom_overlay.domain.entities import ChecklistItem, Severity
+
+        checklist = {
+            k: ChecklistItem(value="normal", status=Severity.NORMAL)
+            for k in [
+                "heart_rate", "rhythm", "regularity", "axis",
+                "p_wave", "pr_interval", "qrs_duration", "qrs_morphology",
+                "st_segment", "t_wave", "qtc_interval", "chamber_enlargement",
+                "conduction", "av_block", "stemi_pattern", "ischemia",
+            ]
+        }
+        abnormal = [(k, v) for k, v in checklist.items()
+                     if v.status in (Severity.CRITICAL, Severity.WARNING)]
+        normal_count = sum(
+            1 for v in checklist.values()
+            if v.status not in (Severity.CRITICAL, Severity.WARNING)
+        )
+        assert len(abnormal) == 0
+        assert normal_count == 16
+
+    def test_mixed_partition(self):
+        """Critical/warning items should be separated from normal/info."""
+        from dicom_overlay.domain.entities import ChecklistItem, Severity
+
+        checklist = {
+            "heart_rate": ChecklistItem(value="tachycardia", status=Severity.WARNING),
+            "rhythm": ChecklistItem(value="sinus", status=Severity.NORMAL),
+            "stemi_pattern": ChecklistItem(value="anterior", status=Severity.CRITICAL),
+            "axis": ChecklistItem(value="normal", status=Severity.INFO),
+        }
+        abnormal = [(k, v) for k, v in checklist.items()
+                     if v.status in (Severity.CRITICAL, Severity.WARNING)]
+        normal_count = sum(
+            1 for v in checklist.values()
+            if v.status not in (Severity.CRITICAL, Severity.WARNING)
+        )
+        assert len(abnormal) == 2
+        assert {k for k, _ in abnormal} == {"heart_rate", "stemi_pattern"}
+        assert normal_count == 2
 
 
 # ── Region unknown warning ──

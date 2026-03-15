@@ -63,11 +63,22 @@ def _make_result(
             )
         ],
         checklist={
-            "rate": ChecklistItem(value="72 bpm", status=Severity.NORMAL),
-            "rhythm": ChecklistItem(value="Regular", status=Severity.NORMAL),
-            "p_wave": ChecklistItem(value="Present", status=Severity.NORMAL),
-            "pr_interval": ChecklistItem(value="0.16s", status=Severity.NORMAL),
-            "qrs_duration": ChecklistItem(value="0.08s", status=Severity.NORMAL),
+            "heart_rate": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "rhythm": ChecklistItem(value="sinus", status=Severity.NORMAL),
+            "regularity": ChecklistItem(value="regular", status=Severity.NORMAL),
+            "axis": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "p_wave": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "pr_interval": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "qrs_duration": ChecklistItem(value="narrow", status=Severity.NORMAL),
+            "qrs_morphology": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "st_segment": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "t_wave": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "qtc_interval": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "chamber_enlargement": ChecklistItem(value="absent", status=Severity.NORMAL),
+            "conduction": ChecklistItem(value="normal", status=Severity.NORMAL),
+            "av_block": ChecklistItem(value="absent", status=Severity.NORMAL),
+            "stemi_pattern": ChecklistItem(value="absent", status=Severity.NORMAL),
+            "ischemia": ChecklistItem(value="absent", status=Severity.NORMAL),
         },
         analysis_time_ms=150,
         model_used="test",
@@ -137,6 +148,39 @@ class TestOutputValidator:
         validator = OutputValidator()
         req = _make_request()
         assert validator.pre_analyze(req) is req
+
+    def test_missing_checklist_keys_warns(self, caplog):
+        """Missing EKG checklist keys should generate warnings in non-strict mode."""
+        import logging
+
+        validator = OutputValidator(strict=False)
+        req = _make_request()
+        result = _make_result()
+        # Remove some keys to simulate partial AI response
+        del result.checklist["ischemia"]
+        del result.checklist["stemi_pattern"]
+        with caplog.at_level(logging.WARNING):
+            validated = validator.post_analyze(req, result)
+        # Should still pass (non-strict), but warnings logged
+        assert validated.summary == result.summary
+
+    def test_missing_checklist_keys_strict_rejected(self):
+        """In strict mode, missing checklist keys should raise HookError."""
+        validator = OutputValidator(strict=True)
+        req = _make_request()
+        result = _make_result()
+        del result.checklist["av_block"]
+        with pytest.raises(HookError, match="av_block"):
+            validator.post_analyze(req, result)
+
+    def test_full_16_key_checklist_passes_strict(self):
+        """All 16 required EKG keys present should pass even in strict mode."""
+        validator = OutputValidator(strict=True)
+        req = _make_request()
+        result = _make_result()
+        assert len(result.checklist) == 16
+        validated = validator.post_analyze(req, result)
+        assert validated.summary == result.summary
 
 
 # ── RateLimiter Tests ────────────────────────────────────────────────

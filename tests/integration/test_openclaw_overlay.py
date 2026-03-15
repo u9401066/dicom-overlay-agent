@@ -87,7 +87,7 @@ class TestParseResult:
             "checklist": {
                 "rate": {"value": "72 bpm", "status": "normal"},
                 "rhythm": {"value": "sinus", "status": "normal"},
-                "stemi_nstemi_pattern": {"value": "absent", "status": "normal"},
+                "stemi_pattern": {"value": "absent", "status": "normal"},
             },
         }
         result = client._parse_result(payload, elapsed_ms=500)
@@ -685,7 +685,7 @@ async def test_e2e_analysis_with_highlights():
         ],
         "checklist": {
             "rate": {"value": "120 bpm", "status": "warning"},
-            "stemi_nstemi_pattern": {"value": "STEMI anterior", "status": "critical"},
+            "stemi_pattern": {"value": "STEMI anterior", "status": "critical"},
         },
     }
 
@@ -750,7 +750,7 @@ async def test_e2e_analysis_with_highlights():
         assert result.findings[0].label == "ST Elevation"
         assert result.findings[0].severity == Severity.CRITICAL
         assert result.findings[1].label == "Tachycardia"
-        assert "stemi_nstemi_pattern" in result.checklist
+        assert "stemi_pattern" in result.checklist
         assert result.checklist["rate"].value == "120 bpm"
 
         # Verify highlight construction (mimics __main__.py logic)
