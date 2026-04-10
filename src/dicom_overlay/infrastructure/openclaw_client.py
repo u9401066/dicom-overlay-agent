@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import platform
 import time
 from json import JSONDecodeError
@@ -70,6 +71,7 @@ class OpenClawClient(VisionAnalyzerService):
         gateway_url: str = "ws://127.0.0.1:18789",
         timeout_sec: int = 15,
         reconnect_interval_sec: int = 5,
+        gateway_token: str | None = None,
     ) -> None:
         self._url = gateway_url
         self._timeout = timeout_sec
@@ -77,7 +79,15 @@ class OpenClawClient(VisionAnalyzerService):
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
-        self._gateway_token = _load_gateway_token()
+        self._gateway_token = (
+            gateway_token.strip()
+            if isinstance(gateway_token, str) and gateway_token.strip()
+            else _load_gateway_token()
+        )
+        if not self._gateway_token:
+            logger.warning(
+                "No OpenClaw gateway token configured; connect() will proceed without auth"
+            )
         self._ws_lock = asyncio.Lock()  # Serialize all WebSocket send+recv sequences
 
     async def connect(self) -> None:
@@ -280,23 +290,25 @@ class OpenClawClient(VisionAnalyzerService):
         assert self._ws is not None
 
         connect_id = self._next_request_id("connect")
+        params: dict[str, Any] = {
+            "minProtocol": 3,
+            "maxProtocol": 3,
+            "client": {
+                "id": "cli",
+                "version": _OPENCLAW_VERSION,
+                "platform": platform.platform(),
+                "mode": "cli",
+            },
+            "role": "operator",
+            "scopes": _DEFAULT_SCOPES,
+        }
+        if self._gateway_token:
+            params["auth"] = {"token": self._gateway_token}
         frame = {
             "type": "req",
             "id": connect_id,
             "method": "connect",
-            "params": {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": {
-                    "id": "cli",
-                    "version": _OPENCLAW_VERSION,
-                    "platform": platform.platform(),
-                    "mode": "cli",
-                },
-                "role": "operator",
-                "scopes": _DEFAULT_SCOPES,
-                "auth": {"token": self._gateway_token},
-            },
+            "params": params,
         }
         await self._ws.send(json.dumps(frame))
 
@@ -543,7 +555,11 @@ def _extract_text_from_payload(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _load_gateway_token() -> str:
+def _load_gateway_token() -> str | None:
+    env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN", "").strip()
+    if env_token:
+        return env_token
+
     candidates = [
         Path("openclaw/openclaw.json"),
         Path("openclaw/openclaw.valid.json"),
@@ -559,4 +575,4 @@ def _load_gateway_token() -> str:
         token = raw.get("gateway", {}).get("auth", {}).get("token", "")
         if isinstance(token, str) and token.strip():
             return token.strip()
-    raise RuntimeError("OpenClaw gateway auth token not found in local config")
+    return None

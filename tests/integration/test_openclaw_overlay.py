@@ -38,6 +38,7 @@ from dicom_overlay.infrastructure.openclaw_client import (
     _coerce_result_payload,
     _extract_text_from_event,
     _extract_text_from_payload,
+    _load_gateway_token,
     _parse_severity,
     _payload_from_chat_event,
     _strip_code_fence,
@@ -264,6 +265,17 @@ class TestPayloadFromChatEvent:
         }
         result = _payload_from_chat_event(payload)
         assert result["summary"] == "Only text"
+
+
+class TestLoadGatewayToken:
+    def test_loads_token_from_environment(self, monkeypatch):
+        monkeypatch.setenv("OPENCLAW_GATEWAY_TOKEN", "env-token")
+        assert _load_gateway_token() == "env-token"
+
+    def test_missing_token_returns_none(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        assert _load_gateway_token() is None
 
 
 class TestExtractTextFromEvent:

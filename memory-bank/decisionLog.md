@@ -33,6 +33,7 @@
 | 2026-03-15 | EKG checklist 擴展到 16 項 | 5 項太少，16 項涵蓋系統性心臟病學評估（Rate/Rhythm/Axis/Intervals/ST/Chamber/Conduction/Artifact） |
 | 2026-03-15 | 預設 phash + threshold 5 取代 ahash + 10 | ahash (8x8 brightness) 無法區分結構相似的 EKG 圖（相同 grid/label），phash (DCT) 對空間頻率更敏感 |
 | 2026-03-15 | AI 動態 bounding box 取代固定 region map | 固定 4x3 grid 對不準實際 EKG 佈局，AI 回傳歸一化 0-1 座標更精確、更靈活 |
+| 2026-04-10 | CI 以「可安裝 + 可測試」為主 | 先修正跨平台安裝與 mock token 問題，再讓 workflow 真正阻擋失敗 |
 
 ---
 

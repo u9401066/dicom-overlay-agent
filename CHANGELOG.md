@@ -24,6 +24,9 @@
 - 遷移 4 個 `.chatmode.md` 至 `.agent.md` 格式
 - 更新 `copilot-instructions.md`（agents 表、免費模型策略、hook 表）
 - 更新 `git-workflow.md` bylaws（Pre-commit Hooks 章節）
+- `pywin32` 改為 Windows-only 條件式依賴，修正 Linux/CI 安裝失敗
+- `OpenClawClient` 在缺少本地 token 檔案時允許無 token 建立，用於 mock 測試與 CI
+- GitHub Actions `ci.yml` 改為實際驗證 Ruff、跨平台安裝相容性與 pytest
 
 ### Removed
 

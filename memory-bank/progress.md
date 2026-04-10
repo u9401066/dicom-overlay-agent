@@ -54,7 +54,9 @@
 
 ## Doing
 
-（無）
+- 兼容性修正：Linux/CI 安裝流程需移除對 `pywin32` 的硬依賴
+- CI 建立：以實際可驗證的 lint/test workflow 取代目前寬鬆模板流程
+- 測試穩定化：mock WebSocket 測試不可再依賴本地 OpenClaw auth token
 
 ## Next
 
