@@ -82,8 +82,9 @@ class OpenClawClient(VisionAnalyzerService):
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
-        normalized_gateway_token = gateway_token.strip() if gateway_token else ""
-        self._gateway_token = normalized_gateway_token or _load_gateway_token()
+        self._gateway_token = (
+            gateway_token.strip() if gateway_token else None
+        ) or _load_gateway_token()
         if not self._gateway_token:
             logger.warning(
                 "No OpenClaw gateway token configured; connect() will proceed without auth"
