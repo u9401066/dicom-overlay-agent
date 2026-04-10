@@ -38,6 +38,7 @@ from dicom_overlay.infrastructure.openclaw_client import (
     _coerce_result_payload,
     _extract_text_from_event,
     _extract_text_from_payload,
+    _load_gateway_token,
     _parse_severity,
     _payload_from_chat_event,
     _strip_code_fence,
@@ -45,7 +46,6 @@ from dicom_overlay.infrastructure.openclaw_client import (
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
 from tests.unit.test_agent import MockScreenMonitor
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. Unit tests: OpenClaw parsing helpers
@@ -127,9 +127,7 @@ class TestParseResult:
     def test_checklist_plain_value(self):
         """Checklist values that are plain strings (not dicts) are wrapped."""
         client = self._make_client()
-        result = client._parse_result(
-            {"checklist": {"rate": "72"}}, elapsed_ms=0
-        )
+        result = client._parse_result({"checklist": {"rate": "72"}}, elapsed_ms=0)
         assert result.checklist["rate"].value == "72"
         assert result.checklist["rate"].status == Severity.INFO
 
@@ -154,8 +152,18 @@ class TestParseResult:
         result = client._parse_result(
             {
                 "findings": [
-                    {"id": "f1", "label": "A", "severity": "warning", "regions": ["r1"]},
-                    {"id": "f2", "label": "B", "severity": "critical", "regions": ["r2"]},
+                    {
+                        "id": "f1",
+                        "label": "A",
+                        "severity": "warning",
+                        "regions": ["r1"],
+                    },
+                    {
+                        "id": "f2",
+                        "label": "B",
+                        "severity": "critical",
+                        "regions": ["r2"],
+                    },
                     {"id": "f3", "label": "C", "severity": "normal", "regions": []},
                 ]
             },
@@ -264,6 +272,29 @@ class TestPayloadFromChatEvent:
         }
         result = _payload_from_chat_event(payload)
         assert result["summary"] == "Only text"
+
+
+class TestLoadGatewayToken:
+    def test_loads_token_from_environment(self, monkeypatch):
+        monkeypatch.setenv("OPENCLAW_GATEWAY_TOKEN", "env-token")
+        assert _load_gateway_token() == "env-token"
+
+    def test_loads_token_from_file(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        config_dir = tmp_path / "openclaw"
+        config_dir.mkdir()
+        (config_dir / "openclaw.json").write_text(
+            json.dumps({"gateway": {"auth": {"token": "file-token"}}}),
+            encoding="utf-8",
+        )
+
+        assert _load_gateway_token() == "file-token"
+
+    def test_missing_token_returns_none(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        assert _load_gateway_token() is None
 
 
 class TestExtractTextFromEvent:
@@ -473,9 +504,7 @@ class TestHookedVisionAnalyzer:
     @pytest.mark.asyncio
     async def test_pre_hook_rejection_blocks_analyze(self):
         inner = MockInnerAnalyzer()
-        hooked = HookedVisionAnalyzer(
-            inner=inner, hooks=[RejectingPreHook()]
-        )
+        hooked = HookedVisionAnalyzer(inner=inner, hooks=[RejectingPreHook()])
 
         with pytest.raises(HookError, match="Pre-hook"):
             await hooked.analyze("img", Modality.EKG, ["lead_I"])
@@ -485,9 +514,7 @@ class TestHookedVisionAnalyzer:
     @pytest.mark.asyncio
     async def test_post_hook_rejection_raises(self):
         inner = MockInnerAnalyzer()
-        hooked = HookedVisionAnalyzer(
-            inner=inner, hooks=[RejectingPostHook()]
-        )
+        hooked = HookedVisionAnalyzer(inner=inner, hooks=[RejectingPostHook()])
 
         with pytest.raises(HookError, match="Post-hook"):
             await hooked.analyze("img", Modality.EKG, ["lead_I"])
@@ -545,12 +572,14 @@ def _make_ws_handler(
         connect_raw = await websocket.recv()
         connect_req = json.loads(connect_raw)
         await websocket.send(
-            json.dumps({
-                "type": "res",
-                "id": connect_req["id"],
-                "ok": True,
-                "payload": {"status": "ok"},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": connect_req["id"],
+                    "ok": True,
+                    "payload": {"status": "ok"},
+                }
+            )
         )
 
         # 2. Handle chat.send (analysis request)
@@ -560,12 +589,14 @@ def _make_ws_handler(
 
         # Send accepted response
         await websocket.send(
-            json.dumps({
-                "type": "res",
-                "id": chat_req["id"],
-                "ok": True,
-                "payload": {"status": "accepted", "runId": run_id},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": chat_req["id"],
+                    "ok": True,
+                    "payload": {"status": "accepted", "runId": run_id},
+                }
+            )
         )
 
         if analysis_delay_ms > 0:
@@ -573,22 +604,24 @@ def _make_ws_handler(
 
         # Send final event with analysis JSON
         await websocket.send(
-            json.dumps({
-                "type": "event",
-                "event": "chat",
-                "payload": {
-                    "runId": run_id,
-                    "sessionKey": "main",
-                    "seq": 1,
-                    "state": "final",
-                    "message": {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": json.dumps(analysis_json)},
-                        ],
+            json.dumps(
+                {
+                    "type": "event",
+                    "event": "chat",
+                    "payload": {
+                        "runId": run_id,
+                        "sessionKey": "main",
+                        "seq": 1,
+                        "state": "final",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {"type": "text", "text": json.dumps(analysis_json)},
+                            ],
+                        },
                     },
-                },
-            })
+                }
+            )
         )
 
     return handler
@@ -602,12 +635,14 @@ def _make_chat_ws_handler(analysis_json: dict[str, Any], chat_response: str):
         connect_raw = await websocket.recv()
         connect_req = json.loads(connect_raw)
         await websocket.send(
-            json.dumps({
-                "type": "res",
-                "id": connect_req["id"],
-                "ok": True,
-                "payload": {"status": "ok"},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": connect_req["id"],
+                    "ok": True,
+                    "payload": {"status": "ok"},
+                }
+            )
         )
 
         # Handle multiple requests
@@ -624,12 +659,14 @@ def _make_chat_ws_handler(analysis_json: dict[str, Any], chat_response: str):
             has_attachments = bool(req.get("params", {}).get("attachments"))
 
             await websocket.send(
-                json.dumps({
-                    "type": "res",
-                    "id": req["id"],
-                    "ok": True,
-                    "payload": {"status": "accepted", "runId": run_id},
-                })
+                json.dumps(
+                    {
+                        "type": "res",
+                        "id": req["id"],
+                        "ok": True,
+                        "payload": {"status": "accepted", "runId": run_id},
+                    }
+                )
             )
 
             if has_attachments:
@@ -638,20 +675,22 @@ def _make_chat_ws_handler(analysis_json: dict[str, Any], chat_response: str):
                 content_text = chat_response
 
             await websocket.send(
-                json.dumps({
-                    "type": "event",
-                    "event": "chat",
-                    "payload": {
-                        "runId": run_id,
-                        "sessionKey": "main",
-                        "seq": 1,
-                        "state": "final",
-                        "message": {
-                            "role": "assistant",
-                            "content": [{"type": "text", "text": content_text}],
+                json.dumps(
+                    {
+                        "type": "event",
+                        "event": "chat",
+                        "payload": {
+                            "runId": run_id,
+                            "sessionKey": "main",
+                            "seq": 1,
+                            "state": "final",
+                            "message": {
+                                "role": "assistant",
+                                "content": [{"type": "text", "text": content_text}],
+                            },
                         },
-                    },
-                })
+                    }
+                )
             )
 
     return handler
@@ -757,9 +796,7 @@ async def test_e2e_analysis_with_highlights():
         highlights = []
         for finding in result.findings:
             for region_name in finding.regions:
-                rect = region_mapper.get_region_rect(
-                    region_name, result.modality
-                )
+                rect = region_mapper.get_region_rect(region_name, result.modality)
                 if rect and agent.target_window:
                     sx, sy, sw, sh = region_mapper.to_screen_rect(
                         rect, agent.target_window
@@ -810,9 +847,7 @@ async def test_e2e_chat_response():
     server = await websockets.serve(handler, "127.0.0.1", 0)
     try:
         port = server.sockets[0].getsockname()[1]
-        client = OpenClawClient(
-            gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=10
-        )
+        client = OpenClawClient(gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=10)
         await client.connect()
 
         response = await client.chat("What does this EKG show?")
@@ -834,7 +869,13 @@ async def test_e2e_hooked_analysis_pipeline():
         "summary": "Hooked pipeline test",
         "severity": "warning",
         "findings": [
-            {"id": "hf1", "regions": ["lead_I"], "label": "Test", "detail": "D", "severity": "warning"}
+            {
+                "id": "hf1",
+                "regions": ["lead_I"],
+                "label": "Test",
+                "detail": "D",
+                "severity": "warning",
+            }
         ],
         "checklist": {"rate": {"value": "88", "status": "normal"}},
     }
@@ -843,9 +884,7 @@ async def test_e2e_hooked_analysis_pipeline():
     server = await websockets.serve(handler, "127.0.0.1", 0)
     try:
         port = server.sockets[0].getsockname()[1]
-        client = OpenClawClient(
-            gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=10
-        )
+        client = OpenClawClient(gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=10)
 
         counting = CountingHook()
         hooked = HookedVisionAnalyzer(inner=client, hooks=[counting])
@@ -879,31 +918,33 @@ async def test_ws_error_response():
         raw = await websocket.recv()
         req = json.loads(raw)
         await websocket.send(
-            json.dumps({
-                "type": "res",
-                "id": req["id"],
-                "ok": True,
-                "payload": {"status": "ok"},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": req["id"],
+                    "ok": True,
+                    "payload": {"status": "ok"},
+                }
+            )
         )
         # Chat send → error
         raw = await websocket.recv()
         req = json.loads(raw)
         await websocket.send(
-            json.dumps({
-                "type": "res",
-                "id": req["id"],
-                "ok": False,
-                "error": {"code": "RATE_LIMITED", "message": "Too many requests"},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": req["id"],
+                    "ok": False,
+                    "error": {"code": "RATE_LIMITED", "message": "Too many requests"},
+                }
+            )
         )
 
     server = await websockets.serve(handler, "127.0.0.1", 0)
     try:
         port = server.sockets[0].getsockname()[1]
-        client = OpenClawClient(
-            gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=5
-        )
+        client = OpenClawClient(gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=5)
         await client.connect()
 
         with pytest.raises(RuntimeError):
@@ -924,38 +965,46 @@ async def test_ws_event_error_state():
         raw = await websocket.recv()
         req = json.loads(raw)
         await websocket.send(
-            json.dumps({
-                "type": "res", "id": req["id"], "ok": True,
-                "payload": {"status": "ok"},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": req["id"],
+                    "ok": True,
+                    "payload": {"status": "ok"},
+                }
+            )
         )
         raw = await websocket.recv()
         req = json.loads(raw)
         run_id = str(uuid4())
         await websocket.send(
-            json.dumps({
-                "type": "res", "id": req["id"], "ok": True,
-                "payload": {"status": "accepted", "runId": run_id},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": req["id"],
+                    "ok": True,
+                    "payload": {"status": "accepted", "runId": run_id},
+                }
+            )
         )
         await websocket.send(
-            json.dumps({
-                "type": "event",
-                "event": "chat",
-                "payload": {
-                    "runId": run_id,
-                    "state": "error",
-                    "errorMessage": "Model overloaded",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event",
+                    "event": "chat",
+                    "payload": {
+                        "runId": run_id,
+                        "state": "error",
+                        "errorMessage": "Model overloaded",
+                    },
+                }
+            )
         )
 
     server = await websockets.serve(handler, "127.0.0.1", 0)
     try:
         port = server.sockets[0].getsockname()[1]
-        client = OpenClawClient(
-            gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=5
-        )
+        client = OpenClawClient(gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=5)
         await client.connect()
 
         with pytest.raises(RuntimeError, match="Model overloaded"):
@@ -974,10 +1023,14 @@ async def test_ws_connection_close_during_chat():
         raw = await websocket.recv()
         req = json.loads(raw)
         await websocket.send(
-            json.dumps({
-                "type": "res", "id": req["id"], "ok": True,
-                "payload": {"status": "ok"},
-            })
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": req["id"],
+                    "ok": True,
+                    "payload": {"status": "ok"},
+                }
+            )
         )
         raw = await websocket.recv()
         # Close without responding
@@ -986,9 +1039,7 @@ async def test_ws_connection_close_during_chat():
     server = await websockets.serve(handler, "127.0.0.1", 0)
     try:
         port = server.sockets[0].getsockname()[1]
-        client = OpenClawClient(
-            gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=3
-        )
+        client = OpenClawClient(gateway_url=f"ws://127.0.0.1:{port}", timeout_sec=3)
         await client.connect()
 
         with pytest.raises((ConnectionError, websockets.ConnectionClosed)):

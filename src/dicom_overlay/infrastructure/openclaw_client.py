@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import os
 import platform
 import time
 from json import JSONDecodeError
@@ -54,7 +56,9 @@ _SKILL_PATHS: dict[str, tuple[Path, Path]] = {
     ),
     "CT_BRAIN": (
         Path("openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"),
-        Path("openclaw-home/.openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"),
+        Path(
+            "openclaw-home/.openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"
+        ),
     ),
 }
 
@@ -70,6 +74,7 @@ class OpenClawClient(VisionAnalyzerService):
         gateway_url: str = "ws://127.0.0.1:18789",
         timeout_sec: int = 15,
         reconnect_interval_sec: int = 5,
+        gateway_token: str | None = None,
     ) -> None:
         self._url = gateway_url
         self._timeout = timeout_sec
@@ -77,7 +82,13 @@ class OpenClawClient(VisionAnalyzerService):
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
-        self._gateway_token = _load_gateway_token()
+        self._gateway_token = (
+            gateway_token.strip() if gateway_token else None
+        ) or _load_gateway_token()
+        if not self._gateway_token:
+            logger.warning(
+                "No OpenClaw gateway token configured; connect() will proceed without auth"
+            )
         self._ws_lock = asyncio.Lock()  # Serialize all WebSocket send+recv sequences
 
     async def connect(self) -> None:
@@ -115,7 +126,10 @@ class OpenClawClient(VisionAnalyzerService):
         async with self._ws_lock:
             try:
                 return await self._do_analyze(image_base64, modality, valid_regions)
-            except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
                 logger.warning("Connection lost during analysis, reconnecting...")
                 self._connected = False
                 try:
@@ -130,9 +144,7 @@ class OpenClawClient(VisionAnalyzerService):
                     raise
                 except Exception as exc:
                     self._connected = False
-                    raise ConnectionError(
-                        f"Reconnect failed: {exc}"
-                    ) from None
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
 
     async def _do_analyze(
         self,
@@ -172,7 +184,9 @@ class OpenClawClient(VisionAnalyzerService):
         payload_json = json.dumps(message)
         logger.info(
             "Sending analysis request: id=%s skill=%s payload_size=%dKB",
-            request_id, skill, len(payload_json) // 1024,
+            request_id,
+            skill,
+            len(payload_json) // 1024,
         )
         await self._ws.send(payload_json)
 
@@ -185,7 +199,10 @@ class OpenClawClient(VisionAnalyzerService):
         async with self._ws_lock:
             try:
                 return await self._do_chat(message)
-            except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
                 logger.warning("Connection lost during chat, reconnecting...")
                 self._connected = False
                 try:
@@ -200,9 +217,7 @@ class OpenClawClient(VisionAnalyzerService):
                     raise
                 except Exception as exc:
                     self._connected = False
-                    raise ConnectionError(
-                        f"Reconnect failed: {exc}"
-                    ) from None
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
 
     async def _do_chat(self, message: str) -> str:
         if not self.is_connected():
@@ -280,23 +295,25 @@ class OpenClawClient(VisionAnalyzerService):
         assert self._ws is not None
 
         connect_id = self._next_request_id("connect")
+        params: dict[str, Any] = {
+            "minProtocol": 3,
+            "maxProtocol": 3,
+            "client": {
+                "id": "cli",
+                "version": _OPENCLAW_VERSION,
+                "platform": platform.platform(),
+                "mode": "cli",
+            },
+            "role": "operator",
+            "scopes": _DEFAULT_SCOPES,
+        }
+        if self._gateway_token:
+            params["auth"] = {"token": self._gateway_token}
         frame = {
             "type": "req",
             "id": connect_id,
             "method": "connect",
-            "params": {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": {
-                    "id": "cli",
-                    "version": _OPENCLAW_VERSION,
-                    "platform": platform.platform(),
-                    "mode": "cli",
-                },
-                "role": "operator",
-                "scopes": _DEFAULT_SCOPES,
-                "auth": {"token": self._gateway_token},
-            },
+            "params": params,
         }
         await self._ws.send(json.dumps(frame))
 
@@ -323,7 +340,9 @@ class OpenClawClient(VisionAnalyzerService):
             except TimeoutError:
                 logger.error(
                     "OpenClaw analysis timed out after %ds (request_id=%s, run_id=%s)",
-                    self._timeout, request_id, run_id,
+                    self._timeout,
+                    request_id,
+                    run_id,
                 )
                 raise TimeoutError(f"Analysis timeout after {self._timeout}s") from None
             except websockets.ConnectionClosed as exc:
@@ -361,7 +380,9 @@ class OpenClawClient(VisionAnalyzerService):
                     return _coerce_result_payload(result)
 
                 if status == "error":
-                    raise RuntimeError(payload.get("summary", "OpenClaw request failed"))
+                    raise RuntimeError(
+                        payload.get("summary", "OpenClaw request failed")
+                    )
 
                 continue
 
@@ -376,7 +397,9 @@ class OpenClawClient(VisionAnalyzerService):
 
                 state = payload.get("state")
                 if state == "error":
-                    raise RuntimeError(payload.get("errorMessage", "OpenClaw chat event error"))
+                    raise RuntimeError(
+                        payload.get("errorMessage", "OpenClaw chat event error")
+                    )
                 if state == "final":
                     return _payload_from_chat_event(payload)
 
@@ -394,15 +417,15 @@ class OpenClawClient(VisionAnalyzerService):
             # Parse AI-provided bounding boxes (normalized 0-1 coords)
             bboxes: list[RegionRect] = []
             for b in f.get("bboxes", []):
-                try:
-                    bboxes.append(RegionRect(
-                        x=float(b.get("x", 0)),
-                        y=float(b.get("y", 0)),
-                        w=float(b.get("w", 0)),
-                        h=float(b.get("h", 0)),
-                    ))
-                except (ValueError, TypeError):
-                    pass  # skip malformed bbox
+                with contextlib.suppress(ValueError, TypeError):
+                    bboxes.append(
+                        RegionRect(
+                            x=float(b.get("x", 0)),
+                            y=float(b.get("y", 0)),
+                            w=float(b.get("w", 0)),
+                            h=float(b.get("h", 0)),
+                        )
+                    )
             findings.append(
                 Finding(
                     id=f.get("id", ""),
@@ -457,11 +480,13 @@ def _build_analysis_prompt(
     skill_name: str,
 ) -> str:
     skill_prompt = _load_skill_prompt(modality)
+    allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
     return (
         f"Use the {skill_name} instructions below to analyze the attached image.\n\n"
         f"{skill_prompt}\n\n"
         "Return a single JSON object only. Do not wrap it in markdown.\n"
         f"modality must be '{modality.value}'.\n"
+        f"Only reference region names from this allow-list: {allowed_regions}.\n"
         "For each abnormal finding, include 'bboxes' with normalized 0-1 coordinates "
         "(x, y, w, h) tightly bounding the specific abnormal area in the image."
     )
@@ -543,7 +568,11 @@ def _extract_text_from_payload(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _load_gateway_token() -> str:
+def _load_gateway_token() -> str | None:
+    env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN", "").strip()
+    if env_token:
+        return env_token
+
     candidates = [
         Path("openclaw/openclaw.json"),
         Path("openclaw/openclaw.valid.json"),
@@ -559,4 +588,4 @@ def _load_gateway_token() -> str:
         token = raw.get("gateway", {}).get("auth", {}).get("token", "")
         if isinstance(token, str) and token.strip():
             return token.strip()
-    raise RuntimeError("OpenClaw gateway auth token not found in local config")
+    return None

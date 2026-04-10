@@ -2,400 +2,97 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
+      - "copilot/**"
   pull_request:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
 
-env:
-  PYTHON_VERSION: "3.11"
+permissions:
+  contents: read
 
 jobs:
-  # ==========================================
-  # 文檔檢查
-  # ==========================================
-  docs-check:
-    name: 📚 Documentation Check
-    runs-on: ubuntu-latest
+  compatibility:
+    name: Compatibility (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        python-version:
+          - "3.11"
+          - "3.12"
+
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Check required files exist
-        run: |
-          files=("README.md" "CHANGELOG.md" "CONSTITUTION.md" "LICENSE")
-          for file in "${files[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "❌ Missing required file: $file"
-              exit 1
-            fi
-          done
-          echo "✅ All required files exist"
 
-      - name: Check Markdown files
-        uses: articulate/actions-markdownlint@v1
-        with:
-          files: '**/*.md'
-          ignore: 'node_modules'
-        continue-on-error: true
-
-  # ==========================================
-  # Python 靜態分析
-  # ==========================================
-  static-analysis:
-    name: 🔍 Static Analysis (Python)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install Qt runtime packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libdbus-1-3 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy bandit[toml]
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || true; fi
-      
-      - name: Ruff Linting
-        run: |
-          ruff check . --output-format=github || true
-        continue-on-error: true
-      
-      - name: Ruff Format Check
-        run: |
-          ruff format --check . || true
-        continue-on-error: true
-      
-      - name: MyPy Type Check
-        run: |
-          mypy src --ignore-missing-imports || true
-        continue-on-error: true
-      
-      - name: Bandit Security Scan
-        run: |
-          bandit -r src -f json -o bandit-report.json || true
-          bandit -r src -f txt || true
-        continue-on-error: true
-      
-      - name: Upload Bandit Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: bandit-security-report
-          path: bandit-report.json
-          retention-days: 30
+          pip install -e ".[dev]"
 
-  # ==========================================
-  # Python 單元測試
-  # ==========================================
-  unit-tests:
-    name: 🧪 Unit Tests (Python)
-    runs-on: ubuntu-latest
-    needs: static-analysis
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-xdist pytest-timeout
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || true; fi
-      
-      - name: Run Unit Tests with Coverage
-        run: |
-          pytest tests/unit -v \
-            --cov=src \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage-unit.xml \
-            --cov-report=html:htmlcov-unit \
-            --cov-fail-under=80 \
-            -n auto \
-            --timeout=60 \
-            --junitxml=junit-unit.xml \
-            || true
-        continue-on-error: true
-      
-      - name: Upload Unit Test Coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-unit
-          path: |
-            coverage-unit.xml
-            htmlcov-unit/
-          retention-days: 30
-      
-      - name: Upload Unit Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: junit-unit
-          path: junit-unit.xml
-          retention-days: 30
+      - name: Validate dependency graph
+        run: python -m pip check
 
-  # ==========================================
-  # Python 整合測試
-  # ==========================================
-  integration-tests:
-    name: 🔗 Integration Tests (Python)
+      - name: Validate package import
+        run: |
+          python -c "from dicom_overlay.infrastructure.openclaw_client import OpenClawClient; OpenClawClient(gateway_url='ws://127.0.0.1:18789')"
+
+  test:
+    name: Pytest
     runs-on: ubuntu-latest
-    needs: unit-tests
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
+    needs:
+      - compatibility
     env:
-      DATABASE_URL: postgresql://test:test@localhost:5432/test_db
-      REDIS_URL: redis://localhost:6379
-    
+      QT_QPA_PLATFORM: offscreen
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Qt runtime packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1 \
+            libdbus-1-3 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-asyncio pytest-timeout httpx
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || true; fi
-      
-      - name: Run Integration Tests with Coverage
-        run: |
-          pytest tests/integration -v \
-            --cov=src \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage-integration.xml \
-            --cov-report=html:htmlcov-integration \
-            --timeout=120 \
-            --junitxml=junit-integration.xml \
-            -m integration \
-            || true
-        continue-on-error: true
-      
-      - name: Upload Integration Test Coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-integration
-          path: |
-            coverage-integration.xml
-            htmlcov-integration/
-          retention-days: 30
-      
-      - name: Upload Integration Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: junit-integration
-          path: junit-integration.xml
-          retention-days: 30
+          pip install -e ".[dev]"
 
-  # ==========================================
-  # E2E 測試 (Playwright)
-  # ==========================================
-  e2e-tests:
-    name: 🎭 E2E Tests (Playwright)
-    runs-on: ubuntu-latest
-    needs: integration-tests
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    env:
-      DATABASE_URL: postgresql://test:test@localhost:5432/test_db
-      APP_URL: http://localhost:8000
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
-      - name: Install dependencies
+      - name: Run test suite
         run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-asyncio pytest-playwright httpx
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || true; fi
-      
-      - name: Install Playwright browsers
-        run: playwright install --with-deps chromium
-      
-      - name: Start application server
-        run: |
-          # 啟動應用程式（背景執行）
-          # 根據專案調整啟動命令
-          if [ -f "src/main.py" ]; then
-            python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 &
-          fi
-          # 等待服務啟動
-          sleep 5
-        continue-on-error: true
-      
-      - name: Run E2E Tests
-        run: |
-          pytest tests/e2e -v \
-            --browser chromium \
-            --tracing retain-on-failure \
-            --screenshot only-on-failure \
-            --video retain-on-failure \
-            --output test-results \
-            --junitxml=junit-e2e.xml \
-            -m e2e \
-            || true
-        continue-on-error: true
-      
-      - name: Upload E2E Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-test-results
-          path: |
-            test-results/
-            junit-e2e.xml
-          retention-days: 30
-      
-      - name: Upload Playwright Traces
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-traces
-          path: test-results/
-          retention-days: 7
-
-  # ==========================================
-  # 覆蓋率報告合併
-  # ==========================================
-  coverage-report:
-    name: 📊 Coverage Report
-    runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, e2e-tests]
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      
-      - name: Install coverage tools
-        run: pip install coverage
-      
-      - name: Download Unit Coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-unit
-          path: coverage-unit
-        continue-on-error: true
-      
-      - name: Download Integration Coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-integration
-          path: coverage-integration
-        continue-on-error: true
-      
-      - name: Combine Coverage Reports
-        run: |
-          coverage combine coverage-unit/.coverage* coverage-integration/.coverage* 2>/dev/null || true
-          coverage xml -o coverage-combined.xml || true
-          coverage report --fail-under=80 || true
-        continue-on-error: true
-      
-      - name: Upload Combined Coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage-combined.xml,coverage-unit/coverage-unit.xml,coverage-integration/coverage-integration.xml
-          fail_ci_if_error: false
-          verbose: true
-        continue-on-error: true
-      
-      - name: Coverage Summary
-        run: |
-          echo "## 📊 Coverage Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          coverage report --format=markdown >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Coverage report not available" >> $GITHUB_STEP_SUMMARY
-        continue-on-error: true
-
-  # ==========================================
-  # 測試結果摘要
-  # ==========================================
-  test-summary:
-    name: 📋 Test Summary
-    runs-on: ubuntu-latest
-    needs: [static-analysis, unit-tests, integration-tests, e2e-tests, coverage-report]
-    if: always()
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-        continue-on-error: true
-      
-      - name: Generate Summary
-        run: |
-          echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Static Analysis | ${{ needs.static-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| E2E Tests | ${{ needs.e2e-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Coverage Report | ${{ needs.coverage-report.result }} |" >> $GITHUB_STEP_SUMMARY
-
+          python -m pytest tests/unit tests/integration tests/smoke -m "not gui and not slow"

@@ -4,8 +4,11 @@
 
 ## 🎯 當前焦點
 
-- 135 個 pytest 測試全部通過
-- 分段 Git commit + push 累積變更（20 個檔案）
+- 兼容性修正與 CI 重建已完成
+- 目前已驗證：
+  - Linux 可成功 `pip install -e '.[dev]'`
+  - headless Qt 測試可執行（需系統套件 + `QT_QPA_PLATFORM=offscreen`）
+  - 137 個 pytest 測試通過
 
 ## 📝 最近完成的變更 (2026-03-15)
 
