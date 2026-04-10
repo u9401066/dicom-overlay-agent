@@ -4,11 +4,11 @@
 
 ## 🎯 當前焦點
 
-- 進行兼容性修正與 CI 重建
-- 當前 Linux 驗證發現：
-  - `pip install -e '.[dev]'` 因 `pywin32>=306` 在非 Windows 無法安裝
-  - pytest 需補齊 Qt runtime（`libEGL.so.1`）
-  - mock/integration 測試目前仍依賴本地 OpenClaw token 設定
+- 兼容性修正與 CI 重建已完成
+- 目前已驗證：
+  - Linux 可成功 `pip install -e '.[dev]'`
+  - headless Qt 測試可執行（需系統套件 + `QT_QPA_PLATFORM=offscreen`）
+  - 137 個 pytest 測試通過
 
 ## 📝 最近完成的變更 (2026-03-15)
 
@@ -36,9 +36,6 @@
 
 ## ⚠️ 待解決
 
-- 非 Windows 安裝需支援條件式依賴
-- CI workflow 目前過度模板化且大量 `continue-on-error`
-- OpenClawClient 測試模式需避免硬綁本地 token 檔案
 - MCP adapter `_StubProvider` 需替換為真正的 MCP SDK client
 - Node.js portable binary 尚未下載
 - PyInstaller 打包尚未實作

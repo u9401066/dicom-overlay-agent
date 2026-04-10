@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import platform
@@ -55,7 +56,9 @@ _SKILL_PATHS: dict[str, tuple[Path, Path]] = {
     ),
     "CT_BRAIN": (
         Path("openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"),
-        Path("openclaw-home/.openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"),
+        Path(
+            "openclaw-home/.openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"
+        ),
     ),
 }
 
@@ -125,7 +128,10 @@ class OpenClawClient(VisionAnalyzerService):
         async with self._ws_lock:
             try:
                 return await self._do_analyze(image_base64, modality, valid_regions)
-            except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
                 logger.warning("Connection lost during analysis, reconnecting...")
                 self._connected = False
                 try:
@@ -140,9 +146,7 @@ class OpenClawClient(VisionAnalyzerService):
                     raise
                 except Exception as exc:
                     self._connected = False
-                    raise ConnectionError(
-                        f"Reconnect failed: {exc}"
-                    ) from None
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
 
     async def _do_analyze(
         self,
@@ -182,7 +186,9 @@ class OpenClawClient(VisionAnalyzerService):
         payload_json = json.dumps(message)
         logger.info(
             "Sending analysis request: id=%s skill=%s payload_size=%dKB",
-            request_id, skill, len(payload_json) // 1024,
+            request_id,
+            skill,
+            len(payload_json) // 1024,
         )
         await self._ws.send(payload_json)
 
@@ -195,7 +201,10 @@ class OpenClawClient(VisionAnalyzerService):
         async with self._ws_lock:
             try:
                 return await self._do_chat(message)
-            except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
                 logger.warning("Connection lost during chat, reconnecting...")
                 self._connected = False
                 try:
@@ -210,9 +219,7 @@ class OpenClawClient(VisionAnalyzerService):
                     raise
                 except Exception as exc:
                     self._connected = False
-                    raise ConnectionError(
-                        f"Reconnect failed: {exc}"
-                    ) from None
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
 
     async def _do_chat(self, message: str) -> str:
         if not self.is_connected():
@@ -335,7 +342,9 @@ class OpenClawClient(VisionAnalyzerService):
             except TimeoutError:
                 logger.error(
                     "OpenClaw analysis timed out after %ds (request_id=%s, run_id=%s)",
-                    self._timeout, request_id, run_id,
+                    self._timeout,
+                    request_id,
+                    run_id,
                 )
                 raise TimeoutError(f"Analysis timeout after {self._timeout}s") from None
             except websockets.ConnectionClosed as exc:
@@ -373,7 +382,9 @@ class OpenClawClient(VisionAnalyzerService):
                     return _coerce_result_payload(result)
 
                 if status == "error":
-                    raise RuntimeError(payload.get("summary", "OpenClaw request failed"))
+                    raise RuntimeError(
+                        payload.get("summary", "OpenClaw request failed")
+                    )
 
                 continue
 
@@ -388,7 +399,9 @@ class OpenClawClient(VisionAnalyzerService):
 
                 state = payload.get("state")
                 if state == "error":
-                    raise RuntimeError(payload.get("errorMessage", "OpenClaw chat event error"))
+                    raise RuntimeError(
+                        payload.get("errorMessage", "OpenClaw chat event error")
+                    )
                 if state == "final":
                     return _payload_from_chat_event(payload)
 
@@ -406,15 +419,15 @@ class OpenClawClient(VisionAnalyzerService):
             # Parse AI-provided bounding boxes (normalized 0-1 coords)
             bboxes: list[RegionRect] = []
             for b in f.get("bboxes", []):
-                try:
-                    bboxes.append(RegionRect(
-                        x=float(b.get("x", 0)),
-                        y=float(b.get("y", 0)),
-                        w=float(b.get("w", 0)),
-                        h=float(b.get("h", 0)),
-                    ))
-                except (ValueError, TypeError):
-                    pass  # skip malformed bbox
+                with contextlib.suppress(ValueError, TypeError):
+                    bboxes.append(
+                        RegionRect(
+                            x=float(b.get("x", 0)),
+                            y=float(b.get("y", 0)),
+                            w=float(b.get("w", 0)),
+                            h=float(b.get("h", 0)),
+                        )
+                    )
             findings.append(
                 Finding(
                     id=f.get("id", ""),
@@ -465,7 +478,7 @@ def _parse_severity(s: str) -> Severity:
 
 def _build_analysis_prompt(
     modality: Modality,
-    valid_regions: list[str],
+    _valid_regions: list[str],
     skill_name: str,
 ) -> str:
     skill_prompt = _load_skill_prompt(modality)

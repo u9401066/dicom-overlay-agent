@@ -52,11 +52,18 @@
   - SKILL.md × 2 更新 bbox 指示
 - **測試**：135 個 pytest 測試全部通過 (0.49s)
 
+## Done (recent) — 2026-04-10
+
+- **兼容性修正 + CI 重建** (2026-04-10)：
+  - `pywin32` 改為 Windows-only 條件式依賴，修正 Linux/CI 安裝失敗
+  - `OpenClawClient` 缺少本地 token 檔案時可無 token 建立，mock 測試不再依賴本機私有設定
+  - `.github/workflows/ci.yml` 改為實際驗證跨平台安裝、`pip check` 與 pytest
+  - 新增 gateway token fallback 測試
+  - Linux headless 驗證通過：137 個 pytest 測試全部通過
+
 ## Doing
 
-- 兼容性修正：Linux/CI 安裝流程需移除對 `pywin32` 的硬依賴
-- CI 建立：以實際可驗證的 lint/test workflow 取代目前寬鬆模板流程
-- 測試穩定化：mock WebSocket 測試不可再依賴本地 OpenClaw auth token
+（無）
 
 ## Next
 
