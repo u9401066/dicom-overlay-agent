@@ -279,6 +279,18 @@ class TestLoadGatewayToken:
         monkeypatch.setenv("OPENCLAW_GATEWAY_TOKEN", "env-token")
         assert _load_gateway_token() == "env-token"
 
+    def test_loads_token_from_file(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        config_dir = tmp_path / "openclaw"
+        config_dir.mkdir()
+        (config_dir / "openclaw.json").write_text(
+            json.dumps({"gateway": {"auth": {"token": "file-token"}}}),
+            encoding="utf-8",
+        )
+
+        assert _load_gateway_token() == "file-token"
+
     def test_missing_token_returns_none(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
