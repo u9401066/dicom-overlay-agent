@@ -12,6 +12,9 @@ on:
       - develop
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   compatibility:
     name: Compatibility (${{ matrix.os }}, py${{ matrix.python-version }})

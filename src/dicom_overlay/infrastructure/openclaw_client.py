@@ -478,15 +478,17 @@ def _parse_severity(s: str) -> Severity:
 
 def _build_analysis_prompt(
     modality: Modality,
-    _valid_regions: list[str],
+    valid_regions: list[str],
     skill_name: str,
 ) -> str:
     skill_prompt = _load_skill_prompt(modality)
+    allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
     return (
         f"Use the {skill_name} instructions below to analyze the attached image.\n\n"
         f"{skill_prompt}\n\n"
         "Return a single JSON object only. Do not wrap it in markdown.\n"
         f"modality must be '{modality.value}'.\n"
+        f"Only reference region names from this allow-list: {allowed_regions}.\n"
         "For each abnormal finding, include 'bboxes' with normalized 0-1 coordinates "
         "(x, y, w, h) tightly bounding the specific abnormal area in the image."
     )
