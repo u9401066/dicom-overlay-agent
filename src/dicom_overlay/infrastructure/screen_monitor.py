@@ -25,8 +25,10 @@ try:
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
-    logger.warning("pywin32 not available — window detection disabled")
+logger.warning("pywin32 not available — window detection disabled")
 
+
+HashFunc = Callable[[Image.Image], imagehash.ImageHash]
 
 _HASH_FUNCS = {
     "ahash": cast("HashFunc", imagehash.average_hash),
@@ -34,8 +36,6 @@ _HASH_FUNCS = {
     "dhash": cast("HashFunc", imagehash.dhash),
     "whash": cast("HashFunc", imagehash.whash),
 }
-
-HashFunc = Callable[[Image.Image], imagehash.ImageHash]
 
 
 class ScreenMonitor(ScreenMonitorService):
