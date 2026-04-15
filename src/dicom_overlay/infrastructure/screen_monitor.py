@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 
 import imagehash
 import mss
@@ -42,6 +43,7 @@ class ScreenMonitor(ScreenMonitorService):
         if algo not in _HASH_FUNCS:
             logger.warning("Unknown hash algorithm %r, falling back to phash", algo)
             algo = "phash"
+        self._hash_func: Callable[[Image.Image], imagehash.ImageHash]
         self._hash_func = _HASH_FUNCS[algo]
         logger.info("Hash algorithm: %s", algo)
 

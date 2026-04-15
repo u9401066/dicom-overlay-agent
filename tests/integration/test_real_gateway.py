@@ -35,7 +35,7 @@ def _load_token() -> str:
         if p.exists():
             cfg = json.loads(p.read_text())
             t = cfg.get("gateway", {}).get("auth", {}).get("token", "")
-            if t:
+            if isinstance(t, str) and t:
                 return t
     raise RuntimeError("No gateway token found")
 

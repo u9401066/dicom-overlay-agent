@@ -15,6 +15,8 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 
 from dicom_overlay.domain.hooks import MCPToolProvider, ToolCallResult, ToolDefinition
@@ -29,15 +31,11 @@ class MCPBridge:
         self._providers: dict[str, MCPToolProvider] = {}
 
     def register(self, provider: MCPToolProvider) -> None:
-        name = provider.provider_name
+        name = provider.server_name
         if name in self._providers:
             logger.warning("MCP provider '%s' already registered, replacing", name)
         self._providers[name] = provider
-        logger.info(
-            "MCP provider registered",
-            provider=name,
-            tools=len(provider.list_tools()),
-        )
+        logger.info("MCP provider registered", provider=name)
 
     def unregister(self, provider_name: str) -> None:
         if provider_name in self._providers:
@@ -50,8 +48,15 @@ class MCPBridge:
 
     def list_all_tools(self) -> dict[str, list[ToolDefinition]]:
         """List all tools grouped by provider name."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return {name: [] for name in self._providers}
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         return {
-            name: provider.list_tools()
+            name: loop.run_until_complete(provider.list_tools())
             for name, provider in self._providers.items()
         }
 
@@ -64,8 +69,13 @@ class MCPBridge:
         provider = self._providers.get(provider_name)
         if provider is None:
             return ToolCallResult(
-                success=False,
-                error=f"Unknown MCP provider: {provider_name}",
+                content=[
+                    {
+                        "type": "text",
+                        "text": f"Unknown MCP provider: {provider_name}",
+                    }
+                ],
+                is_error=True,
             )
 
         try:
@@ -76,7 +86,10 @@ class MCPBridge:
                 provider=provider_name,
                 tool=tool_name,
             )
-            return ToolCallResult(success=False, error=str(exc))
+            return ToolCallResult(
+                content=[{"type": "text", "text": str(exc)}],
+                is_error=True,
+            )
 
     async def connect_all(self) -> None:
         for name, provider in self._providers.items():
@@ -89,6 +102,6 @@ class MCPBridge:
     async def disconnect_all(self) -> None:
         for name, provider in self._providers.items():
             try:
-                await provider.disconnect()
+                await provider.close()
             except Exception:
                 logger.exception("MCP provider disconnect failed: %s", name)

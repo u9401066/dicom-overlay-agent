@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO
 
 import structlog
 
@@ -28,7 +29,7 @@ class GatewayManager:
         self._repo_root = repo_root or Path.cwd()
         self._port = port
         self._process: subprocess.Popen | None = None
-        self._gateway_log = None
+        self._gateway_log: TextIO | None = None
 
     @property
     def is_running(self) -> bool:
@@ -174,7 +175,11 @@ class GatewayManager:
             env=env,
             stdout=self._gateway_log,
             stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            creationflags=(
+                getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                if sys.platform == "win32"
+                else 0
+            ),
         )
         logger.info("Gateway started (pid=%d)", self._process.pid)
 
