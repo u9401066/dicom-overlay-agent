@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import io
-from typing import Any
+from collections.abc import Callable
+from typing import cast
 
 import imagehash
 import mss
@@ -28,11 +29,13 @@ except ImportError:
 
 
 _HASH_FUNCS = {
-    "ahash": imagehash.average_hash,
-    "phash": imagehash.phash,
-    "dhash": imagehash.dhash,
-    "whash": imagehash.whash,
+    "ahash": cast("HashFunc", imagehash.average_hash),
+    "phash": cast("HashFunc", imagehash.phash),
+    "dhash": cast("HashFunc", imagehash.dhash),
+    "whash": cast("HashFunc", imagehash.whash),
 }
+
+HashFunc = Callable[[Image.Image], imagehash.ImageHash]
 
 
 class ScreenMonitor(ScreenMonitorService):
@@ -43,7 +46,7 @@ class ScreenMonitor(ScreenMonitorService):
         if algo not in _HASH_FUNCS:
             logger.warning("Unknown hash algorithm %r, falling back to phash", algo)
             algo = "phash"
-        self._hash_func: Any = _HASH_FUNCS[algo]
+        self._hash_func: HashFunc = _HASH_FUNCS[algo]
         logger.info("Hash algorithm: %s", algo)
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:

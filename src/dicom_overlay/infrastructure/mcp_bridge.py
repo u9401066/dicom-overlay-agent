@@ -48,19 +48,24 @@ class MCPBridge:
 
     def list_all_tools(self) -> dict[str, list[ToolDefinition]]:
         """List all tools grouped by provider name."""
+        has_running_loop = True
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            try:
-                return {
-                    name: loop.run_until_complete(provider.list_tools())
-                    for name, provider in self._providers.items()
-                }
-            finally:
-                loop.close()
-        msg = "list_all_tools() cannot be called from a running event loop"
-        raise RuntimeError(msg)
+            has_running_loop = False
+
+        if has_running_loop:
+            msg = "list_all_tools() cannot be called from a running event loop"
+            raise RuntimeError(msg)
+
+        loop = asyncio.new_event_loop()
+        try:
+            return {
+                name: loop.run_until_complete(provider.list_tools())
+                for name, provider in self._providers.items()
+            }
+        finally:
+            loop.close()
 
     async def call_tool(
         self,
