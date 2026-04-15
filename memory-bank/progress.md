@@ -1,4 +1,4 @@
-# Progress (Updated: 2026-03-15)
+# Progress (Updated: 2026-04-15)
 
 ## Done
 
@@ -60,6 +60,15 @@
   - `.github/workflows/ci.yml` 改為實際驗證跨平台安裝、`pip check` 與 pytest
   - 新增 gateway token fallback 測試
   - Linux headless 驗證通過：137 個 pytest 測試全部通過
+
+## Done (recent) — 2026-04-15
+
+- **PR 驗證補強** (2026-04-15)：
+  - 修正 `mcp_bridge.py` 與 `screen_monitor.py` 的型別/介面錯配，`mypy src tests` 通過
+  - 補齊 `gateway_manager.py`、`control_bar.py`、`overlay_window.py` 的 Qt/Windows 型別註記
+  - 調整 `pyproject.toml` 讓 hook 腳本的中文文字不再觸發無關 Ruff ambiguous-unicode 警告
+  - 修正手動 real-gateway 測試腳本與 `test_ecg_overlay_display.py` 的 lint/type 問題
+  - 重新驗證 `pip check`、OpenClawClient import 與 headless pytest，138 個 pytest 全數通過
 
 ## Doing
 

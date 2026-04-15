@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import structlog
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QMouseEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -108,7 +108,7 @@ class ControlBarWindow(QWidget):
         self._is_paused = False
 
         # Dragging support
-        self._drag_pos = None
+        self._drag_pos: QPoint | None = None
 
     def _on_pause_toggle(self) -> None:
         if self._is_paused:

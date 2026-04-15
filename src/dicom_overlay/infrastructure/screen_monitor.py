@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
+from typing import cast
 
 import imagehash
 import mss
@@ -23,14 +25,16 @@ try:
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
-    logger.warning("pywin32 not available — window detection disabled")
+logger.warning("pywin32 not available — window detection disabled")
 
+
+HashFunc = Callable[[Image.Image], imagehash.ImageHash]
 
 _HASH_FUNCS = {
-    "ahash": imagehash.average_hash,
-    "phash": imagehash.phash,
-    "dhash": imagehash.dhash,
-    "whash": imagehash.whash,
+    "ahash": cast("HashFunc", imagehash.average_hash),
+    "phash": cast("HashFunc", imagehash.phash),
+    "dhash": cast("HashFunc", imagehash.dhash),
+    "whash": cast("HashFunc", imagehash.whash),
 }
 
 
@@ -42,7 +46,7 @@ class ScreenMonitor(ScreenMonitorService):
         if algo not in _HASH_FUNCS:
             logger.warning("Unknown hash algorithm %r, falling back to phash", algo)
             algo = "phash"
-        self._hash_func = _HASH_FUNCS[algo]
+        self._hash_func: HashFunc = _HASH_FUNCS[algo]
         logger.info("Hash algorithm: %s", algo)
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:

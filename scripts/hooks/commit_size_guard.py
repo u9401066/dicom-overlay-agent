@@ -43,7 +43,7 @@ def main() -> int:
         print("\n📋 建議：")
         print("   1. 拆分為多個 focused commits")
         print("   2. 使用 git add -p 部分暫存")
-        print(f"   3. 緊急繞過：git commit --no-verify\n")
+        print("   3. 緊急繞過：git commit --no-verify\n")
         return 1
 
     if counted:

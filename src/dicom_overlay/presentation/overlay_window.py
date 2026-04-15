@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import structlog
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import (
     QLabel,
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import (
         AnalysisResult,
+        ChecklistItem,
         WindowRect,
     )
 
@@ -34,7 +35,7 @@ SEVERITY_COLORS: dict[str, QColor] = {
 class _DraggableWindowMixin:
     """Mixin providing drag-to-move for frameless top-level panels."""
 
-    _drag_pos: object = None
+    _drag_pos: QPoint | None = None
 
     def _init_draggable_window(self) -> None:
         """Call from __init__ to set up top-level window flags."""
@@ -133,27 +134,30 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 widget.deleteLater()
 
         # Partition checklist: abnormal items first, then normal summary
-        abnormal_items: list[tuple[str, object]] = []
+        abnormal_items: list[tuple[str, ChecklistItem]] = []
         normal_count = 0
-        for key, item in result.checklist.items():
-            if item.status in (Severity.CRITICAL, Severity.WARNING):
-                abnormal_items.append((key, item))
+        for key, checklist_item in result.checklist.items():
+            if checklist_item.status in (Severity.CRITICAL, Severity.WARNING):
+                abnormal_items.append((key, checklist_item))
             else:
                 normal_count += 1
 
         # Show abnormal items prominently
-        for key, item in abnormal_items:
+        for key, checklist_item in abnormal_items:
             status_icon = {
                 Severity.WARNING: "⚠️",
                 Severity.CRITICAL: "🔴",
-            }.get(item.status, "⚠️")
+            }.get(checklist_item.status, "⚠️")
 
             display_key = _humanize_checklist_key(key)
-            display_val = _humanize_checklist_value(item.value)
+            display_val = _humanize_checklist_value(checklist_item.value)
             label = QLabel(f"{status_icon} {display_key}: {display_val}")
             label.setWordWrap(True)
             label.setFont(QFont("Segoe UI", 10))
-            color = SEVERITY_COLORS.get(item.status.value, SEVERITY_COLORS["info"])
+            color = SEVERITY_COLORS.get(
+                checklist_item.status.value,
+                SEVERITY_COLORS["info"],
+            )
             label.setStyleSheet(
                 f"color: rgb({color.red()}, {color.green()}, {color.blue()}); "
                 "padding: 2px 0px;"
@@ -438,7 +442,7 @@ class OverlayWindow(QWidget):
 # ── Checklist display helpers ──
 
 _KEY_DISPLAY_MAP: dict[str, str] = {
-    # EKG – 16-point systematic checklist
+    # EKG - 16-point systematic checklist
     "heart_rate": "Heart Rate",
     "rhythm": "Rhythm",
     "regularity": "Regularity",
