@@ -442,7 +442,7 @@ class OverlayWindow(QWidget):
 # ── Checklist display helpers ──
 
 _KEY_DISPLAY_MAP: dict[str, str] = {
-    # EKG – 16-point systematic checklist
+    # EKG - 16-point systematic checklist
     "heart_rate": "Heart Rate",
     "rhythm": "Rhythm",
     "regularity": "Regularity",

@@ -4,35 +4,28 @@
 
 ## 🎯 當前焦點
 
-- 兼容性修正與 CI 重建已完成
+- PR 驗證補強已完成，分支可進入送審
 - 目前已驗證：
   - Linux 可成功 `pip install -e '.[dev]'`
   - headless Qt 測試可執行（需系統套件 + `QT_QPA_PLATFORM=offscreen`）
-  - 137 個 pytest 測試通過
+  - `python -m pip check` 通過
+  - `python -m mypy src tests` 通過
+  - 138 個 pytest 測試通過
 
-## 📝 最近完成的變更 (2026-03-15)
+## 📝 最近完成的變更 (2026-04-15)
 
 | 檔案/目錄 | 變更內容 |
 |-----------|----------|
-| `src/dicom_overlay/infrastructure/gateway_manager.py` | 新增：Gateway 自動啟動/停止 |
-| `src/dicom_overlay/infrastructure/dpi.py` | 新增：DPI 感知工具 |
-| `start.bat` | 簡化啟動流程（Gateway 自動管理） |
-| `src/dicom_overlay/infrastructure/logging_config.py` | Gateway stdout → gateway.log |
-| `src/dicom_overlay/presentation/overlay_window.py` | DraggableWindowMixin + 智慧顯示 |
-| `src/dicom_overlay/presentation/roi_setup.py` | DPI 修正 + 改善 |
-| `src/dicom_overlay/domain/entities.py` | Finding.bboxes + MonitorConfig phash |
-| `src/dicom_overlay/infrastructure/screen_monitor.py` | 可配置 hash 演算法 |
-| `src/dicom_overlay/infrastructure/openclaw_client.py` | WS log 過濾 + bbox 解析 + prompt |
-| `src/dicom_overlay/application/overlay_agent.py` | EKG 16 項 checklist |
-| `src/dicom_overlay/infrastructure/hooks/output_validator.py` | 16 key schema |
-| `src/dicom_overlay/__main__.py` | Gateway 整合 + hash config + bbox highlight |
-| `config.yaml` | phash + threshold 5 |
-| `openclaw/workspace/skills/dicom-ekg-analysis/SKILL.md` | bbox 指示 |
-| `openclaw-home/workspace/skills/dicom-ekg-analysis/SKILL.md` | 同步 bbox 指示 |
-| `tests/unit/test_display_pipeline.py` | 擴充 display pipeline 測試 |
-| `tests/unit/test_hooks_and_mcp.py` | 新增 OutputValidator + hooks 測試 |
-| `tests/unit/test_roi.py` | 新增 ROI 單元測試 |
-| `tests/integration/test_openclaw_overlay.py` | _make_result 對齊 16 keys |
+| `src/dicom_overlay/infrastructure/mcp_bridge.py` | 對齊 `MCPToolProvider` 介面，修正同步/非同步工具列舉與錯誤回傳 |
+| `src/dicom_overlay/infrastructure/screen_monitor.py` | 補強 hash function 型別註記，讓 mypy 通過 |
+| `src/dicom_overlay/infrastructure/gateway_manager.py` | 補上 log file 與 Windows creationflags 型別處理 |
+| `src/dicom_overlay/presentation/control_bar.py` | 補上拖曳座標的 `QPoint | None` 型別 |
+| `src/dicom_overlay/presentation/overlay_window.py` | 補強 checklist 與拖曳視窗型別、清理 lint |
+| `pyproject.toml` | 增加 mypy Windows 模組 ignore 與 hook 腳本 Ruff per-file ignore |
+| `tests/integration/_run_real_test.py` | 清理 lint、保守化 token 型別判斷 |
+| `tests/integration/test_real_gateway.py` | 保守化 token 型別判斷 |
+| `tests/test_ecg_overlay_display.py` | 修正 lint/type 問題，改用 `Path.open()` |
+| `scripts/hooks/agent_freshness_check.py` | 保留中文內容並由 Ruff 設定忽略 ambiguous-unicode 檢查 |
 
 ## ⚠️ 待解決
 
@@ -62,4 +55,4 @@
 | PyInstaller 打包 | 🔲 待做 |
 
 ---
-*Last updated: 2026-03-15*
+*Last updated: 2026-04-15*

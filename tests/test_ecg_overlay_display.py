@@ -11,15 +11,15 @@ from pathlib import Path
 
 
 async def main():
-    from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
     from dicom_overlay.domain.entities import Modality
+    from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
     from dicom_overlay.presentation.overlay_window import (
         _humanize_checklist_key,
         _humanize_checklist_value,
     )
 
     img_path = Path(__file__).parent / "ecg_sample.jpg"
-    with open(img_path, "rb") as img_file:
+    with img_path.open("rb") as img_file:
         img_b64 = base64.b64encode(img_file.read()).decode()
     print(f"Image base64 length: {len(img_b64)}")
 

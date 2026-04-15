@@ -6,7 +6,6 @@ import asyncio
 import base64
 import json
 import struct
-import sys
 import time
 import zlib
 from pathlib import Path

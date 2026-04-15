@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001,RUF002,RUF003
 """Agent Freshness Check — 檢查 Custom Agent 檔案中的模型和工具是否過時。
 
 檢查項目：
