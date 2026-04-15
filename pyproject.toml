@@ -91,6 +91,7 @@ known-first-party = ["dicom_overlay"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "ARG", "PLR2004"]
+# Allow Chinese copy in hook messages and docstrings.
 "scripts/hooks/*.py" = ["RUF001", "RUF002", "RUF003"]
 
 # === MyPy ===
