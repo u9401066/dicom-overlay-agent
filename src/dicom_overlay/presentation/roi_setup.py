@@ -217,7 +217,7 @@ class ROISetupDialog(QDialog):
         adj_w = min(rect.width(), self._base_rect.width - adj_x)
         adj_h = min(rect.height(), self._base_rect.height - adj_y)
         if adj_w <= 0 or adj_h <= 0:
-            self._status.setText("選取區域無效，請重新選取")
+            self._status.setText("選取區域無效, 請重新選取")
             self._status.adjustSize()
             return
         self._selected_crop = compute_roi_crop_from_safe_rect(
