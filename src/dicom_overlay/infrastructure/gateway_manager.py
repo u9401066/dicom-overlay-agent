@@ -8,8 +8,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO
 
 import structlog
+
+from dicom_overlay.infrastructure.env_file import read_env_file
+from dicom_overlay.infrastructure.openclaw_runtime import (
+    ensure_openclaw_runtime_supported,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -28,25 +34,52 @@ class GatewayManager:
         self._repo_root = repo_root or Path.cwd()
         self._port = port
         self._process: subprocess.Popen | None = None
-        self._gateway_log = None
+        self._gateway_log: TextIO | None = None
 
     @property
     def is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
     def _find_node(self) -> str:
-        """Find node executable, preferring repo-local install."""
+        """Find the node executable, preferring a repo-local / bundled binary.
+
+        Resolution order (Core 4 "zero-install" goal):
+        1. Bundled portable node next to the app/runtime (``node/node.exe`` under
+           the PyInstaller resource root or the repo root). Lets the portable
+           bundle run with no system Node.js installed.
+        2. System ``node`` on PATH (developer machines).
+        """
+        exe_name = "node.exe" if sys.platform == "win32" else "node"
+        for root in (self._resource_root(), self._repo_root):
+            candidate = root / "node" / exe_name
+            if candidate.exists():
+                logger.info("Using bundled Node.js runtime: %s", candidate)
+                return str(candidate)
+
         node = shutil.which("node")
         if node is None:
             msg = (
-                "Node.js not found on PATH. "
-                "Install Node.js (https://nodejs.org) to run the OpenClaw Gateway."
+                "Node.js not found. Bundle a portable runtime with "
+                "scripts\\fetch-node.ps1 (creates node\\node.exe) or install "
+                "Node.js (https://nodejs.org) to run the OpenClaw Gateway."
             )
             raise FileNotFoundError(msg)
+        logger.info("Using system Node.js runtime: %s", node)
         return node
 
+    def _resource_root(self) -> Path:
+        """Return bundled read-only resource root or repo root in dev mode."""
+        if getattr(sys, "frozen", False):
+            bundle_root = getattr(sys, "_MEIPASS", None)
+            if bundle_root:
+                return Path(str(bundle_root))
+        return self._repo_root
+
     def _gateway_script(self) -> Path:
-        script = self._repo_root / _OPENCLAW_MJS
+        resource_root = self._resource_root()
+        version = ensure_openclaw_runtime_supported(resource_root)
+        logger.info("OpenClaw runtime version accepted: %s", version)
+        script = resource_root / _OPENCLAW_MJS
         if not script.exists():
             msg = (
                 f"OpenClaw not found at {script}. "
@@ -57,7 +90,7 @@ class GatewayManager:
 
     def _sync_skills(self) -> None:
         """Sync workspace skills to openclaw-home (mirrors sync-openclaw-workspace.bat)."""
-        src = self._repo_root / _SRC_SKILLS
+        src = self._resource_root() / _SRC_SKILLS
         dst = self._repo_root / _DST_SKILLS
         if not src.exists():
             logger.warning("Skill source not found: %s", src)
@@ -153,12 +186,19 @@ class GatewayManager:
 
         home = self._repo_root / _OPENCLAW_HOME
         config = self._repo_root / _OPENCLAW_CONFIG
+        if not config.exists():
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text("{}", encoding="utf-8")
         env = {
             **os.environ,
+            **read_env_file(self._repo_root / ".env"),
             "OPENCLAW_STATE_DIR": str(home),
             "OPENCLAW_CONFIG_PATH": str(config),
             "HOME": str(home),
             "USERPROFILE": str(home),
+            "OPENCLAW_DISABLE_BUNDLED_PLUGINS": os.environ.get(
+                "OPENCLAW_DISABLE_BUNDLED_PLUGINS", "1"
+            ),
         }
 
         cmd = [node, str(script), "gateway", "run", "--verbose"]

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING
 
 import structlog
 
-from dicom_overlay.domain.entities import AnalysisResult
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
+
+if TYPE_CHECKING:
+    from dicom_overlay.domain.entities import AnalysisResult
 
 logger = structlog.get_logger(__name__)
 
@@ -36,6 +39,6 @@ class RateLimiter(AnalyzeHook):
         return request
 
     def post_analyze(
-        self, request: AnalyzeRequest, result: AnalysisResult
+        self, _request: AnalyzeRequest, result: AnalysisResult
     ) -> AnalysisResult:
         return result  # Rate limiter only validates input

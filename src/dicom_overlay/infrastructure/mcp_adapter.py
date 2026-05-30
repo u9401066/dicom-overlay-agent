@@ -343,7 +343,7 @@ class _StubProvider(MCPToolProvider):
         return []
 
     async def call_tool(
-        self, name: str, arguments: dict[str, Any]
+        self, name: str, _arguments: dict[str, Any]
     ) -> ToolCallResult:
         return ToolCallResult(
             content=[{

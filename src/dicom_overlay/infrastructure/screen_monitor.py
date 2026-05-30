@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 
-import imagehash
 import mss
 import structlog
 from PIL import Image
@@ -26,22 +26,59 @@ except ImportError:
     logger.warning("pywin32 not available — window detection disabled")
 
 
-_HASH_FUNCS = {
-    "ahash": imagehash.average_hash,
-    "phash": imagehash.phash,
-    "dhash": imagehash.dhash,
-    "whash": imagehash.whash,
+_HashFunc = Callable[[Image.Image], str]
+
+
+def _bits_to_hex(bits: list[bool]) -> str:
+    value = 0
+    for bit in bits:
+        value = (value << 1) | int(bit)
+    width = max(1, (len(bits) + 3) // 4)
+    return f"{value:0{width}x}"
+
+
+def _average_hash(img: Image.Image) -> str:
+    gray = img.convert("L").resize((8, 8), Image.Resampling.LANCZOS)
+    pixels = list(gray.tobytes())
+    average = sum(pixels) / len(pixels)
+    return _bits_to_hex([pixel > average for pixel in pixels])
+
+
+def _difference_hash(img: Image.Image) -> str:
+    gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    pixels = list(gray.tobytes())
+    bits: list[bool] = []
+    for row in range(8):
+        start = row * 9
+        for col in range(8):
+            bits.append(pixels[start + col] > pixels[start + col + 1])
+    return _bits_to_hex(bits)
+
+
+def _hex_hamming_distance(hash1: str, hash2: str) -> int:
+    value1 = int(hash1, 16)
+    value2 = int(hash2, 16)
+    return (value1 ^ value2).bit_count()
+
+
+_HASH_FUNCS: dict[str, _HashFunc] = {
+    "ahash": _average_hash,
+    "dhash": _difference_hash,
 }
 
 
 class ScreenMonitor(ScreenMonitorService):
     """Detects DICOM viewer window and captures screen regions (spec §3.1)."""
 
-    def __init__(self, hash_algorithm: str = "phash") -> None:
+    def __init__(self, hash_algorithm: str = "ahash") -> None:
         algo = hash_algorithm.lower()
         if algo not in _HASH_FUNCS:
-            logger.warning("Unknown hash algorithm %r, falling back to phash", algo)
-            algo = "phash"
+            logger.warning(
+                "Hash algorithm %r is unavailable in the desktop build; "
+                "falling back to ahash",
+                algo,
+            )
+            algo = "ahash"
         self._hash_func = _HASH_FUNCS[algo]
         logger.info("Hash algorithm: %s", algo)
 
@@ -97,14 +134,15 @@ class ScreenMonitor(ScreenMonitorService):
 
     def compute_hash(self, image_data: bytes) -> str:
         img = Image.open(io.BytesIO(image_data))
-        h = self._hash_func(img)
-        return str(h)
+        return self._hash_func(img)
 
     def has_changed(self, hash1: str, hash2: str, threshold: int) -> bool:
-        h1 = imagehash.hex_to_hash(hash1)
-        h2 = imagehash.hex_to_hash(hash2)
-        diff = h1 - h2
-        return bool(diff > threshold)
+        try:
+            diff = _hex_hamming_distance(hash1, hash2)
+        except ValueError:
+            logger.warning("Invalid image hash encountered; treating as changed")
+            return True
+        return diff > threshold
 
 
 class ImageProcessor(ImageProcessorService):
@@ -134,3 +172,26 @@ class ImageProcessor(ImageProcessorService):
         import base64
 
         return base64.b64encode(image_data).decode("ascii")
+
+    def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
+        if max_edge <= 0:
+            return image_data
+        img = Image.open(io.BytesIO(image_data))
+        w, h = img.size
+        longest = max(w, h)
+        if longest <= max_edge:
+            return image_data
+        scale = max_edge / longest
+        new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
+        resized = img.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        resized.save(buf, format="PNG")
+        logger.info(
+            "Downscaled image %dx%d -> %dx%d (max_edge=%d)",
+            w,
+            h,
+            new_size[0],
+            new_size[1],
+            max_edge,
+        )
+        return buf.getvalue()

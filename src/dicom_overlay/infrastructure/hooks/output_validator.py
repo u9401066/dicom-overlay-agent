@@ -6,30 +6,12 @@ import structlog
 
 from dicom_overlay.domain.entities import AnalysisResult, Severity
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
+from dicom_overlay.domain.modality_profile import (
+    ModalityRegistry,
+    get_active_registry,
+)
 
 logger = structlog.get_logger(__name__)
-
-# Required checklist keys per modality
-_REQUIRED_CHECKLIST: dict[str, frozenset[str]] = {
-    "EKG": frozenset({
-        "heart_rate",
-        "rhythm",
-        "regularity",
-        "axis",
-        "p_wave",
-        "pr_interval",
-        "qrs_duration",
-        "qrs_morphology",
-        "st_segment",
-        "t_wave",
-        "qtc_interval",
-        "chamber_enlargement",
-        "conduction",
-        "av_block",
-        "stemi_pattern",
-        "ischemia",
-    }),
-}
 
 _VALID_SEVERITIES = frozenset(s.value for s in Severity)
 
@@ -37,8 +19,11 @@ _VALID_SEVERITIES = frozenset(s.value for s in Severity)
 class OutputValidator(AnalyzeHook):
     """Post-analyze guardrail: validates AI output against expected schema."""
 
-    def __init__(self, *, strict: bool = False) -> None:
+    def __init__(
+        self, *, strict: bool = False, registry: ModalityRegistry | None = None
+    ) -> None:
         self._strict = strict
+        self._registry = registry or get_active_registry()
 
     def pre_analyze(self, request: AnalyzeRequest) -> AnalyzeRequest:
         return request  # Output validator only validates output
@@ -76,7 +61,7 @@ class OutputValidator(AnalyzeHook):
                     )
 
         # 4. Checklist completeness (modality-specific)
-        required = _REQUIRED_CHECKLIST.get(request.modality.value, frozenset())
+        required = self._registry.resolve(request.modality.value).checklist_keys
         if required:
             missing = required - set(result.checklist.keys())
             if missing:
@@ -92,6 +77,14 @@ class OutputValidator(AnalyzeHook):
         # Log warnings
         for w in warnings:
             logger.warning("OutputValidator: %s", w)
+
+        # Surface degradation to the UI: a result that passed hard checks but
+        # tripped warnings (e.g. partial JSON missing checklist keys) is marked
+        # incomplete so the overlay can show "結果不完整" instead of a false
+        # "all normal".
+        if warnings:
+            result.incomplete = True
+            result.incomplete_reasons = list(warnings)
 
         # In strict mode, warnings become errors
         if self._strict:

@@ -9,12 +9,14 @@ import structlog
 import yaml
 
 from dicom_overlay.domain.entities import (
+    AnalysisConfig,
     AppConfig,
     HotkeyConfig,
     MonitorConfig,
     OpenClawConfig,
     OverlayConfig,
     ROICrop,
+    TriggerMode,
 )
 
 logger = structlog.get_logger(__name__)
@@ -59,6 +61,7 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
     oc_raw = raw.get("openclaw", {})
     overlay_raw = raw.get("overlay", {})
     hotkey_raw = raw.get("hotkeys", {})
+    analysis_raw = raw.get("analysis", {})
     debug_raw = raw.get("debug", {})
 
     return AppConfig(
@@ -81,6 +84,11 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
             gateway_url=oc_raw.get("gateway_url", "ws://127.0.0.1:18789"),
             reconnect_interval_sec=oc_raw.get("reconnect_interval_sec", 5),
             timeout_sec=oc_raw.get("timeout_sec", 15),
+            connect_timeout_sec=oc_raw.get("connect_timeout_sec"),
+            inference_timeout_sec=oc_raw.get("inference_timeout_sec"),
+            analyze_retries=oc_raw.get("analyze_retries", 1),
+            analyze_retry_backoff_sec=oc_raw.get("analyze_retry_backoff_sec", 1.5),
+            max_image_edge_px=oc_raw.get("max_image_edge_px", 1568),
         ),
         overlay=OverlayConfig(
             position=overlay_raw.get("position", "right"),
@@ -100,11 +108,29 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
             dismiss_overlay=hotkey_raw.get("dismiss_overlay", "ctrl+shift+d"),
             toggle_enable=hotkey_raw.get("toggle_enable", "ctrl+shift+e"),
         ),
+        analysis=AnalysisConfig(
+            trigger_mode=_parse_trigger_mode(
+                analysis_raw.get("trigger_mode", TriggerMode.HYBRID.value)
+            ),
+        ),
         region_maps=raw.get("region_maps", {}),
+        modalities=raw.get("modalities"),
         debug_save_screenshots=debug_raw.get("save_screenshots", False),
         log_level=debug_raw.get("log_level", "INFO"),
         log_file=debug_raw.get("log_file", "overlay_agent.log"),
     )
+
+
+def _parse_trigger_mode(value: object) -> TriggerMode:
+    if isinstance(value, TriggerMode):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        for mode in TriggerMode:
+            if mode.value == normalized:
+                return mode
+    logger.warning("Unknown trigger mode %r, using hybrid", value)
+    return TriggerMode.HYBRID
 
 
 def save_roi_config(path: Path, roi: ROICrop) -> None:

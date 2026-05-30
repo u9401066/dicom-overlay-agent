@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import platform
@@ -16,6 +15,9 @@ from uuid import uuid4
 import structlog
 import websockets
 
+from dicom_overlay.application.interpretation_harness import (
+    build_initial_analysis_prompt,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     ChecklistItem,
@@ -24,7 +26,13 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
+from dicom_overlay.domain.modality_profile import (
+    ModalityRegistry,
+    get_active_registry,
+)
 from dicom_overlay.domain.services import VisionAnalyzerService
+from dicom_overlay.infrastructure.env_file import read_env_file
+from dicom_overlay.infrastructure.openclaw_runtime import build_openclaw_chat_frame
 
 logger = structlog.get_logger(__name__)
 
@@ -38,29 +46,14 @@ _DEFAULT_SCOPES = [
     "operator.pairing",
 ]
 
-# Skill mapping: modality → OpenClaw workspace skill name
-_SKILL_MAP: dict[str, str] = {
-    "EKG": "dicom-ekg-analysis",
-    "CXR": "dicom-cxr-analysis",
-    "CT_BRAIN": "dicom-ct-brain-analysis",
-}
-
-_SKILL_PATHS: dict[str, tuple[Path, Path]] = {
-    "EKG": (
-        Path("openclaw/workspace/skills/dicom-ekg-analysis/SKILL.md"),
-        Path("openclaw-home/.openclaw/workspace/skills/dicom-ekg-analysis/SKILL.md"),
-    ),
-    "CXR": (
-        Path("openclaw/workspace/skills/dicom-cxr-analysis/SKILL.md"),
-        Path("openclaw-home/.openclaw/workspace/skills/dicom-cxr-analysis/SKILL.md"),
-    ),
-    "CT_BRAIN": (
-        Path("openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"),
-        Path(
-            "openclaw-home/.openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md"
-        ),
-    ),
-}
+# Skill resolution is driven by the modality registry (single source of truth).
+# A modality's OpenClaw skill folder name comes from its ``ModalityProfile``;
+# the on-disk SKILL.md is searched in the vendored workspace and the runtime
+# home below.
+_SKILL_BASE_DIRS: tuple[str, str] = (
+    "openclaw/workspace/skills",
+    "openclaw-home/.openclaw/workspace/skills",
+)
 
 
 class OpenClawClient(VisionAnalyzerService):
@@ -75,10 +68,17 @@ class OpenClawClient(VisionAnalyzerService):
         timeout_sec: int = 15,
         reconnect_interval_sec: int = 5,
         gateway_token: str | None = None,
+        connect_timeout_sec: int | None = None,
+        inference_timeout_sec: int | None = None,
+        registry: ModalityRegistry | None = None,
     ) -> None:
         self._url = gateway_url
         self._timeout = timeout_sec
+        # Split timeouts: handshake is fast, inference can be slow on big images.
+        self._connect_timeout = connect_timeout_sec or timeout_sec
+        self._inference_timeout = inference_timeout_sec or timeout_sec
         self._reconnect_interval = reconnect_interval_sec
+        self._registry = registry or get_active_registry()
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
@@ -93,12 +93,15 @@ class OpenClawClient(VisionAnalyzerService):
 
     async def connect(self) -> None:
         try:
-            self._ws = await websockets.connect(
-                self._url,
-                ping_interval=30,
-                ping_timeout=60,
+            self._ws = await asyncio.wait_for(
+                websockets.connect(
+                    self._url,
+                    ping_interval=30,
+                    ping_timeout=60,
+                ),
+                timeout=self._connect_timeout,
             )
-            await self._handshake()
+            await asyncio.wait_for(self._handshake(), timeout=self._connect_timeout)
             self._connected = True
             logger.info("Connected to OpenClaw Gateway at %s", self._url)
         except Exception as exc:
@@ -157,28 +160,18 @@ class OpenClawClient(VisionAnalyzerService):
 
         assert self._ws is not None
 
-        skill = _SKILL_MAP.get(modality.value, "dicom-ekg-analysis")
+        skill = self._registry.resolve(modality.value).resolved_skill_name()
         prompt = _build_analysis_prompt(modality, valid_regions, skill)
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
 
-        message = {
-            "type": "req",
-            "id": request_id,
-            "method": "chat.send",
-            "params": {
-                "sessionKey": _SESSION_KEY,
-                "message": prompt,
-                "attachments": [
-                    {
-                        "type": "image",
-                        "mimeType": "image/png",
-                        "content": image_base64,
-                    }
-                ],
-                "idempotencyKey": idempotency_key,
-            },
-        }
+        message = build_openclaw_chat_frame(
+            request_id=request_id,
+            session_key=_SESSION_KEY,
+            message=prompt,
+            idempotency_key=idempotency_key,
+            image_base64=image_base64,
+        )
 
         start = time.monotonic()
         payload_json = json.dumps(message)
@@ -192,7 +185,7 @@ class OpenClawClient(VisionAnalyzerService):
 
         response = await self._wait_for_chat_result(request_id)
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        return self._parse_result(response, elapsed_ms)
+        return self._parse_result(response, elapsed_ms, modality)
 
     async def chat(self, message: str) -> str:
         """Send a free-text question with auto-reconnect on connection loss."""
@@ -219,6 +212,45 @@ class OpenClawClient(VisionAnalyzerService):
                     self._connected = False
                     raise ConnectionError(f"Reconnect failed: {exc}") from None
 
+    async def chat_about_image(
+        self,
+        message: str,
+        *,
+        image_base64: str,
+        context: str = "",
+    ) -> str:
+        """Ask a follow-up question about the same image with context attached."""
+        async with self._ws_lock:
+            try:
+                return await self._do_chat_about_image(
+                    message,
+                    image_base64=image_base64,
+                    context=context,
+                )
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
+                logger.warning("Connection lost during image chat, reconnecting...")
+                self._connected = False
+                try:
+                    await self.connect()
+                    return await self._do_chat_about_image(
+                        message,
+                        image_base64=image_base64,
+                        context=context,
+                    )
+                except websockets.ConnectionClosed:
+                    self._connected = False
+                    raise ConnectionError(
+                        "Gateway connection lost after reconnect"
+                    ) from None
+                except ConnectionError:
+                    raise
+                except Exception as exc:
+                    self._connected = False
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+
     async def _do_chat(self, message: str) -> str:
         if not self.is_connected():
             raise ConnectionError("Not connected to OpenClaw Gateway")
@@ -228,16 +260,41 @@ class OpenClawClient(VisionAnalyzerService):
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
 
-        frame = {
-            "type": "req",
-            "id": request_id,
-            "method": "chat.send",
-            "params": {
-                "sessionKey": _SESSION_KEY,
-                "message": message,
-                "idempotencyKey": idempotency_key,
-            },
-        }
+        frame = build_openclaw_chat_frame(
+            request_id=request_id,
+            session_key=_SESSION_KEY,
+            message=message,
+            idempotency_key=idempotency_key,
+        )
+
+        await self._ws.send(json.dumps(frame))
+        return await self._wait_for_chat_text(request_id)
+
+    async def _do_chat_about_image(
+        self,
+        message: str,
+        *,
+        image_base64: str,
+        context: str,
+    ) -> str:
+        if not self.is_connected():
+            raise ConnectionError("Not connected to OpenClaw Gateway")
+        if not image_base64.strip():
+            raise ValueError("image_base64 is required for image follow-up chat")
+
+        assert self._ws is not None
+
+        request_id = self._next_request_id("chat")
+        idempotency_key = str(uuid4())
+        prompt = _build_image_followup_prompt(message=message, context=context)
+
+        frame = build_openclaw_chat_frame(
+            request_id=request_id,
+            session_key=_SESSION_KEY,
+            message=prompt,
+            idempotency_key=idempotency_key,
+            image_base64=image_base64,
+        )
 
         await self._ws.send(json.dumps(frame))
         return await self._wait_for_chat_text(request_id)
@@ -336,15 +393,19 @@ class OpenClawClient(VisionAnalyzerService):
         logger.debug("Waiting for chat result, request_id=%s", request_id)
         while True:
             try:
-                raw = await asyncio.wait_for(self._ws.recv(), timeout=self._timeout)
+                raw = await asyncio.wait_for(
+                    self._ws.recv(), timeout=self._inference_timeout
+                )
             except TimeoutError:
                 logger.error(
                     "OpenClaw analysis timed out after %ds (request_id=%s, run_id=%s)",
-                    self._timeout,
+                    self._inference_timeout,
                     request_id,
                     run_id,
                 )
-                raise TimeoutError(f"Analysis timeout after {self._timeout}s") from None
+                raise TimeoutError(
+                    f"Analysis timeout after {self._inference_timeout}s"
+                ) from None
             except websockets.ConnectionClosed as exc:
                 self._connected = False
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
@@ -408,7 +469,10 @@ class OpenClawClient(VisionAnalyzerService):
         return f"{prefix}-{self._request_counter}"
 
     def _parse_result(
-        self, response: dict[str, Any], elapsed_ms: int
+        self,
+        response: dict[str, Any],
+        elapsed_ms: int,
+        request_modality: Modality = Modality.EKG,
     ) -> AnalysisResult:
         payload = response.get("payload", response)
 
@@ -417,7 +481,7 @@ class OpenClawClient(VisionAnalyzerService):
             # Parse AI-provided bounding boxes (normalized 0-1 coords)
             bboxes: list[RegionRect] = []
             for b in f.get("bboxes", []):
-                with contextlib.suppress(ValueError, TypeError):
+                try:
                     bboxes.append(
                         RegionRect(
                             x=float(b.get("x", 0)),
@@ -425,6 +489,15 @@ class OpenClawClient(VisionAnalyzerService):
                             w=float(b.get("w", 0)),
                             h=float(b.get("h", 0)),
                         )
+                    )
+                except (ValueError, TypeError) as exc:
+                    # Out-of-bounds or malformed bbox: drop it but make the
+                    # degradation visible instead of silently swallowing it.
+                    logger.warning(
+                        "Dropping invalid bbox for finding %s: %s (%s)",
+                        f.get("id", ""),
+                        b,
+                        exc,
                     )
             findings.append(
                 Finding(
@@ -450,11 +523,19 @@ class OpenClawClient(VisionAnalyzerService):
                     status=Severity.INFO,
                 )
 
-        modality_str = payload.get("modality", "EKG")
-        try:
-            modality = Modality(modality_str)
-        except ValueError:
-            modality = Modality.EKG
+        modality_str = payload.get("modality")
+        if modality_str is None:
+            modality = request_modality
+        else:
+            try:
+                modality = Modality(modality_str)
+            except ValueError:
+                logger.warning(
+                    "Unknown modality %r in result; using requested modality %s",
+                    modality_str,
+                    request_modality.value,
+                )
+                modality = request_modality
 
         return AnalysisResult(
             modality=modality,
@@ -479,26 +560,37 @@ def _build_analysis_prompt(
     valid_regions: list[str],
     skill_name: str,
 ) -> str:
-    skill_prompt = _load_skill_prompt(modality)
-    allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
-    return (
-        f"Use the {skill_name} instructions below to analyze the attached image.\n\n"
-        f"{skill_prompt}\n\n"
-        "Return a single JSON object only. Do not wrap it in markdown.\n"
-        f"modality must be '{modality.value}'.\n"
-        f"Only reference region names from this allow-list: {allowed_regions}.\n"
-        "For each abnormal finding, include 'bboxes' with normalized 0-1 coordinates "
-        "(x, y, w, h) tightly bounding the specific abnormal area in the image."
+    skill_prompt = _load_skill_prompt(skill_name)
+    return build_initial_analysis_prompt(
+        modality=modality,
+        valid_regions=valid_regions,
+        skill_name=skill_name,
+        skill_prompt=skill_prompt,
     )
 
 
-def _load_skill_prompt(modality: Modality) -> str:
-    candidates = _SKILL_PATHS.get(modality.value, _SKILL_PATHS["EKG"])
-    for path in candidates:
+def _build_image_followup_prompt(*, message: str, context: str) -> str:
+    prior_context = context.strip() or "(no prior structured result available)"
+    return (
+        "Answer the user's follow-up question about the same attached medical image.\n"
+        "Use the prior structured interpretation as context, then re-check the "
+        "attached image before answering. Do not invent findings that are not "
+        "visible in the image.\n\n"
+        f"Prior interpretation context:\n{prior_context}\n\n"
+        f"User question: {message.strip()}\n\n"
+        "Reply with concise clinical guidance. Mention relevant labels, tags, "
+        "or regions when useful, and state when the image is insufficient for "
+        "the requested conclusion."
+    )
+
+
+def _load_skill_prompt(skill_name: str) -> str:
+    for base in _SKILL_BASE_DIRS:
+        path = Path(base) / skill_name / "SKILL.md"
         if path.exists():
             raw = path.read_text(encoding="utf-8")
             return _strip_frontmatter(raw).strip()
-    raise FileNotFoundError(f"Skill prompt not found for modality: {modality.value}")
+    raise FileNotFoundError(f"Skill prompt not found: {skill_name}")
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -536,8 +628,50 @@ def _payload_from_chat_event(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except JSONDecodeError as exc:
-        raise RuntimeError(text) from exc
+        # The model sometimes wraps JSON in prose ("Here is the result: {...}").
+        # Fall back to extracting the first balanced {...} block before giving up.
+        extracted = _extract_first_json_object(text)
+        if extracted is None:
+            raise RuntimeError(text) from exc
+        logger.warning(
+            "Recovered JSON from prose response via brace extraction (%d chars dropped)",
+            len(text) - len(extracted),
+        )
+        data = json.loads(extracted)
     return _coerce_result_payload(data)
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the first balanced ``{...}`` substring, or ``None`` if absent.
+
+    Brace matching is string/escape aware so braces inside JSON string values
+    do not break the balance count.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 def _coerce_result_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -573,6 +707,10 @@ def _load_gateway_token() -> str | None:
     if env_token:
         return env_token
 
+    dotenv_token = read_env_file(Path(".env")).get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+    if dotenv_token:
+        return dotenv_token
+
     candidates = [
         Path("openclaw/openclaw.json"),
         Path("openclaw/openclaw.valid.json"),
@@ -586,6 +724,13 @@ def _load_gateway_token() -> str | None:
         except Exception:
             continue
         token = raw.get("gateway", {}).get("auth", {}).get("token", "")
+        if isinstance(token, str) and token.startswith("${") and token.endswith("}"):
+            env_name = token[2:-1].strip()
+            env_value = os.getenv(env_name, "").strip() or read_env_file(Path(".env")).get(
+                env_name, ""
+            ).strip()
+            if env_value:
+                return env_value
         if isinstance(token, str) and token.strip():
             return token.strip()
     return None
