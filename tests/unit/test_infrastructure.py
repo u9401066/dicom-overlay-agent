@@ -11,6 +11,7 @@ import yaml
 from PIL import Image
 
 from dicom_overlay.domain.entities import Modality, ROICrop, TriggerMode, WindowRect
+from dicom_overlay.infrastructure.app_paths import resolve_app_base_dir
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.env_file import read_env_file
@@ -267,6 +268,30 @@ class TestOpenClawRuntimeCompatibility:
         # Core 4: heavy unused Qt modules are excluded to keep the bundle lean.
         assert "PyQt6.QtWebEngineCore" in spec
         assert "opengl32sw.dll" in spec
+
+
+class TestAppBaseDir:
+    def test_frozen_uses_executable_dir_not_cwd(self, tmp_path):
+        exe = tmp_path / "bundle" / "DICOMOverlayAgent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("", encoding="utf-8")
+        other_cwd = tmp_path / "somewhere" / "else"
+        other_cwd.mkdir(parents=True)
+
+        base = resolve_app_base_dir(
+            frozen=True, executable=str(exe), cwd=other_cwd
+        )
+
+        # Portable USB rule: anchored to the exe folder, NOT the launch cwd.
+        assert base == exe.parent.resolve()
+        assert base != other_cwd
+
+    def test_not_frozen_uses_cwd(self, tmp_path):
+        base = resolve_app_base_dir(
+            frozen=False, executable="/usr/bin/python", cwd=tmp_path
+        )
+
+        assert base == tmp_path
 
 
 class TestDesktopSettingsStore:

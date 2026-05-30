@@ -89,6 +89,41 @@ class GatewayManager:
             raise FileNotFoundError(msg)
         return script
 
+    def verify_runtime(self) -> list[tuple[str, bool, str]]:
+        """Self-check that the portable bundle can start, without launching.
+
+        Returns a list of ``(component, ok, detail)`` rows covering the pieces a
+        fresh machine (e.g. a USB plug-and-play target) needs: Node.js runtime,
+        the OpenClaw gateway script, and a writable base directory. Used by the
+        ``--selfcheck`` CLI flag and the packaging smoke test so "does the
+        installer start correctly?" is answerable in CI without a real GUI/LLM.
+        """
+        rows: list[tuple[str, bool, str]] = []
+
+        try:
+            node = self._find_node()
+            rows.append(("node", True, node))
+        except FileNotFoundError as exc:
+            rows.append(("node", False, str(exc)))
+
+        try:
+            script = self._gateway_script()
+            rows.append(("openclaw", True, str(script)))
+        except (FileNotFoundError, RuntimeError) as exc:
+            rows.append(("openclaw", False, str(exc)))
+
+        home = self._repo_root / _OPENCLAW_HOME
+        try:
+            (home / ".openclaw" / "workspace").mkdir(parents=True, exist_ok=True)
+            probe = home / ".selfcheck_write_probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            rows.append(("writable_base", True, str(self._repo_root)))
+        except OSError as exc:
+            rows.append(("writable_base", False, str(exc)))
+
+        return rows
+
     def _sync_skills(self) -> None:
         """Sync workspace skills to openclaw-home (mirrors sync-openclaw-workspace.bat)."""
         src = self._resource_root() / _SRC_SKILLS

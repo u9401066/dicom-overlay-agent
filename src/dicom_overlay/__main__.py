@@ -29,6 +29,7 @@ from dicom_overlay.domain.modality_profile import (
     build_registry,
     set_active_registry,
 )
+from dicom_overlay.infrastructure.app_paths import app_base_dir
 from dicom_overlay.infrastructure.async_bridge import AsyncBridge
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
@@ -63,9 +64,36 @@ class _SignalBridge(QObject):
     vision_test_done = pyqtSignal(object)
 
 
+def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
+    """Verify the portable bundle can start; print a report and return exit code.
+
+    0 = all components OK (bundle is ready to run on this machine),
+    1 = at least one component missing (prints which).
+    """
+    rows: list[tuple[str, bool, str]] = [
+        ("base_dir", True, str(base_dir)),
+        ("config.yaml", config_path.exists(), str(config_path)),
+    ]
+    gateway = GatewayManager(repo_root=base_dir)
+    rows.extend(gateway.verify_runtime())
+
+    all_ok = all(ok for _, ok, _ in rows)
+    print("DICOM Overlay Agent — self-check")
+    for component, ok, detail in rows:
+        mark = "OK " if ok else "FAIL"
+        print(f"  [{mark}] {component}: {detail}")
+    print("RESULT:", "OK" if all_ok else "FAILED")
+    return 0 if all_ok else 1
+
+
 def main() -> None:
+    # --- Resolve portable base dir (USB plug-and-play) ---
+    # When frozen, anchor all runtime paths to the executable's folder, not the
+    # launch cwd (which may be System32). See infrastructure/app_paths.py.
+    base_dir = app_base_dir()
+
     # --- Load config ---
-    config_path = Path("config.yaml")
+    config_path = base_dir / "config.yaml"
     for arg in sys.argv[1:]:
         if arg.startswith("--config="):
             config_path = Path(arg.split("=", 1)[1])
@@ -77,6 +105,13 @@ def main() -> None:
     # --- Setup logging ---
     setup_logging(log_level=config.log_level, log_file=config.log_file)
     logger.info("DICOM Overlay Agent starting...")
+
+    # --- Portable self-check (USB plug-and-play verification) ---
+    # `--selfcheck` verifies the bundle can start (node + openclaw + writable
+    # base + config) and exits, without launching the GUI or contacting an LLM.
+    # Lets a fresh machine confirm "the installer starts correctly" in seconds.
+    if "--selfcheck" in sys.argv:
+        sys.exit(_run_selfcheck(base_dir, config_path))
 
     # --- Build modality registry (single source of truth, config-extensible) ---
     registry = build_registry(config.modalities)
@@ -309,7 +344,7 @@ def main() -> None:
         control_bar.set_pending_analysis(False)
         bridge.submit(agent.trigger_manual())
 
-    settings_store = DesktopSettingsStore(repo_root=Path.cwd(), config_path=config_path)
+    settings_store = DesktopSettingsStore(repo_root=base_dir, config_path=config_path)
 
     def on_trigger_mode_changed(mode) -> None:
         agent.set_trigger_mode(mode)
@@ -351,7 +386,7 @@ def main() -> None:
 
     def open_settings_dialog() -> None:
         dialog = SettingsDialog(
-            repo_root=Path.cwd(),
+            repo_root=base_dir,
             current_mode=agent.trigger_mode,
             parent=control_bar,
         )
@@ -467,7 +502,7 @@ def main() -> None:
     shortcut_toggle.activated.connect(_toggle_enable)
 
     # ─── Start Gateway + agent + MCP adapter ───
-    gateway = GatewayManager(repo_root=Path.cwd())
+    gateway = GatewayManager(repo_root=base_dir)
     try:
         gateway.start()
         ready = bridge.submit(gateway.wait_ready(timeout_sec=15)).result(timeout=20)
