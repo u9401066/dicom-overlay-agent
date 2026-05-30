@@ -96,6 +96,12 @@ class AnalysisResult:
     model_used: str = ""
     incomplete: bool = False
     incomplete_reasons: list[str] = field(default_factory=list)
+    # Advisory hints asking the user to manually zoom in their DICOM viewer and
+    # re-capture, because a region is too small in the screen-captured pixels to
+    # resolve any further by digital crop (screenshots cap at the screen
+    # resolution, e.g. 4K). Set by the multi-pass orchestrator; rendered by the
+    # overlay. Empty when no manual zoom is suggested.
+    zoom_hints: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

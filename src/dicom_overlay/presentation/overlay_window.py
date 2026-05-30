@@ -126,6 +126,18 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._incomplete_label.setVisible(False)
         self._layout.addWidget(self._incomplete_label)
 
+        # Manual-zoom hint: shown when a lesion is too small in the screen
+        # capture to resolve further by digital crop, so the user is asked to
+        # zoom in their DICOM viewer and re-capture.
+        self._zoom_hint_label = QLabel("")
+        self._zoom_hint_label.setWordWrap(True)
+        self._zoom_hint_label.setFont(QFont("Segoe UI", 9))
+        self._zoom_hint_label.setStyleSheet(
+            "color: #4ea1ff; padding-top: 6px;"
+        )
+        self._zoom_hint_label.setVisible(False)
+        self._layout.addWidget(self._zoom_hint_label)
+
         self._layout.addStretch()
 
     def update_result(self, result: AnalysisResult) -> None:
@@ -207,6 +219,15 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         else:
             self._incomplete_label.setText("")
             self._incomplete_label.setVisible(False)
+
+        # Manual-zoom hints (region too small in the screen capture).
+        zoom_hints = getattr(result, "zoom_hints", []) or []
+        if zoom_hints:
+            self._zoom_hint_label.setText("\n".join(zoom_hints))
+            self._zoom_hint_label.setVisible(True)
+        else:
+            self._zoom_hint_label.setText("")
+            self._zoom_hint_label.setVisible(False)
 
     def clear(self) -> None:
         while self._content_layout.count():

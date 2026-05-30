@@ -83,7 +83,9 @@ src = ["src"]
 select = [
     "E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM", "TCH", "PTH", "RUF",
 ]
-ignore = ["E501"]
+# RUF001/RUF003: fullwidth punctuation (，：；「」) is intentional, correct
+# typography for the Traditional-Chinese UI strings this product renders.
+ignore = ["E501", "RUF001", "RUF003"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["dicom_overlay"]
