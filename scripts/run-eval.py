@@ -49,6 +49,10 @@ _EKG_CHECKLIST_KEYS = [
     "qrs_duration", "qrs_morphology", "st_segment", "t_wave", "qtc_interval",
     "chamber_enlargement", "conduction", "av_block", "stemi_pattern", "ischemia",
 ]
+_CXR_CHECKLIST_KEYS = [
+    "airway", "lungs", "pleura", "cardiac_silhouette", "mediastinum",
+    "hila", "diaphragm", "bones", "soft_tissue", "lines_tubes",
+]
 
 
 def _load_cases(manifest_path: Path) -> list[EvalCase]:
@@ -61,6 +65,9 @@ def _load_cases(manifest_path: Path) -> list[EvalCase]:
                 modality=Modality(entry["modality"]),
                 expected_severity=Severity(entry["expected_severity"]),
                 expected_keywords=tuple(entry.get("keywords", [])),
+                expected_negatives=tuple(entry.get("negatives", [])),
+                target_axes=tuple(entry.get("target_axes", [])),
+                cant_miss=tuple(entry.get("cant_miss", [])),
                 label=entry.get("label", ""),
             )
         )
@@ -74,12 +81,16 @@ def _load_cases(manifest_path: Path) -> list[EvalCase]:
 
 def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
     keywords = list(case.expected_keywords)
-    detail = ", ".join(keywords) if keywords else "no acute finding"
+    # Fold the can't-miss labels into the synthesized read so the mock pipeline
+    # self-test passes its own hard gate (mock mode proves the SCORING path,
+    # not model skill -- a mock that drops the can't-miss would be a false fail).
+    detail_parts = keywords + list(case.cant_miss)
+    detail = ", ".join(detail_parts) if detail_parts else "no acute finding"
     findings = []
     if case.expected_severity in (Severity.WARNING, Severity.CRITICAL):
         findings.append({
             "id": "f1",
-            "label": keywords[0] if keywords else "finding",
+            "label": detail_parts[0] if detail_parts else "finding",
             "detail": detail,
             "severity": case.expected_severity.value,
             "regions": [],
@@ -92,6 +103,11 @@ def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
         if case.expected_severity is Severity.CRITICAL:
             checklist["st_segment"] = {"value": "ST elevation", "status": "critical"}
             checklist["stemi_pattern"] = {"value": "STEMI", "status": "critical"}
+    elif case.modality is Modality.CXR:
+        for key in _CXR_CHECKLIST_KEYS:
+            checklist[key] = {"value": "normal", "status": "normal"}
+        if case.expected_severity in (Severity.WARNING, Severity.CRITICAL):
+            checklist["lungs"] = {"value": "consolidation", "status": "warning"}
     summary = (
         f"{case.modality.value}: {detail}"
         if findings
@@ -221,6 +237,30 @@ def _print_summary(report: EvalReport, output_dir: Path) -> None:
         print(f"  [{flag}] {case.case_label:<24} "
               f"exp={case.expected_severity:<8} got={case.actual_severity:<8} "
               f"recall={case.keyword_recall:.0%}")
+    # Framework coverage matrix (Task B): which checklist axes were exercised
+    # by at least one normal AND one abnormal case.
+    if report.axis_coverage:
+        print("-" * 60)
+        print("  FRAMEWORK COVERAGE  (checklist axes exercised by the dataset)")
+        for mod_key, cov in sorted(report.axis_coverage.items()):
+            print(f"    {mod_key}: {cov['covered_axes']}/{cov['total_axes']} axes "
+                  f"touched ({cov['coverage_rate']:.0%}), "
+                  f"{cov['fully_covered_axes']} fully covered "
+                  f"(normal+abnormal, {cov['full_coverage_rate']:.0%})")
+            if cov["missing_axes"]:
+                print(f"      untested axes: {', '.join(cov['missing_axes'])}")
+    # Can't-miss hard gate (Task C).
+    print("-" * 60)
+    if report.cant_miss_total == 0:
+        print("  CAN'T-MISS GATE ..... (no can't-miss cases in dataset)")
+    elif report.cant_miss_passed:
+        print(f"  CAN'T-MISS GATE ..... PASS "
+              f"({report.cant_miss_caught_count}/{report.cant_miss_total} caught)")
+    else:
+        print(f"  CAN'T-MISS GATE ..... FAIL "
+              f"({report.cant_miss_caught_count}/{report.cant_miss_total} caught)")
+        for miss in report.cant_miss_missed:
+            print(f"      MISSED: {miss}")
     print("=" * 60)
     print(f"  artifacts: {output_dir}")
     if report.gateway_mode == "mock":
@@ -275,6 +315,12 @@ def main() -> int:
     elapsed = time.monotonic() - start
     _print_summary(report, output_dir)
     print(f"  total run time: {elapsed:.1f}s")
+    # Task C hard gate: a missed can't-miss diagnosis fails CI (non-zero exit),
+    # so a dropped STEMI blocks the build instead of just logging a line.
+    if report.cant_miss_missed:
+        print(f"\nFAIL: {len(report.cant_miss_missed)} can't-miss diagnosis(es) "
+              f"were not caught. See CAN'T-MISS GATE above.", file=sys.stderr)
+        return 3
     return 0
 
 

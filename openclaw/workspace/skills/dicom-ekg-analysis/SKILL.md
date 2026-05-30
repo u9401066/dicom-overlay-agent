@@ -90,3 +90,31 @@ Findings rules:
 - Only report findings you can actually observe in the image.
 - Report ALL findings — both normal and abnormal. A normal EKG should have ≥3 findings.
 - Use specific cardiology terminology (e.g. "Normal Sinus Rhythm" not just "Normal").
+
+Can't-miss diagnoses (read at attending-cardiologist level — escalate severity
+to critical, state the diagnosis explicitly in summary + findings, and set the
+matching checklist axis):
+- **STEMI** — ST elevation ≥1mm in ≥2 contiguous leads (≥2mm in V2-V3 for men
+  <40). Name the territory and culprit vessel:
+  - Anterior / anteroseptal (V1-V4) → LAD
+  - Inferior (II, III, aVF) → RCA (check V1/V4R for RV involvement; reciprocal
+    ST depression in I/aVL)
+  - Lateral (I, aVL, V5-V6) → LCx/diagonal
+  - Posterior (tall R + ST depression V1-V3, confirm V7-V9) → RCA/LCx
+  - **STEMI-equivalents:** de Winter T waves (upsloping ST depression + tall
+    symmetric T in precordials), Wellens (biphasic/deep T inversion V2-V3),
+    hyperacute T waves, new LBBB with concordant ST (Sgarbossa).
+- **Complete (third-degree) heart block** — AV dissociation, set ``av_block``.
+- **Ventricular tachycardia** — wide-complex regular tachycardia; assume VT
+  until proven otherwise.
+- **Hyperkalemia** — peaked T waves, widened QRS, flattened/absent P waves.
+- **Long QT / torsades risk** — QTc >500ms; flag drug/electrolyte risk.
+- **Brugada / WPW with AF / bidirectional VT** — note when the morphology fits.
+
+Reading depth (specialist expectations):
+- Quote rate as a number (e.g. "~78 bpm"), not just a band, when R-R is legible.
+- For ST changes, state magnitude, morphology (concave vs convex/tombstone),
+  and reciprocal changes — these distinguish STEMI from pericarditis/BER.
+- Always reconcile the checklist axes with each other (e.g. an "absent"
+  ``stemi_pattern`` is inconsistent with an "elevation" ``st_segment`` of
+  critical status — resolve the contradiction before returning).

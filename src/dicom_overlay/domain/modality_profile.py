@@ -116,6 +116,23 @@ _EKG_CHECKLIST = frozenset({
     "chamber_enlargement", "conduction", "av_block", "stemi_pattern", "ischemia",
 })
 
+# 10-point systematic CXR checklist — the attending radiologist "ABCDE + zones"
+# read. Mirrors the EKG approach so a chest film also gets a structured safety
+# net (each axis must be addressed, so pertinent negatives like "no pleural
+# effusion" cannot be silently skipped).
+_CXR_CHECKLIST = frozenset({
+    "airway",             # trachea midline / patent, carina
+    "lungs",              # lung fields per zone: consolidation, opacity, nodule
+    "pleura",             # effusion, pneumothorax
+    "cardiac_silhouette", # heart size / cardiothoracic ratio
+    "mediastinum",        # width, contour, masses
+    "hila",               # hilar size/contour, lymphadenopathy
+    "diaphragm",          # costophrenic angles, free air under diaphragm
+    "bones",              # ribs, clavicles, spine, fractures
+    "soft_tissue",        # subcutaneous emphysema, masses
+    "lines_tubes",        # ETT, CVC, NG, chest tube positions
+})
+
 # Built-in profiles for the currently shipped modalities. New modalities can be
 # added here, or — preferably — via the ``modalities:`` section of config.yaml.
 _BUILTIN_PROFILES: tuple[ModalityProfile, ...] = (
@@ -132,6 +149,7 @@ _BUILTIN_PROFILES: tuple[ModalityProfile, ...] = (
         display_name="Chest X-Ray",
         icon="🫁",
         skill_name="dicom-cxr-analysis",
+        checklist_keys=_CXR_CHECKLIST,
         aliases=("CHEST_XRAY", "CHEST_X_RAY"),
     ),
     ModalityProfile(
