@@ -86,9 +86,15 @@ The physician reads the original image; the agent annotates *on top* of it.
   falls back to static `region_maps` resolved by
   [`region_mapper.py`](src/dicom_overlay/infrastructure/region_mapper.py).
 - **Content** — a draggable [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
-  shows a systematic checklist (16 items for EKG); abnormal items surface first,
-  normal ones collapse. A [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py)
+  shows a systematic checklist (16 keys for EKG, a 10-axis read for CXR);
+  abnormal items surface first, normal ones collapse. A
+  [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py)
   lets the physician ask follow-up questions about the same image.
+- **Multi-pass zoom** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
+  re-reads abnormal regions at full ROI resolution to refine bboxes. Because the
+  only input is a screen capture (≤4K), a region too small in captured pixels
+  cannot be digitally enlarged usefully; instead it surfaces a `zoom_hints`
+  prompt asking the physician to zoom in the DICOM viewer and re-capture.
 - **Controls** — a small [`control_bar.py`](src/dicom_overlay/presentation/control_bar.py)
   offers pause / settings / manual re-trigger; panels are frameless,
   stay-on-top, and drag-to-move (`_DraggableWindowMixin`).
@@ -112,6 +118,11 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   `dicom-ct-brain-analysis`) including the bounding-box instructions.
 - Runners: [`scripts/run-image-harness-smoke.py`](scripts/run-image-harness-smoke.py)
   and [`scripts/verify-image-harness.py`](scripts/verify-image-harness.py).
+- [`eval_harness.py`](src/dicom_overlay/infrastructure/eval_harness.py) +
+  [`scripts/run-eval.py`](scripts/run-eval.py) score recognition against a
+  labeled dataset: axis×severity coverage, pertinent-negative recall, and a
+  **can't-miss hard gate** (missing a STEMI / tension pneumothorax / etc. fails
+  CI with a non-zero exit code).
 
 ### Core 3 — OpenClaw plugin compatibility
 
@@ -150,6 +161,13 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
   prefers it over system Node.js, giving a true zero-install bundle.
 - `pywin32` is a Windows-only conditional dependency to keep Linux/CI installs
   clean.
+- **Portable plug-and-play** — when frozen, runtime paths anchor to the
+  executable's folder (not the launch `cwd`, which may be `System32`) via
+  [`app_paths.py`](src/dicom_overlay/infrastructure/app_paths.py), so the bundle
+  runs unchanged from a USB stick on a fresh machine. Run
+  `DICOMOverlayAgent.exe --selfcheck` to verify Node.js, the OpenClaw runtime, a
+  writable base, and `config.yaml` all resolve — without launching the GUI or
+  contacting an LLM (exit 0 = ready).
 
 **Size budget (measured):**
 
@@ -187,7 +205,7 @@ internal `dist` chunks would couple the app to OpenClaw internals and break
 | `orchestrator` | Task decomposition + delegation | Opus 4.6 → GPT-5.4 |
 | `deep-thinker` | Complex reasoning + algorithms | Opus 4.6 → GPT-5.4 |
 | `researcher` | Read-only codebase exploration | Gemini 3.1 Pro → Sonnet 4.6 |
-| `test-runner` 🆓 | Run tests + iterate fixes | GPT-5 mini → GPT-4.1 |
+| `test-runner` 🆓 | Run tests + iterate fixes | GPT-5.5 mini → GPT-5 mini → GPT-4.1 |
 | `context-loader` 🆓 | Load Memory Bank + summarize | GPT-4.1 → GPT-5 mini |
 | `ask` 🆓 | Project Q&A | GPT-4.1 → Haiku 4.5 |
 | `review-panel` | Multi-model review committee | Opus 4.6 (3 AI cross-review) |

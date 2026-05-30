@@ -2,6 +2,46 @@
 
 ## Done
 
+- **文件同步 + 分段 commit + push** (2026-05-30)：README.md / README.zh-TW.md（Core 1 多趟放大＋CXR 10 軸、Core 2 eval 評分＋can't-miss gate、Core 4 USB 即插即用＋`--selfcheck`、test-runner GPT-5.5 mini）、CHANGELOG.md Unreleased、ROADMAP.md v0.4.0 全部更新；刪除暫存 `test_out.txt`。`research.agent.md`（無關 in-progress 變更）保留不提交
+- **USB 隨插隨用打包打通 + 自我檢查（--selfcheck）** (2026-05-30)：
+  - 🟢 **真正的可攜性地雷修掉**：`__main__.py` 全程用 `Path.cwd()` 當 base（gateway/settings/openclaw-home/data/log）。雙擊 exe 時 cwd 不保證等於 exe 資料夾（可能是 System32）→ 別台電腦會找不到 config、寫錯地方。新增 `infrastructure/app_paths.py` 純函式 `resolve_app_base_dir(frozen, executable, cwd)`：frozen 時用 `Path(sys.executable).parent`，dev 時維持 cwd。`main()` 改用 `app_base_dir()` 串接所有路徑
+  - 🟢 **Python 本身已包**：PyInstaller spec 嵌 CPython+stdlib+PyQt6（目標機免裝 Python）；Node.js 由 `fetch-node.ps1` 抓 portable `node\node.exe` 打包；OpenClaw runtime 由 `stage-openclaw-runtime.ps1` staged → 三者皆零安裝
+  - 🟢 **`--selfcheck` CLI**：`GatewayManager.verify_runtime()` 回傳 `[(component, ok, detail)]` 驗 node/openclaw/可寫 base；`__main__._run_selfcheck()` 印報告並 exit 0(全 OK)/1(缺件)，**不啟動 GUI、不連 LLM** → 別台電腦插上隨身碟跑 `DICOMOverlayAgent.exe --selfcheck` 幾秒內知道能不能用
+  - 🟢 測試：`test_infrastructure.py::TestAppBaseDir`(frozen 用 exe 夾、dev 用 cwd 各 1 測)；`tests/smoke/test_packaging_bundle.py`：in-process self-check（fast，always）+ 真實 exe `--selfcheck`（**opt-in `RUN_BUNDLE_SMOKE=1`**，避免跑到 stale build 或彈 GUI 視窗）
+  - 🟡 **教訓**：第一版 packaging 測試沒 gate，CI 跑到上次 session 的 stale build（無 --selfcheck）→ 啟動 GUI hang 120s。改 opt-in env var + timeout 60s。發布流程：`build-exe.bat` 後再 `RUN_BUNDLE_SMOKE=1` 驗新 bundle
+  - 🟢 **227 passed, 1 skipped**（packaging exe 測試正確跳過）；ruff 乾淨
+  - 🟢 `test-runner` agent 模型改 GPT-5.5 mini 優先（fallback GPT-5 mini → GPT-4.1）
+- **MultiPass 解析度感知（4K 截圖上限 + 手動放大提示）** (2026-05-30)：
+  - 🟢 **問題**：影像 API 尚未接入前靠螢幕截圖（上限 4K），對截圖做數位切片放大**不會增加真實解析度**——某病灶在截圖中只佔少數像素時，數位放大只是內插模糊。
+  - 🟢 `multi_pass.py` 新增純函式：`region_source_edge_px(region, source_size_px)`（回傳該區在截圖中的短邊像素）、`needs_manual_zoom(...)`（短邊 < `DEFAULT_MIN_ZOOM_SOURCE_EDGE_PX=256` 視為太小）、`build_manual_zoom_message(label, px)`（zh-TW 提示文案）
+  - 🟢 `MultiPassInterpreter.__init__` 加 `min_zoom_source_edge_px`；`interpret(...)` 新增選用參數 `source_size_px`：提供時，太小的目標**不做數位切片**，改 append 手動放大提示到 `zoom_hints`；夠大才數位切片（可救回 pass-1 縮圖損失）。`source_size_px=None` → 行為與舊版完全一致（向後相容）
+  - 🟢 `AnalysisResult` 新增 `zoom_hints: list[str]` 欄位（仿 `incomplete_reasons` 模式：app/infra 寫、presentation 讀）；`overlay_window.py` 加藍色獨立提示標籤渲染（與 amber incomplete 徽章語意分離）
+  - 🟢 PHI 不變式：手動放大路徑**完全不切片**，不可能擴大截取範圍 → ROI guardrail 不動。DDD 邊界不動（純函式可測、切片仍委派 `ImageCropper`）
+  - 🟢 新增 11 測試（短邊像素數學、門檻判斷、文案、小區→提示不切片、大區→仍數位切片、未知尺寸→照舊、混合目標各走一路）→ **unit+smoke 224 passed**
+  - 🟢 ruff 設定：`RUF001`/`RUF003`（全形標點）加入 ignore——對 zh-TW 產品的 UI 字串而言全形標點是正確排版（既有 overlay 徽章本就觸發此誤報）
+  - 🟡 **未接線（後續同前）**：`OverlayAgent` 改呼叫編排器並傳入截取尺寸，屬高風險 GUI/狀態機改動，暫緩；核心邏輯已穩
+- **CXR 系統性 checklist + 軸×嚴重度覆蓋矩陣 + can't-miss 硬門檻**(2026-05-30)：
+  - 🟢 **A. CXR 從「沒框架」變「有安全網」**：`modality_profile.py` 新增 `_CXR_CHECKLIST`(10 軸：airway/lungs/pleura/cardiac_silhouette/mediastinum/hila/diaphragm/bones/soft_tissue/lines_tubes)並掛上 CXR built-in profile → validator 自動強制(對齊 EKG 16-key 做法)。CXR skill prompt(`openclaw/` + `openclaw-home/` 兩份同步)改寫成完整 systematic 10 點 JSON schema + 閱讀順序 + can't-miss 清單
+  - 🟢 **B. 軸×嚴重度矩陣 + 框架覆蓋率**：`EvalCase` 新增 `target_axes`；`eval_harness` 新增 `compute_axis_coverage()`(每模態回報 total/covered/coverage_rate/fully_covered(normal+abnormal 都測過)/missing_axes/matrix)；`EvalReport.axis_coverage` + scorecard 報「幾個軸被測過」而非只報平均；manifest 6 案全標 `target_axes`
+  - 🟢 **C. can't-miss 硬門檻擋 CI**：`eval_harness` 新增 `CANT_MISS` 參考清單(EKG: STEMI/complete heart block/VT/hyperkalemia/long QT/Wellens；CXR: tension pneumothorax/pneumothorax/large effusion/pneumomediastinum/free air)；`EvalCase.cant_miss` + `CaseScore.cant_miss_caught/missed` + `EvalReport.cant_miss_total/caught_count/missed/cant_miss_passed`。caught = **abnormal 嚴重度符合 AND 致命診斷字串出現在判讀**(漏判 STEMI 卻說 normal 也算 miss)。`run-eval.py` 漏任一 can't-miss → **exit code 3 擋 CI**(不再只記一行)；manifest STEMI 案標 `cant_miss:["STEMI"]`
+  - 🟢 **EKG harness 強化到專科級**：EKG skill(兩份同步)加 can't-miss 段(STEMI territory→culprit vessel 對應、de Winter/Wellens/Sgarbossa STEMI-equivalents、complete heart block/VT/hyperkalemia/long QT/Brugada/WPW)+ reading depth(報數值心率、ST 形態與 reciprocal、checklist 軸自洽性檢查)。**不動 16 keys**(會破壞 validator/測試)
+  - 🟢 新增 5 測試(axis coverage normal+abnormal、can't-miss caught、called-normal miss、not-named miss、aggregate cant_miss+coverage)→ **unit+smoke 213 passed**
+  - 🟡 mock 端到端需先下載 6 張 Wikimedia 影像(gitignored 未存在)才能跑 `run-eval.py --mock`；邏輯已由 smoke 測試全覆蓋
+- **harness 新增 pertinent-negative(切題陰性發現)評分** (2026-05-30)：
+  - 🟢 釐清現況：**生成端有**(EKG 16-key checklist 用 `absent`/`normal` 值即結構化陰性發現,OutputValidator 強制 16 鍵到齊→不能漏掉「排除 STEMI」);**評分端原本沒有**(`_haystack` 只收 summary+finding,完全不看 checklist,也無「該排除什麼」的 ground truth)
+  - 🟢 `EvalCase` 新增 `expected_negatives: tuple[str,...]`；`CaseScore` 新增 `negative_hits/misses/recall`；`EvalReport` 新增 `mean_negative_recall`
+  - 🟢 新增 `_negative_haystack()`：在 summary+finding 之外**併入 checklist 的 key 與 value**,所以 EKG 陰性發現(藏在 checklist 的 `stemi_pattern: absent`)也能被計分；正向 `keyword_recall` 維持只看 summary+finding(不改既有語意)
+  - 🟢 抽出共用 `_recall()` helper;`run-eval.py` manifest 讀 `negatives` 欄位
+  - 🟢 新增 5 測試(free-text 陰性召回、checklist 陰性召回、漏排除被扣分、無陰性預設滿分、aggregate `mean_negative_recall`)→ **unit+smoke 208 passed**
+  - 🟡 後續：manifest 的 6 案尚未填 `negatives`;CXR 仍無 checklist→陰性只能靠 free-text(呼應先前 CXR 無系統性 checklist 的缺口)
+- **多趟判讀編排器 MultiPassInterpreter（反覆標註 + 主動切片放大）** (2026-05-30)：
+  - 🟢 新增 `application/multi_pass.py`：coarse→crop→refine 編排器。Pass 1 粗掃整張縮圖；對每個 abnormal(warning/critical) 且有 bbox 的 finding，從**原解析度** ROI 圖切出該區(含 padding)再送 `analyze` 細看；精修 bbox 用 `remap_bbox` 映射回 ROI 全域座標
+  - 🟢 純函式可測：`clamp_unit` / `pad_region`(往外擴 padding，clamp 回 [0,1]) / `remap_bbox`(crop 相對座標→全域) / `select_zoom_targets`(critical 優先、無 bbox 跳過、max_targets 上限)
+  - 🟢 DDD 乾淨：不解碼影像，切片委派注入的 `ImageCropper` Protocol（PIL 留在 infra）；只呼叫 `VisionAnalyzerService`(connect+analyze)，不碰 OpenClaw 內部 → Core 3 邊界不動
+  - 🟢 PHI 不變式：zoom crop 永遠是 ROI 的**子集**(只會縮小)，測試 `test_crop_region_is_subset_of_roi` 鎖死 → 不違反 ROI guardrail
+  - 🟢 收斂保護：`max_zoom_targets`(預設 3) 限制趟數；單一 zoom 失敗只 log warning 保留粗框，不讓整趟失敗
+  - 🟢 新增 `tests/unit/test_multi_pass.py`（20 測試，含座標數學、target 選取、編排、額外 finding 串接）→ **unit 194 passed**
+  - 🟡 **未接線（後續）**：overlay 累積標註(`show_result` 目前覆蓋 `_highlights`)與 `OverlayAgent` ANALYZING 狀態改呼叫編排器，屬高風險 GUI/狀態機改動，暫緩；核心邏輯已穩
 - **真實公開標註資料集辨識實驗 + harness 修正** (2026-05-30)：
   - 🟢 **真實資料來源**：HuggingFace / GitHub raw 在本機網路被擋（連線重置 / DNS 失敗）；改用可連的 **Wikimedia Commons** 6 張已標註醫療影像（3 CXR + 3 EKG，授權 CC0/PD/CC-BY，記於 `data/eval-datasets/real-urls.commons.json`）
   - 🔴 **真實資料抓出 4 個 production / harness bug**：

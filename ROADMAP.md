@@ -32,6 +32,15 @@
 - [x] 設定 UI + 持久化、評估 harness、視覺探針
 - [x] 6 組 Sonnet 平行查核 + 修正（多螢幕座標、modality fallback、config 防呆）
 
+### v0.4.0 — 判讀強化與可攜帶封裝 (2026-05-30)
+
+- [x] 多趟放大判讀（resolution-aware）：完整 ROI 解析度重讀異常區、4K 截圖無法數位放大時改提示醫師放大重截（`zoom_hints`）
+- [x] CXR 10 軸系統性判讀 checklist + validator 強制
+- [x] 辨識評分 harness：軸×嚴重度覆蓋率、pertinent-negative recall、can't-miss 硬性 CI gate
+- [x] 評估 harness 真實資料解析容錯強化
+- [x] 可攜帶 USB 即插即用：凍結時路徑錨定執行檔資料夾（`app_paths.py`）+ `--selfcheck` 自我檢查
+- [x] `test-runner` agent 改用 GPT-5.5 mini
+
 ## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制

@@ -80,8 +80,12 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
   fallback 到 [`region_mapper.py`](src/dicom_overlay/infrastructure/region_mapper.py)
   解析的 static `region_maps`。
 - **內容** — 可拖曳的 [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
-  顯示系統性 checklist（EKG 共 16 項），異常項優先、正常項摑疊；
+  顯示系統性 checklist（EKG 共 16 鍵、CXR 為 10 軸判讀），異常項優先、正常項摺疊；
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py) 讓醫師針對同一張影像追問。
+- **多趟放大** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
+  以完整 ROI 解析度重讀異常區域以精修 bbox。由於唯一輸入是螢幕截圖（≤4K），
+  若某區域在截到的像素中太小，數位放大無意義；此時改以 `zoom_hints` 提示，
+  請醫師在 DICOM viewer 內放大後重新截圖。
 - **控制** — 小型 [`control_bar.py`](src/dicom_overlay/presentation/control_bar.py)
   提供 暖停 / 設定 / 手動重觸發；面板為 frameless、置頂、可拖曳
   （`_DraggableWindowMixin`）。
@@ -104,6 +108,10 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
   `dicom-ct-brain-analysis`）含 bbox 指示。
 - 執行器：[`scripts/run-image-harness-smoke.py`](scripts/run-image-harness-smoke.py)
   與 [`scripts/verify-image-harness.py`](scripts/verify-image-harness.py)。
+- [`eval_harness.py`](src/dicom_overlay/infrastructure/eval_harness.py) +
+  [`scripts/run-eval.py`](scripts/run-eval.py) 以標註資料集評分辨識能力：
+  軸×嚴重度覆蓋率、pertinent-negative recall，以及 **can't-miss 硬性 gate**
+  （漏掉 STEMI／張力性氣胸 等致命診斷時 CI 以非零碼失敗）。
 
 ### 核心 3 — OpenClaw plugin 兼容性
 
@@ -139,6 +147,12 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   [`gateway_manager.py`](src/dicom_overlay/infrastructure/gateway_manager.py)
   會優先使用它而非系統 Node.js，達成真正零安裝。
 - `pywin32` 為 Windows-only 條件依賴，保持 Linux/CI 安裝乾淨。
+- **可攜帶即插即用** — 凍結（frozen）時，runtime 路徑透過
+  [`app_paths.py`](src/dicom_overlay/infrastructure/app_paths.py) 錨定到
+  執行檔所在資料夾（而非啟動 `cwd`，後者可能是 `System32`），因此 bundle 能在
+  全新機器上從 USB 隨身碟原樣執行。執行 `DICOMOverlayAgent.exe --selfcheck`
+  即可驗證 Node.js、OpenClaw runtime、可寫入 base 與 `config.yaml` 全部就緒——
+  不啟動 GUI、不呼叫 LLM（exit 0 = 就緒）。
 
 **體積預算（實測）：**
 
@@ -176,7 +190,7 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 | `orchestrator` | 任務拆解 + 委派 | Opus 4.6 → GPT-5.4 |
 | `deep-thinker` | 複雜推理 + 算法 | Opus 4.6 → GPT-5.4 |
 | `researcher` | 唯讀 codebase 探索 | Gemini 3.1 Pro → Sonnet 4.6 |
-| `test-runner` 🆓 | 跑測試 + 迭代修復 | GPT-5 mini → GPT-4.1 |
+| `test-runner` 🆓 | 跑測試 + 迭代修復 | GPT-5.5 mini → GPT-5 mini → GPT-4.1 |
 | `context-loader` 🆓 | 載入 Memory Bank + 摘要 | GPT-4.1 → GPT-5 mini |
 | `ask` 🆓 | 專案問答 | GPT-4.1 → Haiku 4.5 |
 | `review-panel` | 多模型審查委員會 | Opus 4.6（3 AI 交叉審查） |

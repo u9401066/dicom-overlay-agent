@@ -9,6 +9,10 @@
 
 ### Added
 
+- **多趟放大判讀（resolution-aware）**：`application/multi_pass.py`（`MultiPassInterpreter`）以完整 ROI 解析度重讀異常區域精修 bbox；當區域在截到的像素中太小（≤4K 截圖無法有意義數位放大）時，改以 `domain/entities.py` 新增的 `AnalysisResult.zoom_hints` 提示醫師在 viewer 內放大重截，`presentation/overlay_window.py` 以藍色 hint 標籤呈現
+- **CXR 10 軸系統性判讀**：`domain/modality_profile.py` 擴充 CXR checklist 與 validator 強制；skills（`dicom-cxr-analysis`、`dicom-ekg-analysis`）prompt 強化
+- **辨識評分與 can't-miss gate**：`infrastructure/eval_harness.py` + `scripts/run-eval.py` 以標註資料集計算 軸×嚴重度覆蓋率、pertinent-negative recall，並對漏掉致命診斷（STEMI／張力性氣胸等）以非零碼讓 CI 失敗；對真實資料強化解析容錯（list 形式 checklist、WS 16 MiB、downscale、User-Agent）
+- **可攜帶 USB 即插即用 + 自我檢查**：`infrastructure/app_paths.py`（凍結時 runtime 路徑錨定執行檔資料夾而非 `cwd`）、`__main__.py` `--selfcheck` 旗標、`gateway_manager.py` `verify_runtime()`（檢查 Node.js／OpenClaw runtime／可寫 base／config.yaml，不啟 GUI、不呼叫 LLM），`tests/smoke/test_packaging_bundle.py` 驗證
 - **四大核心維護章程**：`AGENTS.md` 定義 Core 1 圖層互動、Core 2 OpenClaw harness、Core 3 Gateway 協定相容、Core 4 最小封裝；README 同步章節
 - **Core 2 完整判讀 harness**：`image_harness_smoke.py`（截圖 → `chat.send` 影像附件 → event stream → artifacts）、`image_harness_validator.py`（gateway 合約 + 影像 payload 驗證）、`scripts/run-image-harness-smoke.py`、`scripts/verify-image-harness.py`
 - **多影像模態註冊表**：`domain/modality_profile.py`（`ModalityRegistry` + `build_registry`），支援 config 擴充模態（EKG/CXR/CT_BRAIN 內建），16-key 結果 schema 驗證
@@ -34,6 +38,8 @@
 
 ### Changed
 
+- `test-runner` agent 模型優先序改為 `GPT-5.5 mini → GPT-5 mini → GPT-4.1`
+- ruff 設定忽略 `RUF001`/`RUF003`（zh-TW 全形標點為正確排版，非錯字）
 - 遷移 4 個 `.chatmode.md` 至 `.agent.md` 格式
 - 更新 `copilot-instructions.md`（agents 表、免費模型策略、hook 表）
 - 更新 `git-workflow.md` bylaws（Pre-commit Hooks 章節）
