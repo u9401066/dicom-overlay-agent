@@ -144,6 +144,7 @@ def build_openclaw_config(
 
     return {
         "gateway": {
+            "mode": "local",
             "auth": {
                 "token": f"${{{gateway_token_env}}}",
             },

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import subprocess
@@ -187,8 +188,16 @@ class GatewayManager:
         home = self._repo_root / _OPENCLAW_HOME
         config = self._repo_root / _OPENCLAW_CONFIG
         if not config.exists():
+            # OpenClaw 2026.5.x refuses to start when gateway.mode is missing
+            # ("Gateway start blocked: existing config is missing gateway.mode").
+            # A bare "{}" placeholder is therefore not enough — seed the minimal
+            # valid local-gateway shape so a first run before the user has saved
+            # a provider profile still boots instead of hard-failing.
             config.parent.mkdir(parents=True, exist_ok=True)
-            config.write_text("{}", encoding="utf-8")
+            config.write_text(
+                json.dumps({"gateway": {"mode": "local"}}, indent=2),
+                encoding="utf-8",
+            )
         env = {
             **os.environ,
             **read_env_file(self._repo_root / ".env"),
@@ -196,10 +205,15 @@ class GatewayManager:
             "OPENCLAW_CONFIG_PATH": str(config),
             "HOME": str(home),
             "USERPROFILE": str(home),
-            "OPENCLAW_DISABLE_BUNDLED_PLUGINS": os.environ.get(
-                "OPENCLAW_DISABLE_BUNDLED_PLUGINS", "1"
-            ),
         }
+        # Do NOT disable bundled plugins by default: the agent harness depends
+        # on OpenClaw's bundled plugin surfaces (e.g. speech-core/runtime-api),
+        # and disabling them makes every agent run fail with
+        # "Unable to resolve bundled plugin public surface ...". Only honour the
+        # flag if the operator explicitly set it in their environment.
+        disable_plugins = os.environ.get("OPENCLAW_DISABLE_BUNDLED_PLUGINS")
+        if disable_plugins is not None:
+            env["OPENCLAW_DISABLE_BUNDLED_PLUGINS"] = disable_plugins
 
         cmd = [node, str(script), "gateway", "run", "--verbose"]
         logger.info("Starting OpenClaw Gateway: %s", " ".join(cmd))

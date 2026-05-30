@@ -118,6 +118,8 @@ class TestOpenClawSettings:
             "id": "OPENROUTER_API_KEY",
         }
         assert provider["baseUrl"] == "https://openrouter.ai/api/v1"
+        # OpenClaw 2026.5.x blocks startup unless gateway.mode is set.
+        assert config["gateway"]["mode"] == "local"
         assert config["agents"]["defaults"]["model"]["primary"] == (
             "openrouter/openai/gpt-5.2-codex"
         )
