@@ -51,6 +51,13 @@ class ImageProcessorService(ABC):
     def to_base64(self, image_data: bytes) -> str:
         """Encode image bytes to base64 string."""
 
+    @abstractmethod
+    def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
+        """Shrink image so its longest edge <= max_edge (PNG bytes).
+
+        Only shrinks; never upscales. ``max_edge <= 0`` returns input unchanged.
+        """
+
 
 class VisionAnalyzerService(ABC):
     """Sends images to Vision API for analysis (spec §3.3)."""

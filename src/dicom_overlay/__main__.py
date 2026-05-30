@@ -20,10 +20,18 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QInputDialog
 
 from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
+from dicom_overlay.application.interpretation_harness import (
+    summarize_result_for_followup,
+)
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import AgentState, Modality
+from dicom_overlay.domain.modality_profile import (
+    build_registry,
+    set_active_registry,
+)
 from dicom_overlay.infrastructure.async_bridge import AsyncBridge
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
+from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
@@ -34,13 +42,13 @@ from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor, ScreenMonitor
 from dicom_overlay.infrastructure.tts_speaker import speak_error, speak_result
+from dicom_overlay.infrastructure.vision_probe import VisionSmokeTester
 from dicom_overlay.presentation.control_bar import ControlBarWindow
 from dicom_overlay.presentation.overlay_window import OverlayWindow
 from dicom_overlay.presentation.roi_setup import run_roi_setup
+from dicom_overlay.presentation.settings_dialog import SettingsDialog
 
 logger = structlog.get_logger("dicom_overlay")
-
-_MODALITY_CYCLE = [Modality.EKG, Modality.CXR, Modality.CT_BRAIN]
 
 
 class _SignalBridge(QObject):
@@ -48,9 +56,11 @@ class _SignalBridge(QObject):
 
     state_changed = pyqtSignal(object, object)
     analysis_result = pyqtSignal(object)
+    pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
     chat_done = pyqtSignal(str, str)
     chat_failed = pyqtSignal()
+    vision_test_done = pyqtSignal(object)
 
 
 def main() -> None:
@@ -68,6 +78,10 @@ def main() -> None:
     setup_logging(log_level=config.log_level, log_file=config.log_file)
     logger.info("DICOM Overlay Agent starting...")
 
+    # --- Build modality registry (single source of truth, config-extensible) ---
+    registry = build_registry(config.modalities)
+    set_active_registry(registry)
+
     # --- Build infrastructure ---
     screen_monitor = ScreenMonitor(hash_algorithm=config.monitor.hash_algorithm)
     image_processor = ImageProcessor()
@@ -76,13 +90,16 @@ def main() -> None:
         gateway_url=config.openclaw.gateway_url,
         timeout_sec=config.openclaw.timeout_sec,
         reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
+        connect_timeout_sec=config.openclaw.connect_timeout_sec,
+        inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        registry=registry,
     )
 
     # --- Build hook pipeline (guardrails) ---
     hooks = [
         RateLimiter(),
-        InputGuard(),
-        OutputValidator(),
+        InputGuard(registry=registry),
+        OutputValidator(registry=registry),
     ]
     hooked_analyzer = HookedVisionAnalyzer(inner=openclaw_client, hooks=hooks)
 
@@ -110,15 +127,22 @@ def main() -> None:
     )
 
     control_bar = ControlBarWindow()
+    control_bar.set_trigger_mode(config.analysis.trigger_mode)
     screen = app.primaryScreen()
     if screen:
         geo = screen.geometry()
-        control_bar.position_bottom_right(geo.width(), geo.height())
-        # Set screen dimensions for screen-based ROI capture
+        # Set screen dimensions/origin for screen-based ROI capture.
         dpr = screen.devicePixelRatio()
         agent._screen_width = int(geo.width() * dpr)
         agent._screen_height = int(geo.height() * dpr)
+        # Screen origin on the virtual desktop (physical px) — non-zero on
+        # multi-monitor layouts; required so mss grabs the correct screen.
+        agent._screen_left = int(geo.x() * dpr)
+        agent._screen_top = int(geo.y() * dpr)
         agent._dpr = dpr
+        control_bar.position_bottom_right(
+            geo.width(), geo.height(), geo.x(), geo.y()
+        )
 
     # --- Async bridge (background thread for all agent operations) ---
     bridge = AsyncBridge()
@@ -129,10 +153,25 @@ def main() -> None:
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
     agent.on_state_change = signals.state_changed.emit
     agent.on_analysis_result = signals.analysis_result.emit
+    agent.on_pending_analysis = lambda _reason: signals.pending_analysis.emit(
+        "New image ready. Click Analyze."
+    )
     agent.on_error = signals.error_msg.emit
 
     # ─── Qt slots (run on main thread) ───
     modality_index = [0]
+    # Cycle through registry-supported modalities that map to a Modality enum.
+    _known_values = {m.value for m in Modality}
+    modality_cycle = [
+        Modality(k) for k in registry.supported_keys() if k in _known_values
+    ] or [Modality.EKG]
+    _unmapped = [k for k in registry.supported_keys() if k not in _known_values]
+    if _unmapped:
+        logger.warning(
+            "Config modalities %s are registered but not in the Modality enum; "
+            "they cannot be selected via the cycle button until added to the enum.",
+            _unmapped,
+        )
 
     def on_state_change(_old: AgentState, new: AgentState) -> None:
         control_bar.update_state(new)
@@ -205,16 +244,24 @@ def main() -> None:
         if agent.target_window:
             overlay.position_over_window(agent.target_window)
         overlay.show_result(result, highlights)
+        control_bar.set_pending_analysis(False)
         if config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
 
     def on_error(msg: str):
+        if msg.startswith("New image ready"):
+            control_bar.set_pending_analysis(True)
         control_bar.set_status(f"⚠ {msg}")
         if config.overlay.tts_enabled:
             speak_error(msg)
 
+    def on_pending_analysis(msg: str) -> None:
+        control_bar.set_pending_analysis(True)
+        control_bar.set_status(msg)
+
     signals.state_changed.connect(on_state_change)
     signals.analysis_result.connect(on_analysis_result)
+    signals.pending_analysis.connect(on_pending_analysis)
     signals.error_msg.connect(on_error)
 
     # ─── Display timeout — single source of truth (overlay timer) ───
@@ -259,11 +306,20 @@ def main() -> None:
         bridge.submit(_r())
 
     def on_retrigger():
+        control_bar.set_pending_analysis(False)
         bridge.submit(agent.trigger_manual())
 
+    settings_store = DesktopSettingsStore(repo_root=Path.cwd(), config_path=config_path)
+
+    def on_trigger_mode_changed(mode) -> None:
+        agent.set_trigger_mode(mode)
+        settings_store.save_trigger_mode(mode)
+        control_bar.set_trigger_mode(mode)
+        control_bar.set_status(f"Mode: {mode.value}")
+
     def on_modality_cycle():
-        modality_index[0] = (modality_index[0] + 1) % len(_MODALITY_CYCLE)
-        mod = _MODALITY_CYCLE[modality_index[0]]
+        modality_index[0] = (modality_index[0] + 1) % len(modality_cycle)
+        mod = modality_cycle[modality_index[0]]
 
         async def _set():
             agent.set_modality(mod)
@@ -293,17 +349,52 @@ def main() -> None:
             f" left={roi.left} right={roi.right}"
         )
 
+    def open_settings_dialog() -> None:
+        dialog = SettingsDialog(
+            repo_root=Path.cwd(),
+            current_mode=agent.trigger_mode,
+            parent=control_bar,
+        )
+        dialog.trigger_mode_saved.connect(on_trigger_mode_changed)
+        dialog.roi_setup_requested.connect(open_settings_roi_setup)
+        dialog.vision_test_requested.connect(_run_vision_test)
+        dialog.exec()
+
+    def _run_vision_test(_profile) -> None:
+        control_bar.set_status("Testing image support...")
+        tester = VisionSmokeTester(openclaw_client)
+        future = bridge.submit(tester.probe())
+
+        def _done(f):
+            try:
+                signals.vision_test_done.emit(f.result())
+            except Exception as exc:
+                logger.exception("Vision smoke test failed")
+                signals.error_msg.emit(f"Vision test failed: {exc}")
+
+        future.add_done_callback(_done)
+
+    def _on_vision_test_done(result) -> None:
+        if result.ok:
+            control_bar.set_status(
+                f"Vision OK ({result.model_used or 'configured model'})"
+            )
+        else:
+            control_bar.set_status(f"Vision failed: {result.message}")
+
     control_bar.pause_clicked.connect(on_pause)
     control_bar.resume_clicked.connect(on_resume)
     control_bar.retrigger_clicked.connect(on_retrigger)
     control_bar.modality_cycle.connect(on_modality_cycle)
-    control_bar.settings_clicked.connect(open_settings_roi_setup)
+    control_bar.trigger_mode_changed.connect(on_trigger_mode_changed)
+    control_bar.settings_clicked.connect(open_settings_dialog)
     control_bar.dismiss_clicked.connect(on_dismiss)
+    signals.vision_test_done.connect(_on_vision_test_done)
 
     # ─── Chat handler (non-blocking) ───
     def on_chat() -> None:
         text, ok = QInputDialog.getText(
-            control_bar, "問 AI", "請輸入問題：",
+            control_bar, "問 AI", "請輸入問題:",
         )
         if not ok or not text.strip():
             return
@@ -315,7 +406,17 @@ def main() -> None:
             overlay.position_over_window(agent.target_window)
         overlay.show_chat_waiting(question)
 
-        future = bridge.submit(openclaw_client.chat(question))
+        if agent.last_image_base64 and agent.last_result:
+            context = summarize_result_for_followup(agent.last_result)
+            future = bridge.submit(
+                openclaw_client.chat_about_image(
+                    question,
+                    image_base64=agent.last_image_base64,
+                    context=context,
+                )
+            )
+        else:
+            future = bridge.submit(openclaw_client.chat(question))
 
         def _chat_done(f):
             try:
