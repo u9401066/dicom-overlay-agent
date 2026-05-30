@@ -2,6 +2,17 @@
 
 ## Done
 
+- **真實公開標註資料集辨識實驗 + harness 修正** (2026-05-30)：
+  - 🟢 **真實資料來源**：HuggingFace / GitHub raw 在本機網路被擋（連線重置 / DNS 失敗）；改用可連的 **Wikimedia Commons** 6 張已標註醫療影像（3 CXR + 3 EKG，授權 CC0/PD/CC-BY，記於 `data/eval-datasets/real-urls.commons.json`）
+  - 🔴 **真實資料抓出 4 個 production / harness bug**：
+    1. `fetch-eval-datasets.py` 缺 User-Agent → Wikimedia 回 403（加 `_HTTP_HEADERS`）
+    2. `--urls-from` 真實跑零下載時靜默 fallback 合成資料 → 改 fail loud (`return 1`)
+    3. eval 未 downscale（送原圖最大 50MB，與 production 不一致）→ 補 `downscale_to_max_edge(1568)`
+    4. **WS 1 MiB 預設 frame 上限**（真圖 base64 > 1MiB 直接斷線）→ client connect + mock serve 設 `max_size=16 MiB`
+  - 🔴 **CXR checklist 回傳 list（非 dict）導致 `AttributeError: 'list' object has no attribute 'items'`**：`_parse_result` 改用新 helper `_iter_checklist()` 容錯 dict / list（list-of-dict 取 key/name/label/item，scalar 用 `item_N`）；新增 2 回歸測試 → **233 passed**
+  - 🟢 **真實實驗結果**（gpt-4o-mini, 6/6 案無 error）：severity 83%、abnormal 83%、schema 100%（修正前）、bbox in-bounds 100%、keyword recall 57%、mean latency 16.3s。artifacts: `data/eval/real-20260530-091759/scorecard.json`
+  - 🟡 **有效發現**：STEMI ECG 被 gpt-4o-mini 誤判為 normal（模型能力限制，非 harness bug）— 證明 harness 能抓出模型漏判
+  - 🟡 gateway 啟動須設 `OPENCLAW_CONFIG_PATH` / `OPENCLAW_STATE_DIR` / `HOME` / `USERPROFILE` 指向 repo-local config，否則載入錯誤預設 config → token mismatch
 - **6 組 Sonnet 平行查核 + 修正** (2026-05-30)：
   - 🔴 **多螢幕座標錯位修正（潛在 PHI 風險）**：`__main__.py` 只記 `geo.width/height`、漏 `geo.x/y`，導致主螢幕不在原點時 mss 截到錯誤螢幕。修正：`OverlayAgent` 新增 `screen_left/top`、`_get_roi_rect` 與 inline capture_rect 加上螢幕原點 offset、`control_bar.position_bottom_right` 加 `screen_left/top` 參數、`__main__` 傳入 `geo.x/y*dpr`。（highlight 為 widget-local，無需改）
   - 🟡 **modality 解析 fallback 改善**：`openclaw_client._parse_result` 新增 `request_modality` 參數，未知/缺漏 modality 改回退「請求時的 modality」並 log warning（不再靜默寫死 EKG）

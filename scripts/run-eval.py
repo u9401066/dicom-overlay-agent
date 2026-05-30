@@ -42,6 +42,8 @@ from dicom_overlay.infrastructure.openclaw_client import OpenClawClient  # noqa:
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor  # noqa: E402
 
 _DATASET_DIR = _REPO_ROOT / "data" / "eval-datasets"
+# Match the production default (entities.OpenClawConfig.max_image_edge_px).
+_MAX_IMAGE_EDGE_PX = 1568
 _EKG_CHECKLIST_KEYS = [
     "heart_rate", "rhythm", "regularity", "axis", "p_wave", "pr_interval",
     "qrs_duration", "qrs_morphology", "st_segment", "t_wave", "qtc_interval",
@@ -115,7 +117,11 @@ class _MockGateway:
         self.url = ""
 
     async def __aenter__(self) -> _MockGateway:
-        self._server = await websockets.serve(self._handler, "127.0.0.1", 0)
+        # Match the client's raised frame limit so multi-MB real image
+        # payloads are accepted instead of closing the socket (code 1009).
+        self._server = await websockets.serve(
+            self._handler, "127.0.0.1", 0, max_size=16 * 1024 * 1024
+        )
         port = self._server.sockets[0].getsockname()[1]
         self.url = f"ws://127.0.0.1:{port}"
         return self
@@ -167,6 +173,10 @@ async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
 
         async def analyze(case: EvalCase) -> Any:
             image_bytes = case.image_path.read_bytes()
+            # Mirror the production pipeline (overlay_agent): downscale to the
+            # configured max edge BEFORE encoding so the eval measures what the
+            # app actually sends, and avoids huge multi-MB payloads.
+            image_bytes = processor.downscale_to_max_edge(image_bytes, _MAX_IMAGE_EDGE_PX)
             b64 = processor.to_base64(image_bytes)
             return await client.analyze(b64, case.modality, list(case.valid_regions))
 

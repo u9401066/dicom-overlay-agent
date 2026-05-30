@@ -127,6 +127,46 @@ class TestBboxDropping:
         assert len(result.findings[0].bboxes) == 1
 
 
+# ── Regression: checklist returned as a list instead of a dict ───────
+
+
+class TestChecklistAsList:
+    """Models (e.g. for CXR) sometimes return ``checklist`` as a list rather
+    than the expected object/dict. The parser must not crash with
+    ``AttributeError: 'list' object has no attribute 'items'``.
+    """
+
+    def test_list_of_dicts_with_keys(self):
+        client = _bare_client()
+        payload = {
+            "modality": "CXR",
+            "summary": "clear lungs",
+            "severity": "normal",
+            "findings": [],
+            "checklist": [
+                {"key": "lungs", "value": "clear", "status": "normal"},
+                {"name": "heart", "value": "normal size", "status": "normal"},
+            ],
+        }
+        result = client._parse_result(payload, elapsed_ms=100)
+        assert result.checklist["lungs"].value == "clear"
+        assert result.checklist["lungs"].status is Severity.NORMAL
+        assert result.checklist["heart"].value == "normal size"
+
+    def test_list_of_scalars_gets_positional_keys(self):
+        client = _bare_client()
+        payload = {
+            "modality": "CXR",
+            "summary": "clear lungs",
+            "severity": "normal",
+            "findings": [],
+            "checklist": ["lungs clear", "no effusion"],
+        }
+        result = client._parse_result(payload, elapsed_ms=100)
+        assert result.checklist["item_0"].value == "lungs clear"
+        assert result.checklist["item_1"].value == "no effusion"
+
+
 # ── Item 1: live results marked incomplete on schema warnings ────────
 
 

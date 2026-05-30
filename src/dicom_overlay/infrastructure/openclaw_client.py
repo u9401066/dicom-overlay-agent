@@ -38,6 +38,11 @@ logger = structlog.get_logger(__name__)
 
 _OPENCLAW_VERSION = "2026.3.11"
 _SESSION_KEY = "main"
+# The websockets default frame limit is 1 MiB. A real medical screenshot,
+# even after downscaling to the configured max edge, base64-encodes to a few
+# MiB, which overflows the default and closes the connection (close code 1009).
+# Raise the receive limit so large image payloads round-trip cleanly.
+_MAX_WS_MESSAGE_BYTES = 16 * 1024 * 1024
 _DEFAULT_SCOPES = [
     "operator.admin",
     "operator.read",
@@ -98,6 +103,7 @@ class OpenClawClient(VisionAnalyzerService):
                     self._url,
                     ping_interval=30,
                     ping_timeout=60,
+                    max_size=_MAX_WS_MESSAGE_BYTES,
                 ),
                 timeout=self._connect_timeout,
             )
@@ -536,7 +542,7 @@ class OpenClawClient(VisionAnalyzerService):
             )
 
         checklist: dict[str, ChecklistItem] = {}
-        for key, val in payload.get("checklist", {}).items():
+        for key, val in _iter_checklist(payload.get("checklist")):
             if isinstance(val, dict):
                 checklist[key] = ChecklistItem(
                     value=val.get("value", ""),
@@ -578,6 +584,34 @@ def _parse_severity(s: str) -> Severity:
         return Severity(s.lower())
     except ValueError:
         return Severity.INFO
+
+
+def _iter_checklist(raw: object) -> list[tuple[str, object]]:
+    """Yield (key, value) pairs from a checklist that may be a dict or a list.
+
+    Models sometimes return ``checklist`` as a list (e.g. for CXR) instead of
+    the expected object/dict shape (as EKG does). List entries may be dicts
+    carrying their own key field (``key``/``name``/``label``/``item``) or be
+    bare scalars; fall back to a positional key when no name is present.
+    """
+    if isinstance(raw, dict):
+        return list(raw.items())
+    if isinstance(raw, list):
+        pairs: list[tuple[str, object]] = []
+        for index, entry in enumerate(raw):
+            if isinstance(entry, dict):
+                key = (
+                    entry.get("key")
+                    or entry.get("name")
+                    or entry.get("label")
+                    or entry.get("item")
+                    or f"item_{index}"
+                )
+                pairs.append((str(key), entry))
+            else:
+                pairs.append((f"item_{index}", entry))
+        return pairs
+    return []
 
 
 def _build_analysis_prompt(

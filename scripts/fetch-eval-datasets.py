@@ -36,6 +36,15 @@ from PIL import Image, ImageDraw, ImageFont
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DATASET_DIR = _REPO_ROOT / "data" / "eval-datasets"
 
+# Many image hosts (e.g. Wikimedia Commons) reject requests that lack a
+# descriptive User-Agent with HTTP 403. Identify the harness explicitly.
+_HTTP_HEADERS = {
+    "User-Agent": (
+        "dicom-overlay-agent-eval/1.0 "
+        "(+https://github.com/u9401066/dicom-overlay-agent) urllib"
+    )
+}
+
 
 def _font() -> Any:
     return ImageFont.load_default()
@@ -148,7 +157,8 @@ def _download_real(dataset_dir: Path, urls_file: Path) -> list[dict[str, Any]]:
         out.parent.mkdir(parents=True, exist_ok=True)
         print(f"  downloading {label} <- {url}")
         try:
-            with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+            req = urllib.request.Request(url, headers=_HTTP_HEADERS)  # noqa: S310
+            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
                 data = resp.read()
             # Normalize to PNG via PIL so downstream is uniform.
             from io import BytesIO
@@ -191,8 +201,15 @@ def main() -> int:
         print(f"Downloading real images from {args.urls_from} ...")
         cases = _download_real(dataset_dir, args.urls_from)
         if not cases:
-            print("No real images downloaded; falling back to synthetic.")
-            cases = _build_synthetic(dataset_dir)
+            # Do NOT silently substitute synthetic data: a requested real run
+            # must never be quietly faked. Fail loudly so the caller notices.
+            print(
+                "ERROR: --urls-from supplied but no real images were downloaded "
+                "(check network/URLs). Refusing to overwrite the manifest with "
+                "synthetic data.",
+                file=sys.stderr,
+            )
+            return 1
     else:
         print("No --urls-from supplied; generating synthetic labeled set "
               "(pipeline verification only, NOT diagnostic accuracy).")
