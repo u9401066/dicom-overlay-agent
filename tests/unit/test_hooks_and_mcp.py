@@ -15,7 +15,6 @@ from dicom_overlay.domain.entities import (
     Severity,
 )
 from dicom_overlay.domain.hooks import (
-    AnalyzeHook,
     AnalyzeRequest,
     HookError,
     MCPAdapterConfig,
@@ -28,7 +27,6 @@ from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
 from dicom_overlay.infrastructure.mcp_adapter import McpAdapter
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -198,7 +196,7 @@ class TestRateLimiter:
         req = _make_request()
         limiter.pre_analyze(req)
         limiter.pre_analyze(req)
-        with pytest.raises(HookError, match="[Rr]ate"):
+        with pytest.raises(HookError, match=r"[Rr]ate"):
             limiter.pre_analyze(req)
 
 

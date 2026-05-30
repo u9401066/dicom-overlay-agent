@@ -25,7 +25,6 @@ from dicom_overlay.presentation.overlay_window import (
     _humanize_checklist_value,
 )
 
-
 # ── RegionMapper.to_screen_rect edge cases ──
 
 

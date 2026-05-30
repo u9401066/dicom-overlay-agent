@@ -29,6 +29,7 @@ from dicom_overlay.domain.entities import (
     Finding,
     Modality,
     Severity,
+    TriggerMode,
     WindowRect,
 )
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
@@ -123,6 +124,22 @@ class TestParseResult:
         client = self._make_client()
         result = client._parse_result({"modality": "UNKNOWN_XYZ"}, elapsed_ms=0)
         assert result.modality == Modality.EKG
+
+    def test_unknown_modality_falls_back_to_requested(self):
+        client = self._make_client()
+        result = client._parse_result(
+            {"modality": "UNKNOWN_XYZ"},
+            elapsed_ms=0,
+            request_modality=Modality.CXR,
+        )
+        assert result.modality == Modality.CXR
+
+    def test_missing_modality_uses_requested(self):
+        client = self._make_client()
+        result = client._parse_result(
+            {}, elapsed_ms=0, request_modality=Modality.CT_BRAIN
+        )
+        assert result.modality == Modality.CT_BRAIN
 
     def test_checklist_plain_value(self):
         """Checklist values that are plain strings (not dicts) are wrapped."""
@@ -291,6 +308,16 @@ class TestLoadGatewayToken:
 
         assert _load_gateway_token() == "file-token"
 
+    def test_loads_token_from_repo_env_file(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        (tmp_path / ".env").write_text(
+            "OPENCLAW_GATEWAY_TOKEN=dotenv-token\n",
+            encoding="utf-8",
+        )
+
+        assert _load_gateway_token() == "dotenv-token"
+
     def test_missing_token_returns_none(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
@@ -325,6 +352,82 @@ class TestExtractTextFromEvent:
         text = _extract_text_from_event(payload)
         assert "Part 1." in text
         assert "Part 2." in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_chat_about_image_sends_context_and_image_attachment():
+    received_messages: list[dict[str, Any]] = []
+
+    async def handler(websocket):
+        connect_raw = await websocket.recv()
+        connect_request = json.loads(connect_raw)
+        received_messages.append(connect_request)
+        await websocket.send(
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": connect_request["id"],
+                    "ok": True,
+                    "payload": {"status": "connected"},
+                }
+            )
+        )
+
+        chat_raw = await websocket.recv()
+        chat_request = json.loads(chat_raw)
+        received_messages.append(chat_request)
+        await websocket.send(
+            json.dumps(
+                {
+                    "type": "res",
+                    "id": chat_request["id"],
+                    "ok": True,
+                    "payload": {"status": "accepted", "runId": "followup-1"},
+                }
+            )
+        )
+        await websocket.send(
+            json.dumps(
+                {
+                    "type": "event",
+                    "payload": {
+                        "runId": "followup-1",
+                        "state": "final",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Inspect lead I first.",
+                                }
+                            ]
+                        },
+                    },
+                }
+            )
+        )
+
+    server = await websockets.serve(handler, "127.0.0.1", 0)
+    try:
+        port = server.sockets[0].getsockname()[1]
+        client = OpenClawClient(gateway_url=f"ws://127.0.0.1:{port}")
+        await client.connect()
+
+        answer = await client.chat_about_image(
+            "Which area should I inspect first?",
+            image_base64="ZmFrZS1pbWFnZQ==",
+            context="EKG critical: ST elevation. Findings: f1 ST Elevation lead_I.",
+        )
+
+        assert answer == "Inspect lead I first."
+        chat = received_messages[1]
+        assert chat["method"] == "chat.send"
+        assert "ST elevation" in chat["params"]["message"]
+        assert "Which area should I inspect first?" in chat["params"]["message"]
+        assert chat["params"]["attachments"][0]["type"] == "image"
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 class TestExtractTextFromPayload:
@@ -733,6 +836,7 @@ async def test_e2e_analysis_with_highlights():
     try:
         port = server.sockets[0].getsockname()[1]
         config = AppConfig()
+        config.analysis.trigger_mode = TriggerMode.AUTO
         config.openclaw.gateway_url = f"ws://127.0.0.1:{port}"
         config.monitor.debounce_stable_sec = 0.0
         config.region_maps = {
@@ -1058,6 +1162,7 @@ async def test_agent_reconnect_on_connection_loss():
     from tests.unit.test_agent import MockImageProcessor
 
     config = AppConfig()
+    config.analysis.trigger_mode = TriggerMode.AUTO
     config.openclaw.reconnect_interval_sec = 0
     config.monitor.debounce_stable_sec = 0.0
 
@@ -1120,6 +1225,7 @@ async def test_e2e_cxr_modality():
     try:
         port = server.sockets[0].getsockname()[1]
         config = AppConfig()
+        config.analysis.trigger_mode = TriggerMode.AUTO
         config.openclaw.gateway_url = f"ws://127.0.0.1:{port}"
         config.monitor.debounce_stable_sec = 0.0
         config.region_maps = {

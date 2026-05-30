@@ -22,8 +22,8 @@ from pathlib import Path
 # Ensure src/ is importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from dicom_overlay.domain.entities import Modality, Severity  # noqa: E402
-from dicom_overlay.infrastructure.openclaw_client import OpenClawClient  # noqa: E402
+from dicom_overlay.domain.entities import Modality, Severity
+from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 
 
 def _print(msg: str) -> None:

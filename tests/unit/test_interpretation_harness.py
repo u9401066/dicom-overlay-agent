@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from dicom_overlay.application.interpretation_harness import (
+    InterpretationContext,
+    build_followup_prompt,
+    build_initial_analysis_prompt,
+    summarize_result_for_followup,
+)
+from dicom_overlay.domain.entities import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
+
+
+def test_initial_analysis_prompt_contains_structured_interpretation_protocol():
+    prompt = build_initial_analysis_prompt(
+        modality=Modality.EKG,
+        valid_regions=["lead_I", "rhythm_strip"],
+        skill_name="dicom-ekg-analysis",
+        skill_prompt="EKG skill instructions",
+    )
+
+    assert "systematic image interpretation protocol" in prompt
+    assert "image quality" in prompt
+    assert "bboxes" in prompt
+    assert "label" in prompt
+    assert "detail" in prompt
+    assert "next_steps" in prompt
+    assert "lead_I, rhythm_strip" in prompt
+    assert "Return a single JSON object only" in prompt
+
+
+def test_followup_prompt_carries_image_context_and_prior_result():
+    result = AnalysisResult(
+        modality=Modality.EKG,
+        summary="ST elevation in anterior leads",
+        severity=Severity.CRITICAL,
+        findings=[
+            Finding(
+                id="f1",
+                regions=["lead_I"],
+                label="ST Elevation",
+                detail="ST elevation > 2 mm",
+                severity=Severity.CRITICAL,
+                bboxes=[RegionRect(x=0.1, y=0.2, w=0.3, h=0.1)],
+            )
+        ],
+        checklist={"stemi": ChecklistItem(value="present", status=Severity.CRITICAL)},
+        model_used="smoke-model",
+    )
+    context = InterpretationContext.from_result(result)
+
+    prompt = build_followup_prompt(
+        user_question="Which area should I look at first?",
+        context=context,
+    )
+
+    assert "same attached medical image" in prompt
+    assert "ST elevation in anterior leads" in prompt
+    assert "ST Elevation" in prompt
+    assert "Which area should I look at first?" in prompt
+    assert "Do not invent findings" in prompt
+
+
+def test_summarize_result_for_followup_is_compact_and_label_oriented():
+    result = AnalysisResult(
+        modality=Modality.CXR,
+        summary="Right lower lobe consolidation",
+        severity=Severity.WARNING,
+        findings=[
+            Finding(
+                id="cxr1",
+                regions=["right_lower_lung"],
+                label="Consolidation",
+                detail="Air bronchograms present",
+                severity=Severity.WARNING,
+            )
+        ],
+        checklist={},
+    )
+
+    text = summarize_result_for_followup(result)
+
+    assert "CXR" in text
+    assert "Right lower lobe consolidation" in text
+    assert "Consolidation" in text
+    assert "right_lower_lung" in text

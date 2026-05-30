@@ -12,9 +12,10 @@ from dicom_overlay.domain.entities import (
     AppConfig,
     ChecklistItem,
     Modality,
-    ROICrop,
     RegionRect,
+    ROICrop,
     Severity,
+    TriggerMode,
     WindowRect,
 )
 from dicom_overlay.domain.services import (
@@ -23,7 +24,6 @@ from dicom_overlay.domain.services import (
     ScreenMonitorService,
     VisionAnalyzerService,
 )
-
 
 # --- Mock implementations ---
 
@@ -59,11 +59,15 @@ class MockImageProcessor(ImageProcessorService):
     def to_base64(self, image_data: bytes) -> str:
         return "ZmFrZQ=="
 
+    def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
+        return image_data
+
 
 class MockVisionAnalyzer(VisionAnalyzerService):
     def __init__(self):
         self._connected = False
         self.should_fail = False
+        self.analyze_calls = 0
         self.result = AnalysisResult(
             modality=Modality.EKG,
             summary="Normal sinus rhythm",
@@ -90,6 +94,7 @@ class MockVisionAnalyzer(VisionAnalyzerService):
         modality: Modality,
         valid_regions: list[str],
     ) -> AnalysisResult:
+        self.analyze_calls += 1
         return self.result
 
     async def chat(self, message: str) -> str:
@@ -136,6 +141,30 @@ class TestOverlayAgent:
     @pytest.mark.asyncio
     async def test_init_state(self, agent):
         assert agent.state == AgentState.INIT
+
+    def test_roi_rect_includes_screen_origin(self, agent):
+        """Capture rect must be absolute virtual-desktop coords (multi-monitor)."""
+        agent._config.phi_roi = ROICrop(top=10, bottom=20, left=30, right=40)
+        agent._screen_width = 1920
+        agent._screen_height = 1080
+        agent._screen_left = 1920  # primary screen offset to the right
+        agent._screen_top = 0
+        rect = agent._get_roi_rect()
+        assert rect.left == 1920 + 30  # screen origin + roi.left
+        assert rect.top == 0 + 10
+        assert rect.width == 1920 - 30 - 40
+        assert rect.height == 1080 - 10 - 20
+
+    def test_roi_rect_default_origin_zero(self, agent):
+        """Single-monitor primary-at-origin keeps the original behavior."""
+        agent._config.phi_roi = ROICrop(top=5, bottom=5, left=5, right=5)
+        agent._screen_width = 800
+        agent._screen_height = 600
+        rect = agent._get_roi_rect()
+        assert rect.left == 5
+        assert rect.top == 5
+        assert rect.width == 790
+        assert rect.height == 590
 
     @pytest.mark.asyncio
     async def test_start_without_roi(self, agent):
@@ -203,3 +232,111 @@ class TestOverlayAgent:
         await agent.start()
         await agent.stop()
         assert not agent._running
+
+    @pytest.mark.asyncio
+    async def test_default_trigger_mode_is_hybrid(self, agent):
+        assert agent.trigger_mode == TriggerMode.HYBRID
+
+    @pytest.mark.asyncio
+    async def test_hybrid_mode_detects_change_without_auto_analyzing(
+        self, agent, agent_deps
+    ):
+        pending_events: list[str] = []
+        agent.on_pending_analysis = lambda reason: pending_events.append(reason)
+
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        await agent.tick()  # establish hash baseline
+
+        agent_deps["screen_monitor"].hash_changed = True
+        agent._config.monitor.debounce_stable_sec = 0
+        await agent.tick()
+
+        assert agent.state == AgentState.MONITORING
+        assert agent.pending_analysis
+        assert pending_events == ["image_changed"]
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_manual_mode_ignores_automatic_change_detection(
+        self, agent, agent_deps
+    ):
+        pending_events: list[str] = []
+        agent.on_pending_analysis = lambda reason: pending_events.append(reason)
+        agent.set_trigger_mode(TriggerMode.MANUAL)
+
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        await agent.tick()  # establish hash baseline
+
+        agent_deps["screen_monitor"].hash_changed = True
+        agent._config.monitor.debounce_stable_sec = 0
+        await agent.tick()
+
+        assert agent.state == AgentState.MONITORING
+        assert not agent.pending_analysis
+        assert pending_events == []
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_auto_mode_analyzes_after_stable_change(self, agent, agent_deps):
+        agent.set_trigger_mode(TriggerMode.AUTO)
+
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        await agent.tick()  # establish hash baseline
+
+        agent_deps["screen_monitor"].hash_changed = True
+        agent._config.monitor.debounce_stable_sec = 0
+        await agent.tick()
+
+        assert agent.state == AgentState.DISPLAYING
+        assert not agent.pending_analysis
+        assert agent_deps["vision_analyzer"].analyze_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_manual_trigger_clears_hybrid_pending_analysis(
+        self, agent, agent_deps
+    ):
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        await agent.tick()  # establish hash baseline
+
+        agent_deps["screen_monitor"].hash_changed = True
+        agent._config.monitor.debounce_stable_sec = 0
+        await agent.tick()
+
+        assert agent.pending_analysis
+
+        await agent.trigger_manual()
+
+        assert agent.state == AgentState.DISPLAYING
+        assert not agent.pending_analysis
+        assert agent_deps["vision_analyzer"].analyze_calls == 1
+
+    @pytest.mark.asyncio
+    async def test_analysis_keeps_last_image_for_followup_chat(self, agent, agent_deps):
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+
+        assert agent.last_image_base64 == ""
+
+        await agent.trigger_manual()
+
+        assert agent.state == AgentState.DISPLAYING
+        assert agent.last_image_base64 == "ZmFrZQ=="

@@ -13,8 +13,8 @@ from dicom_overlay.domain.entities import (
     ChecklistItem,
     Finding,
     Modality,
-    ROICrop,
     RegionRect,
+    ROICrop,
     Severity,
     WindowRect,
 )

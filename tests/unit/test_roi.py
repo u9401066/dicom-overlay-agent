@@ -71,7 +71,7 @@ class TestDpiConversion:
         logical = dpi.physical_to_logical_roi(*original)
         back = dpi.logical_to_physical_roi(*logical)
         # Round-trip should be close (rounding may differ by ±1)
-        for orig, rt in zip(original, back):
+        for orig, rt in zip(original, back, strict=True):
             assert abs(orig - rt) <= 1
 
     def test_no_scaling_returns_same_roi(self, monkeypatch: pytest.MonkeyPatch) -> None:
