@@ -57,8 +57,8 @@ async def main() -> None:
                 "method": "connect",
                 "params": {
                     "minProtocol": 3,
-                    "maxProtocol": 3,
-                    "client": {"id": "cli", "version": "2026.3.11", "platform": "win", "mode": "cli"},
+                    "maxProtocol": 4,
+                    "client": {"id": "gateway-client", "version": "2026.3.11", "platform": "win", "mode": "backend"},
                     "role": "operator",
                     "scopes": ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"],
                     "auth": {"token": token},

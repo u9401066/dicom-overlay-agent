@@ -57,12 +57,12 @@ async def main() -> None:
                 "method": "connect",
                 "params": {
                     "minProtocol": 3,
-                    "maxProtocol": 3,
+                    "maxProtocol": 4,
                     "client": {
-                        "id": "cli",
+                        "id": "gateway-client",
                         "version": "2026.3.11",
                         "platform": "win",
-                        "mode": "cli",
+                        "mode": "backend",
                     },
                     "role": "operator",
                     "scopes": [

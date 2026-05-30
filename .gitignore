@@ -51,6 +51,7 @@ secrets/
 # OpenClaw Gateway (敏感：token, credentials, sessions)
 openclaw/*.json
 openclaw/*.json.bak*
+openclaw/*.json.last-good
 openclaw-home/credentials/
 openclaw-home/identity/
 openclaw-home/agents/
@@ -60,6 +61,9 @@ openclaw-home/cron/
 openclaw-home/AppData/
 openclaw-home/canvas/
 openclaw-home/.openclaw/
+openclaw-home/media/
+openclaw-home/tasks/
+openclaw-home/plugin-skills/
 
 # 測試產出 (臨時檔案)
 tests/integration/real_result.txt

@@ -70,7 +70,7 @@ def build_harness_manifest() -> dict[str, Any]:
             "installDefault": DEFAULT_OPENCLAW_NPM_SPEC,
             "gatewayProtocol": {
                 "minProtocol": 3,
-                "maxProtocol": 3,
+                "maxProtocol": 4,
                 "methods": ["connect", "chat.send"],
                 "imageAttachment": {
                     "location": "params.attachments[]",

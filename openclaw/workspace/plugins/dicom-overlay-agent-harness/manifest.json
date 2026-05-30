@@ -7,7 +7,7 @@
     "installDefault": "openclaw@latest",
     "gatewayProtocol": {
       "minProtocol": 3,
-      "maxProtocol": 3,
+      "maxProtocol": 4,
       "methods": ["connect", "chat.send"],
       "imageAttachment": {
         "location": "params.attachments[]",

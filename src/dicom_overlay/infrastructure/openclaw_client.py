@@ -351,15 +351,22 @@ class OpenClawClient(VisionAnalyzerService):
     async def _handshake(self) -> None:
         assert self._ws is not None
 
+        # Negotiate protocol 3..4. OpenClaw 2026.4.x speaks 3; 2026.5.x raised
+        # the floor to 4 and made operator *write* scopes require a bound device
+        # identity. The desktop app spawns the Gateway as a co-located child
+        # process and talks to it over loopback, so it connects with the
+        # local-backend self-pairing identity (client.id=gateway-client,
+        # mode=backend). That trusted-local path grants operator scopes without
+        # an interactive device-pairing flow.
         connect_id = self._next_request_id("connect")
         params: dict[str, Any] = {
             "minProtocol": 3,
-            "maxProtocol": 3,
+            "maxProtocol": 4,
             "client": {
-                "id": "cli",
+                "id": "gateway-client",
                 "version": _OPENCLAW_VERSION,
                 "platform": platform.platform(),
-                "mode": "cli",
+                "mode": "backend",
             },
             "role": "operator",
             "scopes": _DEFAULT_SCOPES,
@@ -478,16 +485,34 @@ class OpenClawClient(VisionAnalyzerService):
 
         findings = []
         for f in payload.get("findings", []):
+            # The LLM occasionally emits a bare string/number for a finding
+            # instead of an object; skip anything we cannot treat as a dict.
+            if not isinstance(f, dict):
+                logger.warning("Dropping non-object finding: %r", f)
+                continue
             # Parse AI-provided bounding boxes (normalized 0-1 coords)
             bboxes: list[RegionRect] = []
             for b in f.get("bboxes", []):
                 try:
+                    # Accept both object form {"x","y","w","h"} and the
+                    # array form [x, y, w, h] that some models return.
+                    if isinstance(b, dict):
+                        x, y, w, h = (
+                            b.get("x", 0),
+                            b.get("y", 0),
+                            b.get("w", 0),
+                            b.get("h", 0),
+                        )
+                    elif isinstance(b, (list, tuple)) and len(b) >= 4:
+                        x, y, w, h = b[0], b[1], b[2], b[3]
+                    else:
+                        raise TypeError(f"unsupported bbox shape: {type(b).__name__}")
                     bboxes.append(
                         RegionRect(
-                            x=float(b.get("x", 0)),
-                            y=float(b.get("y", 0)),
-                            w=float(b.get("w", 0)),
-                            h=float(b.get("h", 0)),
+                            x=float(x),
+                            y=float(y),
+                            w=float(w),
+                            h=float(h),
                         )
                     )
                 except (ValueError, TypeError) as exc:
