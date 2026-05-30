@@ -9,6 +9,13 @@
 
 ### Added
 
+- **四大核心維護章程**：`AGENTS.md` 定義 Core 1 圖層互動、Core 2 OpenClaw harness、Core 3 Gateway 協定相容、Core 4 最小封裝；README 同步章節
+- **Core 2 完整判讀 harness**：`image_harness_smoke.py`（截圖 → `chat.send` 影像附件 → event stream → artifacts）、`image_harness_validator.py`（gateway 合約 + 影像 payload 驗證）、`scripts/run-image-harness-smoke.py`、`scripts/verify-image-harness.py`
+- **多影像模態註冊表**：`domain/modality_profile.py`（`ModalityRegistry` + `build_registry`），支援 config 擴充模態（EKG/CXR/CT_BRAIN 內建），16-key 結果 schema 驗證
+- **OpenClaw runtime 管理**：`infrastructure/openclaw_runtime.py`（`MIN_SAFE_OPENCLAW_VERSION`、manifest、protocol 3 影像附件 frame）、`scripts/stage-openclaw-runtime.ps1`、`scripts/fetch-node.ps1`（portable node）
+- **設定 UI 與持久化**：`presentation/settings_dialog.py`、`infrastructure/desktop_settings_store.py`、`infrastructure/openclaw_settings.py`、`infrastructure/env_file.py`
+- **評估 harness 與視覺探針**：`infrastructure/eval_harness.py`、`infrastructure/vision_probe.py`、`scripts/run-eval.py`、`scripts/fetch-eval-datasets.py`
+- **PyInstaller 最小封裝**：`dicom-overlay-agent.spec`（排除 numpy/scipy/matplotlib、裁剪 Qt 模組、UPX、windowed）、`scripts/build-exe.bat`
 - **Pre-commit Hooks**: 新增 `.pre-commit-config.yaml`（16+ hooks）
   - ruff lint + format、mypy、bandit、gitleaks、conventional-commits
   - 4 個自訂 hook：commit-size-guard、memory-bank-reminder、skill-freshness-check、agent-freshness-check
@@ -18,6 +25,12 @@
   - 審查委員會：review-panel + 3 reviewer subagents（Claude + GPT + Gemini 交叉審查）
 - **Copilot Prompts**: 5 個可重複使用 prompt（code-audit、code-review、pre-commit、security-scan、skill-health-check）
 - **新 Skills**: code-audit（深度審計）、skill-health-check（健康檢查）
+
+### Fixed
+
+- **多螢幕座標錯位（潛在 PHI 風險）**：主螢幕不在原點時 mss 截圖會擷取錯誤螢幕；新增螢幕原點 offset 貫穿 capture 與 control bar
+- **modality 解析 fallback**：未知/缺漏 modality 改回退「請求時的 modality」並 log warning（不再靜默寫死 EKG）
+- **config 字串防呆**：`checklist_keys`/`aliases` 單一字串不再被逐字元拆解
 
 ### Changed
 

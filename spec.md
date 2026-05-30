@@ -836,15 +836,16 @@ REM 3. 啟動 Overlay Agent
 overlay.exe --config config.yaml
 ```
 
-### 12.4 大小預算
+### 12.4 大小預算（實測）
 
 | 元件 | 大小 | 說明 |
 |------|------|------|
-| Node.js portable | ~30MB | node.exe 單檔 |
-| OpenClaw + deps | ~40MB | node_modules |
-| overlay.exe | ~50MB | PyInstaller 單檔 |
+| overlay 啟動器 exe | ~6.75MB | PyInstaller launcher |
+| App + Python/Qt 層 | ~89MB | PyQt6 已修剪未用模組 |
+| vendored OpenClaw runtime | ~114MB | dist + node_modules（不侵入內部以保 Core 3） |
+| Node.js portable | ~30MB | node.exe（opt-in 零安裝） |
 | config + .env | <1KB | 設定檔 |
-| **總計** | **<150MB** | USB 2.0 即可 |
+| **完整 bundle** | **~205MB** | 含 vendored OpenClaw；+node 為 ~235MB |
 
 ### 12.5 限制
 

@@ -22,6 +22,16 @@
 - [x] chatmode → agent 遷移
 - [x] 自訂 Agent 建立
 
+### v0.3.0 — 四大核心 (2026-05-30)
+
+- [x] Core 1：影像判讀圖層互動（AI bbox + region_maps fallback、SummaryPanel/ChatPanel、ROI PHI 裁剪）
+- [x] Core 2：完整 OpenClaw 判讀 harness（smoke + validator + CI 合約、16-key schema）
+- [x] Core 3：OpenClaw Gateway 協定相容（`MIN_SAFE_OPENCLAW_VERSION`、protocol 3 影像附件）
+- [x] Core 4：最小執行檔封裝（PyInstaller spec、portable node、瘦身 OpenClaw runtime）
+- [x] 多影像模態註冊表（ModalityRegistry，config 可擴充）
+- [x] 設定 UI + 持久化、評估 harness、視覺探針
+- [x] 6 組 Sonnet 平行查核 + 修正（多螢幕座標、modality fallback、config 防呆）
+
 ## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制

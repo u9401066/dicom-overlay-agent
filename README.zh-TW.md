@@ -1,119 +1,167 @@
-# template-is-all-you-need
+# DICOM Overlay Agent
 
-> 🏗️ AI 輔助開發專案模板 - 整合 Claude Skills、Memory Bank 與憲法-子法架構
+> 🩺 一個自主協同判讀（co-reading）agent：在背景監控 DICOM viewer，將截圖交給 OpenClaw 判讀，再將 AI 發現疊加在原始影像上——最終診斷永遠由醫師決定。
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 🌐 [English](README.md)
 
-## ✨ 特色
+Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲勞、忙碌或注意力分散造成的遺漏。由於無法直接存取 HIS API，**螢幕是唯一輸入來源**：使用者首次設定截圖 ROI（裁切已知 PHI），agent 在醫師正常操作時於背景截圖、分析、標註。
 
-- 🏛️ **憲法-子法架構** - 類似 speckit 的層級規則系統
-- 🤖 **Claude Skills** - 20+ 個模組化 AI 技能，自動化開發流程
-- 📝 **Memory Bank** - 跨對話專案記憶系統
-- 🏗️ **DDD 架構** - 領域驅動設計 + DAL 獨立
-- 🔄 **Git 自動化** - 提交前自動更新文檔
-- 🐍 **Python 環境** - uv 優先的套件管理
-- 🎯 **Copilot Agents** - 14 個自訂 agent，含模型成本策略
-- 🔒 **Pre-commit Hooks** - 16+ hooks 保障程式碼品質與安全
+## 🎯 四大核心（維護重點）
+
+本 repo 围繞以下 **四個產品核心** 維護，每次變更都必須保持這些核心對齊（維護守則見 [AGENTS.md](AGENTS.md)）。
+
+| # | 核心 | 保證什麼 |
+| --- | --- | --- |
+| 1 | **影像判讀圖層互動**（位置 + 內容） | AI 發現出現在正確的 *位置*（bbox/region 疊在原圖上），並提供可讀的 *內容*（checklist + 追問 chat） |
+| 2 | **OpenClaw 判讀完整 harness** | 一個可執行、CI 可驗證的合約，證明截圖 → 分析 → 疊加的迴圈確實可用 |
+| 3 | **OpenClaw plugin 兼容性** | 只透過穩定的公開 Gateway 協定溝通，能跨 OpenClaw 版本存活 |
+| 4 | **最小化執行檔封裝** | 極小的 `.exe` 啟動器（<50 MB，現為 6.75 MB）加上精簡、可攜帶、零安裝 bundle |
+
+每個核心詳見下方 [核心詳解](#-核心詳解)。
 
 ## 📁 專案結構
 
-```
-template-is-all-you-need/
-├── CONSTITUTION.md          # 📜 專案憲法（最高原則）
-├── .github/
-│   ├── agents/              # 🤖 Copilot 自訂 Agent (14 個)
-│   ├── prompts/             # 📋 Copilot 可重複使用 Prompt (5 個)
-│   ├── bylaws/              # 📋 子法
-│   │   ├── ddd-architecture.md
-│   │   ├── git-workflow.md
-│   │   ├── memory-bank.md
-│   │   └── python-environment.md
-│   ├── workflows/           # ⚙️ CI/CD
-│   ├── ISSUE_TEMPLATE/      # 📝 Issue 模板
-│   └── copilot-instructions.md
-├── .claude/skills/          # 🤖 Claude Skills
-│   ├── git-precommit/       # Git 提交編排器
-│   ├── ddd-architect/       # DDD 架構輔助
-│   ├── code-refactor/       # 程式碼重構
-│   ├── code-audit/          # 深度程式碼審計（5 維度）
-│   ├── skill-health-check/  # Skill 健康檢查
-│   ├── memory-updater/      # Memory Bank 同步
-│   ├── memory-checkpoint/   # 預摘要記憶檢查點
-│   ├── readme-updater/      # README 更新
-│   ├── readme-i18n/         # README 國際化
-│   ├── changelog-updater/   # CHANGELOG 更新
-│   ├── roadmap-updater/     # ROADMAP 更新
-│   ├── code-reviewer/       # 程式碼審查
-│   ├── test-generator/      # 測試生成
-│   └── project-init/        # 專案初始化
-├── scripts/hooks/           # 🔧 自訂 Git Hooks
-├── .pre-commit-config.yaml  # 🔒 Pre-commit 配置
-├── memory-bank/             # 🧠 專案記憶
-├── README.md                # 主 README（英文）
-├── README.zh-TW.md          # 本檔案（中文）
-├── CHANGELOG.md
-├── ROADMAP.md
-├── ARCHITECTURE.md
-├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
-├── SECURITY.md
-└── LICENSE
+```text
+dicom-overlay-agent/
+├── src/dicom_overlay/             # 🩺 應用程式（DDD 分層）
+│   ├── domain/                    #   entities、value objects、service 介面
+│   ├── application/               #   overlay_agent.py（use-case 編排）
+│   ├── infrastructure/            #   OpenClaw client、screen monitor、harness、runtime
+│   └── presentation/              #   overlay_window、control_bar、roi_setup、settings
+├── openclaw/                      # 🔌 repo 本地 OpenClaw runtime + plugin/skills
+│   └── workspace/
+│       ├── plugins/               #   dicom-overlay-agent-harness/manifest.json
+│       └── skills/                #   dicom-{ekg,cxr,ct-brain}-analysis SKILL.md
+├── scripts/                       # 🔧 build-exe.bat、stage-openclaw-runtime.ps1、harness runners
+├── dicom-overlay-agent.spec       # 📦 PyInstaller spec（最小 exe）
+├── config.yaml                    # ⚙️ ROI、region_maps、hash、gateway 設定
+├── spec.md                        # 📜 系統規格書
+├── memory-bank/                   # 🧠 專案記憶
+├── .github/agents/ · .claude/skills/   # 🤖 AI 開發 harness（agents、skills、instructions）
+├── README.md / README.zh-TW.md
+└── CONSTITUTION.md · ARCHITECTURE.md · CHANGELOG.md · ROADMAP.md
 ```
 
 ## 🚀 快速開始
 
-### 作為模板使用
+### 從原始碼執行（Windows）
 
-```bash
-# 方式 1：GitHub CLI
-gh repo create my-project --template u9401066/template-is-all-you-need
+```powershell
+# 1. 同步 Python 環境（uv 優先）
+uv sync --all-extras
 
-# 方式 2：手動 clone
-git clone https://github.com/u9401066/template-is-all-you-need.git my-project
-cd my-project
-rm -rf .git && git init
+# 2. 安裝 repo 本地 OpenClaw runtime（只需一次）
+scripts\install-openclaw-local.bat
+
+# 3. 啟動（Gateway 自動啟動/停止）
+start.bat
 ```
 
-### VS Code 設定
+首次啟動時設定截圖 **ROI**（裁切 PHI）並選擇 trigger 模式，之後 agent 即監控 DICOM viewer 並疊加發現。
 
-確保已安裝 GitHub Copilot，專案會自動啟用：
-- Claude Skills 支援
-- 自定義指令
-- Agent 模式
+### 建置可攜帶執行檔
 
-## 🤖 Skills 使用
+```powershell
+scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
+```
 
-| 指令 | 功能 |
-|------|------|
-| 「準備 commit」 | 執行完整 Git 提交流程 |
-| 「快速 commit」 | 只同步 Memory Bank |
-| 「建立功能 X」 | 生成 DDD 結構 |
-| 「review 程式碼」 | 程式碼審查 |
-| 「生成測試」 | 自動生成測試 |
-| 「checkpoint」 | 在上下文丟失前保存記憶 |
+尺寸預算見 [核心 4](#核心-4--最小化執行檔封裝)。
 
-## 🏛️ 架構原則
+## 🧩 核心詳解
 
-本專案遵循：
+### 核心 1 — 影像判讀圖層互動
 
-1. **DDD (Domain-Driven Design)** - 領域驅動設計
-2. **DAL 獨立** - 資料存取層分離
-3. **文檔優先** - 程式碼是文檔的編譯產物
-4. **Memory Bank 綁定** - 操作即時同步記憶
+醫師看原始影像；agent 把標註疊在原圖 *上方*。
 
-詳見 [CONSTITUTION.md](CONSTITUTION.md)
+- **位置** — AI 回傳歸一化 `0-1` 邊界框（`Finding.bboxes`）。
+  [`__main__.py`](src/dicom_overlay/__main__.py) 優先用 AI bbox highlight，
+  fallback 到 [`region_mapper.py`](src/dicom_overlay/infrastructure/region_mapper.py)
+  解析的 static `region_maps`。
+- **內容** — 可拖曳的 [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
+  顯示系統性 checklist（EKG 共 16 項），異常項優先、正常項摑疊；
+  [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py) 讓醫師針對同一張影像追問。
+- **控制** — 小型 [`control_bar.py`](src/dicom_overlay/presentation/control_bar.py)
+  提供 暖停 / 設定 / 手動重觸發；面板為 frameless、置頂、可拖曳
+  （`_DraggableWindowMixin`）。
+- **隱私** — [`roi_setup.py`](src/dicom_overlay/presentation/roi_setup.py)
+  裁切截圖範圍，讓已知 PHI 不離開工作站。
+
+### 核心 2 — OpenClaw 判讀完整 harness
+
+判讀迴圈由一個可執行、CI 可驗證的合約支援。
+
+- [`image_harness_smoke.py`](src/dicom_overlay/infrastructure/image_harness_smoke.py)
+  驅動完整迴圈：合成影像 → 帶 image attachment 的 `chat.send` → Gateway 事件流 → result/log artifact。
+- [`image_harness_validator.py`](src/dicom_overlay/infrastructure/image_harness_validator.py)
+  （`verify_image_harness_artifacts`）驗證 **gateway contract**、
+  **image payload proof**、以及（可選）desktop viewer 顯示。
+- [`output_validator.py`](src/dicom_overlay/infrastructure/hooks/output_validator.py)
+  在結果進入 overlay 前強制 16-key schema。
+- [`openclaw/workspace/skills/`](openclaw/workspace/skills) 下的 skills 定義各
+  modality prompt（`dicom-ekg-analysis`、`dicom-cxr-analysis`、
+  `dicom-ct-brain-analysis`）含 bbox 指示。
+- 執行器：[`scripts/run-image-harness-smoke.py`](scripts/run-image-harness-smoke.py)
+  與 [`scripts/verify-image-harness.py`](scripts/verify-image-harness.py)。
+
+### 核心 3 — OpenClaw plugin 兼容性
+
+App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝通，
+不 import plugin SDK 內部，因此能跨 OpenClaw 版本可攜。
+
+- [`openclaw_runtime.py`](src/dicom_overlay/infrastructure/openclaw_runtime.py)
+  釘住 `MIN_SAFE_OPENCLAW_VERSION`（`2026.4.22`），並依文件化 schema
+  建立 harness manifest / chat frame（protocol `3`，image 在
+  `params.attachments[]`，含 `type` / `mimeType` / `content`）。
+- [`openclaw/package.json`](openclaw/package.json) 追蹤 runtime 版本
+  （`openclaw ^2026.5.27`）與最低安全版本下限。
+- [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
+  宣告 plugin 兼容區間。
+- **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema 與 image
+  attachment 格式未變；只有發現真正不兼容時才拉高下限。
+
+### 核心 4 — 最小化執行檔封裝
+
+目標是一個極小的啟動器與精簡、可從 USB 隨身碟執行的可攜帶 bundle，
+以 [`scripts/build-exe.bat`](scripts/build-exe.bat) 建置。
+
+- [`dicom-overlay-agent.spec`](dicom-overlay-agent.spec) 排除未用的重量函式庫
+  （`numpy`、`scipy`、`matplotlib`、`pandas`、`imagehash`），並修剪 overlay
+  從不載入的 Qt 模組（WebEngine、Qml/Quick、Pdf、Multimedia、~20 MB 的
+  `opengl32sw.dll` 軟體 GL fallback、qml/translations 資料），啟用 UPX，
+  建為 windowed（`console=False`）。
+- [`scripts/stage-openclaw-runtime.ps1`](scripts/stage-openclaw-runtime.ps1)
+  化 *slim* OpenClaw runtime，移除非 Windows 原生載荷與停用的
+  UI / browser / voice plugins，只保留 Gateway 面。
+- [`scripts/fetch-node.ps1`](scripts/fetch-node.ps1) 下載可攜帶
+  `node\node.exe`；存在時會被打包，且
+  [`gateway_manager.py`](src/dicom_overlay/infrastructure/gateway_manager.py)
+  會優先使用它而非系統 Node.js，達成真正零安裝。
+- `pywin32` 為 Windows-only 條件依賴，保持 Linux/CI 安裝乾淨。
+
+**體積預算（實測）：**
+
+| 產物 | 預算 | 現況 |
+| --- | --- | --- |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MB | **6.75 MB** ✅ |
+| App + Python/Qt 層（不含 vendored OpenClaw） | < 100 MB | **~89 MB** ✅ |
+| 含 vendored OpenClaw runtime 的完整 bundle | — | **~205 MB** |
+| + opt-in 可攜帶 Node.js | — | + ~30 MB |
+
+vendored OpenClaw runtime（~114 MB）刻意保持完整：修剪其內部 `dist`
+chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們只修剪它
+*周圍* 的一切。
 
 ## 📋 文檔
 
-- [憲法](CONSTITUTION.md) - 最高原則
+- [系統規格](spec.md) - 詳細系統規格書
 - [架構說明](ARCHITECTURE.md) - 系統架構
+- [憲法](CONSTITUTION.md) - 最高原則
 - [變更日誌](CHANGELOG.md) - 版本歷史
 - [路線圖](ROADMAP.md) - 功能規劃
-- [貢獻指南](CONTRIBUTING.md) - 如何貢獻
-- [CLAUDE.md](CLAUDE.md) - Claude Code 專用指引
-- [AGENTS.md](AGENTS.md) - VS Code Copilot Agent 指引
+- [真實測試 Runbook](REAL_TEST_RUNBOOK.md) - Live stack 測試
+- [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
 
 ## 🎯 Copilot 自訂 Agents
 

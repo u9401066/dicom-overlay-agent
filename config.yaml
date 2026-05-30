@@ -2,13 +2,15 @@ debug:
   log_file: overlay_agent.log
   log_level: INFO
   save_screenshots: false
+analysis:
+  trigger_mode: hybrid
 hotkeys:
   dismiss_overlay: ctrl+shift+d
   toggle_enable: ctrl+shift+e
   trigger_manual: ctrl+shift+a
 monitor:
   debounce_stable_sec: 1.5
-  hash_algorithm: phash
+  hash_algorithm: ahash
   hash_threshold: 5
   polling_interval_ms: 500
   window_title_keywords:
@@ -213,3 +215,30 @@ region_maps:
         w: 1.0
         x: 0.0
         y: 0.81
+
+# Modality registry overrides / additions (optional).
+# The built-in modalities (EKG, CXR, CT_BRAIN) work without this section.
+# Use it to tweak a built-in (e.g. icon) or to add a NEW modality without code
+# changes. Each entry's fields:
+#   skill_name     OpenClaw skill folder (defaults to dicom-<key>-analysis)
+#   checklist_keys required keys the output validator enforces (omit to skip)
+#   icon           emoji shown in the overlay summary panel
+#   display_name   human-facing label
+#   aliases        alternate spellings that resolve to this modality
+#   model_hint     reserved hint for routing to a different backing model
+#   supported      set false to hide a modality from the analysis cycle
+#
+# Example — add KUB (abdominal X-ray) and an echo modality:
+#
+# modalities:
+#   KUB:
+#     display_name: KUB (Abdominal X-Ray)
+#     icon: "🩻"
+#     skill_name: dicom-kub-analysis
+#     aliases: [ABDOMINAL_XRAY, ABDO_XRAY]
+#     checklist_keys: [bowel_gas, free_air, calcifications, bones, soft_tissue]
+#   ECHO:
+#     display_name: Echocardiogram
+#     icon: "💓"
+#     skill_name: dicom-echo-analysis
+#     model_hint: video-capable-model

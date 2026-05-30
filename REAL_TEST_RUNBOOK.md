@@ -126,3 +126,54 @@ Expected result:
 3. OpenClaw model credentials are valid.
 4. Real model output matches the JSON structure expected by this project.
 5. Overlay click-through behavior is acceptable on your workstation.
+
+## Recognition evaluation (how results are recorded)
+
+The overlay never decides on raw pixels -- every interpretation is first a
+structured `AnalysisResult`. The evaluation harness feeds *labeled* images
+through the real interpretation/parsing path, scores each structured result
+against the dataset ground truth, and writes a machine-readable scorecard. This
+is how recognition outcomes are observed and recorded without "watching" the
+screen.
+
+### 1. Prepare the labeled dataset
+
+```bat
+uv run python scripts\fetch-eval-datasets.py
+```
+
+- With no arguments it generates a small **synthetic** labeled set
+  (`data\eval-datasets\`) -- this verifies the measurement pipeline only, it is
+  NOT a diagnostic-accuracy claim.
+- For a real accuracy benchmark, supply openly licensed image URLs + labels:
+  `uv run python scripts\fetch-eval-datasets.py --urls-from my-urls.json`
+  (format documented at the top of the script).
+
+### 2a. Pipeline check (no token required)
+
+```bat
+uv run python scripts\run-eval.py --mock
+```
+
+Uses an in-process mock gateway that echoes schema-valid payloads, exercising
+the real frame-building / parsing / scoring path. Proves the scorecard
+mechanism works end to end.
+
+### 2b. Real model benchmark (token required)
+
+```bat
+set ANTHROPIC_API_KEY=...        REM in your shell, never in code or git
+REM start the gateway first (see "Start the gateway" above)
+uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789
+```
+
+### 3. Read the scorecard
+
+Artifacts land in `data\eval\<mode>-<timestamp>\`:
+
+- `scorecard.json` -- aggregate metrics: severity accuracy (exact + abnormal/normal
+  binary), mean finding-keyword recall, schema pass rate (via `OutputValidator`),
+  normalized-bbox in-bounds rate, mean latency, per-case breakdown.
+- `results\<case>.json` -- the full raw `AnalysisResult` for each image.
+
+The console prints a per-case `OK/MISS/ERR` table and the aggregate summary.
