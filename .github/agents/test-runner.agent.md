@@ -1,6 +1,7 @@
 ---
 description: "🏃 [免費 + 迭代] 測試執行者 — 用免費模型反覆跑測試、分析失敗、嘗試修復，直到全部通過。"
 model:
+  - "GPT-5.5 mini (copilot)"
   - "GPT-5 mini (copilot)"
   - "GPT-4.1 (copilot)"
 tools: ['codebase', 'editFiles', 'problems', 'runCommands', 'runTasks', 'search', 'terminalLastCommand', 'terminalSelection', 'testFailure', 'usages']
