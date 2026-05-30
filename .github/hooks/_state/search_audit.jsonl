@@ -1,0 +1,14 @@
+﻿{"timestamp":"2026-05-30T10:34:28Z","source":"new","event":"session_start"}
+{"complexity":"simple","timestamp":"2026-05-30T10:34:28Z","event":"prompt_submitted","intent":"unknown"}
+{"timestamp":"2026-05-30T10:41:27Z","source":"new","event":"session_start"}
+{"complexity":"simple","timestamp":"2026-05-30T10:41:28Z","event":"prompt_submitted","intent":"unknown"}
+{"timestamp":"2026-05-30T13:46:31Z","source":"new","event":"session_start"}
+{"complexity":"simple","timestamp":"2026-05-30T13:56:04Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"simple","timestamp":"2026-05-30T14:01:06Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"simple","timestamp":"2026-05-30T14:39:49Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"simple","timestamp":"2026-05-30T14:51:56Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"simple","timestamp":"2026-05-30T14:56:19Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"complex","timestamp":"2026-05-30T15:08:21Z","event":"prompt_submitted","intent":"comparison"}
+{"complexity":"simple","timestamp":"2026-05-30T15:20:27Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"simple","timestamp":"2026-05-30T15:35:45Z","event":"prompt_submitted","intent":"unknown"}
+{"complexity":"simple","timestamp":"2026-05-30T15:56:34Z","event":"prompt_submitted","intent":"unknown"}

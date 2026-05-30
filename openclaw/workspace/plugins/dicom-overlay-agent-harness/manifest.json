@@ -1,0 +1,25 @@
+{
+  "name": "dicom-overlay-agent-harness",
+  "version": "1.0.0",
+  "description": "Medical image co-reading harness for DICOM Overlay Agent.",
+  "compatibility": {
+    "minimumOpenClaw": "2026.4.22",
+    "installDefault": "openclaw@latest",
+    "gatewayProtocol": {
+      "minProtocol": 3,
+      "maxProtocol": 3,
+      "methods": ["connect", "chat.send"],
+      "imageAttachment": {
+        "location": "params.attachments[]",
+        "requiredFields": ["type", "mimeType", "content"],
+        "mimeTypes": ["image/png"]
+      }
+    }
+  },
+  "capabilities": {
+    "medicalImageInterpretation": true,
+    "multiTurnImageFollowup": true,
+    "overlayAnnotations": ["bbox", "label", "tag", "text"],
+    "triggerModes": ["hybrid", "manual", "auto"]
+  }
+}
