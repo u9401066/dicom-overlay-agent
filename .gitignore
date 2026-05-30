@@ -70,3 +70,27 @@ tests/integration/client_test_result.json
 tests/ecg_analyze_result.json
 test_output.txt
 test_fence.py
+
+# 執行期產物 (eval 資料集 / harness 輸出)
+data/
+.github/hooks/_state/
+
+# 其他 AI 工具設定 (不屬於本專案 repo)
+.asset-aware-mcp/
+.cline/
+.clinerules/
+.codex/
+.vscode/mcp.json
+.github/zotero-research-workflow.md
+.github/agents/asset-aware-document.agent.md
+.claude/skills/pdf-asset-extractor/
+.claude/skills/pipeline-persistence/
+.claude/skills/pubmed-export-citations/
+.claude/skills/pubmed-fulltext-access/
+.claude/skills/pubmed-gene-drug-research/
+.claude/skills/pubmed-mcp-tools-reference/
+.claude/skills/pubmed-multi-source-search/
+.claude/skills/pubmed-paper-exploration/
+.claude/skills/pubmed-pico-search/
+.claude/skills/pubmed-quick-search/
+.claude/skills/pubmed-systematic-search/
