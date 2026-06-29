@@ -23,6 +23,10 @@
 - `local_image_quality` 是第一層非 MLLM 輔助：在送模型前/評估時記錄影像尺寸、
   aspect ratio、ink density、bright-pixel ratio 與 low-signal flag，避免
   所有品質判斷都拖到多模態語言模型。
+- `scripts/check-real-model-readiness.py` 會把真實模型 1000-case benchmark
+  的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
+  key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地
+  擋下，而且不會輸出 secret 值。
 
 Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲勞、忙碌或注意力分散造成的遺漏。由於無法直接存取 HIS API，**螢幕是唯一輸入來源**：使用者首次設定截圖 ROI（裁切已知 PHI），agent 在醫師正常操作時於背景截圖、分析、標註。
 

@@ -137,6 +137,11 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   flag. This cheap local preflight is the first model-assist layer, so the
   harness can detect unreadable/blank/low-signal inputs without spending every
   decision on an MLLM.
+- [`scripts/check-real-model-readiness.py`](scripts/check-real-model-readiness.py)
+  bridges the mock artifact gate to real-model benchmarking. It writes a
+  `ready` or `blocked` JSON artifact for the selected OpenClaw/OpenRouter model,
+  checking credentials, manifest size, OpenClaw runtime evidence, and the
+  completed 1000-case artifact gate without exposing secret values.
 
 ### Core 3 — OpenClaw plugin compatibility
 

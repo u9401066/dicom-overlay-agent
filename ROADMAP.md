@@ -64,6 +64,9 @@
   `local_preflight_artifacts` gates.
 - [x] Added deterministic local image-quality preflight metadata so unreadable
   image detection does not depend entirely on MLLM calls.
+- [x] Added `scripts\check-real-model-readiness.py` and `-ManifestPath` support
+  in the MEETI experiment runner, so real-model 1000-case runs fail fast with a
+  machine-readable blocked artifact when credentials/artifacts are missing.
 - [ ] Next clinical iteration: run paired real-model baseline vs MultiPass on
   the same 1000-case manifest and use expert review to refine prompt/rules for
   recurrent misses.

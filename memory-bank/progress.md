@@ -35,6 +35,19 @@
   - Fresh verification: OpenClaw image harness smoke + verifier passed on
     `data\harness-smoke\latest-openclaw-20260630`; targeted unit/smoke suite
     passed 50 tests with only a `.pytest_cache` permission warning.
+  - Added real-model readiness gate:
+    `scripts\check-real-model-readiness.py` writes a `ready`/`blocked` JSON
+    artifact before any long Gateway-backed run. It checks provider credential
+    presence, 1000-case manifest size, completed eval artifacts, and local
+    OpenClaw runtime evidence without printing/storing API keys.
+  - Updated `scripts\run-meeti-openclaw-experiment.ps1` with `-ManifestPath` so
+    real-model experiments can target
+    `data\eval-datasets\meeti-1000-all\manifest.json` directly. This keeps
+    mock artifact gate and real clinical benchmark on the same 1000-case cohort.
+  - Current blocker for the real-model 1000-case accuracy run is external
+    credentials only: local env lacks `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and
+    `ANTHROPIC_API_KEY`. The readiness script records that as `status=blocked`
+    rather than allowing an ambiguous partial experiment.
 
 - **MEETI MultiPass real-run harness** (2026-05-30):
   - Added `scripts/run-eval.py --multi-pass --multi-pass-max-targets N` to run

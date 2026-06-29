@@ -40,6 +40,18 @@
 - Fresh checks on 2026-06-30: OpenClaw image harness smoke + verifier passed;
   targeted unit/smoke suite passed 50 tests with only a `.pytest_cache`
   permission warning.
+- Real-model 1000-case accuracy gate is still credential-gated. Added
+  `scripts\check-real-model-readiness.py` so this gap is now auditable: it
+  checks provider key presence (e.g. `OPENROUTER_API_KEY` for
+  `openrouter/...` models), 1000-case manifest size, completed mock artifact
+  gate, and local OpenClaw runtime evidence, then writes `status=ready` or
+  `status=blocked` without serializing secret values. Current local env is
+  missing provider keys, so the readiness artifact should block until a key is
+  supplied.
+- `scripts\run-meeti-openclaw-experiment.ps1` now accepts `-ManifestPath` and
+  passes `--manifest` to `run-eval.py`, so the real Gateway-backed experiment can
+  run the same `data\eval-datasets\meeti-1000-all\manifest.json` used by the
+  artifact gate instead of falling back to an older dataset selector.
 
 ## Current Eval Harness Focus (2026-05-30)
 

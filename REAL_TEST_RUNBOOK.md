@@ -239,6 +239,13 @@ uv run python scripts\verify-eval-artifacts.py ^
   --eval-dir data\eval\meeti-1000-mock-YYYYMMDD ^
   --manifest data\eval-datasets\meeti-1000-all\manifest.json ^
   --min-cases 1000
+
+uv run python scripts\check-real-model-readiness.py ^
+  --model-id openrouter/openai/gpt-5.2-codex ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest.json ^
+  --eval-dir data\eval\meeti-1000-mock-YYYYMMDD ^
+  --min-cases 1000 ^
+  --output data\experiments\real-model-readiness.json
 ```
 
 `run-eval.py` keeps console output bounded by default (`--case-print-limit 50`).
@@ -246,6 +253,16 @@ Use `--verbose` only for a short diagnostic subset. Avoid raw `tar -tf
 MEETI.rar` or broad recursive searches over generated data/OpenClaw internals in
 normal maintenance shells; they can flood PowerShell and obscure the useful
 signal.
+
+`check-real-model-readiness.py` is the handoff from mock artifact completeness
+to a real-model benchmark. It never prints or writes secret values. If the
+required provider credential is absent, it writes `status=blocked` with a
+machine-readable blocker (for OpenRouter, `OPENROUTER_API_KEY`) and exits
+non-zero. Treat the JSON `status` field as the authoritative state; direct
+`python` execution returns the script's blocked code, while some `uv run`
+wrappers collapse non-zero exits to `1`. Once the key is present, the same
+command returns `status=ready` and records the exact command to start the real
+Gateway-backed experiment.
 
 The repo OpenClaw config is pinned to `openai/gpt-5.5`. The local runtime was
 validated with OpenClaw `2026.6.10` on 2026-06-30. The desktop Settings dialog
@@ -296,7 +313,8 @@ before model evaluation starts, then update it in `finally`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.5-mini `
+  -ModelId openrouter/openai/gpt-5.2-codex `
+  -ManifestPath data\eval-datasets\meeti-1000-all\manifest.json `
   -TimeoutSec 90 `
   -RequirePerfect
 ```
@@ -306,16 +324,18 @@ For the current `openai/gpt-5.4-mini` multi-pass MEETI benchmark:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
   -ModelId openai/gpt-5.4-mini `
+  -ManifestPath data\eval-datasets\meeti-1000-all\manifest.json `
   -TimeoutSec 90 `
   -MultiPass `
   -MultiPassMaxTargets 2 `
   -RequirePerfect
 ```
 
-As of 2026-05-30, local OpenClaw 2026.5.27 does not expose
-`openai/gpt-5.5-mini`; the script records this as a blocked experiment instead
-of silently running another model. Known available visual mini/full alternatives
-include `openai/gpt-5.4-mini`, `openai/gpt-5.5`, and `openai/gpt-5.5-pro`.
+As of 2026-06-30, local OpenClaw `2026.6.10` is the npm `latest` runtime. If a
+requested model id is not exposed by the local OpenClaw catalog, the experiment
+script records a blocked experiment instead of silently running another model.
+Use `check-real-model-readiness.py` before starting long real runs so missing
+credentials or an incomplete 1000-case artifact gate fail fast.
 
 ### 3. Read the scorecard
 
