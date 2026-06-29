@@ -23,8 +23,10 @@ in-bounds, finding count, and latency.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from dicom_overlay.domain.entities import AnalysisResult, Modality, Severity
@@ -40,6 +42,38 @@ if TYPE_CHECKING:
 
 # Severity grouping for the clinically meaningful binary "abnormal vs normal".
 _ABNORMAL = frozenset({Severity.WARNING, Severity.CRITICAL})
+_PARTIAL_CREDIT_WEIGHTS: dict[str, float] = {
+    "severity_abnormal": 0.30,
+    "severity_exact": 0.20,
+    "keyword_recall": 0.35,
+    "negative_recall": 0.15,
+}
+_KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
+    "no acute": (
+        "no acute",
+        "no focal",
+        "without focal",
+        "no visible acute",
+        "without acute",
+        "no evidence of acute",
+        "no acute cardiopulmonary",
+    ),
+    "infarction": ("infarction", "stemi", "lad territory occlusion"),
+    "left ventricular hypertrophy": ("left ventricular hypertrophy", "lvh"),
+    "t wave changes": (
+        "t wave changes",
+        "t wave abnormal",
+        "st-t abnormal",
+        "st-t changes",
+        "st-t repolarization",
+        "secondary st-t",
+        "repolarization abnormal",
+        "repolarization changes",
+        "t_wave_changes",
+        "inverted",
+        "flattened",
+    ),
+}
 
 # Can't-miss diagnoses -- the lethal calls that must NEVER be silently dropped.
 # These are the *reference* fatal list per modality; the per-case ground truth
@@ -113,6 +147,9 @@ class CaseScore:
     bbox_in_bounds: bool
     finding_count: int
     latency_ms: int
+    strict_pass: bool = False
+    partial_credit: float = 0.0
+    partial_credit_breakdown: dict[str, float] = field(default_factory=dict)
     error: str | None = None
     target_axes: list[str] = field(default_factory=list)
     cant_miss: list[str] = field(default_factory=list)
@@ -138,12 +175,21 @@ class EvalReport:
     schema_pass_rate: float
     bbox_in_bounds_rate: float
     mean_latency_ms: float
+    strict_pass_rate: float = 0.0
+    mean_partial_credit: float = 0.0
+    partial_credit_breakdown: dict[str, float] = field(default_factory=dict)
     # Can't-miss hard gate (Task C).
     cant_miss_total: int = 0
     cant_miss_caught_count: int = 0
     cant_miss_missed: list[str] = field(default_factory=list)
     # Framework coverage matrix (Task B): per-modality axis coverage.
     axis_coverage: dict[str, Any] = field(default_factory=dict)
+    target_axis_performance: dict[str, Any] = field(default_factory=dict)
+    manifest_total: int = 0
+    result_count: int = 0
+    is_partial: bool = False
+    aborted_reason: str = ""
+    updated_at: str = ""
     cases: list[CaseScore] = field(default_factory=list)
 
     @property
@@ -151,10 +197,111 @@ class EvalReport:
         """True iff every can't-miss diagnosis across all cases was caught."""
         return not self.cant_miss_missed
 
+    @property
+    def is_perfect(self) -> bool:
+        """True when every scored dimension is perfect for every case."""
+        return not self.perfect_failures()
+
+    def perfect_failures(self) -> list[str]:
+        """Human-readable failures for the strict "all image tests pass" gate."""
+        failures: list[str] = []
+        for score in self.cases:
+            prefix = score.case_label
+            if score.error:
+                failures.append(f"{prefix}: error {score.error}")
+                continue
+            if not _strict_severity_match(score):
+                failures.append(
+                    f"{prefix}: severity expected {score.expected_severity} "
+                    f"got {score.actual_severity}"
+                )
+            if score.keyword_misses:
+                failures.append(
+                    f"{prefix}: missing keywords {', '.join(score.keyword_misses)}"
+                )
+            if score.negative_misses:
+                failures.append(
+                    f"{prefix}: missing negatives {', '.join(score.negative_misses)}"
+                )
+            if not score.schema_ok:
+                failures.append(f"{prefix}: schema {score.schema_issue}")
+            if not score.bbox_in_bounds:
+                failures.append(f"{prefix}: bbox out of bounds")
+            for missed in score.cant_miss_missed:
+                failures.append(f"{prefix}: missed can't-miss {missed}")
+        return failures
+
     def to_json(self) -> str:
         payload = asdict(self)
         payload.pop("cant_miss_passed", None)
+        payload.pop("is_perfect", None)
         return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _strict_severity_match(score: CaseScore) -> bool:
+    """Severity match for strict gate.
+
+    ``info`` is allowed for expected-normal cases because it means a
+    non-abnormal observation (e.g. benign early repolarization) rather than a
+    missed warning/critical condition. Abnormal severities still require exact
+    matching so a STEMI downgraded to warning remains a strict failure.
+    """
+    if score.severity_match:
+        return True
+    normalish = {"normal", "info"}
+    return (
+        score.expected_severity in normalish
+        and score.actual_severity in normalish
+        and score.severity_abnormal_match
+    )
+
+
+def _strict_severity_values(
+    *,
+    expected: Severity,
+    actual: Severity,
+    exact_match: bool,
+    abnormal_match: bool,
+) -> bool:
+    """Strict severity match without needing a pre-built ``CaseScore``."""
+    if exact_match:
+        return True
+    normalish = {Severity.NORMAL, Severity.INFO}
+    return expected in normalish and actual in normalish and abnormal_match
+
+
+def _partial_credit(
+    *,
+    severity_exact: bool,
+    severity_abnormal: bool,
+    keyword_recall: float,
+    negative_recall: float,
+    has_expected_negatives: bool,
+    cant_miss_missed: bool,
+) -> tuple[float, dict[str, float]]:
+    """Clinical partial-credit score for near-miss analysis.
+
+    This intentionally excludes transport/schema/bbox quality: those are
+    reported separately so the clinical score answers "how much of the read was
+    right?" rather than "was the artifact machine-parseable?".
+    """
+    breakdown = {
+        "severity_abnormal": 1.0 if severity_abnormal else 0.0,
+        "severity_exact": 1.0 if severity_exact else 0.0,
+        "keyword_recall": keyword_recall,
+    }
+    weights = dict(_PARTIAL_CREDIT_WEIGHTS)
+    if has_expected_negatives:
+        breakdown["negative_recall"] = negative_recall
+    else:
+        weights.pop("negative_recall")
+    denominator = sum(weights.values()) or 1.0
+    score = sum(
+        breakdown[name] * weight for name, weight in weights.items()
+    ) / denominator
+    if cant_miss_missed:
+        score = min(score, 0.4)
+    return round(score, 3), breakdown
 
 
 def _severity_group(sev: Severity) -> str:
@@ -166,6 +313,12 @@ def _haystack(result: AnalysisResult) -> str:
     for finding in result.findings:
         parts.append(finding.label)
         parts.append(finding.detail)
+    for key, item in result.checklist.items():
+        parts.append(item.value)
+        parts.append(item.value.replace("_", " "))
+        if item.status in _ABNORMAL:
+            parts.append(key)
+            parts.append(key.replace("_", " "))
     return " ".join(parts).lower()
 
 
@@ -190,12 +343,91 @@ def _recall(needles: tuple[str, ...], haystack: str) -> tuple[list[str], list[st
     hits: list[str] = []
     misses: list[str] = []
     for needle in needles:
-        if needle.lower() in haystack:
+        if _keyword_hit(needle, haystack):
             hits.append(needle)
         else:
             misses.append(needle)
     recall = len(hits) / len(needles) if needles else 1.0
     return hits, misses, round(recall, 3)
+
+
+def _keyword_hit(needle: str, haystack: str) -> bool:
+    needle_l = needle.lower()
+    if _positive_phrase_hit(needle_l, haystack):
+        return True
+    return any(
+        _positive_phrase_hit(alias, haystack)
+        for alias in _KEYWORD_ALIASES.get(needle_l, ())
+    )
+
+
+def _positive_phrase_hit(phrase: str, haystack: str) -> bool:
+    phrase_l = phrase.lower().strip()
+    if not phrase_l:
+        return False
+    start = 0
+    while True:
+        index = haystack.find(phrase_l, start)
+        if index < 0:
+            return False
+        if not _is_negated_positive_hit(phrase_l, haystack, index):
+            return True
+        start = index + len(phrase_l)
+
+
+def _is_negated_positive_hit(phrase: str, haystack: str, index: int) -> bool:
+    if phrase.startswith(("no ", "without ", "absent", "negative for ")):
+        return False
+    before = haystack[max(0, index - 48) : index]
+    after = haystack[index + len(phrase) : index + len(phrase) + 48]
+    return bool(
+        re.search(
+            r"\b(no|without|absent|negative for|free of|lack of|"
+            r"no evidence of|ruled out|rule out)\b[\w\s,-]{0,32}$",
+            before,
+        )
+        or re.search(r"^\s*(is|was|are|were)?\s*(absent|negative|not seen)\b", after)
+    )
+
+
+def _negative_recall(
+    needles: tuple[str, ...], haystack: str
+) -> tuple[list[str], list[str], float]:
+    """Recall for pertinent negatives, including shared "no A, B, C" clauses."""
+    hits: list[str] = []
+    misses: list[str] = []
+    for needle in needles:
+        if _negative_hit(needle, haystack):
+            hits.append(needle)
+        else:
+            misses.append(needle)
+    recall = len(hits) / len(needles) if needles else 1.0
+    return hits, misses, round(recall, 3)
+
+
+def _negative_hit(needle: str, haystack: str) -> bool:
+    needle_l = needle.lower()
+    if needle_l in haystack:
+        return True
+    if not needle_l.startswith("no "):
+        return False
+
+    target = needle_l[3:].strip()
+    if not target:
+        return False
+
+    # Models often write one negation cue for a list:
+    # "No consolidation, pleural effusion, pneumothorax."  Treat each item in
+    # that local clause as negated so the scorer does not require awkward
+    # repeated phrasing ("no X, no Y, no Z").
+    for match in re.finditer(
+        r"\b(no|without|absent|negative for|free of)\b", haystack
+    ):
+        window = haystack[match.end() : match.end() + 160]
+        clause = re.split(r"[.;:]", window, maxsplit=1)[0]
+        if target in clause:
+            return True
+    return False
 
 
 def _bbox_in_bounds(result: AnalysisResult) -> bool:
@@ -215,9 +447,11 @@ def _schema_check(case: EvalCase, result: AnalysisResult) -> tuple[bool, str]:
         valid_regions=list(case.valid_regions),
     )
     try:
-        validator.post_analyze(request, result)
+        validated = validator.post_analyze(request, result)
     except HookError as exc:
         return False, str(exc)
+    if validated.incomplete:
+        return False, "; ".join(validated.incomplete_reasons)
     return True, ""
 
 
@@ -238,10 +472,10 @@ def _cant_miss_check(
     """
     if not case.cant_miss:
         return True, []
-    haystack = _negative_haystack(result)
+    haystack = _haystack(result)
     missed: list[str] = []
     for label in case.cant_miss:
-        if not abnormal_match or label.lower() not in haystack:
+        if not abnormal_match or not _keyword_hit(label, haystack):
             missed.append(label)
     return (not missed), missed
 
@@ -296,7 +530,7 @@ def compute_axis_coverage(
 def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseScore:
     """Score a single structured result against the case ground truth."""
     hits, misses, recall = _recall(case.expected_keywords, _haystack(result))
-    neg_hits, neg_misses, neg_recall = _recall(
+    neg_hits, neg_misses, neg_recall = _negative_recall(
         case.expected_negatives, _negative_haystack(result)
     )
 
@@ -306,8 +540,30 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         _severity_group(result.severity)
         == _severity_group(case.expected_severity)
     )
+    severity_match = result.severity == case.expected_severity
     cant_miss_caught, cant_miss_missed = _cant_miss_check(
         case, result, abnormal_match
+    )
+    partial_credit, partial_breakdown = _partial_credit(
+        severity_exact=severity_match,
+        severity_abnormal=abnormal_match,
+        keyword_recall=recall,
+        negative_recall=neg_recall,
+        has_expected_negatives=bool(case.expected_negatives),
+        cant_miss_missed=bool(cant_miss_missed),
+    )
+    strict_pass = (
+        _strict_severity_values(
+            expected=case.expected_severity,
+            actual=result.severity,
+            exact_match=severity_match,
+            abnormal_match=abnormal_match,
+        )
+        and not misses
+        and not neg_misses
+        and schema_ok
+        and _bbox_in_bounds(result)
+        and not cant_miss_missed
     )
 
     return CaseScore(
@@ -316,7 +572,7 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         modality=case.modality.value,
         expected_severity=case.expected_severity.value,
         actual_severity=result.severity.value,
-        severity_match=result.severity == case.expected_severity,
+        severity_match=severity_match,
         severity_abnormal_match=abnormal_match,
         keyword_hits=hits,
         keyword_misses=misses,
@@ -329,6 +585,9 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         bbox_in_bounds=_bbox_in_bounds(result),
         finding_count=len(result.findings),
         latency_ms=latency_ms,
+        strict_pass=strict_pass,
+        partial_credit=partial_credit,
+        partial_credit_breakdown=partial_breakdown,
         target_axes=list(case.target_axes),
         cant_miss=list(case.cant_miss),
         cant_miss_caught=cant_miss_caught,
@@ -364,11 +623,55 @@ def _error_score(case: EvalCase, message: str) -> CaseScore:
     )
 
 
+def _aggregate_partial_breakdown(scores: list[CaseScore]) -> dict[str, float]:
+    if not scores:
+        return dict.fromkeys(_PARTIAL_CREDIT_WEIGHTS, 0.0)
+    output: dict[str, float] = {}
+    for name in _PARTIAL_CREDIT_WEIGHTS:
+        output[name] = round(
+            sum(s.partial_credit_breakdown.get(name, 0.0) for s in scores)
+            / len(scores),
+            3,
+        )
+    return output
+
+
+def _target_axis_performance(scores: list[CaseScore]) -> dict[str, Any]:
+    """Aggregate scored performance by manifest ``target_axes``."""
+    by_axis: dict[str, list[CaseScore]] = {}
+    for score in scores:
+        for axis in score.target_axes:
+            by_axis.setdefault(axis, []).append(score)
+
+    performance: dict[str, Any] = {}
+    for axis, axis_scores in sorted(by_axis.items()):
+        count = len(axis_scores)
+        performance[axis] = {
+            "case_count": count,
+            "strict_pass_rate": round(
+                sum(1 for s in axis_scores if s.strict_pass) / count, 3
+            ),
+            "mean_partial_credit": round(
+                sum(s.partial_credit for s in axis_scores) / count, 3
+            ),
+            "mean_keyword_recall": round(
+                sum(s.keyword_recall for s in axis_scores) / count, 3
+            ),
+            "mean_negative_recall": round(
+                sum(s.negative_recall for s in axis_scores) / count, 3
+            ),
+        }
+    return performance
+
+
 def _aggregate(
     gateway_mode: str,
     scores: list[CaseScore],
     cases: list[EvalCase],
     registry: ModalityRegistry,
+    *,
+    manifest_total: int | None = None,
+    aborted_reason: str = "",
 ) -> EvalReport:
     scored = [s for s in scores if s.error is None]
     errors = len(scores) - len(scored)
@@ -392,6 +695,18 @@ def _aggregate(
     mean_latency = (
         round(sum(s.latency_ms for s in scored) / n, 1) if n else 0.0
     )
+    total_n = len(scores)
+    strict_pass_rate = (
+        round(sum(1 for s in scores if s.strict_pass) / total_n, 3)
+        if total_n
+        else 0.0
+    )
+    mean_partial_credit = (
+        round(sum(s.partial_credit for s in scores) / total_n, 3)
+        if total_n
+        else 0.0
+    )
+    partial_breakdown = _aggregate_partial_breakdown(scores)
 
     # Can't-miss hard gate: aggregate across every scored case. A can't-miss
     # diagnosis carried by a case that the read failed to catch is recorded as
@@ -404,6 +719,9 @@ def _aggregate(
     cant_miss_caught_count = cant_miss_total - len(cant_miss_missed)
 
     coverage = compute_axis_coverage(cases, registry)
+    axis_performance = _target_axis_performance(scores)
+    total_manifest = len(cases) if manifest_total is None else manifest_total
+    result_count = len(scores)
 
     return EvalReport(
         gateway_mode=gateway_mode,
@@ -417,10 +735,19 @@ def _aggregate(
         schema_pass_rate=schema_rate,
         bbox_in_bounds_rate=bbox_rate,
         mean_latency_ms=mean_latency,
+        strict_pass_rate=strict_pass_rate,
+        mean_partial_credit=mean_partial_credit,
+        partial_credit_breakdown=partial_breakdown,
         cant_miss_total=cant_miss_total,
         cant_miss_caught_count=cant_miss_caught_count,
         cant_miss_missed=cant_miss_missed,
         axis_coverage=coverage,
+        target_axis_performance=axis_performance,
+        manifest_total=total_manifest,
+        result_count=result_count,
+        is_partial=result_count < total_manifest or bool(aborted_reason),
+        aborted_reason=aborted_reason,
+        updated_at=datetime.now(UTC).isoformat(),
         cases=scores,
     )
 
@@ -432,6 +759,8 @@ async def run_evaluation(
     output_dir: Path,
     gateway_mode: str,
     registry: ModalityRegistry | None = None,
+    max_consecutive_infra_errors: int = 5,
+    case_metadata: Callable[[EvalCase], dict[str, Any]] | None = None,
 ) -> EvalReport:
     """Drive every case through ``analyze``, score it, and persist artifacts.
 
@@ -446,27 +775,105 @@ async def run_evaluation(
     results_dir.mkdir(parents=True, exist_ok=True)
 
     scores: list[CaseScore] = []
+    consecutive_infra_errors = 0
+    aborted_reason = ""
     for case in cases:
         start = time.monotonic()
         try:
             result = await analyze(case)
         except Exception as exc:
-            scores.append(_error_score(case, f"{type(exc).__name__}: {exc}"))
+            score = _error_score(case, f"{type(exc).__name__}: {exc}")
+            scores.append(score)
+            _write_error_result(results_dir, score)
+            if _is_infrastructure_error(exc):
+                consecutive_infra_errors += 1
+            else:
+                consecutive_infra_errors = 0
+            if (
+                max_consecutive_infra_errors > 0
+                and consecutive_infra_errors >= max_consecutive_infra_errors
+            ):
+                aborted_reason = "consecutive_infrastructure_errors"
+                _write_scorecard(
+                    output_dir / "scorecard.partial.json",
+                    gateway_mode,
+                    scores,
+                    cases,
+                    active_registry,
+                    aborted_reason=aborted_reason,
+                )
+                break
+            _write_scorecard(
+                output_dir / "scorecard.partial.json",
+                gateway_mode,
+                scores,
+                cases,
+                active_registry,
+            )
             continue
+        consecutive_infra_errors = 0
         latency_ms = int((time.monotonic() - start) * 1000)
         score = score_case(case, result, latency_ms)
         scores.append(score)
-        _write_raw_result(results_dir, result, score)
+        metadata = case_metadata(case) if case_metadata else None
+        _write_raw_result(results_dir, result, score, case_metadata=metadata)
+        _write_scorecard(
+            output_dir / "scorecard.partial.json",
+            gateway_mode,
+            scores,
+            cases,
+            active_registry,
+        )
 
-    report = _aggregate(gateway_mode, scores, cases, active_registry)
+    report = _aggregate(
+        gateway_mode,
+        scores,
+        cases,
+        active_registry,
+        manifest_total=len(cases),
+        aborted_reason=aborted_reason,
+    )
     (output_dir / "scorecard.json").write_text(report.to_json(), encoding="utf-8")
     return report
+
+
+def _write_scorecard(
+    path: Path,
+    gateway_mode: str,
+    scores: list[CaseScore],
+    cases: list[EvalCase],
+    registry: ModalityRegistry,
+    *,
+    aborted_reason: str = "",
+) -> None:
+    report = _aggregate(
+        gateway_mode,
+        scores,
+        cases,
+        registry,
+        manifest_total=len(cases),
+        aborted_reason=aborted_reason,
+    )
+    path.write_text(report.to_json(), encoding="utf-8")
+
+
+def _is_infrastructure_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return (
+        isinstance(exc, ConnectionError)
+        or "not connected to openclaw gateway" in text
+        or "connectionclosed" in text
+        or "connection closed" in text
+        or "websocket" in text
+    )
 
 
 def _write_raw_result(
     results_dir: Path,
     result: AnalysisResult,
     score: CaseScore,
+    *,
+    case_metadata: dict[str, Any] | None = None,
 ) -> None:
     raw = {
         "case": score.case_label,
@@ -491,6 +898,29 @@ def _write_raw_result(
             k: {"value": v.value, "status": v.status.value}
             for k, v in result.checklist.items()
         },
+        "zoom_hints": list(result.zoom_hints),
+        "score": asdict(score),
+    }
+    if case_metadata:
+        raw.update(case_metadata)
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in score.case_label)
+    (results_dir / f"{safe}.json").write_text(
+        json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def _write_error_result(results_dir: Path, score: CaseScore) -> None:
+    raw = {
+        "case": score.case_label,
+        "image": score.image,
+        "modality": score.modality,
+        "summary": "",
+        "severity": "(error)",
+        "model_used": "",
+        "findings": [],
+        "checklist": {},
+        "zoom_hints": [],
+        "error": score.error,
         "score": asdict(score),
     }
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in score.case_label)

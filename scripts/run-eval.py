@@ -19,19 +19,25 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import structlog
 import websockets
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from dicom_overlay.application.multi_pass import (  # noqa: E402
+    MultiPassAnalyzer,
+    MultiPassInterpreter,
+)
 from dicom_overlay.domain.entities import Modality, Severity  # noqa: E402
 from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
     EvalCase,
@@ -44,6 +50,29 @@ from dicom_overlay.infrastructure.screen_monitor import ImageProcessor  # noqa: 
 _DATASET_DIR = _REPO_ROOT / "data" / "eval-datasets"
 # Match the production default (entities.OpenClawConfig.max_image_edge_px).
 _MAX_IMAGE_EDGE_PX = 1568
+_DEFAULT_TIMEOUT_SEC = 90
+_EKG_VALID_REGIONS = (
+    "lead_I", "lead_II", "lead_III",
+    "lead_aVR", "lead_aVL", "lead_aVF",
+    "lead_V1", "lead_V2", "lead_V3", "lead_V4", "lead_V5", "lead_V6",
+    "rhythm_strip",
+)
+_CXR_VALID_REGIONS = (
+    "trachea", "right_upper_lung", "right_middle_lung", "right_lower_lung",
+    "left_upper_lung", "left_middle_lung", "left_lower_lung",
+    "right_cp_angle", "left_cp_angle", "cardiac_silhouette", "mediastinum",
+    "diaphragm",
+)
+_CT_BRAIN_VALID_REGIONS = (
+    "right_frontal", "left_frontal", "right_temporal", "left_temporal",
+    "right_basal_ganglia", "left_basal_ganglia", "ventricles", "midline",
+    "posterior_fossa",
+)
+_DEFAULT_VALID_REGIONS = {
+    Modality.EKG: _EKG_VALID_REGIONS,
+    Modality.CXR: _CXR_VALID_REGIONS,
+    Modality.CT_BRAIN: _CT_BRAIN_VALID_REGIONS,
+}
 _EKG_CHECKLIST_KEYS = [
     "heart_rate", "rhythm", "regularity", "axis", "p_wave", "pr_interval",
     "qrs_duration", "qrs_morphology", "st_segment", "t_wave", "qtc_interval",
@@ -55,20 +84,29 @@ _CXR_CHECKLIST_KEYS = [
 ]
 
 
+def _valid_regions_for(entry: dict[str, Any], modality: Modality) -> tuple[str, ...]:
+    explicit = entry.get("valid_regions")
+    if explicit:
+        return tuple(str(item) for item in explicit)
+    return tuple(_DEFAULT_VALID_REGIONS.get(modality, ()))
+
+
 def _load_cases(manifest_path: Path) -> list[EvalCase]:
     spec = json.loads(manifest_path.read_text(encoding="utf-8"))
     cases: list[EvalCase] = []
     for entry in spec["cases"]:
+        modality = Modality(entry["modality"])
         cases.append(
             EvalCase(
                 image_path=manifest_path.parent / entry["image"],
-                modality=Modality(entry["modality"]),
+                modality=modality,
                 expected_severity=Severity(entry["expected_severity"]),
                 expected_keywords=tuple(entry.get("keywords", [])),
                 expected_negatives=tuple(entry.get("negatives", [])),
                 target_axes=tuple(entry.get("target_axes", [])),
                 cant_miss=tuple(entry.get("cant_miss", [])),
                 label=entry.get("label", ""),
+                valid_regions=_valid_regions_for(entry, modality),
             )
         )
     return cases
@@ -84,7 +122,7 @@ def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
     # Fold the can't-miss labels into the synthesized read so the mock pipeline
     # self-test passes its own hard gate (mock mode proves the SCORING path,
     # not model skill -- a mock that drops the can't-miss would be a false fail).
-    detail_parts = keywords + list(case.cant_miss)
+    detail_parts = keywords + list(case.cant_miss) + list(case.expected_negatives)
     detail = ", ".join(detail_parts) if detail_parts else "no acute finding"
     findings = []
     if case.expected_severity in (Severity.WARNING, Severity.CRITICAL):
@@ -108,11 +146,7 @@ def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
             checklist[key] = {"value": "normal", "status": "normal"}
         if case.expected_severity in (Severity.WARNING, Severity.CRITICAL):
             checklist["lungs"] = {"value": "consolidation", "status": "warning"}
-    summary = (
-        f"{case.modality.value}: {detail}"
-        if findings
-        else f"{case.modality.value}: clear, no acute abnormality"
-    )
+    summary = f"{case.modality.value}: {detail}"
     return {
         "modality": case.modality.value,
         "summary": summary,
@@ -179,44 +213,172 @@ class _MockGateway:
             }))
 
 
+class _CountingAnalyzer:
+    """Counts analyze calls while delegating to the real OpenClaw client."""
+
+    def __init__(self, inner: OpenClawClient) -> None:
+        self._inner = inner
+        self.analyze_calls = 0
+
+    async def analyze(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> Any:
+        self.analyze_calls += 1
+        return await self._inner.analyze(image_base64, modality, valid_regions)
+
+    async def chat(self, message: str) -> str:
+        return await self._inner.chat(message)
+
+    async def connect(self) -> None:
+        await self._inner.connect()
+
+    async def disconnect(self) -> None:
+        await self._inner.disconnect()
+
+    def is_connected(self) -> bool:
+        return self._inner.is_connected()
+
+
 async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
-               output_dir: Path) -> EvalReport:
+               output_dir: Path, timeout_sec: int, *, multi_pass: bool,
+               multi_pass_max_targets: int) -> EvalReport:
     processor = ImageProcessor()
 
     async def analyze_with_client(client: OpenClawClient) -> EvalReport:
-        if not client.is_connected():
-            await client.connect()
+        analyzer: Any = client
+        counter: _CountingAnalyzer | None = None
+        crop_calls = 0
+        trace_path = output_dir / "multipass-trace.jsonl"
+        local_quality_by_case: dict[str, dict[str, object]] = {}
+
+        if multi_pass:
+            counter = _CountingAnalyzer(client)
+
+            def cropper(image_base64: str, region: Any) -> str:
+                nonlocal crop_calls
+                crop_calls += 1
+                return processor.crop_region_base64(image_base64, region)
+
+            interpreter = MultiPassInterpreter(
+                analyzer=counter,
+                cropper=cropper,
+                max_zoom_targets=multi_pass_max_targets,
+            )
+            analyzer = MultiPassAnalyzer(inner=counter, interpreter=interpreter)
+
+        if not analyzer.is_connected():
+            await analyzer.connect()
 
         async def analyze(case: EvalCase) -> Any:
+            nonlocal crop_calls
+            case_key = case.label or case.image_path.stem
             image_bytes = case.image_path.read_bytes()
             # Mirror the production pipeline (overlay_agent): downscale to the
             # configured max edge BEFORE encoding so the eval measures what the
             # app actually sends, and avoids huge multi-MB payloads.
             image_bytes = processor.downscale_to_max_edge(image_bytes, _MAX_IMAGE_EDGE_PX)
+            local_quality_by_case[case_key] = processor.image_quality_profile(image_bytes)
+            source_size_px = processor.image_size(image_bytes)
             b64 = processor.to_base64(image_bytes)
-            return await client.analyze(b64, case.modality, list(case.valid_regions))
+            before_calls = counter.analyze_calls if counter else 0
+            before_crops = crop_calls
+            try:
+                analyze_with_source_size = getattr(
+                    analyzer, "analyze_with_source_size", None
+                )
+                if callable(analyze_with_source_size):
+                    result = await analyze_with_source_size(
+                        b64,
+                        case.modality,
+                        list(case.valid_regions),
+                        source_size_px=source_size_px,
+                    )
+                else:
+                    result = await analyzer.analyze(
+                        b64, case.modality, list(case.valid_regions)
+                    )
+            finally:
+                if multi_pass and counter:
+                    calls = counter.analyze_calls - before_calls
+                    crops = crop_calls - before_crops
+                    trace = {
+                        "case": case.label or case.image_path.stem,
+                        "image": case.image_path.name,
+                        "model_path": "MultiPassAnalyzer",
+                        "openclaw_analyze_calls": calls,
+                        "coarse_passes": 1 if calls else 0,
+                        "zoom_passes": max(0, calls - 1),
+                        "crop_calls": crops,
+                        "max_zoom_targets": multi_pass_max_targets,
+                    }
+                    with trace_path.open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(trace, ensure_ascii=False) + "\n")
+            return result
 
         return await run_evaluation(
-            cases, analyze, output_dir=output_dir, gateway_mode=mode
+            cases,
+            analyze,
+            output_dir=output_dir,
+            gateway_mode=mode,
+            case_metadata=lambda case: {
+                "local_image_quality": local_quality_by_case.get(
+                    case.label or case.image_path.stem,
+                    {},
+                )
+            },
         )
 
     if mode == "mock":
         payloads = [_mock_payload_for(c) for c in cases]
         async with _MockGateway(payloads) as gw:
-            client = OpenClawClient(gateway_url=gw.url)
+            client = _make_client(gw.url, timeout_sec=timeout_sec)
             try:
                 return await analyze_with_client(client)
             finally:
                 await client.disconnect()
 
-    client = OpenClawClient(gateway_url=gateway_url)
+    client = _make_client(gateway_url, timeout_sec=timeout_sec)
     try:
         return await analyze_with_client(client)
     finally:
         await client.disconnect()
 
 
-def _print_summary(report: EvalReport, output_dir: Path) -> None:
+def _make_client(gateway_url: str, *, timeout_sec: int) -> OpenClawClient:
+    return OpenClawClient(
+        gateway_url=gateway_url,
+        timeout_sec=timeout_sec,
+        connect_timeout_sec=timeout_sec,
+        inference_timeout_sec=timeout_sec,
+    )
+
+
+def _limited_cases(cases: list[Any], limit: int) -> tuple[list[Any], int]:
+    """Return the console preview slice and remaining count.
+
+    ``limit <= 0`` means print all cases. Full per-case evidence is always
+    written to ``scorecard.json`` and ``results/*.json``.
+    """
+    if limit <= 0 or len(cases) <= limit:
+        return cases, 0
+    return cases[:limit], len(cases) - limit
+
+
+def _configure_eval_logging(verbose: bool) -> None:
+    level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(level=level)
+    structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(level))
+
+
+def _print_summary(
+    report: EvalReport,
+    output_dir: Path,
+    *,
+    case_print_limit: int = 50,
+) -> None:
     print("\n" + "=" * 60)
     print(f"  RECOGNITION SCORECARD  (mode={report.gateway_mode})")
     print("=" * 60)
@@ -225,18 +387,31 @@ def _print_summary(report: EvalReport, output_dir: Path) -> None:
     print(f"  severity accuracy ... {report.severity_accuracy:.0%} (exact)")
     print(f"  abnormal accuracy ... {report.severity_abnormal_accuracy:.0%} "
           f"(normal vs abnormal)")
+    print(f"  strict pass rate .... {report.strict_pass_rate:.0%}")
+    print(f"  partial credit ...... {report.mean_partial_credit:.0%} (mean)")
     print(f"  keyword recall ...... {report.mean_keyword_recall:.0%} (mean)")
+    print(f"  negative recall ..... {report.mean_negative_recall:.0%} (mean)")
     print(f"  schema pass rate .... {report.schema_pass_rate:.0%}")
     print(f"  bbox in-bounds ...... {report.bbox_in_bounds_rate:.0%}")
     print(f"  mean latency ........ {report.mean_latency_ms:.0f} ms")
     print("-" * 60)
-    for case in report.cases:
-        flag = "OK " if case.severity_match else "MISS"
+    printable_cases, remaining_cases = _limited_cases(
+        report.cases,
+        limit=case_print_limit,
+    )
+    for case in printable_cases:
+        flag = "OK " if case.strict_pass else "MISS"
         if case.error:
             flag = "ERR"
         print(f"  [{flag}] {case.case_label:<24} "
               f"exp={case.expected_severity:<8} got={case.actual_severity:<8} "
+              f"partial={case.partial_credit:.0%} "
               f"recall={case.keyword_recall:.0%}")
+    if remaining_cases:
+        print(
+            f"      ... {remaining_cases} more case rows in scorecard.json "
+            f"(use --case-print-limit 0 to print all)"
+        )
     # Framework coverage matrix (Task B): which checklist axes were exercised
     # by at least one normal AND one abnormal case.
     if report.axis_coverage:
@@ -249,6 +424,16 @@ def _print_summary(report: EvalReport, output_dir: Path) -> None:
                   f"(normal+abnormal, {cov['full_coverage_rate']:.0%})")
             if cov["missing_axes"]:
                 print(f"      untested axes: {', '.join(cov['missing_axes'])}")
+    if report.target_axis_performance:
+        print("-" * 60)
+        print("  TARGET AXIS PERFORMANCE  (paired to manifest target_axes)")
+        for axis, perf in sorted(report.target_axis_performance.items()):
+            print(
+                f"    {axis}: n={perf['case_count']} "
+                f"strict={perf['strict_pass_rate']:.0%} "
+                f"partial={perf['mean_partial_credit']:.0%} "
+                f"keyword={perf['mean_keyword_recall']:.0%}"
+            )
     # Can't-miss hard gate (Task C).
     print("-" * 60)
     if report.cant_miss_total == 0:
@@ -261,6 +446,17 @@ def _print_summary(report: EvalReport, output_dir: Path) -> None:
               f"({report.cant_miss_caught_count}/{report.cant_miss_total} caught)")
         for miss in report.cant_miss_missed:
             print(f"      MISSED: {miss}")
+    strict_failures = report.perfect_failures()
+    if strict_failures:
+        print("-" * 60)
+        print(f"  PERFECT GATE ........ FAIL ({len(strict_failures)} issue(s))")
+        for failure in strict_failures[:20]:
+            print(f"      {failure}")
+        if len(strict_failures) > 20:
+            print(f"      ... {len(strict_failures) - 20} more")
+    else:
+        print("-" * 60)
+        print("  PERFECT GATE ........ PASS")
     print("=" * 60)
     print(f"  artifacts: {output_dir}")
     if report.gateway_mode == "mock":
@@ -272,21 +468,73 @@ def _print_summary(report: EvalReport, output_dir: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run recognition evaluation")
-    parser.add_argument("--manifest", type=Path,
-                        default=_DATASET_DIR / "manifest.json")
+    parser.add_argument("--manifest", type=Path, default=None)
+    parser.add_argument(
+        "--dataset",
+        default="",
+        help="Dataset directory under data/eval-datasets, e.g. 'meeti'.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Evaluate only the first N cases (0 = all).",
+    )
     parser.add_argument("--gateway", default="ws://127.0.0.1:18789",
                         help="Real OpenClaw Gateway URL")
     parser.add_argument("--mock", action="store_true",
                         help="Use in-process mock gateway (no token needed)")
+    parser.add_argument(
+        "--require-perfect",
+        action="store_true",
+        help="Fail non-zero unless every case has perfect severity/recall/schema/bbox.",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=int,
+        default=_DEFAULT_TIMEOUT_SEC,
+        help="Per-request Gateway/LLM timeout in seconds.",
+    )
+    parser.add_argument(
+        "--multi-pass",
+        action="store_true",
+        help="Use app MultiPassAnalyzer: coarse read, crop abnormal bboxes, refine.",
+    )
+    parser.add_argument(
+        "--multi-pass-max-targets",
+        type=int,
+        default=3,
+        help="Maximum abnormal findings to crop/refine per image in --multi-pass mode.",
+    )
+    parser.add_argument(
+        "--case-print-limit",
+        type=int,
+        default=50,
+        help="Max per-case rows to print to console (0 = print all).",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable per-request structlog debug/info logs.",
+    )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
+    _configure_eval_logging(args.verbose)
 
-    if not args.manifest.exists():
-        print(f"Manifest not found: {args.manifest}\n"
+    manifest_path = args.manifest or (
+        _DATASET_DIR / args.dataset / "manifest.json"
+        if args.dataset
+        else _DATASET_DIR / "manifest.json"
+    )
+
+    if not manifest_path.exists():
+        print(f"Manifest not found: {manifest_path}\n"
               f"Run: uv run python scripts/fetch-eval-datasets.py", file=sys.stderr)
         return 2
 
-    cases = _load_cases(args.manifest)
+    cases = _load_cases(manifest_path)
+    if args.limit:
+        cases = cases[: args.limit]
     if not cases:
         print("No cases in manifest.", file=sys.stderr)
         return 2
@@ -300,20 +548,30 @@ def main() -> int:
                   "Real gateway will likely fail; use --mock for a pipeline "
                   "check.", file=sys.stderr)
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     output_dir = args.output or (_REPO_ROOT / "data" / "eval" / f"{mode}-{stamp}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     start = time.monotonic()
     try:
-        report = asyncio.run(_run(cases, args.gateway, mode, output_dir))
+        report = asyncio.run(
+            _run(
+                cases,
+                args.gateway,
+                mode,
+                output_dir,
+                args.timeout_sec,
+                multi_pass=args.multi_pass,
+                multi_pass_max_targets=args.multi_pass_max_targets,
+            )
+        )
     except (ConnectionError, OSError) as exc:
         print(f"\nERROR: could not reach gateway at {args.gateway}: {exc}\n"
               f"Start the gateway (see REAL_TEST_RUNBOOK.md) or run with --mock.",
               file=sys.stderr)
         return 1
     elapsed = time.monotonic() - start
-    _print_summary(report, output_dir)
+    _print_summary(report, output_dir, case_print_limit=args.case_print_limit)
     print(f"  total run time: {elapsed:.1f}s")
     # Task C hard gate: a missed can't-miss diagnosis fails CI (non-zero exit),
     # so a dropped STEMI blocks the build instead of just logging a line.
@@ -321,6 +579,12 @@ def main() -> int:
         print(f"\nFAIL: {len(report.cant_miss_missed)} can't-miss diagnosis(es) "
               f"were not caught. See CAN'T-MISS GATE above.", file=sys.stderr)
         return 3
+    if args.require_perfect:
+        failures = report.perfect_failures()
+        if failures:
+            print(f"\nFAIL: {len(failures)} strict evaluation issue(s). "
+                  f"See PERFECT GATE above.", file=sys.stderr)
+            return 4
     return 0
 
 

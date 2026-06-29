@@ -148,6 +148,10 @@ class ScreenMonitor(ScreenMonitorService):
 class ImageProcessor(ImageProcessorService):
     """Handles ROI cropping and encoding (spec §3.2)."""
 
+    # Upscale a second-pass crop so its short edge reaches at least this many
+    # pixels, keeping small lesions legible for the closer look.
+    _MIN_CROP_EDGE_PX = 512
+
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int
     ) -> bytes:
@@ -173,6 +177,38 @@ class ImageProcessor(ImageProcessorService):
 
         return base64.b64encode(image_data).decode("ascii")
 
+    def crop_region_base64(self, image_base64: str, region: object) -> str:
+        """Crop a normalized 0-1 sub-region out of a base64 PNG (ImageCropper).
+
+        Matches the ``ImageCropper`` protocol used by the multi-pass
+        orchestrator: ``region`` is a ``RegionRect`` in normalized coordinates
+        relative to the input image. The crop is a strict subset of the input
+        (PHI invariant: capture is never widened), then upscaled so its short
+        edge reaches at least ``_MIN_CROP_EDGE_PX`` to keep small lesions legible
+        for the second-pass read. Returns a base64 PNG.
+        """
+        import base64
+
+        data = base64.b64decode(image_base64)
+        img = Image.open(io.BytesIO(data))
+        w, h = img.size
+        x0 = max(0, min(w, round(region.x * w)))  # type: ignore[attr-defined]
+        y0 = max(0, min(h, round(region.y * h)))  # type: ignore[attr-defined]
+        x1 = max(x0 + 1, min(w, round((region.x + region.w) * w)))  # type: ignore[attr-defined]
+        y1 = max(y0 + 1, min(h, round((region.y + region.h) * h)))  # type: ignore[attr-defined]
+        cropped = img.crop((x0, y0, x1, y1))
+        cw, ch = cropped.size
+        short_edge = min(cw, ch)
+        if 0 < short_edge < self._MIN_CROP_EDGE_PX:
+            scale = self._MIN_CROP_EDGE_PX / short_edge
+            cropped = cropped.resize(
+                (max(1, round(cw * scale)), max(1, round(ch * scale))),
+                Image.LANCZOS,
+            )
+        buf = io.BytesIO()
+        cropped.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+
     def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
         if max_edge <= 0:
             return image_data
@@ -195,3 +231,30 @@ class ImageProcessor(ImageProcessorService):
             max_edge,
         )
         return buf.getvalue()
+
+    def image_size(self, image_data: bytes) -> tuple[int, int]:
+        img = Image.open(io.BytesIO(image_data))
+        return img.size
+
+    def image_quality_profile(self, image_data: bytes) -> dict[str, object]:
+        """Lightweight image preflight metrics before sending to an MLLM.
+
+        This is a deterministic, local aid for the harness: it flags blank or
+        very low-signal images so model errors can be separated from bad input.
+        It is not a diagnostic model and never changes the captured ROI.
+        """
+        img = Image.open(io.BytesIO(image_data)).convert("L")
+        histogram = img.histogram()
+        total = max(1, img.width * img.height)
+        dark_pixels = sum(histogram[:80])
+        bright_pixels = sum(histogram[240:])
+        ink_ratio = dark_pixels / total
+        bright_ratio = bright_pixels / total
+        return {
+            "width_px": img.width,
+            "height_px": img.height,
+            "aspect_ratio": round(img.width / max(1, img.height), 6),
+            "ink_pixel_ratio": round(ink_ratio, 6),
+            "bright_pixel_ratio": round(bright_ratio, 6),
+            "low_signal": ink_ratio < 0.01,
+        }

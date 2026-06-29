@@ -86,6 +86,23 @@ class TestProseJsonFallback:
         assert data["summary"] == "ok"
         assert data["severity"] == "normal"
 
+    def test_payload_from_chat_event_repairs_numeric_quote_suffix(self):
+        payload = {
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            '{"summary":"ok","findings":[{"bboxes":[{"x":0.17",'
+                            '"y":0.2,"w":0.1,"h":0.1}]}]}'
+                        ),
+                    }
+                ]
+            }
+        }
+        data = _payload_from_chat_event(payload)
+        assert data["findings"][0]["bboxes"][0]["x"] == 0.17
+
     def test_payload_from_chat_event_raises_without_json(self):
         payload = {
             "message": {"content": [{"type": "text", "text": "no json at all"}]}
@@ -236,6 +253,64 @@ class TestImageDownscale:
         proc = ImageProcessor()
         original = _png_bytes(3000, 2000)
         assert proc.downscale_to_max_edge(original, 0) == original
+
+    def test_image_quality_profile_flags_blank_low_signal_image(self):
+        proc = ImageProcessor()
+        profile = proc.image_quality_profile(_png_bytes(200, 100))
+
+        assert profile["width_px"] == 200
+        assert profile["height_px"] == 100
+        assert profile["ink_pixel_ratio"] == 0.0
+        assert profile["low_signal"] is True
+
+    def test_image_quality_profile_detects_ink(self):
+        buf = io.BytesIO()
+        img = Image.new("RGB", (200, 100), "white")
+        import PIL.ImageDraw
+
+        draw = PIL.ImageDraw.Draw(img)
+        draw.line((10, 50, 190, 50), fill="black", width=8)
+        img.save(buf, format="PNG")
+
+        profile = ImageProcessor().image_quality_profile(buf.getvalue())
+
+        assert profile["ink_pixel_ratio"] > 0.01
+        assert profile["low_signal"] is False
+
+
+# ── Multi-pass cropper (ImageCropper protocol) ───────────────────────
+
+
+class TestCropRegionBase64:
+    def test_crop_is_subset_and_returns_png(self):
+        import base64
+
+        from dicom_overlay.domain.entities import RegionRect
+
+        proc = ImageProcessor()
+        src_b64 = proc.to_base64(_png_bytes(1000, 800))
+        region = RegionRect(x=0.25, y=0.5, w=0.5, h=0.25)
+
+        out_b64 = proc.crop_region_base64(src_b64, region)
+        img = Image.open(io.BytesIO(base64.b64decode(out_b64)))
+
+        # Cropped region is 500x200 source px; short edge (200) upscaled to 512.
+        assert img.format == "PNG"
+        assert min(img.size) >= 512
+
+    def test_crop_clamps_out_of_range_region(self):
+        import base64
+
+        from dicom_overlay.domain.entities import RegionRect
+
+        proc = ImageProcessor()
+        src_b64 = proc.to_base64(_png_bytes(640, 480))
+        # Region overflowing the image must clamp, never exceed source bounds.
+        region = RegionRect(x=0.9, y=0.9, w=0.5, h=0.5)
+
+        out_b64 = proc.crop_region_base64(src_b64, region)
+        img = Image.open(io.BytesIO(base64.b64decode(out_b64)))
+        assert img.size[0] >= 1 and img.size[1] >= 1
 
 
 # ── Item 2: transient timeout retry ──────────────────────────────────
