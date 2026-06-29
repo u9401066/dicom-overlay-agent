@@ -25,12 +25,13 @@ def test_meeti_experiment_script_records_model_and_artifacts() -> None:
     )
 
     assert '[string]$ModelId = "openai/gpt-5.5-mini"' in script
+    assert '[string]$ManifestPath = ""' in script
     assert "openclaw-models-list.txt" in script
     assert "openclaw.experiment.json" in script
     assert '[string]$ExperimentDir = ""' in script
     assert "scripts\\run-eval.py" in script
-    assert "--dataset" in script
-    assert "meeti" in script
+    assert "--manifest" in script
+    assert "--dataset" not in script
     assert "[switch]$MultiPass" in script
     assert "--multi-pass" in script
     assert "experiment.json" in script

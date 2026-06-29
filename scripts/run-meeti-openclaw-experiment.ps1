@@ -1,5 +1,6 @@
 param(
     [string]$ModelId = "openai/gpt-5.5-mini",
+    [string]$ManifestPath = "",
     [int]$TimeoutSec = 90,
     [int]$Limit = 0,
     [string]$ExperimentDir = "",
@@ -68,7 +69,11 @@ $configPath = Join-Path $experimentDir "openclaw.experiment.json"
 
 $openclawCli = Join-Path $repoRoot "openclaw\node_modules\openclaw\openclaw.mjs"
 $baseConfigPath = Join-Path $repoRoot "openclaw\openclaw.json"
-$manifestPath = Join-Path $repoRoot "data\eval-datasets\meeti\manifest.json"
+$manifestPath = if ($ManifestPath) {
+    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ManifestPath)
+} else {
+    Join-Path $repoRoot "data\eval-datasets\meeti-1000-all\manifest.json"
+}
 
 $modelListOutput = & node $openclawCli models list 2>&1 | Out-String
 $modelListOutput | Set-Content -Path $modelsListPath -Encoding UTF8
@@ -119,7 +124,7 @@ try {
     $evalArgs = @(
         "run", "python", "scripts\run-eval.py",
         "--gateway", "ws://127.0.0.1:18789",
-        "--dataset", "meeti",
+        "--manifest", $manifestPath,
         "--timeout-sec", [string]$TimeoutSec,
         "--output", $evalDir
     )
