@@ -1,5 +1,125 @@
 # Active Context
 
+## Current Eval Harness Focus (2026-06-30)
+
+- Active goal: keep the local desktop OpenClaw co-reading app up to date,
+  configurable for OpenRouter, clinically useful for image-assisted
+  recognition/report/bbox review, and backed by a production-scale harness with
+  at least 1000 verified images.
+- Local OpenClaw runtime is updated and validated at `2026.6.10`; the app still
+  uses only the stable public Gateway boundary (`connect` + `chat.send`,
+  protocol 3 image attachments). `MIN_SAFE_OPENCLAW_VERSION` remains
+  `2026.4.22` because no verified Gateway incompatibility was found.
+- The desktop Settings dialog exposes AI Provider profiles including OpenRouter
+  (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`). Saving a profile
+  writes only app-managed provider/model config and keeps secrets in env/.env.
+  Both the normal OpenClaw config and a generated OpenRouter config validated
+  with the OpenClaw CLI.
+- MEETI source: local `MEETI.rar` from Zenodo record `18523205` is available but
+  gitignored. The builder can scan the full archive via Windows `tar`/`bsdtar`;
+  current local scan found 9922 PNG-bearing studies.
+- Production artifact gate: `data\eval-datasets\meeti-1000-all\manifest.json`
+  was built with 1000 cases from the full MEETI archive. The mock strict eval at
+  `data\eval\meeti-1000-mock-20260630-quality` completed 1000/1000 cases and
+  `scripts\verify-eval-artifacts.py --min-cases 1000` passed:
+  `min_cases`, `scorecard_complete`, `schema_gate`, `bbox_gate`,
+  `cant_miss_gate`, `mock_perfect_gate`, `results_artifacts`,
+  `local_preflight_artifacts`, and `review_artifacts`.
+- Non-MLLM/model-assisted layer: `ImageProcessor.image_quality_profile()` records
+  deterministic `local_image_quality` per eval result (size, aspect ratio, ink
+  density, bright-pixel ratio, low-signal flag). This makes blank/unreadable
+  input detection auditable without forcing every quality decision through an
+  MLLM.
+- Expert-review export now audits no-bbox cases at case level, so 1000-case
+  review completeness is not inflated by bbox count alone. Review artifacts
+  include PNG overlays, `bbox-audit.jsonl`, crop thumbnails, and `index.html`.
+- Console-output hygiene: `run-eval.py` now bounds default per-case printing with
+  `--case-print-limit 50`; use `--verbose` only for small diagnostic subsets.
+  Avoid raw `tar -tf MEETI.rar` and broad recursive searches over generated data
+  or OpenClaw internals in normal PowerShell sessions.
+- Fresh checks on 2026-06-30: OpenClaw image harness smoke + verifier passed;
+  targeted unit/smoke suite passed 50 tests with only a `.pytest_cache`
+  permission warning.
+
+## Current Eval Harness Focus (2026-05-30)
+
+- Current user-directed run: full MEETI `openai/gpt-5.4-mini` strict MultiPass
+  experiment is running under
+  `data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini`.
+  It uses `-MultiPass -MultiPassMaxTargets 2 -RequirePerfect`; progress is
+  observable via `eval\multipass-trace.jsonl`, raw `eval\results\*.json`,
+  rebuilt partial scorecards, review PNGs, and Gateway/eval logs. This process
+  was started before the newest checkpoint/postprocess wrapper changes, so it
+  will not itself write `experiment.json` or `scorecard.partial.json` until a
+  future run uses the updated wrapper.
+- MultiPass eval is now testable from `scripts\run-eval.py` with
+  `--multi-pass --multi-pass-max-targets N`. The harness wraps the real
+  `MultiPassAnalyzer` and records per-image `openclaw_analyze_calls`,
+  `zoom_passes`, and `crop_calls` in `multipass-trace.jsonl`.
+- Scorecards now include clinical partial-credit scoring, strict pass rate, and
+  per-target-axis performance. Partial credit weights are 30% abnormal-vs-normal
+  severity, 20% exact severity, 35% positive keyword recall, and 15%
+  pertinent-negative recall, but the negative component only counts when the
+  case has expected negatives, and missed can't-miss labels cap partial credit
+  at 0.40. Schema/bbox/cost/safety metrics remain separate.
+- Paired baseline-vs-MultiPass comparison is available via
+  `uv run python scripts\compare-eval-runs.py --baseline <single-pass experiment-or-eval> --candidate <multipass experiment-or-eval>`.
+  It writes `comparison.json`/`comparison.md`, counts improved/regressed cases,
+  reports partial-credit and strict-pass deltas, includes MultiPass call/crop
+  cost, optional bbox low-signal summaries, and an exact paired sign-test
+  p-value. It now rejects incomplete/error scorecards by default; use
+  `--allow-incomplete` only for exploratory comparison of non-error shared cases.
+- Existing raw `results/*.json` can be rescored without rerunning the model via
+  `uv run python scripts\rebuild-eval-scorecard.py --eval-dir <eval> --manifest data\eval-datasets\meeti\manifest.json`;
+  this is useful because the current long-running process started before the
+  partial-credit/schema-gate/checkpoint changes.
+- `scripts\run-meeti-openclaw-experiment.ps1` now writes `experiment.json` with
+  `status=running` before the eval process starts, and after `run-eval.py`
+  returns it postprocesses `scorecard.rebuilt.json` plus expert-review PNGs /
+  bbox audit artifacts. Future `run-eval.py` executions also write
+  `scorecard.partial.json` after each case and fail fast on repeated Gateway
+  infrastructure errors.
+- Eval scoring has been tightened: positive keyword recall is negation-aware
+  (`no ischemia` no longer counts as an ischemia hit), incomplete
+  `OutputValidator` results set `schema_ok=false`, can't-miss detection uses
+  positive evidence only, and WNL / within-normal-range MEETI reports map to an
+  explicit normal concept.
+- The desktop app and eval path now pass the downscaled image size into
+  `MultiPassAnalyzer` when available, so the resolution-aware manual-zoom guard
+  is actually active instead of always digitally cropping.
+- `MultiPassAnalyzer` target selection now includes `info` findings with bboxes
+  after warning/critical findings, so a first pass that under-calls a suspicious
+  ECG change as `info` still gets crop/refine attention.
+- EKG skill prompt was tightened for waveform-only MEETI screenshots: 10-second
+  rhythm-strip rate estimation, LVH voltage/strain checks, ST-T/ischemia axis
+  consistency, and warning severity floor for clinically meaningful ST-T/LVH/rate
+  abnormalities.
+- Real 1-case `openai/gpt-5.4-mini` MultiPass smoke after prompt update produced
+  3 OpenClaw `analyze` calls (coarse + 2 crop/refine), fixed severity/LVH/ischemia
+  for `meeti_43522917`, but still missed bradycardia. This is now recorded as
+  model/prompt diagnostic miss, not a Gateway/MultiPass harness failure.
+- Expert review images can be exported from any eval directory with
+  `uv run python scripts\export-eval-annotations.py --eval-dir <eval> --manifest data\eval-datasets\meeti\manifest.json`.
+  The exporter now also writes `review\bbox-audit.jsonl` and `review\crops\*`
+  with original-image pixel coordinates, clamped normalized coordinates, crop
+  thumbnails, ink-pixel ratios, `low_signal`, `was_clamped`, and
+  `invalid_reason`; low-signal bboxes are cross-marked in review PNGs so
+  blank/irrelevant boxes can be separated from coordinate-pipeline errors. The
+  exporter cleans generated review PNGs/crops by default to avoid stale expert
+  review artifacts.
+  Current partial full-run review output lives under
+  `data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini\eval\review`.
+- OpenClaw runtime is local `2026.5.27`; model catalog has `openai/gpt-5.5` and `openai/gpt-5.4-mini`, but no `openai/gpt-5.5-mini`.
+- `openclaw/openclaw.json` now defaults to `openai/gpt-5.5`.
+- MEETI eval entry point: `uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --timeout-sec 90 --require-perfect`.
+- `--mock --dataset meeti --require-perfect` passes all 400 cases and proves scoring/artifact flow.
+- Real GPT-5.5 MEETI 10-case probe completed with no timeout/parser crashes after per-image `analysis-<uuid>` session isolation and narrow bbox JSON repair. Current real metrics: schema 90%, bbox 100%, severity exact 70%, abnormal/normal 90%, mean keyword recall 37%; GPT-5.5 still does not meet PERFECT GATE.
+- Remaining real misses are model/read-label/prompt issues (e.g. LVH/bradycardia/low-voltage keyword misses and one malformed/empty-summary schema failure), not OpenClaw Gateway protocol failures.
+- Full real experiment wrapper: `powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 -ModelId openai/gpt-5.5-mini -TimeoutSec 90 -RequirePerfect`. It writes `data\experiments\...\experiment.json` and blocks if the requested model is not in the OpenClaw catalog.
+- Experiment records from wrapper validation:
+  - `data\experiments\meeti-20260530-214839-openai_gpt-5.5-mini\experiment.json`: blocked because OpenClaw catalog does not expose `openai/gpt-5.5-mini`.
+  - `data\experiments\meeti-20260530-214859-openai_gpt-5.4-mini\experiment.json`: completed 1-case runner smoke with experiment-local config/logs/eval artifacts.
+
 > 📌 此檔案記錄當前工作焦點，每次工作階段開始時檢視，結束時更新。
 
 ## 🎯 當前焦點

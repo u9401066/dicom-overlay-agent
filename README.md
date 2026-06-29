@@ -123,6 +123,20 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   labeled dataset: axis×severity coverage, pertinent-negative recall, and a
   **can't-miss hard gate** (missing a STEMI / tension pneumothorax / etc. fails
   CI with a non-zero exit code).
+- Production-scale ECG evaluation uses the public MEETI source dataset
+  (Zenodo record `18523205`, `MEETI.rar`, about 10k ECG images). The local gate
+  builds a minimum 1000-case manifest with
+  [`scripts/build-meeti-eval.py`](scripts/build-meeti-eval.py), runs
+  [`scripts/run-eval.py`](scripts/run-eval.py), exports expert-review images
+  with [`scripts/export-eval-annotations.py`](scripts/export-eval-annotations.py),
+  then rejects incomplete artifacts through
+  [`scripts/verify-eval-artifacts.py`](scripts/verify-eval-artifacts.py).
+- Each raw eval result includes deterministic `local_image_quality` metadata
+  from [`screen_monitor.py`](src/dicom_overlay/infrastructure/screen_monitor.py):
+  image size, aspect ratio, ink density, bright-pixel ratio, and low-signal
+  flag. This cheap local preflight is the first model-assist layer, so the
+  harness can detect unreadable/blank/low-signal inputs without spending every
+  decision on an MLLM.
 
 ### Core 3 — OpenClaw plugin compatibility
 
@@ -135,12 +149,16 @@ portable across OpenClaw releases.
   manifest / chat frame against the documented schema (protocol `3`, image in
   `params.attachments[]` with `type` / `mimeType` / `content`).
 - [`openclaw/package.json`](openclaw/package.json) tracks the runtime version
-  (`openclaw ^2026.5.27`) and the minimum-safe floor.
+  (locally validated against `openclaw ^2026.6.10`) and the minimum-safe floor.
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   declares the plugin compatibility window.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
+- The desktop Settings dialog exposes AI Provider profiles, including
+  OpenRouter (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`). Saving a
+  profile writes only the app-managed OpenClaw provider/model sections and keeps
+  secrets in environment variables or `.env`, not in git.
 
 ### Core 4 — Minimal packaged executable
 

@@ -1,7 +1,149 @@
-# Progress (Updated: 2026-05-30)
+# Progress (Updated: 2026-06-30)
 
 ## Done
 
+- **MEETI 1000+ production artifact gate + OpenClaw/OpenRouter refresh**
+  (2026-06-30):
+  - Updated local OpenClaw runtime to `2026.6.10` and validated the CLI config.
+    The Gateway contract remains the stable public `connect` + `chat.send`
+    protocol 3 image-attachment path; no minimum-safe version bump was needed.
+  - Validated a generated OpenRouter profile config using
+    `OPENROUTER_API_KEY` and `https://openrouter.ai/api/v1`, with secrets kept
+    as environment SecretRefs rather than committed config values.
+  - Built `data\eval-datasets\meeti-1000-all\manifest.json` from local
+    `MEETI.rar` (Zenodo record `18523205`) using Windows `tar`/`bsdtar`.
+    Local archive scan found 9922 PNG-bearing studies; the gate manifest keeps
+    1000 cases.
+  - Ran strict mock evaluation:
+    `data\eval\meeti-1000-mock-20260630-quality` completed 1000/1000 cases with
+    zero errors and strict/schema/bbox pass rates of 1.0.
+  - Exported expert-review annotations for all 1000 cases and verified artifacts
+    with `scripts\verify-eval-artifacts.py --min-cases 1000`. Passed checks:
+    `min_cases`, `scorecard_complete`, `schema_gate`, `bbox_gate`,
+    `cant_miss_gate`, `mock_perfect_gate`, `results_artifacts`,
+    `local_preflight_artifacts`, and `review_artifacts`.
+  - Added deterministic local image-quality metadata to eval raw results via
+    `ImageProcessor.image_quality_profile()`: width/height, aspect ratio, ink
+    pixel ratio, bright pixel ratio, and `low_signal`. This is the first
+    non-MLLM assist layer for cheap unreadable-input detection.
+  - Hardened annotation review completeness: no-bbox cases now produce
+    case-level audit rows, so bbox-free normal cases are still counted in the
+    1000-case review gate.
+  - Bounded `run-eval.py` console output by default with `--case-print-limit 50`
+    and `--verbose` for short diagnostics, reducing PowerShell/OOM risk during
+    1000+ image harness runs.
+  - Fresh verification: OpenClaw image harness smoke + verifier passed on
+    `data\harness-smoke\latest-openclaw-20260630`; targeted unit/smoke suite
+    passed 50 tests with only a `.pytest_cache` permission warning.
+
+- **MEETI MultiPass real-run harness** (2026-05-30):
+  - Added `scripts/run-eval.py --multi-pass --multi-pass-max-targets N` to run
+    the actual app `MultiPassAnalyzer` path during evaluation, not only a
+    single image+prompt pass.
+  - Added per-image `multipass-trace.jsonl` artifacts with
+    `openclaw_analyze_calls`, `coarse_passes`, `zoom_passes`, and `crop_calls`;
+    mock smoke showed 2 analyze calls / 1 crop per first two MEETI cases.
+  - `scripts/run-meeti-openclaw-experiment.ps1` now records multi-pass settings
+    and can launch reproducible full MEETI runs with experiment-local OpenClaw
+    config/logs/artifacts.
+  - MultiPass selector now refines non-normal (`info`, `warning`, `critical`)
+    findings with bboxes, prioritizing critical -> warning -> info, so under-called
+    suspicious findings still get a crop/refine pass.
+  - Eval scorer now treats abnormal checklist axes and underscore-normalized
+    checklist values as keyword evidence, preventing false misses such as
+    `ischemia` when `checklist.ischemia = st_depression/warning`.
+  - EKG skill prompt now explicitly preserves MEETI waveform-reading instructions:
+    10-second rhythm-strip rate estimation, LVH voltage/strain checks, ST-T
+    ischemia axis consistency, and warning severity floor for clinically meaningful
+    ST-T/LVH/rate abnormalities.
+  - Real `openai/gpt-5.4-mini` 1-case smoke after the prompt update produced
+    3 OpenClaw analyze calls (coarse + 2 crops), improved `meeti_43522917` to
+    warning severity with LVH/ischemia hits, but still missed bradycardia.
+  - Full 400-case strict MultiPass run is in progress:
+    `data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini`.
+  - Added offline expert-review export:
+    `scripts\export-eval-annotations.py --eval-dir <eval> --manifest <manifest>`
+    renders `review\<case>.review.png` with AI bboxes, numbered markers, and a
+    right-side summary/finding panel, plus `review\index.html`.
+  - Hardened the review export with bbox QA artifacts:
+    `review\bbox-audit.jsonl` records normalized and pixel coordinates,
+    crop-thumbnail paths, ink-pixel ratios, and `low_signal` flags for every
+    bbox; `review\crops\*.png` stores the exact content inside each bbox, and
+    low-signal boxes are cross-marked in the review PNG.
+  - Added clinical partial-credit scoring to the eval harness: each case now
+    records `partial_credit`, `partial_credit_breakdown`, and `strict_pass`;
+    aggregate scorecards record `strict_pass_rate`, `mean_partial_credit`,
+    mean partial-credit components, and per-target-axis performance. The
+    negative component is only included when expected negatives exist, and a
+    missed can't-miss label caps partial credit at 0.40.
+  - Added paired run comparison:
+    `scripts\compare-eval-runs.py --baseline <single-pass> --candidate <multipass>`
+    resolves experiment roots or eval dirs, compares only shared cases,
+    reports improved/regressed/unchanged counts, strict/partial/keyword deltas,
+    MultiPass analyze/crop cost, optional bbox low-signal summaries, and an
+    exact two-sided paired sign-test p-value. The comparator now rejects
+    incomplete/error scorecards by default and requires `--allow-incomplete` for
+    exploratory partial-run comparisons.
+  - Added posthoc rescoring:
+    `scripts\rebuild-eval-scorecard.py --eval-dir <eval> --manifest <manifest>`
+    rebuilds `scorecard.rebuilt.json` from saved `results/*.json`, so older or
+    still-running experiments can gain the new partial-credit metrics without
+    rerunning the model.
+  - `scripts\run-meeti-openclaw-experiment.ps1` now writes an in-progress
+    `experiment.json` (`status=running`) before launching eval, then overwrites
+    it with the final result in `finally`; future wrapper runs also rebuild the
+    scorecard and export expert-review PNG/bbox-audit artifacts after eval.
+  - Fixed `remap_bbox()` so zoom-pass child bboxes that overflow their crop-local
+    frame are clamped to the parent crop before being mapped back to ROI
+    coordinates.
+  - Tightened eval scoring after subagent audit: positive keyword recall now
+    ignores negated mentions (`no ischemia`), incomplete schema warnings make
+    `schema_ok=false`, can't-miss detection requires positive evidence, and
+    WNL / within-normal-range MEETI reports are explicit normal concepts.
+  - Added `scorecard.partial.json` checkpoints after each eval case and
+    fail-fast protection for repeated Gateway infrastructure errors, preventing
+    aborted runs from producing hundreds of fake model failures.
+  - Review export now cleans stale generated artifacts, records clamped bbox
+    coordinates with `was_clamped` / `invalid_reason`, and the harness validator
+    rejects bbox extents where `x+w` or `y+h` exceeds the normalized image frame.
+  - The desktop app and `run-eval.py` now pass the actual downscaled image size
+    into `MultiPassAnalyzer`, so the resolution-aware manual-zoom guard is wired
+    through the real app/eval path.
+
+- **MEETI / OpenClaw GPT-5.5 eval harness hardening** (2026-05-30):
+  - Switched repo-local OpenClaw config from `openai/gpt-4o-mini` to the catalog-supported `openai/gpt-5.5`; confirmed local OpenClaw 2026.5.27 exposes `openai/gpt-5.5` but not `openai/gpt-5.5-mini`.
+  - Added `scripts/load-env.bat` and wired it into `scripts/test-real-stack.bat` / `start.bat` so `.env` credentials are available to the Gateway without printing secret values.
+  - Hardened `scripts/run-eval.py` for MEETI: `--dataset`, `--limit`, `--timeout-sec` (default 90s), `--require-perfect`, modality default `valid_regions`, and strict PERFECT GATE reporting.
+  - Fixed scorer false misses: shared negative clauses (`No consolidation, effusion, pneumothorax`), keyword aliases (`no acute` via `without/no focal`, `infarction` via STEMI, ST-T/T-wave aliases), checklist values for positive keyword recall, and normal/info equivalence for strict severity.
+  - Fixed MEETI report label extraction so generic nonspecific T-wave changes no longer imply ischemia or ST depression; regenerated the 400-case MEETI manifest.
+  - Isolated each image analysis request with a fresh `analysis-<uuid>` Gateway session key to prevent cross-case context leakage; added narrow repair for malformed bbox JSON numbers such as `"x": 0.17"`.
+  - Added `scripts/run-meeti-openclaw-experiment.ps1` to create reproducible full MEETI real-run records under `data/experiments/`, including model catalog, experiment-local OpenClaw config, Gateway logs, eval console, scorecard, and a blocked record when the requested model id is unavailable.
+  - Recorded `openai/gpt-5.5-mini` blocked experiment (`data/experiments/meeti-20260530-214839-openai_gpt-5.5-mini`) and validated the runner with a 1-case `openai/gpt-5.4-mini` smoke (`data/experiments/meeti-20260530-214859-openai_gpt-5.4-mini`).
+  - Verified: OpenClaw config validate OK; MEETI 400-case mock strict PASS; unit+smoke pass; GPT-5.5 real MEETI 10-case run completed with no timeout/parser crashes but still failed PERFECT GATE (schema 90%, bbox 100%, severity exact 70%, abnormal/normal 90%, keyword recall 37%).
+
+- **臨床規則可審核性（對照文字說明 + 強制 description + 命中證據）** (2026-05-30)：
+  - 🟢 **需求**：無論 soft/hard rule harness，人類要能審核——需保留「對照的文字說明」
+  - 🟢 **規則對照表** `ClinicalConsistencyEngine.catalogue()` + `__main__ --explain-rules` CLI（仿 `--selfcheck`，不啟動 GUI/不連 LLM）：依 modality 分組列出每條**生效**規則（內建＋YAML 覆寫）的 id／白話觸發條件／醫學依據／命中行為（升級至 X、標記複核）／訊息。`RuleCondition.explain()` 把宣告式條件轉中文（欄位/運算子標籤表 `_FIELD_LABELS`/`_OP_LABELS`），`ClinicalRule.catalogue_entry()` 組成可讀區塊
+  - 🟢 **命中證據（為什麼命中）** `RuleCondition.matched_terms()` 回傳實際比中的 `contains_any` 關鍵字、`ClinicalRule.evidence()` 聚合、`RuleViolation.audit_line()` 在 reason 後加「｜命中關鍵字：…」；hook log 新增 `evidence`/`audit` 欄位 → 審核者看得到 AI 自身輸出哪個字觸發升級，而非只知道規則 fired
+  - 🟢 **強制可審核（enforce）**：`clinical_rule_loader._parse_rule` 拒絕載入沒寫 `description` 的 YAML 規則（記 log 跳過，永不擲例外）——把「可審核性」變成上線門檻，跟 wiring guard 文化一致；範本 `.example` 標注 description 為必填並附 `--explain-rules` 用法
+  - 🟢 新增 9 測試（explain/evidence/audit_line/catalogue/分組/空引擎/強制 description）→ **unit+smoke 300 passed, 1 skipped**；變更檔 ruff 乾淨
+
+- **臨床一致性引擎（資料驅動 + 醫學指引根據 + 模組化更新）** (2026-05-30)：
+  - 🟢 **需求**：harness 除了 soft 建議 OpenClaw，要更穩健但又不能只是 hardcode rule——除非有醫學根據，且須能在指引更新時模組化抽換
+  - 🟢 **設計哲學（不強加診斷）**：引擎只檢查 AI **自身結構化輸出**的「自我矛盾」（如 checklist 說 ST 抬高但 severity=NORMAL）與「不可漏診的低估」（can't-miss under-call），**只升級嚴重度（`_max_severity`，永不降級）**、**永不刪 finding、永不替醫師下診斷**，僅標記人工複核——醫師永遠保留最終判讀權（符合 Four Cores 憲章）
+  - 🟢 **純 domain 引擎** `domain/clinical_rules.py`：`RuleCondition`（frozen，運算子 `contains_any`/`not_contains_any`/`equals` 文字類；`severity_at_most`/`severity_at_least` 嚴重度類；欄位存取 `summary`/`all_text`/`checklist.<key>`/`severity`，型別不符運算子於 `__post_init__` 擲 `ConditionError`）、`ClinicalRule`（frozen，附 `guideline`/`guideline_version`/`effective_date`/`source_url` 引用、`escalate_to`、`require_review`，`fires()`/`citation()`）、`ClinicalConsistencyEngine`（依 modality 分組，`evaluate()` 唯讀、`apply()` 升級＋標記＋去重 reasons）。4 條內建規則皆附指引引用（STEMI 未標記→CRITICAL、高鉀尖 T 波→WARNING、氣胸低估→CRITICAL、縱膈擴大→WARNING）
+  - 🟢 **模組化更新（指引變更免改程式碼）** `infrastructure/clinical_rule_loader.py`：載入 `clinical_rules/*.rules.yaml` 規則包，`merge_rules` 依 **id 覆寫**內建規則或新增規則；malformed 檔/規則記 log 跳過**永不擲例外**（fail-safe）。仿 `modality_profile.py` 內建＋外部覆寫模式。附 `clinical_rules/ekg-cxr.rules.yaml.example` 範本（`.example` 後綴不載入）
+  - 🟢 **接線** `infrastructure/hooks/clinical_consistency.py::ClinicalConsistencyHook`（post-analyze，呼叫 `engine.apply`，**永不擲例外**）接進 `__main__` hook pipeline（RateLimiter → InputGuard → OutputValidator → ClinicalConsistency）；引擎由 `build_clinical_engine(app_base_dir()/"clinical_rules")` 建立
+  - 🟢 **呈現**：`AnalysisResult` 加 `review_required` / `review_reasons`（仿 incomplete 模式：app/infra 寫、presentation 讀）；`overlay_window.py` 加粗體紅字「🚨 需人工複核」面板，列出附指引引用的複核理由
+  - 🟢 新增 30 測試（條件比對、升級不降級、去重、modality 範圍、內建規則、YAML 載入/覆寫/容錯、hook 整合）→ **unit+smoke 291 passed, 1 skipped**；變更檔 ruff 乾淨
+
+- **接線護欄 + 多趟放大正式接線 + 跨輪去重（孤兒功能消除）** (2026-05-30)：
+  - 🟢 **問題根因**：「純函式優先、GUI 接線最後、風險高就暫緩」策略系統性製造孤兒——`MultiPassInterpreter`、`AnnotationAccumulator` 都已建好＋測試＋寫進 README/ROADMAP，但 `__main__.py` 從未呼叫（README 宣傳的 multi-pass 出貨版其實沒跑）
+  - 🟢 **治本：接線護欄** `tests/unit/test_wiring.py`：用 `pkgutil`/`inspect` 列舉 application 層公開 orchestrator（排除 `@dataclass` DTO 與 `Protocol`），強制每個「已接線（名稱出現在 `__main__.py` 源碼，測試證明可達）或顯式登記 `DEFERRED_WIRING`（附原因）」。新 orchestrator 兩者皆非 → CI fail，逼出誠實決策而非靜默孤兒。另測 DEFERRED 條目須有原因、且必須是現存 orchestrator（防 stale）
+  - 🟢 **治標：multi-pass 正式接線**：新增 `MultiPassAnalyzer`（`application/multi_pass.py`）作為 `VisionAnalyzerService` drop-in——`analyze()` 走 `interpreter.interpret()`，`connect/chat/disconnect/is_connected` 委派 inner analyzer → `OverlayAgent` 零狀態機改動。`__main__` 在 `hooked_analyzer` 後依 `config.analysis.multi_pass_enabled`（預設 False，省延遲/token）條件包裝。`AnalysisConfig` 加 `multi_pass_enabled` / `multi_pass_max_zoom_targets`（entities + config_loader 解析）
+  - 🟢 **新增 infra cropper**：`ImageProcessor.crop_region_base64(image_base64, region)`（PIL，符合 `ImageCropper` Protocol）：normalized 0-1 子區裁剪（**PHI 不變式：永遠是輸入子集，clamp 不越界**），短邊 < 512 時 LANCZOS 放大保留小病灶可讀性
+  - 🟡 **誠實 DEFERRED**：`AnnotationAccumulator` 登記為待接線，原因＝chat 對話需產生結構化 `FindingDelta` 回寫 overlay 標記（目前 chat 僅回傳文字），不假裝接線
+  - 🟢 新增 9 測試（wiring 護欄 4、`MultiPassAnalyzer` drop-in 3、cropper PHI 子集/clamp 2）→ **unit+smoke 261 passed, 1 skipped**；變更檔 ruff 乾淨
 - **文件同步 + 分段 commit + push** (2026-05-30)：README.md / README.zh-TW.md（Core 1 多趟放大＋CXR 10 軸、Core 2 eval 評分＋can't-miss gate、Core 4 USB 即插即用＋`--selfcheck`、test-runner GPT-5.5 mini）、CHANGELOG.md Unreleased、ROADMAP.md v0.4.0 全部更新；刪除暫存 `test_out.txt`。`research.agent.md`（無關 in-progress 變更）保留不提交
 - **USB 隨插隨用打包打通 + 自我檢查（--selfcheck）** (2026-05-30)：
   - 🟢 **真正的可攜性地雷修掉**：`__main__.py` 全程用 `Path.cwd()` 當 base（gateway/settings/openclaw-home/data/log）。雙擊 exe 時 cwd 不保證等於 exe 資料夾（可能是 System32）→ 別台電腦會找不到 config、寫錯地方。新增 `infrastructure/app_paths.py` 純函式 `resolve_app_base_dir(frozen, executable, cwd)`：frozen 時用 `Path(sys.executable).parent`，dev 時維持 cwd。`main()` 改用 `app_base_dir()` 串接所有路徑

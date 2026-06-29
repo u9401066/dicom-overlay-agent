@@ -41,6 +41,33 @@
 - [x] 可攜帶 USB 即插即用：凍結時路徑錨定執行檔資料夾（`app_paths.py`）+ `--selfcheck` 自我檢查
 - [x] `test-runner` agent 改用 GPT-5.5 mini
 
+### v0.4.1 — 接線護欄與孤兒消除 (2026-05-30)
+
+- [x] 跨輪註記去重（`AnnotationAccumulator`）：幾何 IoU 去重為純函式（永不降級嚴重度），臨床判斷走顯式 `FindingDelta`（ADD/REVISE/RETRACT）
+- [x] 接線護欄（`tests/unit/test_wiring.py`）：列舉 application 層 orchestrator，強制每個「已接線（`__main__` 可達）或顯式登記為 DEFERRED（附原因）」，CI 自動攔截孤兒功能
+- [x] 多趟放大判讀正式接線：`MultiPassAnalyzer` 作為 `VisionAnalyzerService` drop-in 包進 `OverlayAgent`，由 `analysis.multi_pass_enabled` 旗標啟用（預設關閉，零狀態機改動）；新增 `ImageProcessor.crop_region_base64`（PIL，PHI-safe 子集裁剪）
+- [x] 臨床一致性引擎（`ClinicalConsistencyEngine`）：以資料驅動、有醫學指引根據的規則檢查 AI 自身結構化輸出的「自我矛盾」與「不可漏診的低估」，僅升級嚴重度（永不降級）並標記人工複核；內建規則附指引引用（STEMI 未標記、高鉀尖 T 波、氣胸/縱膈擴大低估），可由 `clinical_rules/*.rules.yaml` 規則包依 id 覆寫或新增（指引更新時模組化抽換，免改程式碼）；接成 `ClinicalConsistencyHook` post-analyze 階段，overlay 以「🚨 需人工複核」紅字面板呈現
+- [x] 臨床規則可審核性：`--explain-rules` CLI 輸出規則對照表（白話條件＋醫學依據＋命中行為，供臨床人員審核，不啟動 GUI）；命中時記錄實際比中的關鍵字證據（`audit_line` / hook log）；YAML 規則包強制 `description`（沒寫說明的規則不載入，把可審核性變成上線門檻）
+- [ ] **DEFERRED**：`AnnotationAccumulator` 接線 — 待 chat 對話產生結構化 `FindingDelta` 回寫 overlay 標記（目前 chat 僅回傳文字）
+
+### v0.4.2 MEETI 1000+ harness / OpenRouter refresh (2026-06-30)
+
+- [x] Local OpenClaw runtime validated at `2026.6.10`; Gateway compatibility
+  remains `connect` + `chat.send` protocol 3 image attachments.
+- [x] Desktop AI Provider settings include OpenRouter (`OPENROUTER_API_KEY`,
+  `https://openrouter.ai/api/v1`) and preserve secrets outside git.
+- [x] Full MEETI source archive from Zenodo record `18523205` is supported via
+  `scripts\build-meeti-eval.py --extractor tar`; local scan found 9922
+  PNG-bearing studies.
+- [x] 1000-case strict mock eval and artifact verifier passed, including
+  schema, bbox, can't-miss, raw-result, review-export, and
+  `local_preflight_artifacts` gates.
+- [x] Added deterministic local image-quality preflight metadata so unreadable
+  image detection does not depend entirely on MLLM calls.
+- [ ] Next clinical iteration: run paired real-model baseline vs MultiPass on
+  the same 1000-case manifest and use expert review to refine prompt/rules for
+  recurrent misses.
+
 ## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制

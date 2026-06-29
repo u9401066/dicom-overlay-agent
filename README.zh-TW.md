@@ -6,6 +6,24 @@
 
 🌐 [English](README.md)
 
+## 2026-06-30 維護狀態
+
+- 本機 OpenClaw runtime 已更新並驗證到 `2026.6.10`；仍只透過 Gateway
+  `connect` + `chat.send` 與 OpenClaw 溝通，不匯入 OpenClaw plugin SDK
+  內部 API。
+- 桌面版 Settings 的 AI Provider 分頁支援 OpenRouter：
+  `OPENROUTER_API_KEY` + `https://openrouter.ai/api/v1`。設定會寫入
+  OpenClaw managed provider/model 區段，API key 留在環境變數或 `.env`，
+  不進 git。
+- MEETI 生產級評估 gate 使用 Zenodo record `18523205` 的 `MEETI.rar`
+  公開資料來源；本機 manifest 已能從約 1 萬張 ECG 影像建立至少 1000
+  case，並透過 `run-eval.py`、`export-eval-annotations.py`、
+  `verify-eval-artifacts.py` 驗證 scorecard、raw result、review PNG、
+  bbox audit/crops 與 local image preflight。
+- `local_image_quality` 是第一層非 MLLM 輔助：在送模型前/評估時記錄影像尺寸、
+  aspect ratio、ink density、bright-pixel ratio 與 low-signal flag，避免
+  所有品質判斷都拖到多模態語言模型。
+
 Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲勞、忙碌或注意力分散造成的遺漏。由於無法直接存取 HIS API，**螢幕是唯一輸入來源**：使用者首次設定截圖 ROI（裁切已知 PHI），agent 在醫師正常操作時於背景截圖、分析、標註。
 
 ## 🎯 四大核心（維護重點）

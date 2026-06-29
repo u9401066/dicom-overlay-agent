@@ -42,11 +42,14 @@ logs/
 coverage/
 .coverage
 htmlcov/
+.pytest_cache/
 
 # 敏感資料
 *.pem
 *.key
 secrets/
+MEETI.rar
+s41597-026-06796-1.pdf
 
 # OpenClaw Gateway (敏感：token, credentials, sessions)
 openclaw/*.json
