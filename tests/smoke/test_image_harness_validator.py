@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from dicom_overlay.infrastructure.image_harness_smoke import run_image_harness_smoke
@@ -43,3 +45,53 @@ async def test_codex_verifier_rejects_unredacted_image_payload(tmp_path):
 
     assert not verification.ok
     assert any("unredacted" in failure for failure in verification.failures)
+
+
+def test_codex_verifier_rejects_bbox_extent_overflow(tmp_path):
+    log_path = tmp_path / "harness.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                '{"method": "connect"}',
+                (
+                    '{"method": "chat.send", "params": {"attachments": '
+                    '[{"mimeType": "image/png", "content": "<redacted>", '
+                    '"contentLength": 123, "contentSha256": '
+                    '"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]}}'
+                ),
+                "viewer_displayed=False",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result_path = tmp_path / "result.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "findings": [
+                    {
+                        "label": "overflow",
+                        "detail": "bbox spills past the right edge",
+                        "regions": ["lead_I"],
+                        "bboxes": [{"x": 0.9, "y": 0.1, "w": 0.2, "h": 0.2}],
+                    }
+                ],
+                "harness_manifest": {
+                    "compatibility": {
+                        "minimumOpenClaw": "2026.4.22",
+                        "gatewayProtocol": {"methods": ["connect", "chat.send"]},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    verification = verify_image_harness_artifacts(
+        log_path=log_path,
+        result_path=result_path,
+        require_viewer=False,
+    )
+
+    assert not verification.ok
+    assert "overlay_annotation_contract" not in verification.passed_checks

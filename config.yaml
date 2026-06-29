@@ -4,6 +4,11 @@ debug:
   save_screenshots: false
 analysis:
   trigger_mode: hybrid
+  # Multi-pass interpretation: after a coarse read, re-examine abnormal regions
+  # at full ROI resolution to refine bounding boxes. Off by default (adds
+  # latency / token cost). Set true to enable.
+  multi_pass_enabled: false
+  multi_pass_max_zoom_targets: 3
 hotkeys:
   dismiss_overlay: ctrl+shift+d
   toggle_enable: ctrl+shift+e

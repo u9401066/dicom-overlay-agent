@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
@@ -23,6 +24,10 @@ from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
 from dicom_overlay.application.interpretation_harness import (
     summarize_result_for_followup,
 )
+from dicom_overlay.application.multi_pass import (
+    MultiPassAnalyzer,
+    MultiPassInterpreter,
+)
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import AgentState, Modality
 from dicom_overlay.domain.modality_profile import (
@@ -31,9 +36,13 @@ from dicom_overlay.domain.modality_profile import (
 )
 from dicom_overlay.infrastructure.app_paths import app_base_dir
 from dicom_overlay.infrastructure.async_bridge import AsyncBridge
+from dicom_overlay.infrastructure.clinical_rule_loader import build_clinical_engine
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.gateway_manager import GatewayManager
+from dicom_overlay.infrastructure.hooks.clinical_consistency import (
+    ClinicalConsistencyHook,
+)
 from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
@@ -48,6 +57,9 @@ from dicom_overlay.presentation.control_bar import ControlBarWindow
 from dicom_overlay.presentation.overlay_window import OverlayWindow
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
+
+if TYPE_CHECKING:
+    from dicom_overlay.domain.services import VisionAnalyzerService
 
 logger = structlog.get_logger("dicom_overlay")
 
@@ -86,6 +98,19 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
     return 0 if all_ok else 1
 
 
+def _run_explain_rules(base_dir: Path) -> int:
+    """Print the active clinical-rule catalogue for human audit; exit 0.
+
+    Surfaces the "對照文字說明" for every live rule (built-in plus any YAML
+    overrides under <base>/clinical_rules) without launching the GUI or
+    contacting an LLM, so a clinician can review the safety net's logic.
+    """
+    engine = build_clinical_engine(base_dir / "clinical_rules")
+    print("DICOM Overlay Agent — 臨床一致性規則對照表（供人工審核）")
+    print(engine.catalogue())
+    return 0
+
+
 def main() -> None:
     # --- Resolve portable base dir (USB plug-and-play) ---
     # When frozen, anchor all runtime paths to the executable's folder, not the
@@ -113,6 +138,13 @@ def main() -> None:
     if "--selfcheck" in sys.argv:
         sys.exit(_run_selfcheck(base_dir, config_path))
 
+    # --- Clinical rule audit (`--explain-rules`) ---
+    # Prints the human-readable catalogue of every active clinical-consistency
+    # rule and exits, so a reviewer can audit the safety net (built-in + YAML
+    # overrides) without launching the GUI or contacting an LLM.
+    if "--explain-rules" in sys.argv:
+        sys.exit(_run_explain_rules(base_dir))
+
     # --- Build modality registry (single source of truth, config-extensible) ---
     registry = build_registry(config.modalities)
     set_active_registry(registry)
@@ -131,12 +163,37 @@ def main() -> None:
     )
 
     # --- Build hook pipeline (guardrails) ---
+    # ClinicalConsistencyHook runs AFTER OutputValidator so it sees a
+    # schema-validated result, then applies the data-driven, guideline-grounded
+    # safety net (escalate-only, flag-for-review). Rule packs in
+    # <base>/clinical_rules/*.rules.yaml override the built-in rules, so updating
+    # a diagnostic guideline is a data edit — no code change.
+    clinical_engine = build_clinical_engine(app_base_dir() / "clinical_rules")
     hooks = [
         RateLimiter(),
         InputGuard(registry=registry),
         OutputValidator(registry=registry),
+        ClinicalConsistencyHook(engine=clinical_engine),
     ]
     hooked_analyzer = HookedVisionAnalyzer(inner=openclaw_client, hooks=hooks)
+
+    # --- Optional multi-pass interpretation (coarse → crop abnormal → refine) ---
+    # Off by default (latency / token cost). When enabled it wraps the hooked
+    # analyzer as a drop-in VisionAnalyzerService, so OverlayAgent is unchanged.
+    vision_analyzer: VisionAnalyzerService = hooked_analyzer
+    if config.analysis.multi_pass_enabled:
+        interpreter = MultiPassInterpreter(
+            analyzer=hooked_analyzer,
+            cropper=image_processor.crop_region_base64,
+            max_zoom_targets=config.analysis.multi_pass_max_zoom_targets,
+        )
+        vision_analyzer = MultiPassAnalyzer(
+            inner=hooked_analyzer, interpreter=interpreter
+        )
+        logger.info(
+            "multi_pass_enabled",
+            max_zoom_targets=config.analysis.multi_pass_max_zoom_targets,
+        )
 
     # --- MCP adapter (aligned with openclaw-mcp-adapter plugin) ---
     mcp_adapter = McpAdapter()  # No servers configured yet; use register_provider()
@@ -146,7 +203,7 @@ def main() -> None:
         config=config,
         screen_monitor=screen_monitor,
         image_processor=image_processor,
-        vision_analyzer=hooked_analyzer,
+        vision_analyzer=vision_analyzer,
         region_mapper=region_mapper,
     )
 

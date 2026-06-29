@@ -132,10 +132,12 @@ def _overlay_annotation_contract_ok(result: dict[str, Any]) -> bool:
     bbox = bboxes[0]
     if not isinstance(bbox, dict):
         return False
-    return all(
+    if not all(
         isinstance(bbox.get(key), int | float) and 0 <= bbox[key] <= 1
         for key in ("x", "y", "w", "h")
-    )
+    ):
+        return False
+    return bbox["x"] + bbox["w"] <= 1 and bbox["y"] + bbox["h"] <= 1
 
 
 def _manifest_contract_ok(result: dict[str, Any]) -> bool:

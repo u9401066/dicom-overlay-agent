@@ -10,6 +10,9 @@ if errorlevel 1 exit /b 1
 call scripts\sync-openclaw-workspace.bat
 if errorlevel 1 exit /b 1
 
+call scripts\load-env.bat
+if errorlevel 1 exit /b 1
+
 set "OPENCLAW_HOME=%CD%\openclaw-home"
 set "OPENCLAW_STATE_DIR=%OPENCLAW_HOME%"
 set "OPENCLAW_CONFIG_PATH=%CD%\openclaw\openclaw.json"

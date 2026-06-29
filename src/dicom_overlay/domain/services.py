@@ -58,6 +58,10 @@ class ImageProcessorService(ABC):
         Only shrinks; never upscales. ``max_edge <= 0`` returns input unchanged.
         """
 
+    @abstractmethod
+    def image_size(self, image_data: bytes) -> tuple[int, int]:
+        """Return ``(width, height)`` for PNG image bytes."""
+
 
 class VisionAnalyzerService(ABC):
     """Sends images to Vision API for analysis (spec §3.3)."""

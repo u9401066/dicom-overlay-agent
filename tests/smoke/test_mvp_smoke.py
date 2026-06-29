@@ -144,7 +144,8 @@ async def test_mvp_smoke_pipeline() -> None:
         assert received_messages[0]["method"] == "connect"
         assert received_messages[1]["method"] == "chat.send"
         payload = received_messages[1]["params"]
-        assert payload["sessionKey"] == "main"
+        assert payload["sessionKey"].startswith("analysis-")
+        assert payload["sessionKey"] != "main"
         assert payload["attachments"][0]["type"] == "image"
         assert results
         assert results[0].summary == "Smoke test summary"

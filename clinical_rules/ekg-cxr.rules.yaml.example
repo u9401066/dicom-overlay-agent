@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Clinical rule pack — EXAMPLE / TEMPLATE (not loaded by the agent)
+#
+# HOW TO USE
+#   1. Copy this file to:  clinical_rules/<name>.rules.yaml
+#      (only files matching *.rules.yaml are loaded; this *.example file is not.)
+#   2. Edit the rules below to match the updated diagnostic guideline.
+#   3. Restart the agent. The pack OVERRIDES any built-in rule with the same id
+#      and ADDS rules with new ids — no code change, no rebuild.
+#
+# WHAT A RULE DOES
+#   A rule fires when ALL its conditions hold for the AI's structured result.
+#   On firing the engine ONLY:
+#     • escalates severity toward `escalate_to` (it never downgrades), and
+#     • flags the result for human review with `message` + the guideline citation.
+#   It never imposes a diagnosis or removes findings. The physician decides.
+#
+# CONDITION FIELDS
+#   severity                  the overall result severity (normal|info|warning|critical)
+#   summary                   the free-text summary
+#   checklist.<key>           the text of one checklist item (e.g. checklist.st_segment)
+#   all_text                  summary + every finding label/detail + every checklist value
+#
+# CONDITION OPERATORS
+#   text fields:     contains_any | not_contains_any | equals   (case-insensitive)
+#   severity field:  severity_at_most | severity_at_least | equals
+#
+# REQUIRED FIELDS (per rule): id, modality, description, conditions, message.
+#   `description` is MANDATORY — a rule with no human-readable description is
+#   skipped at load time, so every active rule stays auditable. Review the live
+#   rule set anytime with:  DICOMOverlayAgent.exe --explain-rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+rules:
+  # Example: override the built-in STEMI rule to also trigger on de Winter /
+  # hyperacute T-wave wording, reflecting a guideline update.
+  - id: ekg-st-elevation-not-flagged
+    modality: EKG
+    description: >-
+      ST elevation OR STEMI-equivalent pattern described but study rated benign.
+    conditions:
+      - field: checklist.st_segment
+        op: contains_any
+        values: ["elevat", "ste ", "de winter", "hyperacute", "抬高", "上升"]
+      - field: severity
+        op: severity_at_most
+        value: info
+    message: "ST 段抬高或 STEMI 等位型卻評為非異常 — 需人工排除急性冠心症"
+    guideline: "ESC Guidelines for ACS"
+    guideline_version: "2023"
+    effective_date: "2023-08-25"
+    source_url: "https://www.escardio.org/Guidelines"
+    escalate_to: critical
+    require_review: true
+
+  # Example: a brand-new institution-specific rule (new id → added, not overriding).
+  - id: cxr-ng-tube-malposition
+    modality: CXR
+    description: NG/feeding tube described as malpositioned or coiled.
+    conditions:
+      - field: checklist.lines_tubes
+        op: contains_any
+        values: ["malposition", "coiled", "bronchus", "異位", "捲曲"]
+    message: "鼻胃/餵食管疑似異位 — 餵食前需人工確認管路位置"
+    guideline: "NPSA Nasogastric Tube Safety Alert"
+    guideline_version: "2011"
+    effective_date: "2011-03-10"
+    escalate_to: warning
+    require_review: true

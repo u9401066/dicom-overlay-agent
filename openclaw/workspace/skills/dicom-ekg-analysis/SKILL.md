@@ -113,8 +113,24 @@ matching checklist axis):
 
 Reading depth (specialist expectations):
 - Quote rate as a number (e.g. "~78 bpm"), not just a band, when R-R is legible.
+- For waveform-only ECG screenshots, estimate rate from the 10-second rhythm strip
+  when present. Count QRS complexes across the strip or use R-R large boxes; if
+  the rhythm is sinus and the rate is below 60 bpm or borderline around 55-60
+  bpm, set `heart_rate` to `bradycardia` rather than generic normal.
+- Actively check LVH voltage/strain before marking chamber enlargement absent:
+  deep S in V1/V2 + R in V5/V6 or aVL can support LVH, especially with lateral
+  ST-T repolarization/strain changes. If present, set `chamber_enlargement` to
+  `LVH` with warning status and name left ventricular hypertrophy in findings.
 - For ST changes, state magnitude, morphology (concave vs convex/tombstone),
   and reciprocal changes — these distinguish STEMI from pericarditis/BER.
+- If reproducible ST depression, T-wave inversion/flattening, or LVH-strain-like
+  repolarization changes are visible in multiple contiguous or anatomically
+  related leads, set `st_segment`/`t_wave` accordingly and set `ischemia` to `st_depression` or `t_wave_changes`.
+  Do not hide these as only "nonspecific" with normal/absent checklist axes.
+- If any clinically meaningful ST-T ischemia/strain, LVH, bradycardia,
+  tachyarrhythmia, conduction block, or chamber enlargement is present, set
+  overall severity at least `warning` (reserve `info` for minor artifacts or
+  benign variants with all clinically relevant checklist axes normal).
 - Always reconcile the checklist axes with each other (e.g. an "absent"
   ``stemi_pattern`` is inconsistent with an "elevation" ``st_segment`` of
   critical status — resolve the contradiction before returning).

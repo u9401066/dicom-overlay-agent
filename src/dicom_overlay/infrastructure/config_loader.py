@@ -112,6 +112,12 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
             trigger_mode=_parse_trigger_mode(
                 analysis_raw.get("trigger_mode", TriggerMode.HYBRID.value)
             ),
+            multi_pass_enabled=bool(
+                analysis_raw.get("multi_pass_enabled", False)
+            ),
+            multi_pass_max_zoom_targets=int(
+                analysis_raw.get("multi_pass_max_zoom_targets", 3)
+            ),
         ),
         region_maps=raw.get("region_maps", {}),
         modalities=raw.get("modalities"),

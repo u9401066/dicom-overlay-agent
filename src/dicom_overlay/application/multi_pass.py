@@ -1,7 +1,7 @@
 """Multi-pass interpretation orchestrator (application layer).
 
 Lets the agent look at a complex image more than once: a coarse first pass
-finds candidate regions, then the orchestrator crops each abnormal region out
+finds candidate regions, then the orchestrator crops each non-normal region out
 of the *original-resolution* ROI image and re-sends just that slice for a
 closer, higher-effective-resolution look. Refined bounding boxes are mapped
 back into the global ROI coordinate space so the overlay can draw them in the
@@ -21,25 +21,31 @@ Design constraints (see AGENTS.md four cores):
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 import structlog
 
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     Finding,
+    Modality,
     RegionRect,
     Severity,
 )
-
-if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import Modality
-    from dicom_overlay.domain.services import VisionAnalyzerService
+from dicom_overlay.domain.services import VisionAnalyzerService
 
 logger = structlog.get_logger(__name__)
 
-# Findings worth a closer second look. Normal / info findings are not zoomed.
-_ABNORMAL: frozenset[Severity] = frozenset({Severity.WARNING, Severity.CRITICAL})
+# Findings worth a closer second look. Info findings are included after
+# warning/critical so a low-confidence first pass can still be refined.
+_ZOOMABLE_SEVERITIES: frozenset[Severity] = frozenset(
+    {Severity.INFO, Severity.WARNING, Severity.CRITICAL}
+)
+_ZOOM_PRIORITY: dict[Severity, int] = {
+    Severity.CRITICAL: 0,
+    Severity.WARNING: 1,
+    Severity.INFO: 2,
+}
 
 # Default minimum source-pixel edge for a *digital* zoom to be worthwhile.
 # Until the real image API lands, frames come from a screen capture capped at
@@ -99,10 +105,17 @@ def remap_bbox(child: RegionRect, parent: RegionRect) -> RegionRect:
     bbox in the original ROI's 0-1 frame, clamped so ``x + w`` and ``y + h``
     never exceed 1.
     """
-    gx = clamp_unit(parent.x + child.x * parent.w)
-    gy = clamp_unit(parent.y + child.y * parent.h)
-    gw = clamp_unit(child.w * parent.w)
-    gh = clamp_unit(child.h * parent.h)
+    # First clamp in the crop-local frame. Some model outputs keep each field
+    # in [0, 1] but still overflow as x+w/y+h; those boxes must not spill
+    # outside the parent crop after remapping.
+    child_x = clamp_unit(child.x)
+    child_y = clamp_unit(child.y)
+    child_w = min(clamp_unit(child.w), 1.0 - child_x)
+    child_h = min(clamp_unit(child.h), 1.0 - child_y)
+    gx = clamp_unit(parent.x + child_x * parent.w)
+    gy = clamp_unit(parent.y + child_y * parent.h)
+    gw = clamp_unit(child_w * parent.w)
+    gh = clamp_unit(child_h * parent.h)
     # Keep the box inside the unit square after clamping the origin.
     gw = min(gw, 1.0 - gx)
     gh = min(gh, 1.0 - gy)
@@ -114,18 +127,19 @@ def select_zoom_targets(
     *,
     max_targets: int,
 ) -> list[Finding]:
-    """Pick abnormal findings that have a bbox and are worth a closer look.
+    """Pick non-normal findings that have a bbox and are worth a closer look.
 
-    Critical findings are prioritized over warnings; findings without a bbox
-    cannot be cropped and are skipped. At most ``max_targets`` are returned.
+    Critical findings are prioritized over warnings, then info findings; normal
+    findings and findings without a bbox are skipped. At most ``max_targets``
+    are returned.
     """
     if max_targets <= 0:
         return []
     candidates = [
-        f for f in result.findings if f.severity in _ABNORMAL and f.bboxes
+        f for f in result.findings if f.severity in _ZOOMABLE_SEVERITIES and f.bboxes
     ]
-    # Critical first, then warning; preserve original order within a tier.
-    candidates.sort(key=lambda f: 0 if f.severity is Severity.CRITICAL else 1)
+    # Critical first, then warning, then info; preserve original order in a tier.
+    candidates.sort(key=lambda f: _ZOOM_PRIORITY[f.severity])
     return candidates[:max_targets]
 
 
@@ -314,3 +328,60 @@ class MultiPassInterpreter:
             findings=merged,
             zoom_hints=[*coarse.zoom_hints, *zoom_hints],
         )
+
+
+class MultiPassAnalyzer(VisionAnalyzerService):
+    """Drop-in ``VisionAnalyzerService`` that runs a :class:`MultiPassInterpreter`.
+
+    Lets the existing :class:`~dicom_overlay.application.overlay_agent.OverlayAgent`
+    use multi-pass interpretation with **zero state-machine changes**: ``analyze``
+    is overridden to run the coarse → crop → refine loop, while ``connect`` /
+    ``chat`` / ``disconnect`` / ``is_connected`` delegate to the wrapped inner
+    analyzer. Wire it in ``__main__`` behind the ``multi_pass_enabled`` flag.
+    """
+
+    def __init__(
+        self,
+        inner: VisionAnalyzerService,
+        interpreter: MultiPassInterpreter,
+    ) -> None:
+        self._inner = inner
+        self._interpreter = interpreter
+
+    async def analyze(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        return await self._interpreter.interpret(
+            image_base64, modality, valid_regions
+        )
+
+    async def analyze_with_source_size(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        source_size_px: tuple[int, int] | None,
+    ) -> AnalysisResult:
+        """Analyze with captured-image dimensions for resolution-aware zoom."""
+        return await self._interpreter.interpret(
+            image_base64,
+            modality,
+            valid_regions,
+            source_size_px=source_size_px,
+        )
+
+    async def chat(self, message: str) -> str:
+        return await self._inner.chat(message)
+
+    async def connect(self) -> None:
+        await self._inner.connect()
+
+    async def disconnect(self) -> None:
+        await self._inner.disconnect()
+
+    def is_connected(self) -> bool:
+        return self._inner.is_connected()

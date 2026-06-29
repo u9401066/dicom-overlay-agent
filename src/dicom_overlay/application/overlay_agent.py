@@ -392,6 +392,7 @@ class OverlayAgent:
         # limits and add latency. Shrink the longest edge if configured.
         max_edge = self._config.openclaw.max_image_edge_px
         screenshot = self._processor.downscale_to_max_edge(screenshot, max_edge)
+        source_size_px = self._processor.image_size(screenshot)
         image_b64 = self._processor.to_base64(screenshot)
         self._last_image_base64 = image_b64
 
@@ -412,7 +413,10 @@ class OverlayAgent:
 
         try:
             result = await self._analyze_with_retry(
-                image_b64, modality, valid_regions
+                image_b64,
+                modality,
+                valid_regions,
+                source_size_px=source_size_px,
             )
             if self._state != AgentState.ANALYZING:
                 logger.info("Analysis result discarded (state changed to %s)", self._state.name)
@@ -444,6 +448,8 @@ class OverlayAgent:
         image_b64: str,
         modality: Modality,
         valid_regions: list[str],
+        *,
+        source_size_px: tuple[int, int] | None = None,
     ) -> AnalysisResult:
         """Run analyze with a single backoff retry on transient timeout.
 
@@ -456,9 +462,17 @@ class OverlayAgent:
         attempt = 0
         while True:
             try:
-                return await self._analyzer.analyze(
-                    image_b64, modality, valid_regions
+                analyze_with_source_size = getattr(
+                    self._analyzer, "analyze_with_source_size", None
                 )
+                if callable(analyze_with_source_size):
+                    return await analyze_with_source_size(
+                        image_b64,
+                        modality,
+                        valid_regions,
+                        source_size_px=source_size_px,
+                    )
+                return await self._analyzer.analyze(image_b64, modality, valid_regions)
             except TimeoutError:
                 if attempt >= retries:
                     raise

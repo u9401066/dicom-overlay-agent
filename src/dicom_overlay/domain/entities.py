@@ -65,7 +65,13 @@ class RegionRect:
 
 @dataclass(frozen=True)
 class Finding:
-    """A single analysis finding (spec §3.3)."""
+    """A single analysis finding (spec §3.3).
+
+    ``notes`` accumulates extra provenance / discussion lines (e.g. follow-up
+    chat that revises or confirms this finding). They are kept separate from the
+    primary ``detail`` so a clinical discussion can be appended to an overlay
+    marker without clobbering the original analysis text.
+    """
 
     id: str
     regions: list[str]
@@ -73,6 +79,44 @@ class Finding:
     detail: str
     severity: Severity
     bboxes: list[RegionRect] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+class FindingOp(Enum):
+    """Semantic operation a :class:`FindingDelta` applies to the overlay set.
+
+    Lets a multi-pass agent turn *or* a human-guided chat turn write back into
+    the accumulated overlay markers in a determinate, auditable way:
+
+    - ``ADD``: contribute a new finding (deduplicated against existing markers).
+    - ``REVISE``: update an existing finding (by id) — may change severity or
+      append a note. This is an *explicit* decision, so it is the only path that
+      may downgrade severity; geometric dedup never downgrades.
+    - ``RETRACT``: remove an existing finding (by id) — e.g. the physician
+      determines a flagged region is not a true finding.
+    """
+
+    ADD = "add"
+    REVISE = "revise"
+    RETRACT = "retract"
+
+
+@dataclass(frozen=True)
+class FindingDelta:
+    """A single change to the accumulated overlay markers.
+
+    Produced by a multi-pass interpretation turn or by a chat follow-up that the
+    physician uses to guide / correct the reading. The application-layer
+    accumulator applies it deterministically; presentation never decides merges.
+
+    For ``RETRACT`` only ``op`` and ``finding.id`` are meaningful. For ``ADD`` /
+    ``REVISE`` the ``finding`` carries the payload; ``note`` is an optional
+    discussion line appended to the target finding's ``notes``.
+    """
+
+    op: FindingOp
+    finding: Finding
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -102,6 +146,14 @@ class AnalysisResult:
     # resolution, e.g. 4K). Set by the multi-pass orchestrator; rendered by the
     # overlay. Empty when no manual zoom is suggested.
     zoom_hints: list[str] = field(default_factory=list)
+    # Clinical safety escalation: set by the data-driven clinical consistency
+    # engine when the AI's *own* structured output is internally contradictory
+    # or under-calls a can't-miss pattern (e.g. it describes ST elevation yet
+    # reads "normal"). The engine only escalates severity (never downgrades) and
+    # flags for human review — it never imposes a diagnosis. Each reason carries
+    # the medical guideline citation so the physician sees *why* it was flagged.
+    review_required: bool = False
+    review_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -192,6 +244,11 @@ class AnalysisConfig:
     """Analysis trigger behavior configuration."""
 
     trigger_mode: TriggerMode = TriggerMode.HYBRID
+    # Multi-pass interpretation: after a coarse first read, re-examine abnormal
+    # regions at full ROI resolution to refine bounding boxes. Off by default
+    # because it adds latency / token cost; opt in via config.
+    multi_pass_enabled: bool = False
+    multi_pass_max_zoom_targets: int = 3
 
 
 @dataclass

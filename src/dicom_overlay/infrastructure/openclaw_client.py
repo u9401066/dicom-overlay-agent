@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import platform
+import re
 import time
 from json import JSONDecodeError
 from pathlib import Path
@@ -170,10 +171,11 @@ class OpenClawClient(VisionAnalyzerService):
         prompt = _build_analysis_prompt(modality, valid_regions, skill)
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
+        session_key = f"analysis-{idempotency_key}"
 
         message = build_openclaw_chat_frame(
             request_id=request_id,
-            session_key=_SESSION_KEY,
+            session_key=session_key,
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
@@ -684,20 +686,35 @@ def _payload_from_chat_event(payload: dict[str, Any]) -> dict[str, Any]:
     if not text:
         raise RuntimeError("OpenClaw returned an empty final chat message")
     text = _strip_code_fence(text)
+    repaired_text = _repair_common_json_glitches(text)
     try:
-        data = json.loads(text)
+        data = json.loads(repaired_text)
     except JSONDecodeError as exc:
         # The model sometimes wraps JSON in prose ("Here is the result: {...}").
         # Fall back to extracting the first balanced {...} block before giving up.
         extracted = _extract_first_json_object(text)
         if extracted is None:
             raise RuntimeError(text) from exc
+        repaired_extracted = _repair_common_json_glitches(extracted)
         logger.warning(
             "Recovered JSON from prose response via brace extraction (%d chars dropped)",
             len(text) - len(extracted),
         )
-        data = json.loads(extracted)
+        data = json.loads(repaired_extracted)
     return _coerce_result_payload(data)
+
+
+def _repair_common_json_glitches(text: str) -> str:
+    """Repair narrow, common LLM JSON glitches without changing semantics."""
+
+    # GPT vision responses occasionally emit numeric bbox fields like
+    # {"x": 0.17", "y": 0.22}. Removing that stray quote turns it back into
+    # the intended number while leaving quoted strings untouched.
+    return re.sub(
+        r'(:\s*-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"(?=\s*[,}\]])',
+        r"\1",
+        text,
+    )
 
 
 def _extract_first_json_object(text: str) -> str | None:

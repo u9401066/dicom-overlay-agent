@@ -51,6 +51,9 @@ class MockScreenMonitor(ScreenMonitorService):
 
 
 class MockImageProcessor(ImageProcessorService):
+    def __init__(self):
+        self.size = (321, 123)
+
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int
     ) -> bytes:
@@ -61,6 +64,9 @@ class MockImageProcessor(ImageProcessorService):
 
     def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
         return image_data
+
+    def image_size(self, image_data: bytes) -> tuple[int, int]:
+        return self.size
 
 
 class MockVisionAnalyzer(VisionAnalyzerService):
@@ -99,6 +105,23 @@ class MockVisionAnalyzer(VisionAnalyzerService):
 
     async def chat(self, message: str) -> str:
         return "Mock chat response"
+
+
+class MockSourceSizeAnalyzer(MockVisionAnalyzer):
+    def __init__(self):
+        super().__init__()
+        self.source_size_px: tuple[int, int] | None = None
+
+    async def analyze_with_source_size(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        source_size_px: tuple[int, int] | None,
+    ) -> AnalysisResult:
+        self.source_size_px = source_size_px
+        return await self.analyze(image_base64, modality, valid_regions)
 
 
 class MockRegionMapper(RegionMapperService):
@@ -340,3 +363,25 @@ class TestOverlayAgent:
 
         assert agent.state == AgentState.DISPLAYING
         assert agent.last_image_base64 == "ZmFrZQ=="
+
+    @pytest.mark.asyncio
+    async def test_analysis_passes_downscaled_source_size_when_supported(
+        self, agent_deps
+    ):
+        from dicom_overlay.application.overlay_agent import OverlayAgent
+
+        analyzer = MockSourceSizeAnalyzer()
+        agent_deps["vision_analyzer"] = analyzer
+        agent_deps["image_processor"].size = (640, 360)
+        config = AppConfig()
+        agent = OverlayAgent(config=config, **agent_deps)
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+
+        await agent.trigger_manual()
+
+        assert agent.state == AgentState.DISPLAYING
+        assert analyzer.source_size_px == (640, 360)

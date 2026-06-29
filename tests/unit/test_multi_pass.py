@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from dicom_overlay.application.multi_pass import (
+    MultiPassAnalyzer,
     MultiPassInterpreter,
     build_manual_zoom_message,
     clamp_unit,
@@ -130,20 +131,32 @@ class TestRemapBbox:
         assert out.x + out.w <= 1.0 + 1e-9
         assert out.y + out.h <= 1.0 + 1e-9
 
+    def test_child_bbox_overflow_is_clamped_to_parent_crop(self):
+        parent = RegionRect(x=0.2, y=0.2, w=0.3, h=0.3)
+        child = RegionRect(x=0.8, y=0.8, w=0.5, h=0.5)
+        out = remap_bbox(child, parent)
+        assert out.x == pytest.approx(0.44)
+        assert out.y == pytest.approx(0.44)
+        assert out.w == pytest.approx(0.06)
+        assert out.h == pytest.approx(0.06)
+        assert out.x + out.w <= parent.x + parent.w + 1e-9
+        assert out.y + out.h <= parent.y + parent.h + 1e-9
+
 
 # ── select_zoom_targets ──────────────────────────────────────────────
 
 
 class TestSelectZoomTargets:
-    def test_skips_normal_and_info(self):
+    def test_skips_normal_but_includes_info_after_abnormal(self):
         box = RegionRect(x=0.1, y=0.1, w=0.1, h=0.1)
         res = _result(
             [
                 _finding("a", Severity.NORMAL, box),
-                _finding("b", Severity.INFO, box),
+                _finding("i", Severity.INFO, box),
+                _finding("w", Severity.WARNING, box),
             ]
         )
-        assert select_zoom_targets(res, max_targets=3) == []
+        assert [t.id for t in select_zoom_targets(res, max_targets=3)] == ["w", "i"]
 
     def test_skips_findings_without_bbox(self):
         res = _result([_finding("a", Severity.CRITICAL, None)])
@@ -446,3 +459,70 @@ class TestMultiPassResolutionAware:
         assert len(cropper.regions) == 1
         assert len(out.zoom_hints) == 1
         assert "Spot" in out.zoom_hints[0]
+
+
+# ── MultiPassAnalyzer drop-in adapter ──────────────────────────
+
+
+@pytest.mark.asyncio
+class TestMultiPassAnalyzer:
+    """The adapter must be a drop-in VisionAnalyzerService for OverlayAgent."""
+
+    async def test_analyze_routes_through_interpreter(self):
+        coarse_box = RegionRect(x=0.5, y=0.5, w=0.2, h=0.2)
+        coarse = _result(
+            [_finding("a", Severity.WARNING, coarse_box)]
+        )
+        refined = _result(
+            [_finding("a", Severity.WARNING, RegionRect(0.0, 0.0, 1.0, 1.0))]
+        )
+        inner = _FakeAnalyzer([coarse, refined])
+        cropper = _RecordingCropper()
+        interp = MultiPassInterpreter(inner, cropper)
+        adapter = MultiPassAnalyzer(inner=inner, interpreter=interp)
+
+        out = await adapter.analyze("img", Modality.CXR, [])
+
+        # Multi-pass ran: a coarse + a refine call happened (2 analyzer images).
+        assert len(inner.images) == 2
+        assert cropper.regions  # a digital crop was taken
+        assert out.findings
+
+    async def test_analyze_with_source_size_routes_resolution_context(self):
+        tiny_box = RegionRect(x=0.4, y=0.4, w=0.03, h=0.03)
+        coarse = _result(
+            [_finding("tiny", Severity.WARNING, tiny_box, label="Tiny target")]
+        )
+        inner = _FakeAnalyzer([coarse])
+        cropper = _RecordingCropper()
+        interp = MultiPassInterpreter(inner, cropper)
+        adapter = MultiPassAnalyzer(inner=inner, interpreter=interp)
+
+        out = await adapter.analyze_with_source_size(
+            "img",
+            Modality.CXR,
+            [],
+            source_size_px=(100, 100),
+        )
+
+        assert len(inner.images) == 1
+        assert cropper.regions == []
+        assert out.zoom_hints
+
+    async def test_non_analyze_methods_delegate_to_inner(self):
+        inner = _FakeAnalyzer([_result([])])
+        interp = MultiPassInterpreter(inner, _RecordingCropper())
+        adapter = MultiPassAnalyzer(inner=inner, interpreter=interp)
+
+        assert adapter.is_connected() is True
+        assert await adapter.chat("hi") == ""
+        await adapter.connect()
+        await adapter.disconnect()
+
+    def test_is_a_vision_analyzer_service(self):
+        from dicom_overlay.domain.services import VisionAnalyzerService
+
+        inner = _FakeAnalyzer([_result([])])
+        interp = MultiPassInterpreter(inner, _RecordingCropper())
+        adapter = MultiPassAnalyzer(inner=inner, interpreter=interp)
+        assert isinstance(adapter, VisionAnalyzerService)

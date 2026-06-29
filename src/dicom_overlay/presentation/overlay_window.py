@@ -138,6 +138,20 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._zoom_hint_label.setVisible(False)
         self._layout.addWidget(self._zoom_hint_label)
 
+        # Clinical review flag: shown when the data-driven consistency engine
+        # escalated a result whose structured read contradicts itself (e.g. ST
+        # elevation described yet rated normal). Distinct, alarming styling so
+        # the physician treats it as a "double-check this" prompt, not a benign
+        # note. Carries the guideline citation behind the flag.
+        self._review_label = QLabel("")
+        self._review_label.setWordWrap(True)
+        self._review_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self._review_label.setStyleSheet(
+            "color: #ff5252; padding-top: 6px;"
+        )
+        self._review_label.setVisible(False)
+        self._layout.addWidget(self._review_label)
+
         self._layout.addStretch()
 
     def update_result(self, result: AnalysisResult) -> None:
@@ -228,6 +242,16 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         else:
             self._zoom_hint_label.setText("")
             self._zoom_hint_label.setVisible(False)
+
+        # Clinical consistency review flag (escalated, guideline-grounded).
+        if getattr(result, "review_required", False):
+            reasons = getattr(result, "review_reasons", []) or []
+            body = "\n".join(f"• {r}" for r in reasons)
+            self._review_label.setText(f"🚨 需人工複核\n{body}".rstrip())
+            self._review_label.setVisible(True)
+        else:
+            self._review_label.setText("")
+            self._review_label.setVisible(False)
 
     def clear(self) -> None:
         while self._content_layout.count():
@@ -400,12 +424,24 @@ class OverlayWindow(QWidget):
         self,
         result: AnalysisResult,
         highlights: list[tuple[int, int, int, int, str, str]] | None = None,
+        *,
+        append: bool = False,
     ) -> None:
-        """Show analysis result on overlay."""
+        """Show analysis result on overlay.
+
+        When ``append`` is ``False`` (default) the highlight set is replaced,
+        preserving the original single-shot behavior. When ``True`` the existing
+        highlights are kept and ``highlights`` is appended; the caller (the
+        application-layer accumulator) is responsible for feeding an already
+        deduplicated, non-overlapping set so the overlay never decides merges.
+        """
         self.summary_panel.update_result(result)
         self.summary_panel.setVisible(True)
         self._current_severity = result.severity.value
-        self._highlights = highlights or []
+        if append:
+            self._highlights = [*self._highlights, *(highlights or [])]
+        else:
+            self._highlights = highlights or []
 
         self.setWindowOpacity(1.0)
         self.show()
