@@ -181,6 +181,21 @@ def test_meeti_experiment_python_runner_records_and_limits_artifacts() -> None:
     assert "MAX_CAPTURED_COMMAND_OUTPUT_CHARS" in script
 
 
+def test_meeti_experiment_python_runner_verifies_eval_artifacts_after_export() -> None:
+    script = Path("scripts/run-meeti-openclaw-experiment.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/verify-eval-artifacts.py" in script
+    assert "artifact_verify_exit_code" in script
+    assert "skip_artifact_verify" in script
+    assert "--min-cases" in script
+    assert "--require-multipass-trace" in script
+    assert script.index("scripts/export-eval-annotations.py") < script.index(
+        "scripts/verify-eval-artifacts.py"
+    )
+
+
 def test_meeti_experiment_cmd_wrapper_pins_uv_without_powershell() -> None:
     script = Path("scripts/run-meeti-openclaw-experiment.cmd").read_text(
         encoding="utf-8"

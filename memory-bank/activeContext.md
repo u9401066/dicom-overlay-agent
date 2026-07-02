@@ -116,8 +116,11 @@
   `data\tmp\openclaw-gateway.lock` before Gateway spawn, retries eval while the
   Gateway is still starting, exports review artifacts, and treats
   `scorecard.json.error_count > 0` as a failed experiment even when `run-eval.py`
-  exits 0. Readiness next commands now point to this `.cmd` wrapper, not
-  PowerShell.
+  exits 0. It now also runs `scripts\verify-eval-artifacts.py` after review
+  export; bounded smoke runs use `--limit` as the verifier minimum, full runs
+  default to 1000 cases, and `--multi-pass` automatically adds
+  `--require-multipass-trace`. Readiness next commands now point to this `.cmd`
+  wrapper, not PowerShell.
 - OpenClaw-side specialization can be developed as the existing
   `dicom-overlay-agent-harness` plugin/skill bundle. The manifest now advertises
   bbox crop re-analysis, coordinate drift calibration, and overlay annotation

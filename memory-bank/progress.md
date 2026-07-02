@@ -155,6 +155,12 @@
     gating so failed real evals cannot look green. The `.cmd` wrapper supplies
     repo-local `.uv-cache-codex`, repo-local temp, uv progress suppression, and
     disabled uv-managed Python downloads.
+  - Hardened MEETI experiment artifact gating:
+    `scripts\run-meeti-openclaw-experiment.py` now runs
+    `scripts\verify-eval-artifacts.py` after review export. Bounded smoke runs
+    use `--limit` as the verifier minimum, full runs default to 1000 cases, and
+    `--multi-pass` automatically adds `--require-multipass-trace` so crop
+    re-analysis trace evidence is mandatory for production multi-pass runs.
   - Disabled client-side WebSocket keepalive pings in `OpenClawClient` for long
     medical-image inference; explicit inference timeout remains the control.
   - Latest real 1-case smoke:

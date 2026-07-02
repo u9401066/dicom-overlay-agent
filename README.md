@@ -209,7 +209,10 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   takes `data/tmp/openclaw-gateway.lock` before spawning the Gateway, retries
   the eval if the Gateway is still starting, exports review artifacts, and marks
   the experiment failed when `scorecard.json.error_count > 0` even if the
-  underlying eval command exits 0.
+  underlying eval command exits 0. It also runs
+  `scripts/verify-eval-artifacts.py` after review export; bounded smoke runs use
+  `--limit` as the verification minimum, full runs default to 1000 cases, and
+  `--multi-pass` automatically adds `--require-multipass-trace`.
 - Latest OOM-fix verification:
   `data/eval/meeti-1000-mock-oomfix-20260702` ran 1000/1000 MEETI cases,
   exported review artifacts, and passed `scripts/verify-eval-artifacts.py

@@ -18,7 +18,10 @@
   實驗入口；它直接使用既有 uv-managed `.venv\Scripts\python.exe` 呼叫
   `scripts/run-meeti-openclaw-experiment.py` 產生 experiment-local OpenClaw
   config、啟動 Gateway、跑 eval、重建 scorecard 並匯出 review artifacts。
-  它也會拿 `data\tmp\meeti-run.lock`，避免同時啟動第二個實驗 runner。
+  它也會拿 `data\tmp\meeti-run.lock`，避免同時啟動第二個實驗 runner。postprocess
+  後會再跑 `scripts/verify-eval-artifacts.py`；bounded smoke run 以 `--limit`
+  作為驗證張數，完整跑批預設要求 1000 cases，`--multi-pass` 會自動加上
+  `--require-multipass-trace`。
 - `scripts/check-real-model-readiness.cmd` 也直接使用既有 uv-managed
   `.venv\Scripts\python.exe`，並持有 `data\tmp\readiness-run.lock`，
   避免 readiness probe 重新繞過 OOM-safe runner 而啟動第二個 runner。

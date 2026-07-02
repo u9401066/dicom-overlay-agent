@@ -138,6 +138,7 @@ def main() -> int:
     exit_code = 1
     eval_exit_code = 1
     postprocess_exit_code = 0
+    artifact_verify_exit_code: int | None = None
     eval_attempts = 0
     eval_error_count = 0
     status = "failed"
@@ -226,6 +227,29 @@ def main() -> int:
             if rebuild_exit != 0 or export_exit != 0:
                 postprocess_exit_code = 1
 
+            if not args.skip_artifact_verify:
+                verify_command = [
+                    sys.executable,
+                    "scripts/verify-eval-artifacts.py",
+                    "--eval-dir",
+                    str(paths["eval_dir"]),
+                    "--manifest",
+                    str(manifest_path),
+                    "--min-cases",
+                    str(artifact_min_cases(args)),
+                ]
+                if args.multi_pass:
+                    verify_command.append("--require-multipass-trace")
+                artifact_verify_exit_code = run_logged_command(
+                    verify_command,
+                    cwd=REPO_ROOT,
+                    env=env,
+                    log_path=paths["eval_console"],
+                    section="verify eval artifacts",
+                )["exit_code"]
+                if artifact_verify_exit_code != 0:
+                    postprocess_exit_code = 1
+
         if paths["scorecard"].exists():
             try:
                 scorecard = json.loads(paths["scorecard"].read_text(encoding="utf-8"))
@@ -260,6 +284,7 @@ def main() -> int:
                 "model_catalog_warning": model_catalog_warning,
                 "eval_attempts": eval_attempts,
                 "postprocess_exit_code": postprocess_exit_code,
+                "artifact_verify_exit_code": artifact_verify_exit_code,
                 "finished_at": now_iso(),
             },
         )
@@ -280,10 +305,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--multi-pass-max-targets", type=int, default=3)
     parser.add_argument("--require-perfect", action="store_true")
     parser.add_argument("--partial-scorecard-interval", type=int, default=50)
+    parser.add_argument(
+        "--artifact-min-cases",
+        type=int,
+        default=0,
+        help=(
+            "Minimum cases for post-run artifact verification. Defaults to "
+            "--limit for bounded smoke runs, otherwise 1000."
+        ),
+    )
+    parser.add_argument(
+        "--skip-artifact-verify",
+        action="store_true",
+        help="Skip post-run verify-eval-artifacts.py artifact completeness gate.",
+    )
     parser.add_argument("--gateway-wait-sec", type=int, default=8)
     parser.add_argument("--gateway-retry-attempts", type=int, default=6)
     parser.add_argument("--gateway-retry-delay-sec", type=int, default=5)
     return parser.parse_args()
+
+
+def artifact_min_cases(args: argparse.Namespace) -> int:
+    if args.artifact_min_cases > 0:
+        return int(args.artifact_min_cases)
+    if args.limit > 0:
+        return int(args.limit)
+    return 1000
 
 
 def build_child_env(repo_root: Path) -> dict[str, str]:
@@ -584,6 +631,8 @@ def base_record(
         "multi_pass_max_targets": args.multi_pass_max_targets,
         "require_perfect": bool(args.require_perfect),
         "partial_scorecard_interval": args.partial_scorecard_interval,
+        "artifact_verify_min_cases": artifact_min_cases(args),
+        "skip_artifact_verify": bool(args.skip_artifact_verify),
         "manifest": str(manifest_path),
         "experiment_dir": str(experiment_dir),
         "openclaw_config": str(paths["openclaw_config"]),
