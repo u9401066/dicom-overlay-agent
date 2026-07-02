@@ -75,7 +75,9 @@
   ECG-like waveform / signal bbox 候選，供 harness 與人工 review 對照；它不做
   診斷，只提供 MLLM 前的可審計候選框。`run-eval.py --multi-pass` 現在會在
   coarse MLLM 判讀為非正常但沒有 bbox 時，把這些本地候選框餵給 crop
-  re-analysis，避免框格流程完全依賴第一輪 MLLM 座標。
+  re-analysis，避免框格流程完全依賴第一輪 MLLM 座標。`multipass-trace.jsonl`
+  也會記錄 `local_candidate_count` 與 normalized `local_candidate_regions`，
+  方便 1000 張跑批後做審計。
 - `scripts/check-real-model-readiness.cmd` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地

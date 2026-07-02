@@ -43,7 +43,10 @@
   blank/unreadable input detection and first-pass candidate boxes auditable
   without forcing every quality decision through an MLLM. In multi-pass eval,
   those local candidates now feed crop re-analysis when the coarse MLLM result
-  is non-normal but lacks usable bboxes.
+  is non-normal but lacks usable bboxes. `multipass-trace.jsonl` records
+  `local_candidate_count` and normalized `local_candidate_regions` per case, so
+  1000-case runs can audit how often local assist was available for crop
+  re-analysis.
 - Expert-review export now audits no-bbox cases at case level, so 1000-case
   review completeness is not inflated by bbox count alone. Review artifacts
   include PNG overlays, `bbox-audit.jsonl`, crop thumbnails, and `index.html`.

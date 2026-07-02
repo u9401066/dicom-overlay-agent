@@ -41,3 +41,14 @@ def test_run_eval_passes_local_candidates_into_multipass_source() -> None:
 
     assert "local_candidate_regions = _local_candidate_regions_from_signal" in source
     assert "local_candidate_regions=local_candidate_regions" in source
+
+
+def test_multipass_trace_records_local_candidate_audit_fields() -> None:
+    source = (_REPO_ROOT / "scripts" / "run-eval.py").read_text(encoding="utf-8")
+
+    assert '"local_candidate_count": len(local_candidate_regions)' in source
+    assert '"local_candidate_regions": [' in source
+    assert "region.x" in source
+    assert "region.y" in source
+    assert "region.w" in source
+    assert "region.h" in source

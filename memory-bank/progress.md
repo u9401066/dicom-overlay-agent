@@ -71,7 +71,9 @@
     this as `model_assist_artifacts`. `run-eval.py --multi-pass` now converts
     those candidates into crop targets when the coarse MLLM read is non-normal
     but lacks bboxes, so crop re-analysis does not depend entirely on first-pass
-    model coordinates.
+    model coordinates. `multipass-trace.jsonl` now records
+    `local_candidate_count` and normalized `local_candidate_regions`, making the
+    local-assist path auditable after 1000-case runs.
   - Hardened annotation review completeness: no-bbox cases now produce
     case-level audit rows, so bbox-free normal cases are still counted in the
     1000-case review gate.

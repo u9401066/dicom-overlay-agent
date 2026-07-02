@@ -381,6 +381,16 @@ async def _run(
                         "zoom_passes": max(0, calls - 1),
                         "crop_calls": crops,
                         "max_zoom_targets": multi_pass_max_targets,
+                        "local_candidate_count": len(local_candidate_regions),
+                        "local_candidate_regions": [
+                            {
+                                "x": region.x,
+                                "y": region.y,
+                                "w": region.w,
+                                "h": region.h,
+                            }
+                            for region in local_candidate_regions
+                        ],
                     }
                     with trace_path.open("a", encoding="utf-8") as fh:
                         fh.write(json.dumps(trace, ensure_ascii=False) + "\n")
