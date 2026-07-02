@@ -10,6 +10,8 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from dicom_overlay.domain.entities import (
@@ -235,6 +237,19 @@ class TestHighlightConstruction:
         highlight = (lx, ly, sw, sh, "critical", "Test Label")
         assert len(highlight) == 6
         assert highlight[5] == "Test Label"
+
+    def test_main_uses_bbox_projection_calibration_for_ai_bboxes(self):
+        """AI bbox overlay path must go through the drift-audited projector."""
+        main_path = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "dicom_overlay"
+            / "__main__.py"
+        )
+        source = main_path.read_text(encoding="utf-8")
+
+        assert "project_bbox_to_overlay_highlight" in source
+        assert "bbox_projection_calibrated" in source
 
 
 # ── Humanize helpers ──

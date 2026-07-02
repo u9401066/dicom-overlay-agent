@@ -49,6 +49,9 @@ from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
 from dicom_overlay.infrastructure.logging_config import setup_logging
 from dicom_overlay.infrastructure.mcp_adapter import McpAdapter
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
+from dicom_overlay.infrastructure.overlay_geometry import (
+    project_bbox_to_overlay_highlight,
+)
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor, ScreenMonitor
 from dicom_overlay.infrastructure.tts_speaker import speak_error, speak_result
@@ -304,17 +307,27 @@ def main() -> None:
                 # Prefer AI-provided bboxes (dynamic, precise)
                 if finding.bboxes:
                     for bbox in finding.bboxes:
-                        sx = int(content_rect.left + bbox.x * content_rect.width)
-                        sy = int(content_rect.top + bbox.y * content_rect.height)
-                        sw = int(bbox.w * content_rect.width)
-                        sh = int(bbox.h * content_rect.height)
-                        lx = round(sx / dpr)
-                        ly = round(sy / dpr)
-                        lw = round(sw / dpr)
-                        lh = round(sh / dpr)
-                        highlights.append(
-                            (lx, ly, lw, lh, finding.severity.value, finding.label)
+                        projected = project_bbox_to_overlay_highlight(
+                            bbox=bbox,
+                            image_rect=content_rect,
+                            dpr=dpr,
+                            severity=finding.severity.value,
+                            label=finding.label,
                         )
+                        if (
+                            projected.calibration.was_clamped
+                            or not projected.calibration.ok
+                        ):
+                            logger.warning(
+                                "bbox_projection_calibrated",
+                                finding_id=finding.id,
+                                label=finding.label,
+                                was_clamped=projected.calibration.was_clamped,
+                                max_edge_drift_px=(
+                                    projected.calibration.max_edge_drift_px
+                                ),
+                            )
+                        highlights.append(projected.highlight)
                 else:
                     # Fallback: use static region maps from config
                     for region_name in finding.regions:
