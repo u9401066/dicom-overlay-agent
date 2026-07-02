@@ -77,7 +77,9 @@
   coarse MLLM 判讀為非正常但沒有 bbox 時，把這些本地候選框餵給 crop
   re-analysis，避免框格流程完全依賴第一輪 MLLM 座標。`multipass-trace.jsonl`
   也會記錄 `local_candidate_count` 與 normalized `local_candidate_regions`，
-  方便 1000 張跑批後做審計。
+  方便 1000 張跑批後做審計；trace 存在時，
+  `scripts/verify-eval-artifacts.py` 也會以 `multipass_trace_artifacts` gate
+  檢查這些欄位。
 - `scripts/check-real-model-readiness.cmd` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地

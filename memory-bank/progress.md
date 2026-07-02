@@ -73,7 +73,9 @@
     but lacks bboxes, so crop re-analysis does not depend entirely on first-pass
     model coordinates. `multipass-trace.jsonl` now records
     `local_candidate_count` and normalized `local_candidate_regions`, making the
-    local-assist path auditable after 1000-case runs.
+    local-assist path auditable after 1000-case runs. The eval artifact
+    verifier validates those trace fields when present and reports
+    `multipass_trace_artifacts`.
   - Hardened annotation review completeness: no-bbox cases now produce
     case-level audit rows, so bbox-free normal cases are still counted in the
     1000-case review gate.

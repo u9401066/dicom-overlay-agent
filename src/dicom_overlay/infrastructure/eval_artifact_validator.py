@@ -84,6 +84,11 @@ def verify_eval_artifacts(
             failures=failures,
             passed=passed,
         )
+        _verify_multipass_trace(
+            eval_dir / "multipass-trace.jsonl",
+            failures=failures,
+            passed=passed,
+        )
         if require_review:
             _verify_review_artifacts(eval_dir / "review", min_cases, failures, passed)
 
@@ -272,6 +277,84 @@ def _verify_review_artifacts(
         )
         return
     passed.append("review_artifacts")
+
+
+def _verify_multipass_trace(
+    trace_path: Path,
+    *,
+    failures: list[str],
+    passed: list[str],
+) -> None:
+    """Validate optional MultiPass trace rows when the artifact exists."""
+    if not trace_path.exists():
+        return
+    lines = [line for line in trace_path.read_text(encoding="utf-8").splitlines() if line]
+    for index, line in enumerate(lines, start=1):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            failures.append(
+                f"multipass_trace_artifacts: invalid JSONL row {index}"
+            )
+            return
+        if not isinstance(row, dict):
+            failures.append(
+                f"multipass_trace_artifacts: row {index} is not an object"
+            )
+            return
+        case = row.get("case")
+        if not isinstance(case, str) or not case:
+            failures.append(
+                f"multipass_trace_artifacts: row {index} missing case"
+            )
+            return
+        count = row.get("local_candidate_count")
+        regions = row.get("local_candidate_regions")
+        if not isinstance(count, int):
+            failures.append(
+                f"multipass_trace_artifacts: row {index} missing local_candidate_count"
+            )
+            return
+        if not isinstance(regions, list):
+            failures.append(
+                f"multipass_trace_artifacts: row {index} missing local_candidate_regions"
+            )
+            return
+        if count != len(regions):
+            failures.append(
+                "multipass_trace_artifacts: "
+                f"row {index} local_candidate_count={count} "
+                f"but regions={len(regions)}"
+            )
+            return
+        for region_index, region in enumerate(regions, start=1):
+            if not _is_normalized_region(region):
+                failures.append(
+                    "multipass_trace_artifacts: "
+                    f"row {index} region {region_index} is not a normalized bbox"
+                )
+                return
+    passed.append("multipass_trace_artifacts")
+
+
+def _is_normalized_region(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    try:
+        x = float(value["x"])
+        y = float(value["y"])
+        w = float(value["w"])
+        h = float(value["h"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return (
+        0.0 <= x <= 1.0
+        and 0.0 <= y <= 1.0
+        and 0.0 < w <= 1.0
+        and 0.0 < h <= 1.0
+        and x + w <= 1.0 + 1e-6
+        and y + h <= 1.0 + 1e-6
+    )
 
 
 def _int_value(value: Any) -> int:
