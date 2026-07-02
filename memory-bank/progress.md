@@ -38,6 +38,20 @@
     replace the default target set, so targeted checks stay targeted and do not
     trip over a locked fixed basetemp. It also takes `data\tmp\uv-run.lock`, so
     a second uv-backed runner exits 75 before creating another `uv.exe`.
+    It also sets `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, preventing
+    unit/smoke tests from accidentally starting a real OpenClaw Gateway unless
+    an explicit integration run opts in.
+  - Added `scripts\run-ruff-safe.cmd` after naked `uv run ruff ...` tried to
+    initialize the user AppData uv cache and failed with access denied. The
+    wrapper shares `.uv-cache-codex`, `data\tmp\uv`, and
+    `data\tmp\uv-run.lock` with the other safe uv-backed runners.
+  - Added OpenClaw/conhost OOM guards: `GatewayManager.start()` now takes
+    `data\tmp\openclaw-gateway.lock` for the lifetime of the Gateway subprocess
+    and refuses a second live launch; `scripts\test-real-stack.bat` no longer
+    launches Gateway through `cmd /k`, using `start /B` + `gateway.log` instead.
+    `scripts\run-meeti-openclaw-experiment.py` also takes the same Gateway lock
+    before spawning OpenClaw, closing the remaining experiment-run path that
+    could have multi-launched Gateway/conhost outside the GUI manager.
   - Hardened pytest defaults to collect only `tests/unit` + `tests/smoke`, skip
     generated/vendored trees (`data`, `openclaw`, `openclaw-home`,
     `.uv-cache-codex`, `node_modules`, etc.), suppress captured-output dumps on
@@ -66,12 +80,14 @@
     `data\harness-smoke\latest-openclaw-20260702`; targeted unit/smoke tests
     for the assist gate passed.
   - Added real-model readiness gate:
-    `scripts\check-real-model-readiness.py` writes a `ready`/`blocked` JSON
+    `scripts\check-real-model-readiness.cmd` writes a `ready`/`blocked` JSON
     artifact before any long Gateway-backed run. It checks provider credential
     presence, 1000-case manifest size, completed eval artifacts, and local
-    OpenClaw runtime evidence without leaking secrets. The new
-    `--probe-provider` flag also checks provider egress and advertised
-    image-input support before launching Gateway/eval.
+    OpenClaw runtime evidence without leaking secrets, while the `.cmd`
+    wrapper shares the repo-local `data\tmp\uv-run.lock` so readiness probes do
+    not start a second `uv.exe`. The new `--probe-provider` flag also checks
+    provider egress and advertised image-input support before launching
+    Gateway/eval.
   - Switched the desktop OpenRouter default profile to MiniMax M3
     (`openrouter/minimax/minimax-m3`) and added
     `scripts\run-meeti-openclaw-experiment.cmd` as the non-PowerShell real-run
@@ -86,11 +102,29 @@
     local OpenRouter metadata fetch fails with WinError 10054 before Gateway
     startup, and next commands now point back to readiness probe instead of full
     experiment launch.
+  - OOM-safe readiness wrapper recheck is blocked at
+    `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-cmd-probed.json`:
+    the wrapper reads `.env`, verifies the 1000-case manifest and mock artifacts,
+    then blocks on the same OpenRouter WinError 10054 provider egress failure.
   - Latest MiniMax M3 1-case smoke:
     `data\experiments\meeti-openrouter-minimax-m3-1case-resume-20260702`
     reached Gateway `connect` + `chat.send` and exported scorecard/raw/review
     artifacts, but ended `completed_with_failures` because local OpenRouter
     network fetches fail with `ECONNRESET`.
+  - Next clinical-usability harness target: wire the existing MultiPass/crop
+    path into an auditable two-step overlay flow: whole-ROI triage, per-bbox
+    crop re-analysis for the text inside each box, and automatic remapping /
+    drift validation before the bboxes are drawn back onto the physician's
+    screen.
+  - Added `infrastructure.overlay_geometry.project_bbox_to_overlay_highlight()`
+    and wired the AI bbox overlay path through it. It clamps overflow bboxes,
+    rounds projected edges across DPR conversion, and records round-trip drift
+    calibration before returning the 6-field overlay highlight tuple.
+  - Updated the OpenClaw harness manifest to explicitly advertise
+    `bboxCropReanalysis`, `coordinateDriftCalibration`, and
+    `gatewayOnlyDesktopBoundary`, clarifying that OpenClaw-side specialization
+    can be plugin-shaped while the desktop app remains Gateway-only for version
+    compatibility.
   - Legacy PowerShell wrapper note: `scripts\run-meeti-openclaw-experiment.ps1`
     still exists for compatibility, but current docs/readiness prefer the
     `.cmd`/Python path because PowerShell caused OOM in this workspace.

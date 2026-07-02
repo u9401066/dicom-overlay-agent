@@ -8,7 +8,7 @@
 
 ## 2026-07-02 real-model smoke 狀態
 
-- `scripts/check-real-model-readiness.py --dotenv .env` 會讀取 repo-local
+- `scripts/check-real-model-readiness.cmd --dotenv .env` 會讀取 repo-local
   credential presence，但不輸出或寫入 secret value。OpenRouter MiniMax M3
   readiness 已為 `ready`：`OPENROUTER_API_KEY` 存在、1000-case mock artifact
   gate 已通過、OpenClaw runtime 為 `2026.6.11`。真實跑批前請加
@@ -19,6 +19,9 @@
   `scripts/run-meeti-openclaw-experiment.py` 產生 experiment-local OpenClaw
   config、啟動 Gateway、跑 eval、重建 scorecard 並匯出 review artifacts。
   它也會拿 `data\tmp\uv-run.lock`，避免同時啟動第二個 `uv.exe`。
+- `scripts/check-real-model-readiness.cmd` 也使用同一個
+  `data\tmp\uv-run.lock`，避免 readiness probe 重新繞過 OOM-safe runner
+  而啟動第二個 `uv.exe`。
 - 最新 1 張 MEETI real smoke：
   `data/experiments/meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
   已使用 `openrouter/minimax/minimax-m3` 走到 OpenClaw Gateway
@@ -72,7 +75,7 @@
 - `local_signal_candidates` 是第二層本機輔助：用低成本像素 threshold 先產生
   ECG-like waveform / signal bbox 候選，供 harness 與人工 review 對照；它不做
   診斷，只提供 MLLM 前的可審計候選框。
-- `scripts/check-real-model-readiness.py` 會把真實模型 1000-case benchmark
+- `scripts/check-real-model-readiness.cmd` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地
   擋下，而且不會輸出 secret 值。加上 `--probe-provider` 時，也會先擋下
@@ -291,3 +294,26 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 ## 📄 授權
 
 [Apache License 2.0](LICENSE)
+## 2026-07-02 OOM-safe lint 補充
+
+- `scripts\run-ruff-safe.cmd check ...` 是目前建議的 lint 入口；它固定使用
+  repo-local `.uv-cache-codex`、`data\tmp\uv` 與 `data\tmp\uv-run.lock`，
+  避免裸 `uv run ruff` 重新碰到 AppData cache 或啟動第二個 `uv.exe`。
+- `scripts\run-tests-safe.cmd` 會設定
+  `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`，測試期間若誤觸真實
+  OpenClaw Gateway 啟動會 fail fast；只有明確 real Gateway integration
+  run 才應設定 `DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS=1`。
+- `GatewayManager` 會在 OpenClaw subprocess 存活期間持有
+  `data\tmp\openclaw-gateway.lock`；`scripts\test-real-stack.bat` 也不再用
+  `cmd /k` 啟動 Gateway，改用 `start /B` 並寫入 `gateway.log`，降低多個
+  `conhost.exe` 造成 OOM 的風險。MEETI real-experiment Python runner 也會在
+  spawn OpenClaw Gateway 前拿同一個 lock，避免 GUI/手動 run 與實驗 run
+  靜默多開 Gateway。
+
+## 2026-07-02 OpenClaw plugin 邊界補充
+
+- 可以把 OpenClaw 端影像框選/識別特化做成
+  `dicom-overlay-agent-harness` plugin / skills；目前 manifest 已宣告
+  bbox crop 二次判讀、coordinate drift calibration 與 overlay annotation
+  能力。但桌面端仍只透過 Gateway `connect` / `chat.send` 溝通，不 import
+  OpenClaw plugin SDK 私有 API，這樣才比較能相容不同 OpenClaw 版本。

@@ -143,7 +143,23 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   default unit+smoke suite. Full integration tests remain available by passing
   explicit paths. Prefer this over PowerShell on memory-constrained Windows
   sessions. The runner also takes a repo-local `data/tmp/uv-run.lock` so a
-  second uv-backed command exits before spawning another `uv.exe`.
+  second uv-backed command exits before spawning another `uv.exe`. During this
+  guarded test path it also sets
+  `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, so accidental real Gateway /
+  OpenClaw launches fail fast unless an explicit integration run opts in.
+- The desktop Gateway launcher uses a repo-local
+  `data/tmp/openclaw-gateway.lock` while the OpenClaw subprocess is alive, and
+  Windows launches use `CREATE_NO_WINDOW`. The legacy real-stack batch launcher
+  no longer uses `cmd /k` for the Gateway path; it starts the Gateway with
+  `start /B` and redirects output to `gateway.log` to reduce stray
+  `conhost.exe` windows. The MEETI real-experiment Python runner uses the same
+  Gateway lock before spawning OpenClaw, so GUI/manual runs and experiment runs
+  cannot silently launch multiple Gateways at once.
+- Local lint runs should use
+  [`scripts/run-ruff-safe.cmd`](scripts/run-ruff-safe.cmd) for the same reason:
+  it pins the repo-local `uv` cache/temp directories and takes
+  `data/tmp/uv-run.lock` before calling `uv run ruff ...`, avoiding both
+  AppData cache failures and concurrent `uv.exe` launches.
 - Each raw eval result includes deterministic `local_image_quality` metadata
   from [`screen_monitor.py`](src/dicom_overlay/infrastructure/screen_monitor.py):
   image size, aspect ratio, ink density, bright-pixel ratio, and low-signal
@@ -154,8 +170,12 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   a local threshold/ink bounding-box proposal for ECG-like line images. This is
   intentionally non-diagnostic, but it gives the reviewer and harness a cheap
   local candidate box before the MLLM read.
-- [`scripts/check-real-model-readiness.py`](scripts/check-real-model-readiness.py)
-  bridges the mock artifact gate to real-model benchmarking. It writes a
+- [`scripts/check-real-model-readiness.cmd`](scripts/check-real-model-readiness.cmd)
+  is the OOM-safe readiness launcher that bridges the mock artifact gate to
+  real-model benchmarking. It pins repo-local `uv` cache/temp settings, takes
+  the same `data/tmp/uv-run.lock`, and then calls
+  [`scripts/check-real-model-readiness.py`](scripts/check-real-model-readiness.py).
+  It writes a
   `ready` or `blocked` JSON artifact for the selected OpenClaw/OpenRouter model,
   checking credentials, manifest size, OpenClaw runtime evidence, and the
   completed 1000-case artifact gate without exposing secret values. Pass
@@ -171,9 +191,10 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   [`scripts/run-meeti-openclaw-experiment.py`](scripts/run-meeti-openclaw-experiment.py).
   The Python runner supports `--provider-profile openrouter` / `openai-vision`,
   generates an experiment-local OpenClaw config before model-catalog checks,
-  retries the eval if the Gateway is still starting, exports review artifacts,
-  and marks the experiment failed when `scorecard.json.error_count > 0` even if
-  the underlying eval command exits 0.
+  takes `data/tmp/openclaw-gateway.lock` before spawning the Gateway, retries
+  the eval if the Gateway is still starting, exports review artifacts, and marks
+  the experiment failed when `scorecard.json.error_count > 0` even if the
+  underlying eval command exits 0.
 - Latest OOM-fix verification:
   `data/eval/meeti-1000-mock-oomfix-20260702` ran 1000/1000 MEETI cases,
   exported review artifacts, and passed `scripts/verify-eval-artifacts.py
@@ -194,6 +215,12 @@ portable across OpenClaw releases.
   (locally validated against `openclaw ^2026.6.11`) and the minimum-safe floor.
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   declares the plugin compatibility window.
+- The OpenClaw-side specialization is intentionally plugin-shaped:
+  `dicom-overlay-agent-harness` advertises medical-image interpretation,
+  bbox crop re-analysis, coordinate drift calibration, and overlay annotation
+  capabilities. The desktop app still treats it as a Gateway-only integration,
+  so compatibility is tested through `connect` / `chat.send` artifacts instead
+  of private OpenClaw plugin SDK imports.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
@@ -219,7 +246,10 @@ portable across OpenClaw releases.
   is `ready` with `OPENROUTER_API_KEY` present and the 1000-case mock artifact
   gate already verified, while
   `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3-probed.json`
-  is `blocked` by the provider egress probe.
+  and
+  `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3-cmd-probed.json`
+  are `blocked` by the provider egress probe; the newer artifact also proves
+  the readiness path itself now uses the OOM-safe `.cmd` wrapper.
 
 ### Core 4 — Minimal packaged executable
 

@@ -60,21 +60,38 @@
   full pytest target set, so targeted checks no longer trigger the whole suite
   or fail on a locked fixed basetemp. It also takes
   `data\tmp\uv-run.lock`; concurrent uv-backed runners exit 75 instead of
-  spawning another `uv.exe`.
+  spawning another `uv.exe`. It now also sets
+  `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, so unit/smoke tests cannot
+  accidentally start a real OpenClaw Gateway unless a deliberate integration
+  run opts in with `DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS=1`.
+- OOM-safe lint entry point: `scripts\run-ruff-safe.cmd check ...` pins the
+  same repo-local `.uv-cache-codex`, `data\tmp\uv`, and `data\tmp\uv-run.lock`
+  before invoking ruff. This was added after naked `uv run ruff ...` failed
+  against the user AppData uv cache with access denied.
+- OpenClaw/conhost OOM guard: `GatewayManager.start()` now holds
+  `data\tmp\openclaw-gateway.lock` while its OpenClaw subprocess is alive and
+  refuses a second live launch. `scripts\test-real-stack.bat` no longer starts
+  the Gateway through `cmd /k`; it uses `start /B` with `gateway.log` redirection
+  to avoid stray interactive `conhost.exe` windows. The MEETI real-experiment
+  Python runner also takes the same Gateway lock before spawning OpenClaw, so
+  GUI/manual runs and experiment runs cannot silently multi-launch Gateway.
 - Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
   runtime is `2026.6.11`, 1000-case assist verifier passed, and targeted
   unit/smoke tests for the local assist gate passed.
 - Real-model 1000-case accuracy gate is still external-network/provider gated.
-  `scripts\check-real-model-readiness.py --dotenv .env` now merges repo-local
-  `.env` values into readiness checks without printing or serializing secrets;
-  `--probe-provider` additionally checks provider egress and advertised
-  image-input support before a Gateway run. Offline OpenRouter MiniMax M3
+  `scripts\check-real-model-readiness.cmd --dotenv .env` now merges repo-local
+  `.env` values into readiness checks without printing or serializing secrets
+  while sharing the repo-local `data\tmp\uv-run.lock`; `--probe-provider`
+  additionally checks provider egress and advertised image-input support before
+  a Gateway run. Offline OpenRouter MiniMax M3
   readiness is `ready`:
   `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3.json`
   sees `OPENROUTER_API_KEY`, the 1000-case manifest, OpenClaw `2026.6.11`, and
   completed mock artifacts. Provider-probed readiness is blocked:
   `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-probed.json`
-  sees WinError 10054 while fetching OpenRouter metadata. Real Gateway smoke is
+  and
+  `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-cmd-probed.json`
+  see WinError 10054 while fetching OpenRouter metadata. Real Gateway smoke is
   still blocked by local egress: OpenClaw logs `ECONNRESET` while fetching
   OpenRouter model capabilities/pricing and calling `minimax/minimax-m3`.
 - `scripts\run-meeti-openclaw-experiment.cmd` is the preferred non-PowerShell
@@ -82,11 +99,21 @@
   shared `data\tmp\uv-run.lock`, disables uv progress output and automatic
   Python downloads, then calls
   `scripts\run-meeti-openclaw-experiment.py`, which generates an
-  experiment-local OpenClaw config before model-catalog checks, retries eval
-  while the Gateway is still starting, exports review artifacts, and treats
-  `scorecard.json.error_count > 0` as a failed experiment even when
-  `run-eval.py` exits 0. Readiness next commands now point to this `.cmd`
-  wrapper, not PowerShell.
+  experiment-local OpenClaw config before model-catalog checks, takes
+  `data\tmp\openclaw-gateway.lock` before Gateway spawn, retries eval while the
+  Gateway is still starting, exports review artifacts, and treats
+  `scorecard.json.error_count > 0` as a failed experiment even when `run-eval.py`
+  exits 0. Readiness next commands now point to this `.cmd` wrapper, not
+  PowerShell.
+- OpenClaw-side specialization can be developed as the existing
+  `dicom-overlay-agent-harness` plugin/skill bundle. The manifest now advertises
+  bbox crop re-analysis, coordinate drift calibration, and overlay annotation
+  capabilities, while the desktop app remains Gateway-only (`connect` /
+  `chat.send`) to avoid coupling to private OpenClaw plugin SDK internals.
+- Overlay bbox drawing now goes through
+  `infrastructure.overlay_geometry.project_bbox_to_overlay_highlight()`, which
+  clamps overflow extents, uses edge rounding across DPR conversions, and
+  records round-trip drift calibration evidence before drawing the highlight.
 - `OpenClawClient` disables client-side WebSocket keepalive pings and relies on
   explicit inference timeouts for long medical-image requests. This prevented
   false keepalive closure from hiding the real current blocker, which is local
@@ -97,6 +124,11 @@
   and produced scorecard/raw/review artifacts, but ended
   `completed_with_failures` with `eval_error_count=1` due `LLM request failed:
   network connection error` from OpenRouter transport `ECONNRESET`.
+- Updated clinical-usability objective: after the OOM-safe runner work, extend
+  the overlay/harness path from initial whole-ROI agent triage to per-bbox crop
+  re-analysis, then auto-correct returned crop-local bboxes back onto the
+  overlay coordinate frame so screen/DPI/transform drift is detectable before a
+  physician sees a misplaced box.
 
 ## Current Eval Harness Focus (2026-05-30)
 
