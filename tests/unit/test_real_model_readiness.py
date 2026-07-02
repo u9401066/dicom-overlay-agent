@@ -96,7 +96,7 @@ def test_readiness_blocks_missing_openrouter_key_without_leaking_secret(
     _write_eval_artifacts(eval_dir, 2)
 
     report = assess_real_model_readiness(
-        model_id="openrouter/openai/gpt-5.2-codex",
+        model_id="openrouter/minimax/minimax-m3",
         manifest_path=manifest,
         eval_dir=eval_dir,
         min_cases=2,
@@ -107,7 +107,7 @@ def test_readiness_blocks_missing_openrouter_key_without_leaking_secret(
     assert payload["status"] == "blocked"
     assert {
         "code": "missing_provider_key",
-        "message": "OPENROUTER_API_KEY is required for model openrouter/openai/gpt-5.2-codex",
+        "message": "OPENROUTER_API_KEY is required for model openrouter/minimax/minimax-m3",
         "env_var": "OPENROUTER_API_KEY",
     } in payload["blockers"]
     assert "sk-secret" not in json.dumps(payload)
@@ -122,7 +122,7 @@ def test_readiness_accepts_complete_artifacts_and_present_provider_key(
     _write_eval_artifacts(eval_dir, 2)
 
     report = assess_real_model_readiness(
-        model_id="openrouter/openai/gpt-5.2-codex",
+        model_id="openrouter/minimax/minimax-m3",
         manifest_path=manifest,
         eval_dir=eval_dir,
         min_cases=2,
@@ -135,6 +135,10 @@ def test_readiness_accepts_complete_artifacts_and_present_provider_key(
     assert payload["evidence"]["manifest_cases"] == 2
     assert payload["evidence"]["eval_artifacts_ok"] is True
     assert "sk-secret" not in json.dumps(payload)
+    assert "scripts\\run-meeti-openclaw-experiment.cmd" in payload["next_commands"][0]
+    assert "--model-id openrouter/minimax/minimax-m3" in payload["next_commands"][0]
+    assert "powershell" not in payload["next_commands"][0].lower()
+    assert ".ps1" not in payload["next_commands"][0].lower()
 
 
 def test_readiness_cli_writes_blocked_artifact_for_missing_key(tmp_path: Path) -> None:
@@ -158,7 +162,7 @@ def test_readiness_cli_writes_blocked_artifact_for_missing_key(tmp_path: Path) -
             sys.executable,
             str(script),
             "--model-id",
-            "openrouter/openai/gpt-5.2-codex",
+            "openrouter/minimax/minimax-m3",
             "--manifest",
             str(manifest),
             "--eval-dir",
@@ -200,7 +204,7 @@ def test_readiness_cli_loads_dotenv_without_leaking_values(tmp_path: Path) -> No
             sys.executable,
             str(script),
             "--model-id",
-            "openrouter/openai/gpt-5.2-codex",
+            "openrouter/minimax/minimax-m3",
             "--manifest",
             str(manifest),
             "--eval-dir",

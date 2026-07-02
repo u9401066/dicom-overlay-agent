@@ -204,9 +204,8 @@ def _next_commands(*, model_id: str, manifest_path: Path) -> list[str]:
     manifest = str(manifest_path)
     return [
         (
-            "powershell -ExecutionPolicy Bypass -File "
-            "scripts\\run-meeti-openclaw-experiment.ps1 "
-            f"-ModelId {model_id} -ManifestPath {manifest} -TimeoutSec 90 "
-            "-MultiPass -MultiPassMaxTargets 2 -RequirePerfect"
+            "scripts\\run-meeti-openclaw-experiment.cmd "
+            f"--model-id {model_id} --manifest {manifest} --timeout-sec 90 "
+            "--multi-pass --multi-pass-max-targets 2 --require-perfect"
         )
     ]

@@ -61,3 +61,20 @@ def test_safe_test_runner_pins_repo_local_cache_and_tmp_dirs() -> None:
     assert "no:cacheprovider" in runner
     assert "tests/unit" in runner
     assert "tests/smoke" in runner
+
+
+def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
+    runner = (_REPO_ROOT / "scripts" / "run-tests-safe.cmd").read_text("utf-8")
+
+    assert "set \"UV_CACHE_DIR=%REPO_ROOT%\\.uv-cache-codex\"" in runner
+    assert "set \"UV_NO_PROGRESS=1\"" in runner
+    assert "set \"UV_PYTHON_DOWNLOADS=never\"" in runner
+    assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
+    assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
+    assert "uv run python -m pytest" in runner
+    assert "-p no:cacheprovider" in runner
+    assert "--basetemp" in runner
+    assert "tests/unit" in runner
+    assert "tests/smoke" in runner
+    assert ".ps1" not in runner.lower()
+    assert "powershell" not in runner.lower()
