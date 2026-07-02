@@ -76,5 +76,12 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert "--basetemp" in runner
     assert "tests/unit" in runner
     assert "tests/smoke" in runner
+    assert "PYTEST_ARGS=tests/unit tests/smoke" in runner
+    assert 'if not "%~1"=="" set "PYTEST_ARGS=%*"' in runner
+    assert "basetemp-%RANDOM%" in runner
+    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in runner
+    assert 'mkdir "%UV_RUN_LOCK%"' in runner
+    assert "Another uv-backed command is already running" in runner
+    assert 'rmdir "%UV_RUN_LOCK%"' in runner
     assert ".ps1" not in runner.lower()
     assert "powershell" not in runner.lower()

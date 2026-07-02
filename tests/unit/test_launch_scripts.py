@@ -168,6 +168,10 @@ def test_meeti_experiment_cmd_wrapper_pins_uv_without_powershell() -> None:
     assert "set \"UV_PYTHON_DOWNLOADS=never\"" in script
     assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
+    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in script
+    assert 'mkdir "%UV_RUN_LOCK%"' in script
+    assert "Another uv-backed command is already running" in script
+    assert 'rmdir "%UV_RUN_LOCK%"' in script
     assert "uv run python scripts\\run-meeti-openclaw-experiment.py %*" in script
     assert ".ps1" not in script.lower()
     assert "powershell" not in script.lower()
