@@ -89,6 +89,9 @@ class TestOpenClawSettings:
         assert "openai-codex" in keys
         assert "openrouter" in keys
         assert "github-copilot-byok" in keys
+        openrouter = next(p for p in profiles if p.key == "openrouter")
+        assert openrouter.model == "minimax/minimax-m3"
+        assert openrouter.model_ref == "openrouter/minimax/minimax-m3"
 
     def test_openai_codex_profile_uses_openai_provider_and_vision_model(self):
         profile = next(
@@ -105,7 +108,7 @@ class TestOpenClawSettings:
             label="OpenRouter",
             provider_id="openrouter",
             provider_type=ProviderType.OPENAI_COMPATIBLE,
-            model="openai/gpt-5.2-codex",
+            model="minimax/minimax-m3",
             api_key_env="OPENROUTER_API_KEY",
             base_url="https://openrouter.ai/api/v1",
         )
@@ -122,9 +125,9 @@ class TestOpenClawSettings:
         # OpenClaw 2026.5.x blocks startup unless gateway.mode is set.
         assert config["gateway"]["mode"] == "local"
         assert config["agents"]["defaults"]["model"]["primary"] == (
-            "openrouter/openai/gpt-5.2-codex"
+            "openrouter/minimax/minimax-m3"
         )
-        assert "openrouter/openai/gpt-5.2-codex" in (
+        assert "openrouter/minimax/minimax-m3" in (
             config["agents"]["defaults"]["models"]
         )
         assert config["agents"]["defaults"]["imageMaxDimensionPx"] == 1200
@@ -301,7 +304,7 @@ class TestDesktopSettingsStore:
             label="OpenRouter",
             provider_id="openrouter",
             provider_type=ProviderType.OPENROUTER,
-            model="openai/gpt-5.2-codex",
+            model="minimax/minimax-m3",
             api_key_env="OPENROUTER_API_KEY",
             base_url="https://openrouter.ai/api/v1",
         )
@@ -321,7 +324,7 @@ class TestDesktopSettingsStore:
             == "OPENROUTER_API_KEY"
         )
         assert config["agents"]["defaults"]["model"]["primary"] == (
-            "openrouter/openai/gpt-5.2-codex"
+            "openrouter/minimax/minimax-m3"
         )
 
     def test_save_provider_profile_preserves_unmanaged_openclaw_sections(

@@ -73,10 +73,10 @@ def default_provider_profiles() -> list[ProviderProfile]:
             label="OpenRouter",
             provider_id="openrouter",
             provider_type=ProviderType.OPENROUTER,
-            model="openai/gpt-5.2-codex",
+            model="minimax/minimax-m3",
             api_key_env="OPENROUTER_API_KEY",
             base_url="https://openrouter.ai/api/v1",
-            notes="Uses OpenRouter model IDs. Vision support is model-specific.",
+            notes="Default OpenRouter vision-capable profile for MiniMax M3.",
         ),
         ProviderProfile(
             key="anthropic",

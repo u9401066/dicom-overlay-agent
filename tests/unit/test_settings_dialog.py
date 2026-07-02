@@ -28,6 +28,6 @@ def test_settings_dialog_updates_fields_when_provider_changes(qtbot, tmp_path):
     )
     dialog._provider_combo.setCurrentIndex(openrouter_index)
 
-    assert dialog._model_edit.text() == "openai/gpt-5.2-codex"
+    assert dialog._model_edit.text() == "minimax/minimax-m3"
     assert dialog._base_url_edit.text() == "https://openrouter.ai/api/v1"
     assert dialog._api_key_env_edit.text() == "OPENROUTER_API_KEY"
