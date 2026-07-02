@@ -136,15 +136,14 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   full partial scorecard after every image (`--partial-scorecard-interval 0`
   writes only final/abort checkpoints).
 - Local test runs should use
-  [`scripts/run-tests-safe.cmd`](scripts/run-tests-safe.cmd). It pins `uv` to
-  repo-local `.uv-cache-codex`, disables progress spam, prevents automatic
-  Python downloads (`UV_PYTHON_DOWNLOADS=never`), routes temp files under
-  `data/tmp/pytest-safe`, disables the pytest cache provider, and runs only the
-  default unit+smoke suite. Full integration tests remain available by passing
-  explicit paths. Prefer this over PowerShell on memory-constrained Windows
-  sessions. The runner also takes a repo-local `data/tmp/uv-run.lock` so a
-  second uv-backed command exits before spawning another `uv.exe`. During this
-  guarded test path it also sets
+  [`scripts/run-tests-safe.cmd`](scripts/run-tests-safe.cmd). It runs pytest
+  through the existing uv-managed `.venv\Scripts\python.exe` instead of
+  `uv run`, routes temp files under `data/tmp/pytest-safe`, disables the pytest
+  cache provider, and runs only the default unit+smoke suite. Full integration
+  tests remain available by passing explicit paths. Prefer this over PowerShell
+  on memory-constrained Windows sessions. The runner takes a repo-local
+  `data/tmp/pytest-run.lock`, so a second pytest command exits before spawning
+  more Python processes. During this guarded test path it also sets
   `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, so accidental real Gateway /
   OpenClaw launches fail fast unless an explicit integration run opts in.
 - The desktop Gateway launcher uses a repo-local
@@ -157,9 +156,9 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   cannot silently launch multiple Gateways at once.
 - Local lint runs should use
   [`scripts/run-ruff-safe.cmd`](scripts/run-ruff-safe.cmd) for the same reason:
-  it pins the repo-local `uv` cache/temp directories and takes
-  `data/tmp/uv-run.lock` before calling `uv run ruff ...`, avoiding both
-  AppData cache failures and concurrent `uv.exe` launches.
+  it calls `.venv\Scripts\ruff.exe` directly, takes
+  `data/tmp/ruff-run.lock`, and avoids both AppData cache failures and
+  concurrent `uv.exe` launches.
 - Each raw eval result includes deterministic `local_image_quality` metadata
   from [`screen_monitor.py`](src/dicom_overlay/infrastructure/screen_monitor.py):
   image size, aspect ratio, ink density, bright-pixel ratio, and low-signal
@@ -169,11 +168,14 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
 - Each raw eval result also includes deterministic `local_signal_candidates`:
   a local threshold/ink bounding-box proposal for ECG-like line images. This is
   intentionally non-diagnostic, but it gives the reviewer and harness a cheap
-  local candidate box before the MLLM read.
+  local candidate box before the MLLM read. In multi-pass eval runs, those
+  local candidate boxes now act as a fallback crop target when the coarse MLLM
+  read is non-normal but omitted bboxes, so bbox crop re-analysis no longer
+  depends entirely on the model's first-pass coordinates.
 - [`scripts/check-real-model-readiness.cmd`](scripts/check-real-model-readiness.cmd)
   is the OOM-safe readiness launcher that bridges the mock artifact gate to
-  real-model benchmarking. It pins repo-local `uv` cache/temp settings, takes
-  the same `data/tmp/uv-run.lock`, and then calls
+  real-model benchmarking. It calls the existing uv-managed
+  `.venv\Scripts\python.exe`, takes `data/tmp/readiness-run.lock`, and then calls
   [`scripts/check-real-model-readiness.py`](scripts/check-real-model-readiness.py).
   It writes a
   `ready` or `blocked` JSON artifact for the selected OpenClaw/OpenRouter model,
@@ -186,8 +188,8 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   spends time on a doomed run.
 - [`scripts/run-meeti-openclaw-experiment.cmd`](scripts/run-meeti-openclaw-experiment.cmd)
   is the preferred non-PowerShell launcher for reproducible real
-  Gateway-backed MEETI experiments. It pins repo-local `uv` cache/temp settings,
-  takes the same `data/tmp/uv-run.lock` used by the test runner, then calls
+  Gateway-backed MEETI experiments. It calls the existing uv-managed
+  `.venv\Scripts\python.exe`, takes `data/tmp/meeti-run.lock`, then calls
   [`scripts/run-meeti-openclaw-experiment.py`](scripts/run-meeti-openclaw-experiment.py).
   The Python runner supports `--provider-profile openrouter` / `openai-vision`,
   generates an experiment-local OpenClaw config before model-catalog checks,

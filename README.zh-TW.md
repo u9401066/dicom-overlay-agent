@@ -15,13 +15,13 @@
   `--probe-provider`，會先檢查 provider egress 與模型是否 advertised image
   input；目前 probed readiness 會因 OpenRouter 連線 reset 而 blocked。
 - `scripts/run-meeti-openclaw-experiment.cmd` 是目前建議的非 PowerShell
-  實驗入口；它會固定 repo-local `.uv-cache-codex` 與 `data\tmp\uv`，再呼叫
+  實驗入口；它直接使用既有 uv-managed `.venv\Scripts\python.exe` 呼叫
   `scripts/run-meeti-openclaw-experiment.py` 產生 experiment-local OpenClaw
   config、啟動 Gateway、跑 eval、重建 scorecard 並匯出 review artifacts。
-  它也會拿 `data\tmp\uv-run.lock`，避免同時啟動第二個 `uv.exe`。
-- `scripts/check-real-model-readiness.cmd` 也使用同一個
-  `data\tmp\uv-run.lock`，避免 readiness probe 重新繞過 OOM-safe runner
-  而啟動第二個 `uv.exe`。
+  它也會拿 `data\tmp\meeti-run.lock`，避免同時啟動第二個實驗 runner。
+- `scripts/check-real-model-readiness.cmd` 也直接使用既有 uv-managed
+  `.venv\Scripts\python.exe`，並持有 `data\tmp\readiness-run.lock`，
+  避免 readiness probe 重新繞過 OOM-safe runner 而啟動第二個 runner。
 - 最新 1 張 MEETI real smoke：
   `data/experiments/meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
   已使用 `openrouter/minimax/minimax-m3` 走到 OpenClaw Gateway
@@ -35,13 +35,12 @@
 
 - 建議本機完整預設測試改用
   `scripts\run-tests-safe.cmd -q`。
-  這個入口會把 `uv` cache 固定在 repo-local `.uv-cache-codex`，設定
-  `UV_NO_PROGRESS=1`、`UV_PYTHON_DOWNLOADS=never`，並把 `TMP`/`TEMP` 與
+  這個入口直接使用既有 uv-managed `.venv\Scripts\python.exe`，並把 `TMP`/`TEMP` 與
   pytest `--basetemp` 放到 `data\tmp\pytest-safe`，避免 AppData cache、
   pytest cacheprovider、進度輸出或大型暫存樹造成 PowerShell/uv OOM；目前
   已避免把 PowerShell 當作預設測試/實驗入口。runner 會使用
-  `data\tmp\uv-run.lock`，若另一個 uv-backed runner 已在跑，會直接 exit 75，
-  不會再開第二個 `uv.exe`。
+  `data\tmp\pytest-run.lock`，若另一個 pytest runner 已在跑，會直接 exit 75，
+  不會再開第二個測試程序。
 - 裸跑 `pytest` 的預設範圍現在只收 `tests/unit` + `tests/smoke`，並排除
   `data/`、`openclaw/`、`openclaw-home/`、`.uv-cache-codex/`、`node_modules/`
   等大型產物或 vendored runtime；需要整合測試時請明確指定
@@ -74,7 +73,9 @@
   所有品質判斷都拖到多模態語言模型。
 - `local_signal_candidates` 是第二層本機輔助：用低成本像素 threshold 先產生
   ECG-like waveform / signal bbox 候選，供 harness 與人工 review 對照；它不做
-  診斷，只提供 MLLM 前的可審計候選框。
+  診斷，只提供 MLLM 前的可審計候選框。`run-eval.py --multi-pass` 現在會在
+  coarse MLLM 判讀為非正常但沒有 bbox 時，把這些本地候選框餵給 crop
+  re-analysis，避免框格流程完全依賴第一輪 MLLM 座標。
 - `scripts/check-real-model-readiness.cmd` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地
@@ -297,7 +298,7 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 ## 2026-07-02 OOM-safe lint 補充
 
 - `scripts\run-ruff-safe.cmd check ...` 是目前建議的 lint 入口；它固定使用
-  repo-local `.uv-cache-codex`、`data\tmp\uv` 與 `data\tmp\uv-run.lock`，
+  既有 `.venv\Scripts\ruff.exe` 與 `data\tmp\ruff-run.lock`，
   避免裸 `uv run ruff` 重新碰到 AppData cache 或啟動第二個 `uv.exe`。
 - `scripts\run-tests-safe.cmd` 會設定
   `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`，測試期間若誤觸真實

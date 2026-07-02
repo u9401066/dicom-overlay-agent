@@ -41,7 +41,9 @@
   `ImageProcessor.local_signal_candidates()` records deterministic
   `local_signal_candidates` waveform/signal bbox proposals. These make
   blank/unreadable input detection and first-pass candidate boxes auditable
-  without forcing every quality decision through an MLLM.
+  without forcing every quality decision through an MLLM. In multi-pass eval,
+  those local candidates now feed crop re-analysis when the coarse MLLM result
+  is non-normal but lacks usable bboxes.
 - Expert-review export now audits no-bbox cases at case level, so 1000-case
   review completeness is not inflated by bbox count alone. Review artifacts
   include PNG overlays, `bbox-audit.jsonl`, crop thumbnails, and `index.html`.
@@ -50,24 +52,23 @@
   Avoid raw `tar -tf MEETI.rar` and broad recursive searches over generated data
   or OpenClaw internals in normal PowerShell sessions.
 - OOM-safe test entry point: `scripts\run-tests-safe.cmd` runs unit+smoke with
-  repo-local `.uv-cache-codex`, `UV_NO_PROGRESS=1`,
-  `UV_PYTHON_DOWNLOADS=never`, `TMP`/`TEMP=data\tmp\pytest-safe`, pytest
-  `--basetemp`, and `-p no:cacheprovider`. Pytest defaults now collect only
+  the existing uv-managed `.venv\Scripts\python.exe`, `TMP`/`TEMP=data\tmp\pytest-safe`,
+  pytest `--basetemp`, and `-p no:cacheprovider`. Pytest defaults now collect only
   `tests/unit` and `tests/smoke`, exclude generated/vendored trees, and suppress
   captured-output dumps on failure. Prefer the `.cmd` path over PowerShell after
   the 2026-07-02 PowerShell OOM report. The `.cmd` runner now uses a unique
   `basetemp-%RANDOM%-%RANDOM%` per run and treats user-supplied arguments as the
   full pytest target set, so targeted checks no longer trigger the whole suite
   or fail on a locked fixed basetemp. It also takes
-  `data\tmp\uv-run.lock`; concurrent uv-backed runners exit 75 instead of
-  spawning another `uv.exe`. It now also sets
+  `data\tmp\pytest-run.lock`; concurrent pytest runners exit 75 instead of
+  spawning another Python test process. It now also sets
   `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, so unit/smoke tests cannot
   accidentally start a real OpenClaw Gateway unless a deliberate integration
   run opts in with `DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS=1`.
-- OOM-safe lint entry point: `scripts\run-ruff-safe.cmd check ...` pins the
-  same repo-local `.uv-cache-codex`, `data\tmp\uv`, and `data\tmp\uv-run.lock`
-  before invoking ruff. This was added after naked `uv run ruff ...` failed
-  against the user AppData uv cache with access denied.
+- OOM-safe lint entry point: `scripts\run-ruff-safe.cmd check ...` calls
+  `.venv\Scripts\ruff.exe` directly and takes `data\tmp\ruff-run.lock`. This
+  avoids `uv run ruff ...` after naked uv tried to initialize the user AppData
+  cache and failed with access denied.
 - OpenClaw/conhost OOM guard: `GatewayManager.start()` now holds
   `data\tmp\openclaw-gateway.lock` while its OpenClaw subprocess is alive and
   refuses a second live launch. `scripts\test-real-stack.bat` no longer starts
@@ -81,7 +82,8 @@
 - Real-model 1000-case accuracy gate is still external-network/provider gated.
   `scripts\check-real-model-readiness.cmd --dotenv .env` now merges repo-local
   `.env` values into readiness checks without printing or serializing secrets
-  while sharing the repo-local `data\tmp\uv-run.lock`; `--probe-provider`
+  while using `.venv\Scripts\python.exe` and `data\tmp\readiness-run.lock`;
+  `--probe-provider`
   additionally checks provider egress and advertised image-input support before
   a Gateway run. Offline OpenRouter MiniMax M3
   readiness is `ready`:
@@ -95,9 +97,8 @@
   still blocked by local egress: OpenClaw logs `ECONNRESET` while fetching
   OpenRouter model capabilities/pricing and calling `minimax/minimax-m3`.
 - `scripts\run-meeti-openclaw-experiment.cmd` is the preferred non-PowerShell
-  launcher. It pins repo-local `.uv-cache-codex` plus `data\tmp\uv`, takes the
-  shared `data\tmp\uv-run.lock`, disables uv progress output and automatic
-  Python downloads, then calls
+  launcher. It uses `.venv\Scripts\python.exe`, takes
+  `data\tmp\meeti-run.lock`, then calls
   `scripts\run-meeti-openclaw-experiment.py`, which generates an
   experiment-local OpenClaw config before model-catalog checks, takes
   `data\tmp\openclaw-gateway.lock` before Gateway spawn, retries eval while the

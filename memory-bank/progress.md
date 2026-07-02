@@ -29,22 +29,21 @@
     final/abort evidence; `scripts/run-eval.py` exposes
     `--partial-scorecard-interval`.
   - Added `scripts\run-tests-safe.cmd` as the OOM-safe local test entry point.
-    It pins `uv` to repo-local `.uv-cache-codex`, sets `UV_NO_PROGRESS=1` and
-    `UV_PYTHON_DOWNLOADS=never`, routes temp files through
-    `data\tmp\pytest-safe`, disables the pytest cache provider, and runs the
-    unit+smoke suite explicitly. PowerShell is no longer the default test path
+    It now calls the existing uv-managed `.venv\Scripts\python.exe` directly,
+    routes temp files through `data\tmp\pytest-safe`, disables the pytest cache
+    provider, and runs the unit+smoke suite explicitly. PowerShell is no longer the default test path
     after the 2026-07-02 OOM report. It now uses a unique
     `basetemp-%RANDOM%-%RANDOM%` per run and lets user-supplied arguments
     replace the default target set, so targeted checks stay targeted and do not
-    trip over a locked fixed basetemp. It also takes `data\tmp\uv-run.lock`, so
-    a second uv-backed runner exits 75 before creating another `uv.exe`.
+    trip over a locked fixed basetemp. It also takes `data\tmp\pytest-run.lock`,
+    so a second pytest runner exits 75 before creating another test process.
     It also sets `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, preventing
     unit/smoke tests from accidentally starting a real OpenClaw Gateway unless
     an explicit integration run opts in.
   - Added `scripts\run-ruff-safe.cmd` after naked `uv run ruff ...` tried to
     initialize the user AppData uv cache and failed with access denied. The
-    wrapper shares `.uv-cache-codex`, `data\tmp\uv`, and
-    `data\tmp\uv-run.lock` with the other safe uv-backed runners.
+    wrapper now calls `.venv\Scripts\ruff.exe` directly and uses
+    `data\tmp\ruff-run.lock`.
   - Added OpenClaw/conhost OOM guards: `GatewayManager.start()` now takes
     `data\tmp\openclaw-gateway.lock` for the lifetime of the Gateway subprocess
     and refuses a second live launch; `scripts\test-real-stack.bat` no longer
@@ -69,7 +68,10 @@
     `ImageProcessor.local_signal_candidates()`. Each eval raw result now records
     `local_signal_candidates`, giving reviewers a cheap local waveform/signal
     bbox proposal before the MLLM read; `verify-eval-artifacts.py` now gates
-    this as `model_assist_artifacts`.
+    this as `model_assist_artifacts`. `run-eval.py --multi-pass` now converts
+    those candidates into crop targets when the coarse MLLM read is non-normal
+    but lacks bboxes, so crop re-analysis does not depend entirely on first-pass
+    model coordinates.
   - Hardened annotation review completeness: no-bbox cases now produce
     case-level audit rows, so bbox-free normal cases are still counted in the
     1000-case review gate.
@@ -84,15 +86,15 @@
     artifact before any long Gateway-backed run. It checks provider credential
     presence, 1000-case manifest size, completed eval artifacts, and local
     OpenClaw runtime evidence without leaking secrets, while the `.cmd`
-    wrapper shares the repo-local `data\tmp\uv-run.lock` so readiness probes do
-    not start a second `uv.exe`. The new `--probe-provider` flag also checks
+    wrapper calls `.venv\Scripts\python.exe` directly and uses
+    `data\tmp\readiness-run.lock`. The new `--probe-provider` flag also checks
     provider egress and advertised image-input support before launching
     Gateway/eval.
   - Switched the desktop OpenRouter default profile to MiniMax M3
     (`openrouter/minimax/minimax-m3`) and added
     `scripts\run-meeti-openclaw-experiment.cmd` as the non-PowerShell real-run
     wrapper. Readiness next commands now point to this `.cmd` wrapper, which
-    shares the same `data\tmp\uv-run.lock` as the test runner.
+    calls `.venv\Scripts\python.exe` directly and uses `data\tmp\meeti-run.lock`.
   - OpenRouter MiniMax M3 readiness is ready at
     `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3.json`:
     `OPENROUTER_API_KEY` is present, the 1000-case manifest is valid, OpenClaw
