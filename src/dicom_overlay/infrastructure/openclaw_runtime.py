@@ -82,6 +82,9 @@ def build_harness_manifest() -> dict[str, Any]:
         "capabilities": {
             "medicalImageInterpretation": True,
             "multiTurnImageFollowup": True,
+            "bboxCropReanalysis": True,
+            "coordinateDriftCalibration": True,
+            "gatewayOnlyDesktopBoundary": True,
             "overlayAnnotations": ["bbox", "label", "tag", "text"],
             "triggerModes": ["hybrid", "manual", "auto"],
         },

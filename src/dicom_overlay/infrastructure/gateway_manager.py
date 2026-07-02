@@ -26,6 +26,7 @@ _OPENCLAW_CONFIG = Path("openclaw/openclaw.json")
 _OPENCLAW_HOME = Path("openclaw-home")
 _SRC_SKILLS = Path("openclaw/workspace/skills")
 _DST_SKILLS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "skills"
+_GATEWAY_LAUNCH_LOCK = Path("data/tmp/openclaw-gateway.lock")
 
 
 class GatewayManager:
@@ -36,6 +37,7 @@ class GatewayManager:
         self._port = port
         self._process: subprocess.Popen | None = None
         self._gateway_log: TextIO | None = None
+        self._launch_lock_dir: Path | None = None
 
     @property
     def is_running(self) -> bool:
@@ -153,6 +155,51 @@ class GatewayManager:
         home = self._repo_root / _OPENCLAW_HOME
         (home / ".openclaw" / "workspace").mkdir(parents=True, exist_ok=True)
 
+    def _acquire_launch_lock(self) -> Path:
+        """Take a repo-local lock so only one OpenClaw Gateway is spawned."""
+        lock_dir = self._repo_root / _GATEWAY_LAUNCH_LOCK
+        lock_dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            lock_dir.mkdir()
+        except FileExistsError:
+            pid = self._read_lock_pid(lock_dir)
+            if pid is not None and self._pid_is_running(pid):
+                raise RuntimeError(
+                    "OpenClaw Gateway launch lock is already held by pid "
+                    f"{pid}: {lock_dir}"
+                ) from None
+            logger.warning("Removing stale OpenClaw Gateway launch lock: %s", lock_dir)
+            shutil.rmtree(lock_dir, ignore_errors=True)
+            lock_dir.mkdir()
+        self._launch_lock_dir = lock_dir
+        return lock_dir
+
+    def _release_launch_lock(self) -> None:
+        """Release the launch lock held by this manager, if any."""
+        if self._launch_lock_dir is None:
+            return
+        shutil.rmtree(self._launch_lock_dir, ignore_errors=True)
+        self._launch_lock_dir = None
+
+    def _read_lock_pid(self, lock_dir: Path) -> int | None:
+        try:
+            return int((lock_dir / "pid").read_text(encoding="utf-8").strip())
+        except (FileNotFoundError, OSError, ValueError):
+            return None
+
+    def _pid_is_running(self, pid: int) -> bool:
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+
     def _kill_port_occupant(self) -> None:
         """Kill any process occupying the Gateway port.
 
@@ -211,61 +258,82 @@ class GatewayManager:
             logger.info("Gateway already running (pid=%d)", self._process.pid)  # type: ignore[union-attr]
             return
 
-        # Kill any stale process occupying the port before starting
-        self._kill_port_occupant()
-
-        node = self._find_node()
-        script = self._gateway_script()
-
-        self._ensure_dirs()
-        self._sync_skills()
-
-        home = self._repo_root / _OPENCLAW_HOME
-        config = self._repo_root / _OPENCLAW_CONFIG
-        if not config.exists():
-            # OpenClaw 2026.5.x refuses to start when gateway.mode is missing
-            # ("Gateway start blocked: existing config is missing gateway.mode").
-            # A bare "{}" placeholder is therefore not enough — seed the minimal
-            # valid local-gateway shape so a first run before the user has saved
-            # a provider profile still boots instead of hard-failing.
-            config.parent.mkdir(parents=True, exist_ok=True)
-            config.write_text(
-                json.dumps({"gateway": {"mode": "local"}}, indent=2),
-                encoding="utf-8",
+        if (
+            os.environ.get("DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW") == "1"
+            and os.environ.get("DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS") != "1"
+        ):
+            raise RuntimeError(
+                "OpenClaw Gateway startup is disabled during OOM-safe tests. "
+                "Set DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS=1 only for an "
+                "explicit real Gateway integration run."
             )
-        env = {
-            **os.environ,
-            **read_env_file(self._repo_root / ".env"),
-            "OPENCLAW_STATE_DIR": str(home),
-            "OPENCLAW_CONFIG_PATH": str(config),
-            "HOME": str(home),
-            "USERPROFILE": str(home),
-        }
-        # Do NOT disable bundled plugins by default: the agent harness depends
-        # on OpenClaw's bundled plugin surfaces (e.g. speech-core/runtime-api),
-        # and disabling them makes every agent run fail with
-        # "Unable to resolve bundled plugin public surface ...". Only honour the
-        # flag if the operator explicitly set it in their environment.
-        disable_plugins = os.environ.get("OPENCLAW_DISABLE_BUNDLED_PLUGINS")
-        if disable_plugins is not None:
-            env["OPENCLAW_DISABLE_BUNDLED_PLUGINS"] = disable_plugins
 
-        cmd = [node, str(script), "gateway", "run", "--verbose"]
-        logger.info("Starting OpenClaw Gateway: %s", " ".join(cmd))
+        lock_dir = self._acquire_launch_lock()
+        # Kill any stale process occupying the port before starting
+        try:
+            self._kill_port_occupant()
 
-        # Write Gateway output to a log file for debugging
-        self._gateway_log = (self._repo_root / "gateway.log").open(
-            "w", encoding="utf-8"
-        )
-        self._process = subprocess.Popen(
-            cmd,
-            cwd=str(self._repo_root),
-            env=env,
-            stdout=self._gateway_log,
-            stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-        )
-        logger.info("Gateway started (pid=%d)", self._process.pid)
+            node = self._find_node()
+            script = self._gateway_script()
+
+            self._ensure_dirs()
+            self._sync_skills()
+
+            home = self._repo_root / _OPENCLAW_HOME
+            config = self._repo_root / _OPENCLAW_CONFIG
+            if not config.exists():
+                # OpenClaw 2026.5.x refuses to start when gateway.mode is missing
+                # ("Gateway start blocked: existing config is missing gateway.mode").
+                # A bare "{}" placeholder is therefore not enough — seed the minimal
+                # valid local-gateway shape so a first run before the user has saved
+                # a provider profile still boots instead of hard-failing.
+                config.parent.mkdir(parents=True, exist_ok=True)
+                config.write_text(
+                    json.dumps({"gateway": {"mode": "local"}}, indent=2),
+                    encoding="utf-8",
+                )
+            env = {
+                **os.environ,
+                **read_env_file(self._repo_root / ".env"),
+                "OPENCLAW_STATE_DIR": str(home),
+                "OPENCLAW_CONFIG_PATH": str(config),
+                "HOME": str(home),
+                "USERPROFILE": str(home),
+            }
+            # Do NOT disable bundled plugins by default: the agent harness depends
+            # on OpenClaw's bundled plugin surfaces (e.g. speech-core/runtime-api),
+            # and disabling them makes every agent run fail with
+            # "Unable to resolve bundled plugin public surface ...". Only honour the
+            # flag if the operator explicitly set it in their environment.
+            disable_plugins = os.environ.get("OPENCLAW_DISABLE_BUNDLED_PLUGINS")
+            if disable_plugins is not None:
+                env["OPENCLAW_DISABLE_BUNDLED_PLUGINS"] = disable_plugins
+
+            cmd = [node, str(script), "gateway", "run", "--verbose"]
+            logger.info("Starting OpenClaw Gateway: %s", " ".join(cmd))
+
+            # Write Gateway output to a log file for debugging
+            self._gateway_log = (self._repo_root / "gateway.log").open(
+                "w", encoding="utf-8"
+            )
+            self._process = subprocess.Popen(
+                cmd,
+                cwd=str(self._repo_root),
+                env=env,
+                stdout=self._gateway_log,
+                stderr=subprocess.STDOUT,
+                creationflags=(
+                    subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                ),
+            )
+            (lock_dir / "pid").write_text(str(self._process.pid), encoding="utf-8")
+            logger.info("Gateway started (pid=%d)", self._process.pid)
+        except Exception:
+            self._release_launch_lock()
+            if self._gateway_log is not None:
+                self._gateway_log.close()
+                self._gateway_log = None
+            raise
 
     async def wait_ready(self, timeout_sec: float = 15.0) -> bool:
         """Wait until the Gateway WebSocket port is accepting connections."""
@@ -306,6 +374,10 @@ class GatewayManager:
         if self._process.poll() is not None:
             logger.info("Gateway already stopped (code=%d)", self._process.returncode)
             self._process = None
+            self._release_launch_lock()
+            if self._gateway_log is not None:
+                self._gateway_log.close()
+                self._gateway_log = None
             return
         logger.info("Stopping Gateway (pid=%d)...", self._process.pid)
         self._process.terminate()
@@ -319,6 +391,7 @@ class GatewayManager:
         if self._gateway_log is not None:
             self._gateway_log.close()
             self._gateway_log = None
+        self._release_launch_lock()
         logger.info("Gateway stopped")
 
     async def ensure_running(self) -> bool:

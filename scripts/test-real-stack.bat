@@ -24,7 +24,8 @@ node .\openclaw\node_modules\openclaw\openclaw.mjs config validate
 if errorlevel 1 exit /b 1
 
 echo [INFO] Starting OpenClaw Gateway in background...
-start "OpenClaw Gateway" cmd /k "set OPENCLAW_STATE_DIR=%OPENCLAW_STATE_DIR% && set OPENCLAW_CONFIG_PATH=%OPENCLAW_CONFIG_PATH% && set HOME=%HOME% && set USERPROFILE=%USERPROFILE% && node .\openclaw\node_modules\openclaw\openclaw.mjs gateway run --verbose"
+set "GATEWAY_LOG=%CD%\gateway.log"
+start /B "" node .\openclaw\node_modules\openclaw\openclaw.mjs gateway run --verbose > "%GATEWAY_LOG%" 2>&1
 
 timeout /t 5 /nobreak >nul
 
@@ -33,7 +34,11 @@ node .\openclaw\node_modules\openclaw\openclaw.mjs gateway health
 if errorlevel 1 exit /b 1
 
 echo [INFO] Starting DICOM Overlay Agent...
-start "DICOM Overlay Agent" cmd /k ".venv\Scripts\python.exe -m dicom_overlay --config config.yaml"
+if exist ".venv\Scripts\pythonw.exe" (
+    start "" ".venv\Scripts\pythonw.exe" -m dicom_overlay --config config.yaml
+) else (
+    start "" ".venv\Scripts\python.exe" -m dicom_overlay --config config.yaml
+)
 
 echo [OK] Real stack launched.
 echo [NEXT] 1. Open your DICOM viewer.

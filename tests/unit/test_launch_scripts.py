@@ -19,6 +19,16 @@ def test_load_env_batch_never_prints_values() -> None:
     assert "echo %" not in script.lower()
 
 
+def test_real_stack_batch_avoids_interactive_gateway_conhost() -> None:
+    script = Path("scripts/test-real-stack.bat").read_text(encoding="utf-8")
+    lowered = script.lower()
+
+    assert "cmd /k" not in lowered
+    assert 'start "openclaw gateway"' not in lowered
+    assert "start /b" in lowered
+    assert "gateway.log" in lowered
+
+
 def test_meeti_experiment_script_records_model_and_artifacts() -> None:
     script = Path("scripts/run-meeti-openclaw-experiment.ps1").read_text(
         encoding="utf-8"
@@ -142,6 +152,19 @@ def test_meeti_experiment_python_runner_has_oom_safe_environment() -> None:
     assert "data/tmp/uv" in script
 
 
+def test_meeti_experiment_python_runner_serializes_gateway_launches() -> None:
+    script = Path("scripts/run-meeti-openclaw-experiment.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "OPENCLAW_GATEWAY_LOCK" in script
+    assert "openclaw-gateway.lock" in script
+    assert "acquire_gateway_lock" in script
+    assert "release_gateway_lock" in script
+    assert "GatewayProcess" in script
+    assert "CREATE_NO_WINDOW" in script
+
+
 def test_meeti_experiment_python_runner_records_and_limits_artifacts() -> None:
     script = Path("scripts/run-meeti-openclaw-experiment.py").read_text(
         encoding="utf-8"
@@ -173,5 +196,24 @@ def test_meeti_experiment_cmd_wrapper_pins_uv_without_powershell() -> None:
     assert "Another uv-backed command is already running" in script
     assert 'rmdir "%UV_RUN_LOCK%"' in script
     assert "uv run python scripts\\run-meeti-openclaw-experiment.py %*" in script
+    assert ".ps1" not in script.lower()
+    assert "powershell" not in script.lower()
+
+
+def test_real_model_readiness_cmd_wrapper_pins_uv_without_powershell() -> None:
+    script = Path("scripts/check-real-model-readiness.cmd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "set \"UV_CACHE_DIR=%REPO_ROOT%\\.uv-cache-codex\"" in script
+    assert "set \"UV_NO_PROGRESS=1\"" in script
+    assert "set \"UV_PYTHON_DOWNLOADS=never\"" in script
+    assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
+    assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
+    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in script
+    assert 'mkdir "%UV_RUN_LOCK%"' in script
+    assert "Another uv-backed command is already running" in script
+    assert 'rmdir "%UV_RUN_LOCK%"' in script
+    assert "uv run python scripts\\check-real-model-readiness.py %*" in script
     assert ".ps1" not in script.lower()
     assert "powershell" not in script.lower()

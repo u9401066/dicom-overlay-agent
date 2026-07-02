@@ -384,7 +384,7 @@ def _next_commands(
     blocker_codes = {str(item.get("code", "")) for item in blockers}
     if blocker_codes & {"provider_probe_failed", "model_lacks_image_input"}:
         command = (
-            "uv run python scripts\\check-real-model-readiness.py "
+            "scripts\\check-real-model-readiness.cmd "
             f"--model-id {model_id} --manifest {manifest} --min-cases {min_cases} "
             "--probe-provider"
         )

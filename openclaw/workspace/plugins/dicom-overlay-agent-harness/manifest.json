@@ -19,6 +19,9 @@
   "capabilities": {
     "medicalImageInterpretation": true,
     "multiTurnImageFollowup": true,
+    "bboxCropReanalysis": true,
+    "coordinateDriftCalibration": true,
+    "gatewayOnlyDesktopBoundary": true,
     "overlayAnnotations": ["bbox", "label", "tag", "text"],
     "triggerModes": ["hybrid", "manual", "auto"]
   }

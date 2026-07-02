@@ -71,6 +71,7 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert "set \"UV_PYTHON_DOWNLOADS=never\"" in runner
     assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
+    assert "set \"DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1\"" in runner
     assert "uv run python -m pytest" in runner
     assert "-p no:cacheprovider" in runner
     assert "--basetemp" in runner
@@ -83,5 +84,23 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert 'mkdir "%UV_RUN_LOCK%"' in runner
     assert "Another uv-backed command is already running" in runner
     assert 'rmdir "%UV_RUN_LOCK%"' in runner
+    assert ".ps1" not in runner.lower()
+    assert "powershell" not in runner.lower()
+
+
+def test_safe_ruff_runner_cmd_avoids_appdata_and_serializes_uv() -> None:
+    runner = (_REPO_ROOT / "scripts" / "run-ruff-safe.cmd").read_text("utf-8")
+
+    assert "set \"UV_CACHE_DIR=%REPO_ROOT%\\.uv-cache-codex\"" in runner
+    assert "set \"UV_NO_PROGRESS=1\"" in runner
+    assert "set \"UV_PYTHON_DOWNLOADS=never\"" in runner
+    assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\uv\"" in runner
+    assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\uv\"" in runner
+    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in runner
+    assert 'mkdir "%UV_RUN_LOCK%"' in runner
+    assert "Another uv-backed command is already running" in runner
+    assert 'rmdir "%UV_RUN_LOCK%"' in runner
+    assert "uv run ruff %*" in runner
+    assert "AppData" not in runner
     assert ".ps1" not in runner.lower()
     assert "powershell" not in runner.lower()

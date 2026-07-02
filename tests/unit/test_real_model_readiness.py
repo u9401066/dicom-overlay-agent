@@ -173,7 +173,8 @@ def test_readiness_provider_probe_blocks_unreachable_openrouter_without_secret(
         "provider": "openrouter",
     } in payload["blockers"]
     assert payload["evidence"]["provider_probe"]["ok"] is False
-    assert "check-real-model-readiness.py" in payload["next_commands"][0]
+    assert "scripts\\check-real-model-readiness.cmd" in payload["next_commands"][0]
+    assert "check-real-model-readiness.py" not in payload["next_commands"][0]
     assert "--probe-provider" in payload["next_commands"][0]
     assert "run-meeti-openclaw-experiment" not in payload["next_commands"][0]
     assert "sk-secret" not in json.dumps(payload)

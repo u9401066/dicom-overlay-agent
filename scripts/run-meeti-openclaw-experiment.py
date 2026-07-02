@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,8 +25,15 @@ DEFAULT_MANIFEST = REPO_ROOT / "data" / "eval-datasets" / "meeti-1000-all" / "ma
 OPENCLAW_CLI = REPO_ROOT / "openclaw" / "node_modules" / "openclaw" / "openclaw.mjs"
 BASE_OPENCLAW_CONFIG = REPO_ROOT / "openclaw" / "openclaw.json"
 GATEWAY_URL = "ws://127.0.0.1:18789"
+OPENCLAW_GATEWAY_LOCK = REPO_ROOT / "data" / "tmp" / "openclaw-gateway.lock"
 UV_TMP_RELATIVE = "data/tmp/uv"
 MAX_CAPTURED_COMMAND_OUTPUT_CHARS = 200_000
+
+
+@dataclass(frozen=True)
+class GatewayProcess:
+    process: subprocess.Popen[str]
+    lock_dir: Path
 
 
 def main() -> int:
@@ -127,7 +134,7 @@ def main() -> int:
         print(f"Experiment record: {paths['experiment_json']}")
         return 20
 
-    gateway_process: subprocess.Popen[str] | None = None
+    gateway_process: GatewayProcess | None = None
     exit_code = 1
     eval_exit_code = 1
     postprocess_exit_code = 0
@@ -385,34 +392,91 @@ def find_provider_profile(profile_key: str) -> ProviderProfile:
     raise ValueError(f"Unknown provider profile '{profile_key}'. Known profiles: {', '.join(known)}")
 
 
-def start_gateway(paths: dict[str, Path], env: dict[str, str]) -> subprocess.Popen[str]:
+def start_gateway(paths: dict[str, Path], env: dict[str, str]) -> GatewayProcess:
+    lock_dir = acquire_gateway_lock()
     paths["gateway_stdout"].parent.mkdir(parents=True, exist_ok=True)
     stdout = paths["gateway_stdout"].open("w", encoding="utf-8")
     stderr = paths["gateway_stderr"].open("w", encoding="utf-8")
     try:
-        return subprocess.Popen(
+        process = subprocess.Popen(
             ["node", str(OPENCLAW_CLI), "gateway", "run", "--verbose"],
             cwd=REPO_ROOT,
             env=env,
             stdout=stdout,
             stderr=stderr,
             text=True,
+            creationflags=(
+                subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            ),
         )
+        (lock_dir / "pid").write_text(str(process.pid), encoding="utf-8")
+        return GatewayProcess(process=process, lock_dir=lock_dir)
     except Exception:
         stdout.close()
         stderr.close()
+        release_gateway_lock(lock_dir)
         raise
 
 
-def stop_gateway(process: subprocess.Popen[str] | None) -> None:
-    if process is None or process.poll() is not None:
+def stop_gateway(gateway: GatewayProcess | None) -> None:
+    if gateway is None:
         return
-    process.terminate()
     try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=10)
+        process = gateway.process
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
+    finally:
+        release_gateway_lock(gateway.lock_dir)
+
+
+def acquire_gateway_lock() -> Path:
+    OPENCLAW_GATEWAY_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        OPENCLAW_GATEWAY_LOCK.mkdir()
+    except FileExistsError:
+        pid = read_lock_pid(OPENCLAW_GATEWAY_LOCK)
+        if pid is not None and pid_is_running(pid):
+            raise RuntimeError(
+                "OpenClaw Gateway launch lock is already held by pid "
+                f"{pid}: {OPENCLAW_GATEWAY_LOCK}"
+            ) from None
+        release_gateway_lock(OPENCLAW_GATEWAY_LOCK)
+        OPENCLAW_GATEWAY_LOCK.mkdir()
+    return OPENCLAW_GATEWAY_LOCK
+
+
+def release_gateway_lock(lock_dir: Path) -> None:
+    try:
+        (lock_dir / "pid").unlink(missing_ok=True)
+        lock_dir.rmdir()
+    except OSError:
+        pass
+
+
+def read_lock_pid(lock_dir: Path) -> int | None:
+    try:
+        return int((lock_dir / "pid").read_text(encoding="utf-8").strip())
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+
+
+def pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def run_eval_with_gateway_retry(

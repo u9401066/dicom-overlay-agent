@@ -171,6 +171,9 @@ class TestOpenClawRuntimeCompatibility:
             "connect",
             "chat.send",
         ]
+        assert manifest["capabilities"]["bboxCropReanalysis"] is True
+        assert manifest["capabilities"]["coordinateDriftCalibration"] is True
+        assert manifest["capabilities"]["gatewayOnlyDesktopBoundary"] is True
         assert "plugin-sdk" not in yaml.safe_dump(manifest)
 
     def test_builds_gateway_chat_frame_with_stable_image_attachment_schema(self):
@@ -256,6 +259,104 @@ class TestOpenClawRuntimeCompatibility:
 
         with pytest.raises(FileNotFoundError, match="fetch-node"):
             manager._find_node()
+
+    def test_gateway_manager_takes_repo_local_launch_lock(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS", "1")
+
+        class FakeProcess:
+            pid = 1234
+            returncode = None
+
+            def poll(self):
+                return self.returncode
+
+            def terminate(self):
+                self.returncode = 0
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                self.returncode = -9
+
+        monkeypatch.setattr(GatewayManager, "_kill_port_occupant", lambda self: None)
+        monkeypatch.setattr(GatewayManager, "_find_node", lambda self: "node")
+        monkeypatch.setattr(
+            GatewayManager,
+            "_gateway_script",
+            lambda self: tmp_path / "openclaw.mjs",
+        )
+        monkeypatch.setattr(GatewayManager, "_sync_skills", lambda self: None)
+        monkeypatch.setattr(
+            "dicom_overlay.infrastructure.gateway_manager.subprocess.Popen",
+            lambda *args, **kwargs: FakeProcess(),
+        )
+        manager = GatewayManager(repo_root=tmp_path)
+
+        manager.start()
+
+        lock_dir = tmp_path / "data" / "tmp" / "openclaw-gateway.lock"
+        assert lock_dir.exists()
+        assert (lock_dir / "pid").read_text(encoding="utf-8") == "1234"
+
+        manager.stop()
+
+        assert not lock_dir.exists()
+
+    def test_gateway_manager_refuses_second_live_launch_lock(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS", "1")
+        lock_dir = tmp_path / "data" / "tmp" / "openclaw-gateway.lock"
+        lock_dir.mkdir(parents=True)
+        (lock_dir / "pid").write_text("999", encoding="utf-8")
+        monkeypatch.setattr(
+            GatewayManager,
+            "_pid_is_running",
+            lambda self, pid: True,
+            raising=False,
+        )
+        monkeypatch.setattr(GatewayManager, "_kill_port_occupant", lambda self: None)
+        monkeypatch.setattr(GatewayManager, "_find_node", lambda self: "node")
+        monkeypatch.setattr(
+            GatewayManager,
+            "_gateway_script",
+            lambda self: tmp_path / "openclaw.mjs",
+        )
+        monkeypatch.setattr(GatewayManager, "_sync_skills", lambda self: None)
+
+        def _unexpected_popen(*args, **kwargs):
+            raise AssertionError("must not spawn a second OpenClaw Gateway")
+
+        monkeypatch.setattr(
+            "dicom_overlay.infrastructure.gateway_manager.subprocess.Popen",
+            _unexpected_popen,
+        )
+        manager = GatewayManager(repo_root=tmp_path)
+
+        with pytest.raises(RuntimeError, match="OpenClaw Gateway launch lock"):
+            manager.start()
+
+    def test_gateway_manager_refuses_real_start_in_oom_safe_tests(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW", "1")
+
+        def _unexpected_popen(*args, **kwargs):
+            raise AssertionError("must not spawn OpenClaw during guarded tests")
+
+        monkeypatch.setattr(
+            "dicom_overlay.infrastructure.gateway_manager.subprocess.Popen",
+            _unexpected_popen,
+        )
+        manager = GatewayManager(repo_root=tmp_path)
+
+        with pytest.raises(RuntimeError, match="disabled during OOM-safe tests"):
+            manager.start()
+
+        assert not (tmp_path / "data" / "tmp" / "openclaw-gateway.lock").exists()
 
     def test_pyinstaller_spec_uses_staged_openclaw_runtime(self):
         spec = Path("dicom-overlay-agent.spec").read_text(encoding="utf-8")
