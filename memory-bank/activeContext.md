@@ -11,10 +11,11 @@
   protocol 3 image attachments). `MIN_SAFE_OPENCLAW_VERSION` remains
   `2026.4.22` because no verified Gateway incompatibility was found.
 - The desktop Settings dialog exposes AI Provider profiles including OpenRouter
-  (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`). Saving a profile
+  (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`) with MiniMax M3 as the
+  default OpenRouter model (`openrouter/minimax/minimax-m3`). Saving a profile
   writes only app-managed provider/model config and keeps secrets in env/.env.
-  Both the normal OpenClaw config and a generated OpenRouter config validated
-  with the OpenClaw CLI.
+  Both the normal OpenClaw config and generated OpenRouter experiment configs
+  validated with the OpenClaw CLI.
 - MEETI source: local `MEETI.rar` from Zenodo record `18523205` is available but
   gitignored. The builder can scan the full archive via Windows `tar`/`bsdtar`;
   current local scan found 9922 PNG-bearing studies.
@@ -48,38 +49,44 @@
   `--case-print-limit 50`; use `--verbose` only for small diagnostic subsets.
   Avoid raw `tar -tf MEETI.rar` and broad recursive searches over generated data
   or OpenClaw internals in normal PowerShell sessions.
-- OOM-safe test entry point: `scripts\run-tests-safe.ps1` runs unit+smoke with
+- OOM-safe test entry point: `scripts\run-tests-safe.cmd` runs unit+smoke with
   repo-local `.uv-cache-codex`, `UV_NO_PROGRESS=1`,
   `UV_PYTHON_DOWNLOADS=never`, `TMP`/`TEMP=data\tmp\pytest-safe`, pytest
   `--basetemp`, and `-p no:cacheprovider`. Pytest defaults now collect only
   `tests/unit` and `tests/smoke`, exclude generated/vendored trees, and suppress
-  captured-output dumps on failure.
+  captured-output dumps on failure. Prefer the `.cmd` path over PowerShell after
+  the 2026-07-02 PowerShell OOM report.
 - Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
   runtime is `2026.6.11`, 1000-case assist verifier passed, and targeted
   unit/smoke tests for the local assist gate passed.
 - Real-model 1000-case accuracy gate is still external-network/provider gated.
   `scripts\check-real-model-readiness.py --dotenv .env` now merges repo-local
   `.env` values into readiness checks without printing or serializing secrets.
-  OpenRouter remains blocked locally because `OPENROUTER_API_KEY` is empty;
-  OpenAI readiness sees `OPENAI_API_KEY`, but real Gateway smoke is blocked by
-  local egress: Node fetch reports `EACCES` for `https://api.openai.com/v1/*`
-  and `curl` cannot connect to `api.openai.com:443`.
-- `scripts\run-meeti-openclaw-experiment.ps1` now accepts `-ManifestPath` and
-  `-ProviderProfile`, generates an experiment-local OpenClaw config before
-  model-catalog checks, uses repo-local `.uv-cache-codex` plus repo-local temp,
-  disables uv progress output and automatic Python downloads, retries eval while
-  the Gateway is still starting, exports review artifacts, and treats
+  OpenRouter MiniMax M3 readiness is `ready`:
+  `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3.json`
+  sees `OPENROUTER_API_KEY`, the 1000-case manifest, OpenClaw `2026.6.11`, and
+  completed mock artifacts. Real Gateway smoke is still blocked by local egress:
+  OpenClaw logs `EACCES` while fetching OpenRouter model capabilities/pricing
+  and calling `minimax/minimax-m3`.
+- `scripts\run-meeti-openclaw-experiment.cmd` is the preferred non-PowerShell
+  launcher. It pins repo-local `.uv-cache-codex` plus `data\tmp\uv`, disables uv
+  progress output and automatic Python downloads, then calls
+  `scripts\run-meeti-openclaw-experiment.py`, which generates an
+  experiment-local OpenClaw config before model-catalog checks, retries eval
+  while the Gateway is still starting, exports review artifacts, and treats
   `scorecard.json.error_count > 0` as a failed experiment even when
-  `run-eval.py` exits 0.
+  `run-eval.py` exits 0. Readiness next commands now point to this `.cmd`
+  wrapper, not PowerShell.
 - `OpenClawClient` disables client-side WebSocket keepalive pings and relies on
   explicit inference timeouts for long medical-image requests. This prevented
   false keepalive closure from hiding the real current blocker, which is local
   model-provider network egress.
 - Latest real 1-case evidence:
-  `data\experiments\meeti-openai-gpt54mini-1case-pingfix-20260702b` reached
-  Gateway `connect` + `chat.send` and produced scorecard/raw/review artifacts,
-  but ended `completed_with_failures` with `eval_error_count=1` due
-  `LLM request failed: network connection error` from the OpenAI transport.
+  `data\experiments\meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
+  reached Gateway `connect` + `chat.send` with `openrouter/minimax/minimax-m3`
+  and produced scorecard/raw/review artifacts, but ended
+  `completed_with_failures` with `eval_error_count=1` due `LLM request failed:
+  network connection error` from OpenRouter transport `EACCES`.
 
 ## Current Eval Harness Focus (2026-05-30)
 

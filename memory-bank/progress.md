@@ -28,11 +28,12 @@
     checkpoints now refresh every 50 cases by default while still writing
     final/abort evidence; `scripts/run-eval.py` exposes
     `--partial-scorecard-interval`.
-  - Added `scripts\run-tests-safe.ps1` as the OOM-safe local test entry point.
+  - Added `scripts\run-tests-safe.cmd` as the OOM-safe local test entry point.
     It pins `uv` to repo-local `.uv-cache-codex`, sets `UV_NO_PROGRESS=1` and
     `UV_PYTHON_DOWNLOADS=never`, routes temp files through
     `data\tmp\pytest-safe`, disables the pytest cache provider, and runs the
-    unit+smoke suite explicitly.
+    unit+smoke suite explicitly. PowerShell is no longer the default test path
+    after the 2026-07-02 OOM report.
   - Hardened pytest defaults to collect only `tests/unit` + `tests/smoke`, skip
     generated/vendored trees (`data`, `openclaw`, `openclaw-home`,
     `.uv-cache-codex`, `node_modules`, etc.), suppress captured-output dumps on
@@ -64,19 +65,31 @@
     `scripts\check-real-model-readiness.py` writes a `ready`/`blocked` JSON
     artifact before any long Gateway-backed run. It checks provider credential
     presence, 1000-case manifest size, completed eval artifacts, and local
-    OpenClaw runtime evidence without printing/storing API keys.
-  - Updated `scripts\run-meeti-openclaw-experiment.ps1` with `-ManifestPath` so
-    real-model experiments can target
-    `data\eval-datasets\meeti-1000-all\manifest.json` directly. This keeps
-    mock artifact gate and real clinical benchmark on the same 1000-case cohort.
+    OpenClaw runtime evidence without leaking secrets.
+  - Switched the desktop OpenRouter default profile to MiniMax M3
+    (`openrouter/minimax/minimax-m3`) and added
+    `scripts\run-meeti-openclaw-experiment.cmd` as the non-PowerShell real-run
+    wrapper. Readiness next commands now point to this `.cmd` wrapper.
+  - OpenRouter MiniMax M3 readiness is ready at
+    `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3.json`:
+    `OPENROUTER_API_KEY` is present, the 1000-case manifest is valid, OpenClaw
+    is `2026.6.11`, and the mock artifact gate is complete.
+  - Latest MiniMax M3 1-case smoke:
+    `data\experiments\meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
+    reached Gateway `connect` + `chat.send` and exported scorecard/raw/review
+    artifacts, but ended `completed_with_failures` because local OpenRouter
+    network fetches fail with `EACCES`.
+  - Legacy PowerShell wrapper note: `scripts\run-meeti-openclaw-experiment.ps1`
+    still exists for compatibility, but current docs/readiness prefer the
+    `.cmd`/Python path because PowerShell caused OOM in this workspace.
   - Hardened real-model readiness and experiment launch:
     `scripts\check-real-model-readiness.py --dotenv .env` can use repo-local
-    credentials without leaking values; `scripts\run-meeti-openclaw-experiment.ps1`
-    supports `-ProviderProfile`, generated provider configs before catalog
-    checks, repo-local `.uv-cache-codex` plus repo-local temp, uv progress
-    suppression, disabled uv-managed Python downloads, Gateway-start retry,
-    review export, and scorecard `error_count` gating so failed real evals
-    cannot look green.
+    credentials without leaking values; `scripts\run-meeti-openclaw-experiment.py`
+    supports `--provider-profile`, generated provider configs before catalog
+    checks, Gateway-start retry, review export, and scorecard `error_count`
+    gating so failed real evals cannot look green. The `.cmd` wrapper supplies
+    repo-local `.uv-cache-codex`, repo-local temp, uv progress suppression, and
+    disabled uv-managed Python downloads.
   - Disabled client-side WebSocket keepalive pings in `OpenClawClient` for long
     medical-image inference; explicit inference timeout remains the control.
   - Latest real 1-case smoke:
@@ -84,8 +97,9 @@
     OpenClaw Gateway `connect` + `chat.send` and wrote scorecard/raw/review
     artifacts, then correctly failed with `eval_error_count=1` because local
     network egress to `api.openai.com:443` is blocked (`Node fetch` reports
-    `EACCES`, `curl` cannot connect). OpenRouter is also still blocked locally
-    because `OPENROUTER_API_KEY` is empty.
+    `EACCES`, `curl` cannot connect). Superseded OpenRouter/MiniMax M3 smoke now
+    proves `OPENROUTER_API_KEY` is present but the local OpenRouter egress path
+    is still blocked by `EACCES`.
 
 - **MEETI MultiPass real-run harness** (2026-05-30):
   - Added `scripts/run-eval.py --multi-pass --multi-pass-max-targets N` to run

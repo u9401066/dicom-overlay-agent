@@ -9,28 +9,31 @@
 ## 2026-07-02 real-model smoke 狀態
 
 - `scripts/check-real-model-readiness.py --dotenv .env` 會讀取 repo-local
-  credential presence，但不輸出或寫入 secret value。OpenRouter 目前會因
-  `OPENROUTER_API_KEY` 空值而 blocked；OpenAI readiness 可看到
-  `OPENAI_API_KEY`。
-- `scripts/run-meeti-openclaw-experiment.ps1` 支援
-  `-ProviderProfile openrouter/openai-vision`，會先產生 experiment-local
-  OpenClaw config，再跑 model catalog / Gateway eval；同時固定使用
-  repo-local `.uv-cache-codex`，避免 Windows 全域 uv cache 權限問題。
+  credential presence，但不輸出或寫入 secret value。OpenRouter MiniMax M3
+  readiness 已為 `ready`：`OPENROUTER_API_KEY` 存在、1000-case mock artifact
+  gate 已通過、OpenClaw runtime 為 `2026.6.11`。
+- `scripts/run-meeti-openclaw-experiment.cmd` 是目前建議的非 PowerShell
+  實驗入口；它會固定 repo-local `.uv-cache-codex` 與 `data\tmp\uv`，再呼叫
+  `scripts/run-meeti-openclaw-experiment.py` 產生 experiment-local OpenClaw
+  config、啟動 Gateway、跑 eval、重建 scorecard 並匯出 review artifacts。
 - 最新 1 張 MEETI real smoke：
-  `data/experiments/meeti-openai-gpt54mini-1case-pingfix-20260702b` 已走到
-  OpenClaw Gateway `connect` + `chat.send`，並輸出 scorecard / raw result /
-  review artifacts；但本機對 `api.openai.com:443` 的外網連線被 `EACCES`
-  擋下，所以 experiment 正確標為 `completed_with_failures`、exit 1。
-  這不是 bbox/schema harness 通過，而是環境網路出口待處理。
+  `data/experiments/meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
+  已使用 `openrouter/minimax/minimax-m3` 走到 OpenClaw Gateway
+  `connect` + `chat.send`，並輸出 scorecard / raw result / review artifacts；
+  但本機對 OpenRouter 的外網 fetch 被 `EACCES` 擋下，OpenClaw 無法取得
+  OpenRouter model capabilities/pricing 或呼叫 `minimax/minimax-m3`，所以
+  experiment 正確標為 `completed_with_failures`、exit 1。這不是 bbox/schema
+  harness 通過，而是環境網路出口待處理。
 
 ## 2026-07-02 OOM-safe uv / 題目測試入口
 
 - 建議本機完整預設測試改用
-  `powershell -ExecutionPolicy Bypass -File scripts\run-tests-safe.ps1 -q`。
+  `scripts\run-tests-safe.cmd -q`。
   這個入口會把 `uv` cache 固定在 repo-local `.uv-cache-codex`，設定
   `UV_NO_PROGRESS=1`、`UV_PYTHON_DOWNLOADS=never`，並把 `TMP`/`TEMP` 與
   pytest `--basetemp` 放到 `data\tmp\pytest-safe`，避免 AppData cache、
-  pytest cacheprovider、進度輸出或大型暫存樹造成 PowerShell/uv OOM。
+  pytest cacheprovider、進度輸出或大型暫存樹造成 PowerShell/uv OOM；目前
+  已避免把 PowerShell 當作預設測試/實驗入口。
 - 裸跑 `pytest` 的預設範圍現在只收 `tests/unit` + `tests/smoke`，並排除
   `data/`、`openclaw/`、`openclaw-home/`、`.uv-cache-codex/`、`node_modules/`
   等大型產物或 vendored runtime；需要整合測試時請明確指定
@@ -50,9 +53,9 @@
   `connect` + `chat.send` 與 OpenClaw 溝通，不匯入 OpenClaw plugin SDK
   內部 API。
 - 桌面版 Settings 的 AI Provider 分頁支援 OpenRouter：
-  `OPENROUTER_API_KEY` + `https://openrouter.ai/api/v1`。設定會寫入
-  OpenClaw managed provider/model 區段，API key 留在環境變數或 `.env`，
-  不進 git。
+  `OPENROUTER_API_KEY` + `https://openrouter.ai/api/v1`，預設模型為
+  MiniMax M3（`openrouter/minimax/minimax-m3`）。設定會寫入 OpenClaw
+  managed provider/model 區段，API key 留在環境變數或 `.env`，不進 git。
 - MEETI 生產級評估 gate 使用 Zenodo record `18523205` 的 `MEETI.rar`
   公開資料來源；本機 manifest 已能從約 1 萬張 ECG 影像建立至少 1000
   case，並透過 `run-eval.py`、`export-eval-annotations.py`、
