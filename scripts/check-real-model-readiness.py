@@ -19,6 +19,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 from dicom_overlay.infrastructure.env_file import read_env_file  # noqa: E402
 from dicom_overlay.infrastructure.real_model_readiness import (  # noqa: E402
     assess_real_model_readiness,
+    probe_provider_for_model,
     write_readiness_report,
 )
 
@@ -36,6 +37,11 @@ def main() -> int:
         help="Optional .env file to merge into readiness checks without printing values.",
     )
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--probe-provider",
+        action="store_true",
+        help="Also probe provider metadata/egress and advertised image support.",
+    )
     args = parser.parse_args()
 
     env = dict(os.environ)
@@ -48,6 +54,7 @@ def main() -> int:
         eval_dir=args.eval_dir,
         min_cases=args.min_cases,
         env=env,
+        provider_probe=probe_provider_for_model if args.probe_provider else None,
     )
     if args.output is not None:
         write_readiness_report(report, args.output)

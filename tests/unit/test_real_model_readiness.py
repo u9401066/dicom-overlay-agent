@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from dicom_overlay.infrastructure.real_model_readiness import (
+    ProviderProbeResult,
     assess_real_model_readiness,
 )
 
@@ -141,6 +142,75 @@ def test_readiness_accepts_complete_artifacts_and_present_provider_key(
     assert ".ps1" not in payload["next_commands"][0].lower()
 
 
+def test_readiness_provider_probe_blocks_unreachable_openrouter_without_secret(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 2)
+    _write_eval_artifacts(eval_dir, 2)
+
+    report = assess_real_model_readiness(
+        model_id="openrouter/minimax/minimax-m3",
+        manifest_path=manifest,
+        eval_dir=eval_dir,
+        min_cases=2,
+        env={"OPENROUTER_API_KEY": "sk-secret"},
+        provider_probe=lambda model_id: ProviderProbeResult(
+            provider="openrouter",
+            model_id=model_id,
+            ok=False,
+            supports_image=None,
+            error="read ECONNRESET",
+        ),
+    )
+
+    payload = report.to_dict()
+    assert payload["status"] == "blocked"
+    assert {
+        "code": "provider_probe_failed",
+        "message": "Provider probe failed for openrouter/minimax/minimax-m3: read ECONNRESET",
+        "provider": "openrouter",
+    } in payload["blockers"]
+    assert payload["evidence"]["provider_probe"]["ok"] is False
+    assert "check-real-model-readiness.py" in payload["next_commands"][0]
+    assert "--probe-provider" in payload["next_commands"][0]
+    assert "run-meeti-openclaw-experiment" not in payload["next_commands"][0]
+    assert "sk-secret" not in json.dumps(payload)
+
+
+def test_readiness_provider_probe_blocks_models_without_image_input(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 2)
+    _write_eval_artifacts(eval_dir, 2)
+
+    report = assess_real_model_readiness(
+        model_id="openrouter/minimax/minimax-m3",
+        manifest_path=manifest,
+        eval_dir=eval_dir,
+        min_cases=2,
+        env={"OPENROUTER_API_KEY": "sk-secret"},
+        provider_probe=lambda model_id: ProviderProbeResult(
+            provider="openrouter",
+            model_id=model_id,
+            ok=True,
+            supports_image=False,
+            error="",
+        ),
+    )
+
+    payload = report.to_dict()
+    assert payload["status"] == "blocked"
+    assert {
+        "code": "model_lacks_image_input",
+        "message": "Model openrouter/minimax/minimax-m3 does not advertise image input.",
+        "provider": "openrouter",
+    } in payload["blockers"]
+
+
 def test_readiness_cli_writes_blocked_artifact_for_missing_key(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
@@ -226,3 +296,14 @@ def test_readiness_cli_loads_dotenv_without_leaking_values(tmp_path: Path) -> No
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["status"] == "ready"
     assert "sk-secret-dotenv" not in json.dumps(payload)
+
+
+def test_readiness_cli_exposes_provider_probe_flag() -> None:
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "check-real-model-readiness.py"
+    ).read_text(encoding="utf-8")
+
+    assert "--probe-provider" in script
+    assert "probe_provider_for_model" in script
