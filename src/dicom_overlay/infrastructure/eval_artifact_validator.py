@@ -195,6 +195,7 @@ def _verify_results(
         )
         return
     missing_preflight: list[str] = []
+    missing_signal_candidates: list[str] = []
     for path in files:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -206,6 +207,13 @@ def _verify_results(
             missing_preflight.append(path.name)
             if len(missing_preflight) >= 5:
                 break
+        signal = (
+            raw.get("local_signal_candidates") if isinstance(raw, dict) else None
+        )
+        if not isinstance(signal, dict) or "candidate_count" not in signal:
+            missing_signal_candidates.append(path.name)
+            if len(missing_signal_candidates) >= 5:
+                break
     passed.append("results_artifacts")
     if missing_preflight:
         failures.append(
@@ -214,6 +222,13 @@ def _verify_results(
         )
         return
     passed.append("local_preflight_artifacts")
+    if missing_signal_candidates:
+        failures.append(
+            "model_assist_artifacts: missing local_signal_candidates in "
+            + ", ".join(missing_signal_candidates)
+        )
+        return
+    passed.append("model_assist_artifacts")
 
 
 def _verify_review_artifacts(

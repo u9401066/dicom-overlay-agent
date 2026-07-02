@@ -72,6 +72,19 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
                 {
                     "case": f"public_cxr_{i:04d}",
                     "local_image_quality": {"low_signal": False},
+                    "local_signal_candidates": {
+                        "candidate_count": 1,
+                        "candidates": [
+                            {
+                                "label": "local_signal",
+                                "x": 0.1,
+                                "y": 0.2,
+                                "w": 0.7,
+                                "h": 0.2,
+                                "confidence": 0.5,
+                            }
+                        ],
+                    },
                 }
             ),
             encoding="utf-8",
@@ -164,6 +177,35 @@ def test_verify_eval_artifacts_rejects_missing_local_preflight(
 
     assert not verification.ok
     assert any("local_image_quality" in failure for failure in verification.failures)
+
+
+def test_verify_eval_artifacts_rejects_missing_local_signal_candidates(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 1000)
+    _write_scorecard(eval_dir, 1000)
+    (eval_dir / "results" / "public_cxr_0000.json").write_text(
+        json.dumps(
+            {
+                "case": "public_cxr_0000",
+                "local_image_quality": {"low_signal": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        min_cases=1000,
+    )
+
+    assert not verification.ok
+    assert any(
+        "local_signal_candidates" in failure for failure in verification.failures
+    )
 
 
 def test_verify_eval_artifacts_requires_unique_reviewed_cases(tmp_path: Path) -> None:

@@ -258,3 +258,55 @@ class ImageProcessor(ImageProcessorService):
             "bright_pixel_ratio": round(bright_ratio, 6),
             "low_signal": ink_ratio < 0.01,
         }
+
+    def local_signal_candidates(self, image_data: bytes) -> dict[str, object]:
+        """Return deterministic local signal/bbox proposals.
+
+        This is a cheap model-assist layer for ECG-like line images. It detects
+        dark ink pixels, computes their normalized bounding box, and records a
+        confidence-like signal-density score. It does not diagnose; it gives the
+        harness and reviewer an auditable local proposal before the MLLM read.
+        """
+        threshold = 90
+        img = Image.open(io.BytesIO(image_data)).convert("L")
+        width, height = img.size
+        table = [255 if value < threshold else 0 for value in range(256)]
+        mask = img.point(table, mode="L")
+        bbox = mask.getbbox()
+        dark_pixels = mask.histogram()[255]
+        total = max(1, width * height)
+        dark_ratio = dark_pixels / total
+        low_signal = dark_ratio < 0.01
+        if bbox is None:
+            return {
+                "method": "local_threshold_ink_bbox",
+                "threshold_gray": threshold,
+                "candidate_count": 0,
+                "candidates": [],
+                "dark_pixel_ratio": 0.0,
+                "low_signal": True,
+            }
+
+        left, top, right, bottom = bbox
+        bbox_area = max(1, (right - left) * (bottom - top))
+        bbox_density = dark_pixels / bbox_area
+        confidence = min(0.99, (dark_ratio * 20.0) + (bbox_density * 0.2))
+        candidate = {
+            "label": "local_signal",
+            "source": "local_threshold_ink_bbox",
+            "x": round(left / max(1, width), 6),
+            "y": round(top / max(1, height), 6),
+            "w": round((right - left) / max(1, width), 6),
+            "h": round((bottom - top) / max(1, height), 6),
+            "confidence": round(confidence, 6),
+            "dark_pixel_ratio": round(dark_ratio, 6),
+            "bbox_ink_density": round(bbox_density, 6),
+        }
+        return {
+            "method": "local_threshold_ink_bbox",
+            "threshold_gray": threshold,
+            "candidate_count": 1,
+            "candidates": [candidate],
+            "dark_pixel_ratio": round(dark_ratio, 6),
+            "low_signal": low_signal,
+        }

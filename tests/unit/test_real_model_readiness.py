@@ -69,6 +69,10 @@ def _write_eval_artifacts(eval_dir: Path, count: int) -> None:
                 {
                     "case": f"meeti_{i:04d}",
                     "local_image_quality": {"low_signal": False},
+                    "local_signal_candidates": {
+                        "candidate_count": 1,
+                        "candidates": [{"label": "local_signal"}],
+                    },
                 }
             ),
             encoding="utf-8",

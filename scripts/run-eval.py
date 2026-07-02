@@ -253,6 +253,7 @@ async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
         crop_calls = 0
         trace_path = output_dir / "multipass-trace.jsonl"
         local_quality_by_case: dict[str, dict[str, object]] = {}
+        local_signal_by_case: dict[str, dict[str, object]] = {}
 
         if multi_pass:
             counter = _CountingAnalyzer(client)
@@ -281,6 +282,9 @@ async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
             # app actually sends, and avoids huge multi-MB payloads.
             image_bytes = processor.downscale_to_max_edge(image_bytes, _MAX_IMAGE_EDGE_PX)
             local_quality_by_case[case_key] = processor.image_quality_profile(image_bytes)
+            local_signal_by_case[case_key] = processor.local_signal_candidates(
+                image_bytes
+            )
             source_size_px = processor.image_size(image_bytes)
             b64 = processor.to_base64(image_bytes)
             before_calls = counter.analyze_calls if counter else 0
@@ -327,7 +331,11 @@ async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
                 "local_image_quality": local_quality_by_case.get(
                     case.label or case.image_path.stem,
                     {},
-                )
+                ),
+                "local_signal_candidates": local_signal_by_case.get(
+                    case.label or case.image_path.stem,
+                    {},
+                ),
             },
         )
 

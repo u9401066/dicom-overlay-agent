@@ -39,6 +39,18 @@ def _png_bytes(width: int, height: int) -> bytes:
     return buf.getvalue()
 
 
+def _signal_png_bytes(width: int = 300, height: int = 180) -> bytes:
+    img = Image.new("RGB", (width, height), "white")
+    pixels = img.load()
+    for x in range(40, 240):
+        y = 70 + ((x - 40) % 40) // 5
+        for dy in range(-2, 3):
+            pixels[x, y + dy] = (0, 0, 0)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _bare_client() -> OpenClawClient:
     client = OpenClawClient.__new__(OpenClawClient)
     client._url = "ws://test"
@@ -276,6 +288,26 @@ class TestImageDownscale:
 
         assert profile["ink_pixel_ratio"] > 0.01
         assert profile["low_signal"] is False
+
+    def test_local_signal_candidates_detect_waveform_bbox(self):
+        proc = ImageProcessor()
+        profile = proc.local_signal_candidates(_signal_png_bytes())
+
+        assert profile["candidate_count"] == 1
+        candidate = profile["candidates"][0]
+        assert candidate["label"] == "local_signal"
+        assert 0.10 <= candidate["x"] <= 0.20
+        assert 0.30 <= candidate["y"] <= 0.45
+        assert 0.60 <= candidate["w"] <= 0.75
+        assert candidate["confidence"] > 0.1
+
+    def test_local_signal_candidates_handles_blank_image(self):
+        proc = ImageProcessor()
+        profile = proc.local_signal_candidates(_png_bytes(200, 100))
+
+        assert profile["candidate_count"] == 0
+        assert profile["candidates"] == []
+        assert profile["low_signal"] is True
 
 
 # ── Multi-pass cropper (ImageCropper protocol) ───────────────────────
