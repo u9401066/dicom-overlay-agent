@@ -11,19 +11,22 @@
 - `scripts/check-real-model-readiness.py --dotenv .env` 會讀取 repo-local
   credential presence，但不輸出或寫入 secret value。OpenRouter MiniMax M3
   readiness 已為 `ready`：`OPENROUTER_API_KEY` 存在、1000-case mock artifact
-  gate 已通過、OpenClaw runtime 為 `2026.6.11`。
+  gate 已通過、OpenClaw runtime 為 `2026.6.11`。真實跑批前請加
+  `--probe-provider`，會先檢查 provider egress 與模型是否 advertised image
+  input；目前 probed readiness 會因 OpenRouter 連線 reset 而 blocked。
 - `scripts/run-meeti-openclaw-experiment.cmd` 是目前建議的非 PowerShell
   實驗入口；它會固定 repo-local `.uv-cache-codex` 與 `data\tmp\uv`，再呼叫
   `scripts/run-meeti-openclaw-experiment.py` 產生 experiment-local OpenClaw
   config、啟動 Gateway、跑 eval、重建 scorecard 並匯出 review artifacts。
+  它也會拿 `data\tmp\uv-run.lock`，避免同時啟動第二個 `uv.exe`。
 - 最新 1 張 MEETI real smoke：
   `data/experiments/meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
   已使用 `openrouter/minimax/minimax-m3` 走到 OpenClaw Gateway
   `connect` + `chat.send`，並輸出 scorecard / raw result / review artifacts；
-  但本機對 OpenRouter 的外網 fetch 被 `EACCES` 擋下，OpenClaw 無法取得
-  OpenRouter model capabilities/pricing 或呼叫 `minimax/minimax-m3`，所以
-  experiment 正確標為 `completed_with_failures`、exit 1。這不是 bbox/schema
-  harness 通過，而是環境網路出口待處理。
+  但本機對 OpenRouter 的外網 fetch 被 reset（`ECONNRESET` / WinError 10054），
+  OpenClaw 無法取得 OpenRouter model capabilities/pricing 或呼叫
+  `minimax/minimax-m3`，所以 experiment 正確標為 `completed_with_failures`、
+  exit 1。這不是 bbox/schema harness 通過，而是環境網路出口待處理。
 
 ## 2026-07-02 OOM-safe uv / 題目測試入口
 
@@ -33,7 +36,9 @@
   `UV_NO_PROGRESS=1`、`UV_PYTHON_DOWNLOADS=never`，並把 `TMP`/`TEMP` 與
   pytest `--basetemp` 放到 `data\tmp\pytest-safe`，避免 AppData cache、
   pytest cacheprovider、進度輸出或大型暫存樹造成 PowerShell/uv OOM；目前
-  已避免把 PowerShell 當作預設測試/實驗入口。
+  已避免把 PowerShell 當作預設測試/實驗入口。runner 會使用
+  `data\tmp\uv-run.lock`，若另一個 uv-backed runner 已在跑，會直接 exit 75，
+  不會再開第二個 `uv.exe`。
 - 裸跑 `pytest` 的預設範圍現在只收 `tests/unit` + `tests/smoke`，並排除
   `data/`、`openclaw/`、`openclaw-home/`、`.uv-cache-codex/`、`node_modules/`
   等大型產物或 vendored runtime；需要整合測試時請明確指定
@@ -70,7 +75,8 @@
 - `scripts/check-real-model-readiness.py` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地
-  擋下，而且不會輸出 secret 值。
+  擋下，而且不會輸出 secret 值。加上 `--probe-provider` 時，也會先擋下
+  provider 連線 reset 或模型未 advertised image input 的情況。
 
 Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲勞、忙碌或注意力分散造成的遺漏。由於無法直接存取 HIS API，**螢幕是唯一輸入來源**：使用者首次設定截圖 ROI（裁切已知 PHI），agent 在醫師正常操作時於背景截圖、分析、標註。
 

@@ -33,7 +33,11 @@
     `UV_PYTHON_DOWNLOADS=never`, routes temp files through
     `data\tmp\pytest-safe`, disables the pytest cache provider, and runs the
     unit+smoke suite explicitly. PowerShell is no longer the default test path
-    after the 2026-07-02 OOM report.
+    after the 2026-07-02 OOM report. It now uses a unique
+    `basetemp-%RANDOM%-%RANDOM%` per run and lets user-supplied arguments
+    replace the default target set, so targeted checks stay targeted and do not
+    trip over a locked fixed basetemp. It also takes `data\tmp\uv-run.lock`, so
+    a second uv-backed runner exits 75 before creating another `uv.exe`.
   - Hardened pytest defaults to collect only `tests/unit` + `tests/smoke`, skip
     generated/vendored trees (`data`, `openclaw`, `openclaw-home`,
     `.uv-cache-codex`, `node_modules`, etc.), suppress captured-output dumps on
@@ -65,20 +69,28 @@
     `scripts\check-real-model-readiness.py` writes a `ready`/`blocked` JSON
     artifact before any long Gateway-backed run. It checks provider credential
     presence, 1000-case manifest size, completed eval artifacts, and local
-    OpenClaw runtime evidence without leaking secrets.
+    OpenClaw runtime evidence without leaking secrets. The new
+    `--probe-provider` flag also checks provider egress and advertised
+    image-input support before launching Gateway/eval.
   - Switched the desktop OpenRouter default profile to MiniMax M3
     (`openrouter/minimax/minimax-m3`) and added
     `scripts\run-meeti-openclaw-experiment.cmd` as the non-PowerShell real-run
-    wrapper. Readiness next commands now point to this `.cmd` wrapper.
+    wrapper. Readiness next commands now point to this `.cmd` wrapper, which
+    shares the same `data\tmp\uv-run.lock` as the test runner.
   - OpenRouter MiniMax M3 readiness is ready at
     `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3.json`:
     `OPENROUTER_API_KEY` is present, the 1000-case manifest is valid, OpenClaw
     is `2026.6.11`, and the mock artifact gate is complete.
+  - Provider-probed readiness is blocked at
+    `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-probed.json`:
+    local OpenRouter metadata fetch fails with WinError 10054 before Gateway
+    startup, and next commands now point back to readiness probe instead of full
+    experiment launch.
   - Latest MiniMax M3 1-case smoke:
-    `data\experiments\meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
+    `data\experiments\meeti-openrouter-minimax-m3-1case-resume-20260702`
     reached Gateway `connect` + `chat.send` and exported scorecard/raw/review
     artifacts, but ended `completed_with_failures` because local OpenRouter
-    network fetches fail with `EACCES`.
+    network fetches fail with `ECONNRESET`.
   - Legacy PowerShell wrapper note: `scripts\run-meeti-openclaw-experiment.ps1`
     still exists for compatibility, but current docs/readiness prefer the
     `.cmd`/Python path because PowerShell caused OOM in this workspace.
@@ -99,7 +111,7 @@
     network egress to `api.openai.com:443` is blocked (`Node fetch` reports
     `EACCES`, `curl` cannot connect). Superseded OpenRouter/MiniMax M3 smoke now
     proves `OPENROUTER_API_KEY` is present but the local OpenRouter egress path
-    is still blocked by `EACCES`.
+    is still blocked by connection resets.
 
 - **MEETI MultiPass real-run harness** (2026-05-30):
   - Added `scripts/run-eval.py --multi-pass --multi-pass-max-targets N` to run

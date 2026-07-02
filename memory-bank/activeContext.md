@@ -55,22 +55,32 @@
   `--basetemp`, and `-p no:cacheprovider`. Pytest defaults now collect only
   `tests/unit` and `tests/smoke`, exclude generated/vendored trees, and suppress
   captured-output dumps on failure. Prefer the `.cmd` path over PowerShell after
-  the 2026-07-02 PowerShell OOM report.
+  the 2026-07-02 PowerShell OOM report. The `.cmd` runner now uses a unique
+  `basetemp-%RANDOM%-%RANDOM%` per run and treats user-supplied arguments as the
+  full pytest target set, so targeted checks no longer trigger the whole suite
+  or fail on a locked fixed basetemp. It also takes
+  `data\tmp\uv-run.lock`; concurrent uv-backed runners exit 75 instead of
+  spawning another `uv.exe`.
 - Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
   runtime is `2026.6.11`, 1000-case assist verifier passed, and targeted
   unit/smoke tests for the local assist gate passed.
 - Real-model 1000-case accuracy gate is still external-network/provider gated.
   `scripts\check-real-model-readiness.py --dotenv .env` now merges repo-local
-  `.env` values into readiness checks without printing or serializing secrets.
-  OpenRouter MiniMax M3 readiness is `ready`:
+  `.env` values into readiness checks without printing or serializing secrets;
+  `--probe-provider` additionally checks provider egress and advertised
+  image-input support before a Gateway run. Offline OpenRouter MiniMax M3
+  readiness is `ready`:
   `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3.json`
   sees `OPENROUTER_API_KEY`, the 1000-case manifest, OpenClaw `2026.6.11`, and
-  completed mock artifacts. Real Gateway smoke is still blocked by local egress:
-  OpenClaw logs `EACCES` while fetching OpenRouter model capabilities/pricing
-  and calling `minimax/minimax-m3`.
+  completed mock artifacts. Provider-probed readiness is blocked:
+  `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-probed.json`
+  sees WinError 10054 while fetching OpenRouter metadata. Real Gateway smoke is
+  still blocked by local egress: OpenClaw logs `ECONNRESET` while fetching
+  OpenRouter model capabilities/pricing and calling `minimax/minimax-m3`.
 - `scripts\run-meeti-openclaw-experiment.cmd` is the preferred non-PowerShell
-  launcher. It pins repo-local `.uv-cache-codex` plus `data\tmp\uv`, disables uv
-  progress output and automatic Python downloads, then calls
+  launcher. It pins repo-local `.uv-cache-codex` plus `data\tmp\uv`, takes the
+  shared `data\tmp\uv-run.lock`, disables uv progress output and automatic
+  Python downloads, then calls
   `scripts\run-meeti-openclaw-experiment.py`, which generates an
   experiment-local OpenClaw config before model-catalog checks, retries eval
   while the Gateway is still starting, exports review artifacts, and treats
@@ -82,11 +92,11 @@
   false keepalive closure from hiding the real current blocker, which is local
   model-provider network egress.
 - Latest real 1-case evidence:
-  `data\experiments\meeti-openrouter-minimax-m3-1case-cmd-wrapper-20260702`
+  `data\experiments\meeti-openrouter-minimax-m3-1case-resume-20260702`
   reached Gateway `connect` + `chat.send` with `openrouter/minimax/minimax-m3`
   and produced scorecard/raw/review artifacts, but ended
   `completed_with_failures` with `eval_error_count=1` due `LLM request failed:
-  network connection error` from OpenRouter transport `EACCES`.
+  network connection error` from OpenRouter transport `ECONNRESET`.
 
 ## Current Eval Harness Focus (2026-05-30)
 

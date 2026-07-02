@@ -142,7 +142,8 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   `data/tmp/pytest-safe`, disables the pytest cache provider, and runs only the
   default unit+smoke suite. Full integration tests remain available by passing
   explicit paths. Prefer this over PowerShell on memory-constrained Windows
-  sessions.
+  sessions. The runner also takes a repo-local `data/tmp/uv-run.lock` so a
+  second uv-backed command exits before spawning another `uv.exe`.
 - Each raw eval result includes deterministic `local_image_quality` metadata
   from [`screen_monitor.py`](src/dicom_overlay/infrastructure/screen_monitor.py):
   image size, aspect ratio, ink density, bright-pixel ratio, and low-signal
@@ -159,11 +160,14 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   checking credentials, manifest size, OpenClaw runtime evidence, and the
   completed 1000-case artifact gate without exposing secret values. Pass
   `--dotenv .env` to include repo-local credentials in the check without
-  printing or serializing their values.
+  printing or serializing their values. Add `--probe-provider` before real
+  runs to verify provider egress and advertised image-input support; provider
+  probe failures block the readiness report before the Gateway/eval harness
+  spends time on a doomed run.
 - [`scripts/run-meeti-openclaw-experiment.cmd`](scripts/run-meeti-openclaw-experiment.cmd)
   is the preferred non-PowerShell launcher for reproducible real
   Gateway-backed MEETI experiments. It pins repo-local `uv` cache/temp settings,
-  then calls
+  takes the same `data/tmp/uv-run.lock` used by the test runner, then calls
   [`scripts/run-meeti-openclaw-experiment.py`](scripts/run-meeti-openclaw-experiment.py).
   The Python runner supports `--provider-profile openrouter` / `openai-vision`,
   generates an experiment-local OpenClaw config before model-catalog checks,
@@ -207,12 +211,15 @@ portable across OpenClaw releases.
   reached Gateway `connect` + `chat.send` with one MEETI image using
   `openrouter/minimax/minimax-m3` and recorded scorecard/raw/review artifacts.
   It failed as `completed_with_failures` because local network egress to
-  OpenRouter returned `EACCES`; OpenClaw could not fetch OpenRouter model
-  capabilities/pricing or call `minimax/minimax-m3`. This is an
-  environment/network blocker, not a schema/bbox harness pass. The readiness
-  artifact `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3.json`
+  OpenRouter was reset (`ECONNRESET` / WinError 10054); OpenClaw could not fetch
+  OpenRouter model capabilities/pricing or call `minimax/minimax-m3`. This is
+  an environment/network blocker, not a schema/bbox harness pass. The offline
+  readiness artifact
+  `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3.json`
   is `ready` with `OPENROUTER_API_KEY` present and the 1000-case mock artifact
-  gate already verified.
+  gate already verified, while
+  `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3-probed.json`
+  is `blocked` by the provider egress probe.
 
 ### Core 4 — Minimal packaged executable
 
