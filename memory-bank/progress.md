@@ -23,6 +23,25 @@
     `cant_miss_gate`, `mock_perfect_gate`, `results_artifacts`,
     `local_preflight_artifacts`, `model_assist_artifacts`, and
     `review_artifacts`.
+  - Fixed the current 1000-case "question test" OOM path: `run_evaluation()` no
+    longer rewrites the full `scorecard.partial.json` after every image. Partial
+    checkpoints now refresh every 50 cases by default while still writing
+    final/abort evidence; `scripts/run-eval.py` exposes
+    `--partial-scorecard-interval`.
+  - Added `scripts\run-tests-safe.ps1` as the OOM-safe local test entry point.
+    It pins `uv` to repo-local `.uv-cache-codex`, sets `UV_NO_PROGRESS=1` and
+    `UV_PYTHON_DOWNLOADS=never`, routes temp files through
+    `data\tmp\pytest-safe`, disables the pytest cache provider, and runs the
+    unit+smoke suite explicitly.
+  - Hardened pytest defaults to collect only `tests/unit` + `tests/smoke`, skip
+    generated/vendored trees (`data`, `openclaw`, `openclaw-home`,
+    `.uv-cache-codex`, `node_modules`, etc.), suppress captured-output dumps on
+    failures, and filter structlog debug noise in tests.
+  - Re-verified after the OOM fix:
+    `data\eval\meeti-1000-mock-oomfix-20260702` completed 1000/1000 MEETI mock
+    eval, exported 1000 review images, and passed
+    `scripts\verify-eval-artifacts.py --min-cases 1000` including review,
+    local preflight, and model-assist artifact gates.
   - Added deterministic local image-quality metadata to eval raw results via
     `ImageProcessor.image_quality_profile()`: width/height, aspect ratio, ink
     pixel ratio, bright pixel ratio, and `low_signal`. This is the first
@@ -50,10 +69,23 @@
     real-model experiments can target
     `data\eval-datasets\meeti-1000-all\manifest.json` directly. This keeps
     mock artifact gate and real clinical benchmark on the same 1000-case cohort.
-  - Current blocker for the real-model 1000-case accuracy run is external
-    credentials only: local env lacks `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and
-    `ANTHROPIC_API_KEY`. The readiness script records that as `status=blocked`
-    rather than allowing an ambiguous partial experiment.
+  - Hardened real-model readiness and experiment launch:
+    `scripts\check-real-model-readiness.py --dotenv .env` can use repo-local
+    credentials without leaking values; `scripts\run-meeti-openclaw-experiment.ps1`
+    supports `-ProviderProfile`, generated provider configs before catalog
+    checks, repo-local `.uv-cache-codex` plus repo-local temp, uv progress
+    suppression, disabled uv-managed Python downloads, Gateway-start retry,
+    review export, and scorecard `error_count` gating so failed real evals
+    cannot look green.
+  - Disabled client-side WebSocket keepalive pings in `OpenClawClient` for long
+    medical-image inference; explicit inference timeout remains the control.
+  - Latest real 1-case smoke:
+    `data\experiments\meeti-openai-gpt54mini-1case-pingfix-20260702b` reached
+    OpenClaw Gateway `connect` + `chat.send` and wrote scorecard/raw/review
+    artifacts, then correctly failed with `eval_error_count=1` because local
+    network egress to `api.openai.com:443` is blocked (`Node fetch` reports
+    `EACCES`, `curl` cannot connect). OpenRouter is also still blocked locally
+    because `OPENROUTER_API_KEY` is empty.
 
 - **MEETI MultiPass real-run harness** (2026-05-30):
   - Added `scripts/run-eval.py --multi-pass --multi-pass-max-targets N` to run

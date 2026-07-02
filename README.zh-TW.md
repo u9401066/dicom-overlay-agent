@@ -6,6 +6,44 @@
 
 🌐 [English](README.md)
 
+## 2026-07-02 real-model smoke 狀態
+
+- `scripts/check-real-model-readiness.py --dotenv .env` 會讀取 repo-local
+  credential presence，但不輸出或寫入 secret value。OpenRouter 目前會因
+  `OPENROUTER_API_KEY` 空值而 blocked；OpenAI readiness 可看到
+  `OPENAI_API_KEY`。
+- `scripts/run-meeti-openclaw-experiment.ps1` 支援
+  `-ProviderProfile openrouter/openai-vision`，會先產生 experiment-local
+  OpenClaw config，再跑 model catalog / Gateway eval；同時固定使用
+  repo-local `.uv-cache-codex`，避免 Windows 全域 uv cache 權限問題。
+- 最新 1 張 MEETI real smoke：
+  `data/experiments/meeti-openai-gpt54mini-1case-pingfix-20260702b` 已走到
+  OpenClaw Gateway `connect` + `chat.send`，並輸出 scorecard / raw result /
+  review artifacts；但本機對 `api.openai.com:443` 的外網連線被 `EACCES`
+  擋下，所以 experiment 正確標為 `completed_with_failures`、exit 1。
+  這不是 bbox/schema harness 通過，而是環境網路出口待處理。
+
+## 2026-07-02 OOM-safe uv / 題目測試入口
+
+- 建議本機完整預設測試改用
+  `powershell -ExecutionPolicy Bypass -File scripts\run-tests-safe.ps1 -q`。
+  這個入口會把 `uv` cache 固定在 repo-local `.uv-cache-codex`，設定
+  `UV_NO_PROGRESS=1`、`UV_PYTHON_DOWNLOADS=never`，並把 `TMP`/`TEMP` 與
+  pytest `--basetemp` 放到 `data\tmp\pytest-safe`，避免 AppData cache、
+  pytest cacheprovider、進度輸出或大型暫存樹造成 PowerShell/uv OOM。
+- 裸跑 `pytest` 的預設範圍現在只收 `tests/unit` + `tests/smoke`，並排除
+  `data/`、`openclaw/`、`openclaw-home/`、`.uv-cache-codex/`、`node_modules/`
+  等大型產物或 vendored runtime；需要整合測試時請明確指定
+  `tests/integration`。
+- `run-eval.py` 大型題目集已改成每 50 cases 更新一次
+  `scorecard.partial.json`，不再每張圖重寫完整 partial scorecard；可用
+  `--partial-scorecard-interval 0` 改成只在完成/中止時寫 checkpoint。
+- 最新 OOM 修正驗證：
+  `data\eval\meeti-1000-mock-oomfix-20260702` 完成 1000/1000 MEETI mock
+  eval、匯出 1000 張 review 標框圖，且
+  `scripts\verify-eval-artifacts.py --min-cases 1000` 通過
+  `local_preflight_artifacts`、`model_assist_artifacts`、`review_artifacts`。
+
 ## 2026-07-02 維護狀態
 
 - 本機 OpenClaw runtime 已更新並驗證到 `2026.6.11`；仍只透過 Gateway

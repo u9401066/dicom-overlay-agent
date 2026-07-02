@@ -25,6 +25,15 @@
   `min_cases`, `scorecard_complete`, `schema_gate`, `bbox_gate`,
   `cant_miss_gate`, `mock_perfect_gate`, `results_artifacts`,
   `local_preflight_artifacts`, `model_assist_artifacts`, and `review_artifacts`.
+- OOM fix verification: `data\eval\meeti-1000-mock-oomfix-20260702` reran the
+  1000-case MEETI mock gate after partial-scorecard throttling, exported 1000
+  review images, and passed `scripts\verify-eval-artifacts.py --min-cases 1000`
+  including `local_preflight_artifacts`, `model_assist_artifacts`, and
+  `review_artifacts`.
+- Large eval runs no longer rewrite the full `scorecard.partial.json` after
+  every image. `run-eval.py` and `run_evaluation()` now refresh partial
+  scorecards every 50 cases by default, always writing final/abort checkpoints;
+  `--partial-scorecard-interval 0` writes only final/abort checkpoints.
 - Non-MLLM/model-assisted layers: `ImageProcessor.image_quality_profile()`
   records deterministic `local_image_quality` per eval result (size, aspect
   ratio, ink density, bright-pixel ratio, low-signal flag), and
@@ -39,21 +48,38 @@
   `--case-print-limit 50`; use `--verbose` only for small diagnostic subsets.
   Avoid raw `tar -tf MEETI.rar` and broad recursive searches over generated data
   or OpenClaw internals in normal PowerShell sessions.
+- OOM-safe test entry point: `scripts\run-tests-safe.ps1` runs unit+smoke with
+  repo-local `.uv-cache-codex`, `UV_NO_PROGRESS=1`,
+  `UV_PYTHON_DOWNLOADS=never`, `TMP`/`TEMP=data\tmp\pytest-safe`, pytest
+  `--basetemp`, and `-p no:cacheprovider`. Pytest defaults now collect only
+  `tests/unit` and `tests/smoke`, exclude generated/vendored trees, and suppress
+  captured-output dumps on failure.
 - Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
   runtime is `2026.6.11`, 1000-case assist verifier passed, and targeted
   unit/smoke tests for the local assist gate passed.
-- Real-model 1000-case accuracy gate is still credential-gated. Added
-  `scripts\check-real-model-readiness.py` so this gap is now auditable: it
-  checks provider key presence (e.g. `OPENROUTER_API_KEY` for
-  `openrouter/...` models), 1000-case manifest size, completed mock artifact
-  gate, and local OpenClaw runtime evidence, then writes `status=ready` or
-  `status=blocked` without serializing secret values. Current local env is
-  missing provider keys, so the readiness artifact should block until a key is
-  supplied.
+- Real-model 1000-case accuracy gate is still external-network/provider gated.
+  `scripts\check-real-model-readiness.py --dotenv .env` now merges repo-local
+  `.env` values into readiness checks without printing or serializing secrets.
+  OpenRouter remains blocked locally because `OPENROUTER_API_KEY` is empty;
+  OpenAI readiness sees `OPENAI_API_KEY`, but real Gateway smoke is blocked by
+  local egress: Node fetch reports `EACCES` for `https://api.openai.com/v1/*`
+  and `curl` cannot connect to `api.openai.com:443`.
 - `scripts\run-meeti-openclaw-experiment.ps1` now accepts `-ManifestPath` and
-  passes `--manifest` to `run-eval.py`, so the real Gateway-backed experiment can
-  run the same `data\eval-datasets\meeti-1000-all\manifest.json` used by the
-  artifact gate instead of falling back to an older dataset selector.
+  `-ProviderProfile`, generates an experiment-local OpenClaw config before
+  model-catalog checks, uses repo-local `.uv-cache-codex` plus repo-local temp,
+  disables uv progress output and automatic Python downloads, retries eval while
+  the Gateway is still starting, exports review artifacts, and treats
+  `scorecard.json.error_count > 0` as a failed experiment even when
+  `run-eval.py` exits 0.
+- `OpenClawClient` disables client-side WebSocket keepalive pings and relies on
+  explicit inference timeouts for long medical-image requests. This prevented
+  false keepalive closure from hiding the real current blocker, which is local
+  model-provider network egress.
+- Latest real 1-case evidence:
+  `data\experiments\meeti-openai-gpt54mini-1case-pingfix-20260702b` reached
+  Gateway `connect` + `chat.send` and produced scorecard/raw/review artifacts,
+  but ended `completed_with_failures` with `eval_error_count=1` due
+  `LLM request failed: network connection error` from the OpenAI transport.
 
 ## Current Eval Harness Focus (2026-05-30)
 
