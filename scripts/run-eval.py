@@ -38,7 +38,7 @@ from dicom_overlay.application.multi_pass import (  # noqa: E402
     MultiPassAnalyzer,
     MultiPassInterpreter,
 )
-from dicom_overlay.domain.entities import Modality, Severity  # noqa: E402
+from dicom_overlay.domain.entities import Modality, RegionRect, Severity  # noqa: E402
 from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
     EvalCase,
     EvalReport,
@@ -89,6 +89,58 @@ def _valid_regions_for(entry: dict[str, Any], modality: Modality) -> tuple[str, 
     if explicit:
         return tuple(str(item) for item in explicit)
     return tuple(_DEFAULT_VALID_REGIONS.get(modality, ()))
+
+
+def _clamp_unit(value: float) -> float:
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
+def _local_candidate_regions_from_signal(
+    signal: dict[str, object],
+    *,
+    max_regions: int,
+) -> list[RegionRect]:
+    """Convert local image-signal candidates into normalized crop regions."""
+    if max_regions <= 0:
+        return []
+    raw_candidates = signal.get("candidates", [])
+    if not isinstance(raw_candidates, list):
+        return []
+
+    regions: list[RegionRect] = []
+    for raw in raw_candidates:
+        if len(regions) >= max_regions:
+            break
+        if not isinstance(raw, dict):
+            continue
+        try:
+            x = float(raw["x"])
+            y = float(raw["y"])
+            w = float(raw["w"])
+            h = float(raw["h"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        x0 = _clamp_unit(x)
+        y0 = _clamp_unit(y)
+        x1 = _clamp_unit(x + w)
+        y1 = _clamp_unit(y + h)
+        width = round(x1 - x0, 6)
+        height = round(y1 - y0, 6)
+        if width <= 0.0 or height <= 0.0:
+            continue
+        regions.append(
+            RegionRect(
+                x=round(x0, 6),
+                y=round(y0, 6),
+                w=width,
+                h=height,
+            )
+        )
+    return regions
 
 
 def _load_cases(manifest_path: Path) -> list[EvalCase]:
@@ -290,8 +342,11 @@ async def _run(
             # app actually sends, and avoids huge multi-MB payloads.
             image_bytes = processor.downscale_to_max_edge(image_bytes, _MAX_IMAGE_EDGE_PX)
             local_quality_by_case[case_key] = processor.image_quality_profile(image_bytes)
-            local_signal_by_case[case_key] = processor.local_signal_candidates(
-                image_bytes
+            local_signal = processor.local_signal_candidates(image_bytes)
+            local_signal_by_case[case_key] = local_signal
+            local_candidate_regions = _local_candidate_regions_from_signal(
+                local_signal,
+                max_regions=multi_pass_max_targets,
             )
             source_size_px = processor.image_size(image_bytes)
             b64 = processor.to_base64(image_bytes)
@@ -307,6 +362,7 @@ async def _run(
                         case.modality,
                         list(case.valid_regions),
                         source_size_px=source_size_px,
+                        local_candidate_regions=local_candidate_regions,
                     )
                 else:
                     result = await analyzer.analyze(

@@ -88,6 +88,16 @@ def pad_region(region: RegionRect, pad: float) -> RegionRect:
     """
     if pad < 0.0:
         raise ValueError(f"pad must be >= 0, got {pad}")
+    if (
+        pad == 0.0
+        and region.x >= 0.0
+        and region.y >= 0.0
+        and region.w > 0.0
+        and region.h > 0.0
+        and region.x + region.w <= 1.0
+        and region.y + region.h <= 1.0
+    ):
+        return region
     dx = region.w * pad
     dy = region.h * pad
     x0 = clamp_unit(region.x - dx)
@@ -141,6 +151,78 @@ def select_zoom_targets(
     # Critical first, then warning, then info; preserve original order in a tier.
     candidates.sort(key=lambda f: _ZOOM_PRIORITY[f.severity])
     return candidates[:max_targets]
+
+
+def _clamp_region(region: RegionRect) -> RegionRect | None:
+    """Clamp a candidate region to the unit square, dropping empty boxes."""
+    if (
+        region.x >= 0.0
+        and region.y >= 0.0
+        and region.w > 0.0
+        and region.h > 0.0
+        and region.x + region.w <= 1.0
+        and region.y + region.h <= 1.0
+    ):
+        return region
+    x0 = clamp_unit(region.x)
+    y0 = clamp_unit(region.y)
+    x1 = clamp_unit(region.x + region.w)
+    y1 = clamp_unit(region.y + region.h)
+    w = clamp_unit(x1 - x0)
+    h = clamp_unit(y1 - y0)
+    if w <= 0.0 or h <= 0.0:
+        return None
+    return RegionRect(x=x0, y=y0, w=w, h=h)
+
+
+def select_local_candidate_targets(
+    result: AnalysisResult,
+    local_candidate_regions: list[RegionRect],
+    *,
+    max_targets: int,
+) -> list[Finding]:
+    """Build zoom targets from local candidates when the MLLM omitted bboxes.
+
+    This is a fallback, not a blanket extra pass: local candidates are used only
+    when the coarse read is non-normal but did not provide a zoomable bbox. That
+    keeps normal validation runs from doubling LLM calls while still rescuing
+    the clinically important "finding but no coordinates" case.
+    """
+    if max_targets <= 0 or not local_candidate_regions:
+        return []
+    has_non_normal_finding = any(
+        f.severity in _ZOOMABLE_SEVERITIES for f in result.findings
+    )
+    if result.severity not in _ZOOMABLE_SEVERITIES and not has_non_normal_finding:
+        return []
+
+    regions = [
+        region
+        for candidate in local_candidate_regions
+        if (region := _clamp_region(candidate)) is not None
+    ][:max_targets]
+    if not regions:
+        return []
+
+    unresolved = [
+        f for f in result.findings if f.severity in _ZOOMABLE_SEVERITIES and not f.bboxes
+    ]
+    targets: list[Finding] = []
+    for index, region in enumerate(regions):
+        if index < len(unresolved):
+            targets.append(dataclasses.replace(unresolved[index], bboxes=[region]))
+            continue
+        targets.append(
+            Finding(
+                id=f"local_candidate_{index + 1}",
+                regions=[],
+                label="local candidate",
+                detail="Local image candidate region",
+                severity=Severity.INFO,
+                bboxes=[region],
+            )
+        )
+    return targets
 
 
 def region_source_edge_px(
@@ -223,6 +305,7 @@ class MultiPassInterpreter:
         valid_regions: list[str],
         *,
         source_size_px: tuple[int, int] | None = None,
+        local_candidate_regions: list[RegionRect] | None = None,
     ) -> AnalysisResult:
         """Run the coarse pass, then optional zoom passes, and merge results.
 
@@ -238,6 +321,12 @@ class MultiPassInterpreter:
         )
 
         targets = select_zoom_targets(coarse, max_targets=self._max_zoom_targets)
+        if not targets and local_candidate_regions:
+            targets = select_local_candidate_targets(
+                coarse,
+                local_candidate_regions,
+                max_targets=self._max_zoom_targets,
+            )
         if not targets:
             return coarse
 
@@ -365,6 +454,7 @@ class MultiPassAnalyzer(VisionAnalyzerService):
         valid_regions: list[str],
         *,
         source_size_px: tuple[int, int] | None,
+        local_candidate_regions: list[RegionRect] | None = None,
     ) -> AnalysisResult:
         """Analyze with captured-image dimensions for resolution-aware zoom."""
         return await self._interpreter.interpret(
@@ -372,6 +462,7 @@ class MultiPassAnalyzer(VisionAnalyzerService):
             modality,
             valid_regions,
             source_size_px=source_size_px,
+            local_candidate_regions=local_candidate_regions,
         )
 
     async def chat(self, message: str) -> str:

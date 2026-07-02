@@ -303,6 +303,71 @@ class TestMultiPassInterpreter:
         assert out.findings[0].detail == "coarse"
         assert out.findings[0].bboxes[0] == box
 
+    async def test_local_candidate_refines_abnormal_finding_without_bbox(self):
+        coarse = _result(
+            [
+                _finding(
+                    "f1",
+                    Severity.WARNING,
+                    None,
+                    label="possible opacity",
+                    detail="coarse finding without coordinates",
+                )
+            ]
+        )
+        candidate = RegionRect(x=0.2, y=0.2, w=0.4, h=0.4)
+        zoom = _result(
+            [
+                _finding(
+                    "z",
+                    Severity.WARNING,
+                    RegionRect(x=0.25, y=0.25, w=0.5, h=0.5),
+                    detail="candidate crop confirms opacity",
+                )
+            ]
+        )
+        analyzer = _FakeAnalyzer([coarse, zoom])
+        cropper = _RecordingCropper()
+        interp = MultiPassInterpreter(
+            analyzer, cropper, zoom_padding=0.0
+        )
+
+        out = await interp.interpret(
+            "img",
+            Modality.CXR,
+            [],
+            local_candidate_regions=[candidate],
+        )
+
+        assert len(analyzer.images) == 2
+        assert cropper.regions == [candidate]
+        refined = out.findings[0]
+        assert refined.id == "f1"
+        assert refined.detail == "candidate crop confirms opacity"
+        assert refined.bboxes
+        bbox = refined.bboxes[0]
+        assert bbox.x == pytest.approx(0.3)
+        assert bbox.y == pytest.approx(0.3)
+        assert bbox.w == pytest.approx(0.2)
+        assert bbox.h == pytest.approx(0.2)
+
+    async def test_local_candidate_does_not_zoom_normal_coarse_result(self):
+        coarse = _result([])
+        analyzer = _FakeAnalyzer([coarse])
+        cropper = _RecordingCropper()
+        interp = MultiPassInterpreter(analyzer, cropper)
+
+        out = await interp.interpret(
+            "img",
+            Modality.CXR,
+            [],
+            local_candidate_regions=[RegionRect(x=0.2, y=0.2, w=0.4, h=0.4)],
+        )
+
+        assert out is coarse
+        assert len(analyzer.images) == 1
+        assert cropper.regions == []
+
     async def test_extra_zoom_findings_appended(self):
         box = RegionRect(x=0.4, y=0.4, w=0.2, h=0.2)
         coarse = _result([_finding("f1", Severity.CRITICAL, box)])
