@@ -60,6 +60,7 @@ openclaw-home/identity/
 openclaw-home/agents/
 openclaw-home/devices/
 openclaw-home/update-check.json
+openclaw-home/state/
 openclaw-home/cron/
 openclaw-home/AppData/
 openclaw-home/canvas/

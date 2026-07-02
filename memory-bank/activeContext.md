@@ -1,12 +1,12 @@
 # Active Context
 
-## Current Eval Harness Focus (2026-06-30)
+## Current Eval Harness Focus (2026-07-02)
 
 - Active goal: keep the local desktop OpenClaw co-reading app up to date,
   configurable for OpenRouter, clinically useful for image-assisted
   recognition/report/bbox review, and backed by a production-scale harness with
   at least 1000 verified images.
-- Local OpenClaw runtime is updated and validated at `2026.6.10`; the app still
+- Local OpenClaw runtime is updated and validated at `2026.6.11`; the app still
   uses only the stable public Gateway boundary (`connect` + `chat.send`,
   protocol 3 image attachments). `MIN_SAFE_OPENCLAW_VERSION` remains
   `2026.4.22` because no verified Gateway incompatibility was found.
@@ -20,16 +20,18 @@
   current local scan found 9922 PNG-bearing studies.
 - Production artifact gate: `data\eval-datasets\meeti-1000-all\manifest.json`
   was built with 1000 cases from the full MEETI archive. The mock strict eval at
-  `data\eval\meeti-1000-mock-20260630-quality` completed 1000/1000 cases and
+  `data\eval\meeti-1000-mock-20260630-assist` completed 1000/1000 cases and
   `scripts\verify-eval-artifacts.py --min-cases 1000` passed:
   `min_cases`, `scorecard_complete`, `schema_gate`, `bbox_gate`,
   `cant_miss_gate`, `mock_perfect_gate`, `results_artifacts`,
-  `local_preflight_artifacts`, and `review_artifacts`.
-- Non-MLLM/model-assisted layer: `ImageProcessor.image_quality_profile()` records
-  deterministic `local_image_quality` per eval result (size, aspect ratio, ink
-  density, bright-pixel ratio, low-signal flag). This makes blank/unreadable
-  input detection auditable without forcing every quality decision through an
-  MLLM.
+  `local_preflight_artifacts`, `model_assist_artifacts`, and `review_artifacts`.
+- Non-MLLM/model-assisted layers: `ImageProcessor.image_quality_profile()`
+  records deterministic `local_image_quality` per eval result (size, aspect
+  ratio, ink density, bright-pixel ratio, low-signal flag), and
+  `ImageProcessor.local_signal_candidates()` records deterministic
+  `local_signal_candidates` waveform/signal bbox proposals. These make
+  blank/unreadable input detection and first-pass candidate boxes auditable
+  without forcing every quality decision through an MLLM.
 - Expert-review export now audits no-bbox cases at case level, so 1000-case
   review completeness is not inflated by bbox count alone. Review artifacts
   include PNG overlays, `bbox-audit.jsonl`, crop thumbnails, and `index.html`.
@@ -37,9 +39,9 @@
   `--case-print-limit 50`; use `--verbose` only for small diagnostic subsets.
   Avoid raw `tar -tf MEETI.rar` and broad recursive searches over generated data
   or OpenClaw internals in normal PowerShell sessions.
-- Fresh checks on 2026-06-30: OpenClaw image harness smoke + verifier passed;
-  targeted unit/smoke suite passed 50 tests with only a `.pytest_cache`
-  permission warning.
+- Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
+  runtime is `2026.6.11`, 1000-case assist verifier passed, and targeted
+  unit/smoke tests for the local assist gate passed.
 - Real-model 1000-case accuracy gate is still credential-gated. Added
   `scripts\check-real-model-readiness.py` so this gap is now auditable: it
   checks provider key presence (e.g. `OPENROUTER_API_KEY` for

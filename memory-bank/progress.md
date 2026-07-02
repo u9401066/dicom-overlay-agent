@@ -1,10 +1,10 @@
-# Progress (Updated: 2026-06-30)
+# Progress (Updated: 2026-07-02)
 
 ## Done
 
 - **MEETI 1000+ production artifact gate + OpenClaw/OpenRouter refresh**
-  (2026-06-30):
-  - Updated local OpenClaw runtime to `2026.6.10` and validated the CLI config.
+  (2026-07-02):
+  - Updated local OpenClaw runtime to `2026.6.11` and validated the CLI config.
     The Gateway contract remains the stable public `connect` + `chat.send`
     protocol 3 image-attachment path; no minimum-safe version bump was needed.
   - Validated a generated OpenRouter profile config using
@@ -15,17 +15,23 @@
     Local archive scan found 9922 PNG-bearing studies; the gate manifest keeps
     1000 cases.
   - Ran strict mock evaluation:
-    `data\eval\meeti-1000-mock-20260630-quality` completed 1000/1000 cases with
+    `data\eval\meeti-1000-mock-20260630-assist` completed 1000/1000 cases with
     zero errors and strict/schema/bbox pass rates of 1.0.
   - Exported expert-review annotations for all 1000 cases and verified artifacts
     with `scripts\verify-eval-artifacts.py --min-cases 1000`. Passed checks:
     `min_cases`, `scorecard_complete`, `schema_gate`, `bbox_gate`,
     `cant_miss_gate`, `mock_perfect_gate`, `results_artifacts`,
-    `local_preflight_artifacts`, and `review_artifacts`.
+    `local_preflight_artifacts`, `model_assist_artifacts`, and
+    `review_artifacts`.
   - Added deterministic local image-quality metadata to eval raw results via
     `ImageProcessor.image_quality_profile()`: width/height, aspect ratio, ink
     pixel ratio, bright pixel ratio, and `low_signal`. This is the first
     non-MLLM assist layer for cheap unreadable-input detection.
+  - Added deterministic local signal/bbox candidate metadata via
+    `ImageProcessor.local_signal_candidates()`. Each eval raw result now records
+    `local_signal_candidates`, giving reviewers a cheap local waveform/signal
+    bbox proposal before the MLLM read; `verify-eval-artifacts.py` now gates
+    this as `model_assist_artifacts`.
   - Hardened annotation review completeness: no-bbox cases now produce
     case-level audit rows, so bbox-free normal cases are still counted in the
     1000-case review gate.
@@ -33,8 +39,8 @@
     and `--verbose` for short diagnostics, reducing PowerShell/OOM risk during
     1000+ image harness runs.
   - Fresh verification: OpenClaw image harness smoke + verifier passed on
-    `data\harness-smoke\latest-openclaw-20260630`; targeted unit/smoke suite
-    passed 50 tests with only a `.pytest_cache` permission warning.
+    `data\harness-smoke\latest-openclaw-20260702`; targeted unit/smoke tests
+    for the assist gate passed.
   - Added real-model readiness gate:
     `scripts\check-real-model-readiness.py` writes a `ready`/`blocked` JSON
     artifact before any long Gateway-backed run. It checks provider credential

@@ -50,9 +50,9 @@
 - [x] 臨床規則可審核性：`--explain-rules` CLI 輸出規則對照表（白話條件＋醫學依據＋命中行為，供臨床人員審核，不啟動 GUI）；命中時記錄實際比中的關鍵字證據（`audit_line` / hook log）；YAML 規則包強制 `description`（沒寫說明的規則不載入，把可審核性變成上線門檻）
 - [ ] **DEFERRED**：`AnnotationAccumulator` 接線 — 待 chat 對話產生結構化 `FindingDelta` 回寫 overlay 標記（目前 chat 僅回傳文字）
 
-### v0.4.2 MEETI 1000+ harness / OpenRouter refresh (2026-06-30)
+### v0.4.2 MEETI 1000+ harness / OpenRouter refresh (2026-07-02)
 
-- [x] Local OpenClaw runtime validated at `2026.6.10`; Gateway compatibility
+- [x] Local OpenClaw runtime validated at `2026.6.11`; Gateway compatibility
   remains `connect` + `chat.send` protocol 3 image attachments.
 - [x] Desktop AI Provider settings include OpenRouter (`OPENROUTER_API_KEY`,
   `https://openrouter.ai/api/v1`) and preserve secrets outside git.
@@ -64,6 +64,9 @@
   `local_preflight_artifacts` gates.
 - [x] Added deterministic local image-quality preflight metadata so unreadable
   image detection does not depend entirely on MLLM calls.
+- [x] Added deterministic `local_signal_candidates` bbox proposals and gated
+  them as `model_assist_artifacts`, reducing dependence on MLLM-only localization
+  before expert review.
 - [x] Added `scripts\check-real-model-readiness.py` and `-ManifestPath` support
   in the MEETI experiment runner, so real-model 1000-case runs fail fast with a
   machine-readable blocked artifact when credentials/artifacts are missing.

@@ -137,6 +137,10 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   flag. This cheap local preflight is the first model-assist layer, so the
   harness can detect unreadable/blank/low-signal inputs without spending every
   decision on an MLLM.
+- Each raw eval result also includes deterministic `local_signal_candidates`:
+  a local threshold/ink bounding-box proposal for ECG-like line images. This is
+  intentionally non-diagnostic, but it gives the reviewer and harness a cheap
+  local candidate box before the MLLM read.
 - [`scripts/check-real-model-readiness.py`](scripts/check-real-model-readiness.py)
   bridges the mock artifact gate to real-model benchmarking. It writes a
   `ready` or `blocked` JSON artifact for the selected OpenClaw/OpenRouter model,
@@ -154,7 +158,7 @@ portable across OpenClaw releases.
   manifest / chat frame against the documented schema (protocol `3`, image in
   `params.attachments[]` with `type` / `mimeType` / `content`).
 - [`openclaw/package.json`](openclaw/package.json) tracks the runtime version
-  (locally validated against `openclaw ^2026.6.10`) and the minimum-safe floor.
+  (locally validated against `openclaw ^2026.6.11`) and the minimum-safe floor.
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   declares the plugin compatibility window.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema

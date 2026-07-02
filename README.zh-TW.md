@@ -6,9 +6,9 @@
 
 🌐 [English](README.md)
 
-## 2026-06-30 維護狀態
+## 2026-07-02 維護狀態
 
-- 本機 OpenClaw runtime 已更新並驗證到 `2026.6.10`；仍只透過 Gateway
+- 本機 OpenClaw runtime 已更新並驗證到 `2026.6.11`；仍只透過 Gateway
   `connect` + `chat.send` 與 OpenClaw 溝通，不匯入 OpenClaw plugin SDK
   內部 API。
 - 桌面版 Settings 的 AI Provider 分頁支援 OpenRouter：
@@ -23,6 +23,9 @@
 - `local_image_quality` 是第一層非 MLLM 輔助：在送模型前/評估時記錄影像尺寸、
   aspect ratio、ink density、bright-pixel ratio 與 low-signal flag，避免
   所有品質判斷都拖到多模態語言模型。
+- `local_signal_candidates` 是第二層本機輔助：用低成本像素 threshold 先產生
+  ECG-like waveform / signal bbox 候選，供 harness 與人工 review 對照；它不做
+  診斷，只提供 MLLM 前的可審計候選框。
 - `scripts/check-real-model-readiness.py` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地

@@ -57,6 +57,16 @@ This does the following:
 scripts\install-openclaw-local.bat
 ```
 
+`scripts\install-openclaw-local.bat` keeps repeat runs light: it skips npm when
+an already-installed runtime is at or above `MIN_SAFE_OPENCLAW_VERSION`. To
+force a fresh npm latest update during a release/maintenance pass, run:
+
+```bat
+set FORCE_OPENCLAW_INSTALL=1
+set OPENCLAW_NPM_SPEC=openclaw@latest
+scripts\install-openclaw-local.bat
+```
+
 ### 2. Sync skills into the runtime workspace
 
 ```bat
@@ -254,6 +264,12 @@ MEETI.rar` or broad recursive searches over generated data/OpenClaw internals in
 normal maintenance shells; they can flood PowerShell and obscure the useful
 signal.
 
+The 1000-case artifact verifier now requires two local, non-MLLM assist fields
+in every raw result: `local_image_quality` (blank/low-signal preflight) and
+`local_signal_candidates` (a deterministic threshold/ink bbox proposal for
+ECG-like signal regions). These are not diagnostic outputs; they make input
+quality and first-pass localization auditable before the MLLM interpretation.
+
 `check-real-model-readiness.py` is the handoff from mock artifact completeness
 to a real-model benchmark. It never prints or writes secret values. If the
 required provider credential is absent, it writes `status=blocked` with a
@@ -265,30 +281,30 @@ command returns `status=ready` and records the exact command to start the real
 Gateway-backed experiment.
 
 The repo OpenClaw config is pinned to `openai/gpt-5.5`. The local runtime was
-validated with OpenClaw `2026.6.10` on 2026-06-30. The desktop Settings dialog
+validated with OpenClaw `2026.6.11` on 2026-07-02. The desktop Settings dialog
 can also save an OpenRouter profile (`OPENROUTER_API_KEY`,
 `https://openrouter.ai/api/v1`) into the app-managed OpenClaw provider/model
 sections without storing the secret in git. Always rerun config validation and
 the image harness smoke after changing providers or OpenClaw versions.
 
-Latest local evidence (2026-06-30):
+Latest local evidence (2026-07-02):
 
 - `node openclaw\node_modules\openclaw\openclaw.mjs config validate` passed
-  against local OpenClaw `2026.6.10`.
+  against local OpenClaw `2026.6.11`.
 - A generated OpenRouter config also passed `config validate` with
   `OPENROUTER_API_KEY` represented as an environment SecretRef.
-- `uv run python scripts\run-image-harness-smoke.py --output data\harness-smoke\latest-openclaw-20260630`
+- `uv run python scripts\run-image-harness-smoke.py --output data\harness-smoke\latest-openclaw-20260702`
   followed by `uv run python scripts\verify-image-harness.py ...` passed the
   desktop viewer, Gateway contract, image payload proof, overlay annotation,
   and harness manifest checks.
 - The full MEETI source archive exposed 9922 PNG-bearing studies locally. A
   1000-case manifest was built from `MEETI.rar` at
   `data\eval-datasets\meeti-1000-all\manifest.json`.
-- `uv run python scripts\run-eval.py --manifest data\eval-datasets\meeti-1000-all\manifest.json --mock --require-perfect --output data\eval\meeti-1000-mock-20260630-quality`
+- `uv run python scripts\run-eval.py --manifest data\eval-datasets\meeti-1000-all\manifest.json --mock --require-perfect --output data\eval\meeti-1000-mock-20260630-assist`
   completed 1000/1000 cases. The artifact verifier passed `min_cases`,
   `scorecard_complete`, `schema_gate`, `bbox_gate`, `cant_miss_gate`,
-  `mock_perfect_gate`, `results_artifacts`, `local_preflight_artifacts`, and
-  `review_artifacts`.
+  `mock_perfect_gate`, `results_artifacts`, `local_preflight_artifacts`,
+  `model_assist_artifacts`, and `review_artifacts`.
 - `uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --limit 10 --timeout-sec 90`
   completed 10 real GPT-5.5 cases without timeout or parser crash. It still did
   not reach perfect accuracy: schema pass was 90%, bbox in-bounds 100%,
@@ -331,7 +347,7 @@ powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.p
   -RequirePerfect
 ```
 
-As of 2026-06-30, local OpenClaw `2026.6.10` is the npm `latest` runtime. If a
+As of 2026-07-02, local OpenClaw `2026.6.11` is the npm `latest` runtime. If a
 requested model id is not exposed by the local OpenClaw catalog, the experiment
 script records a blocked experiment instead of silently running another model.
 Use `check-real-model-readiness.py` before starting long real runs so missing
