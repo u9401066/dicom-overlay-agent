@@ -621,6 +621,51 @@ async def test_run_evaluation_records_errors_without_aborting(tmp_path: Path) ->
     assert report.cases[0].error is not None
 
 
+async def test_run_evaluation_throttles_partial_scorecard_for_1000_cases(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cases = [
+        _case(tmp_path, Severity.NORMAL, (), name=f"case_{i:04d}")
+        for i in range(1000)
+    ]
+    partial_writes: list[int] = []
+
+    async def analyze(_case: EvalCase) -> AnalysisResult:
+        return _complete_result(Severity.NORMAL, summary="clear")
+
+    def record_partial_write(
+        _path,
+        _gateway_mode,
+        scores,
+        _cases,
+        _registry,
+        *,
+        aborted_reason: str = "",
+    ) -> None:
+        assert aborted_reason == ""
+        partial_writes.append(len(scores))
+
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.eval_harness._write_scorecard",
+        record_partial_write,
+    )
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.eval_harness._write_raw_result",
+        lambda *args, **kwargs: None,
+    )
+
+    report = await run_evaluation(
+        cases,
+        analyze,
+        output_dir=tmp_path / "o",
+        gateway_mode="mock",
+    )
+
+    assert report.total == 1000
+    assert partial_writes == list(range(50, 1001, 50))
+
+
 # ---------------------------------------------------------------------------
 # Task B: framework coverage matrix (axis x severity)
 # ---------------------------------------------------------------------------

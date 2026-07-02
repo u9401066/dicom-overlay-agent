@@ -519,7 +519,7 @@ class TestMultiPassAnalyzer:
         await adapter.connect()
         await adapter.disconnect()
 
-    def test_is_a_vision_analyzer_service(self):
+    async def test_is_a_vision_analyzer_service(self):
         from dicom_overlay.domain.services import VisionAnalyzerService
 
         inner = _FakeAnalyzer([_result([])])

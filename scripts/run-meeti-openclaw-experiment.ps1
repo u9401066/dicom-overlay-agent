@@ -99,6 +99,16 @@ if (-not $env:UV_CACHE_DIR) {
     $env:UV_CACHE_DIR = Join-Path $repoRoot ".uv-cache-codex"
 }
 New-Item -ItemType Directory -Force -Path $env:UV_CACHE_DIR | Out-Null
+if (-not $env:UV_NO_PROGRESS) {
+    $env:UV_NO_PROGRESS = "1"
+}
+if (-not $env:UV_PYTHON_DOWNLOADS) {
+    $env:UV_PYTHON_DOWNLOADS = "never"
+}
+$uvTmp = Join-Path $repoRoot "data\tmp\uv"
+New-Item -ItemType Directory -Force -Path $uvTmp | Out-Null
+$env:TMP = $uvTmp
+$env:TEMP = $uvTmp
 
 Load-DotEnv (Join-Path $repoRoot ".env")
 

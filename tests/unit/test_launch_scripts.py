@@ -107,3 +107,7 @@ def test_meeti_experiment_script_uses_repo_local_uv_cache() -> None:
 
     assert "UV_CACHE_DIR" in script
     assert ".uv-cache-codex" in script
+    assert "UV_NO_PROGRESS" in script
+    assert "UV_PYTHON_DOWNLOADS" in script
+    assert "$env:TMP" in script
+    assert "$env:TEMP" in script

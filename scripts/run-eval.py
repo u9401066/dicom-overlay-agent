@@ -242,9 +242,17 @@ class _CountingAnalyzer:
         return self._inner.is_connected()
 
 
-async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
-               output_dir: Path, timeout_sec: int, *, multi_pass: bool,
-               multi_pass_max_targets: int) -> EvalReport:
+async def _run(
+    cases: list[EvalCase],
+    gateway_url: str,
+    mode: str,
+    output_dir: Path,
+    timeout_sec: int,
+    *,
+    multi_pass: bool,
+    multi_pass_max_targets: int,
+    partial_scorecard_interval: int,
+) -> EvalReport:
     processor = ImageProcessor()
 
     async def analyze_with_client(client: OpenClawClient) -> EvalReport:
@@ -327,6 +335,7 @@ async def _run(cases: list[EvalCase], gateway_url: str, mode: str,
             analyze,
             output_dir=output_dir,
             gateway_mode=mode,
+            partial_scorecard_interval=partial_scorecard_interval,
             case_metadata=lambda case: {
                 "local_image_quality": local_quality_by_case.get(
                     case.label or case.image_path.stem,
@@ -521,6 +530,15 @@ def main() -> int:
         help="Max per-case rows to print to console (0 = print all).",
     )
     parser.add_argument(
+        "--partial-scorecard-interval",
+        type=int,
+        default=50,
+        help=(
+            "Refresh scorecard.partial.json every N cases "
+            "(0 = final/abort only)."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable per-request structlog debug/info logs.",
@@ -571,6 +589,7 @@ def main() -> int:
                 args.timeout_sec,
                 multi_pass=args.multi_pass,
                 multi_pass_max_targets=args.multi_pass_max_targets,
+                partial_scorecard_interval=args.partial_scorecard_interval,
             )
         )
     except (ConnectionError, OSError) as exc:

@@ -114,11 +114,24 @@ ignore_missing_imports = true
 
 # === Pytest ===
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/smoke"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = ["-v", "--strict-markers", "--tb=short", "-ra"]
+addopts = ["--strict-markers", "--tb=short", "-ra", "--show-capture=no"]
+norecursedirs = [
+    ".git",
+    ".venv",
+    "venv",
+    "data",
+    "openclaw",
+    "openclaw-home",
+    ".uv-cache-codex",
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+]
 markers = [
     "unit: Unit tests (no external deps)",
     "integration: Integration tests",

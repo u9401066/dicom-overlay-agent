@@ -760,6 +760,7 @@ async def run_evaluation(
     gateway_mode: str,
     registry: ModalityRegistry | None = None,
     max_consecutive_infra_errors: int = 5,
+    partial_scorecard_interval: int = 50,
     case_metadata: Callable[[EvalCase], dict[str, Any]] | None = None,
 ) -> EvalReport:
     """Drive every case through ``analyze``, score it, and persist artifacts.
@@ -768,7 +769,9 @@ async def run_evaluation(
     ``AnalysisResult`` for a case (real gateway or mock).  Latency is measured
     here so both modes are timed identically. ``registry`` supplies the
     systematic-checklist axes for the framework-coverage matrix (defaults to
-    the active registry).
+    the active registry). ``partial_scorecard_interval`` bounds checkpoint
+    rewrites for 1000+ image runs; the final or aborted scorecard is always
+    written.
     """
     active_registry = registry or get_active_registry()
     results_dir = output_dir / "results"
@@ -803,13 +806,16 @@ async def run_evaluation(
                     aborted_reason=aborted_reason,
                 )
                 break
-            _write_scorecard(
-                output_dir / "scorecard.partial.json",
-                gateway_mode,
-                scores,
-                cases,
-                active_registry,
-            )
+            if _should_write_partial_scorecard(
+                len(scores), len(cases), partial_scorecard_interval
+            ):
+                _write_scorecard(
+                    output_dir / "scorecard.partial.json",
+                    gateway_mode,
+                    scores,
+                    cases,
+                    active_registry,
+                )
             continue
         consecutive_infra_errors = 0
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -817,13 +823,16 @@ async def run_evaluation(
         scores.append(score)
         metadata = case_metadata(case) if case_metadata else None
         _write_raw_result(results_dir, result, score, case_metadata=metadata)
-        _write_scorecard(
-            output_dir / "scorecard.partial.json",
-            gateway_mode,
-            scores,
-            cases,
-            active_registry,
-        )
+        if _should_write_partial_scorecard(
+            len(scores), len(cases), partial_scorecard_interval
+        ):
+            _write_scorecard(
+                output_dir / "scorecard.partial.json",
+                gateway_mode,
+                scores,
+                cases,
+                active_registry,
+            )
 
     report = _aggregate(
         gateway_mode,
@@ -866,6 +875,19 @@ def _is_infrastructure_error(exc: Exception) -> bool:
         or "connection closed" in text
         or "websocket" in text
     )
+
+
+def _should_write_partial_scorecard(
+    result_count: int,
+    total_count: int,
+    interval: int,
+) -> bool:
+    """Return True when a partial scorecard checkpoint should be refreshed."""
+    if result_count <= 0:
+        return False
+    if result_count >= total_count:
+        return True
+    return interval > 0 and result_count % interval == 0
 
 
 def _write_raw_result(
