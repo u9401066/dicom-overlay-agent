@@ -108,6 +108,11 @@
   see WinError 10054 while fetching OpenRouter metadata. Real Gateway smoke is
   still blocked by local egress: OpenClaw logs `ECONNRESET` while fetching
   OpenRouter model capabilities/pricing and calling `minimax/minimax-m3`.
+  Latest OOM-safe probed readiness artifact
+  `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-current-probed.json`
+  still blocks before Gateway startup with provider key present, 1000-case mock
+  artifacts OK, OpenClaw `2026.6.11`, and OpenRouter probe failing with
+  WinError 10013 socket permission denial.
 - `scripts\run-meeti-openclaw-experiment.cmd` is the preferred non-PowerShell
   launcher. It uses `.venv\Scripts\python.exe`, takes
   `data\tmp\meeti-run.lock`, then calls

@@ -125,6 +125,11 @@
     `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-cmd-probed.json`:
     the wrapper reads `.env`, verifies the 1000-case manifest and mock artifacts,
     then blocks on the same OpenRouter WinError 10054 provider egress failure.
+  - Latest OOM-safe OpenRouter probe remains blocked at
+    `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-current-probed.json`:
+    `OPENROUTER_API_KEY` is present, OpenClaw is `2026.6.11`, 1000-case mock
+    artifacts pass, but the provider probe fails before Gateway startup with
+    WinError 10013 socket permission denial.
   - Latest MiniMax M3 1-case smoke:
     `data\experiments\meeti-openrouter-minimax-m3-1case-resume-20260702`
     reached Gateway `connect` + `chat.send` and exported scorecard/raw/review

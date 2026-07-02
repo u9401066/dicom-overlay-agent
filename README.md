@@ -267,7 +267,12 @@ portable across OpenClaw releases.
   and
   `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3-cmd-probed.json`
   are `blocked` by the provider egress probe; the newer artifact also proves
-  the readiness path itself now uses the OOM-safe `.cmd` wrapper.
+  the readiness path itself now uses the OOM-safe `.cmd` wrapper. The latest
+  OOM-safe probe
+  `data/experiments/real-model-readiness-20260702-openrouter-minimax-m3-current-probed.json`
+  still has the key, OpenClaw runtime, 1000-case manifest, and mock artifacts
+  ready, but blocks before Gateway startup with WinError 10013 socket permission
+  denial.
 
 ### Core 4 — Minimal packaged executable
 

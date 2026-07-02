@@ -13,7 +13,10 @@
   readiness 已為 `ready`：`OPENROUTER_API_KEY` 存在、1000-case mock artifact
   gate 已通過、OpenClaw runtime 為 `2026.6.11`。真實跑批前請加
   `--probe-provider`，會先檢查 provider egress 與模型是否 advertised image
-  input；目前 probed readiness 會因 OpenRouter 連線 reset 而 blocked。
+  input；目前 probed readiness 仍 blocked。最新 OOM-safe probe
+  `data\experiments\real-model-readiness-20260702-openrouter-minimax-m3-current-probed.json`
+  證明 key、OpenClaw runtime、1000-case manifest 與 mock artifacts 都存在，
+  但在 Gateway 啟動前被 WinError 10013 socket 權限拒絕擋下。
 - `scripts/run-meeti-openclaw-experiment.cmd` 是目前建議的非 PowerShell
   實驗入口；它直接使用既有 uv-managed `.venv\Scripts\python.exe` 呼叫
   `scripts/run-meeti-openclaw-experiment.py` 產生 experiment-local OpenClaw
