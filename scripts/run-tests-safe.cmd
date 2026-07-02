@@ -13,25 +13,32 @@ set "PYTEST_BASETEMP=%TEMP%\basetemp-%RANDOM%-%RANDOM%"
 set "PYTEST_ARGS=tests/unit tests/smoke"
 if not "%~1"=="" set "PYTEST_ARGS=%*"
 set "DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1"
-set "UV_RUN_LOCK=%REPO_ROOT%\data\tmp\uv-run.lock"
+set "PYTHON_EXE=%REPO_ROOT%\.venv\Scripts\python.exe"
+set "PYTEST_RUN_LOCK=%REPO_ROOT%\data\tmp\pytest-run.lock"
 
 if not exist "%UV_CACHE_DIR%" mkdir "%UV_CACHE_DIR%"
 if not exist "%TEMP%" mkdir "%TEMP%"
 if not exist "%REPO_ROOT%\data\tmp" mkdir "%REPO_ROOT%\data\tmp"
 
-mkdir "%UV_RUN_LOCK%" 2>nul
+if not exist "%PYTHON_EXE%" (
+    echo [ERROR] Missing uv-managed virtualenv Python: "%PYTHON_EXE%"
+    echo [ERROR] Create it once with: uv sync --group dev
+    exit /b 74
+)
+
+mkdir "%PYTEST_RUN_LOCK%" 2>nul
 if errorlevel 1 (
-    echo [ERROR] Another uv-backed command is already running: "%UV_RUN_LOCK%"
+    echo [ERROR] Another pytest command is already running: "%PYTEST_RUN_LOCK%"
     exit /b 75
 )
 
 pushd "%REPO_ROOT%" || (
-    rmdir "%UV_RUN_LOCK%" 2>nul
+    rmdir "%PYTEST_RUN_LOCK%" 2>nul
     exit /b 1
 )
-uv run python -m pytest -p no:cacheprovider --basetemp "%PYTEST_BASETEMP%" %PYTEST_ARGS%
+"%PYTHON_EXE%" -m pytest -p no:cacheprovider --basetemp "%PYTEST_BASETEMP%" %PYTEST_ARGS%
 set "EXIT_CODE=%ERRORLEVEL%"
 popd
-rmdir "%UV_RUN_LOCK%" 2>nul
+rmdir "%PYTEST_RUN_LOCK%" 2>nul
 
 exit /b %EXIT_CODE%

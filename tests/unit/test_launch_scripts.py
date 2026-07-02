@@ -191,11 +191,13 @@ def test_meeti_experiment_cmd_wrapper_pins_uv_without_powershell() -> None:
     assert "set \"UV_PYTHON_DOWNLOADS=never\"" in script
     assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
-    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in script
-    assert 'mkdir "%UV_RUN_LOCK%"' in script
-    assert "Another uv-backed command is already running" in script
-    assert 'rmdir "%UV_RUN_LOCK%"' in script
-    assert "uv run python scripts\\run-meeti-openclaw-experiment.py %*" in script
+    assert "PYTHON_EXE=%REPO_ROOT%\\.venv\\Scripts\\python.exe" in script
+    assert "MEETI_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\meeti-run.lock" in script
+    assert 'mkdir "%MEETI_RUN_LOCK%"' in script
+    assert "Another MEETI experiment command is already running" in script
+    assert 'rmdir "%MEETI_RUN_LOCK%"' in script
+    assert "\"%PYTHON_EXE%\" scripts\\run-meeti-openclaw-experiment.py %*" in script
+    assert "uv run" not in script
     assert ".ps1" not in script.lower()
     assert "powershell" not in script.lower()
 
@@ -210,10 +212,12 @@ def test_real_model_readiness_cmd_wrapper_pins_uv_without_powershell() -> None:
     assert "set \"UV_PYTHON_DOWNLOADS=never\"" in script
     assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\uv\"" in script
-    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in script
-    assert 'mkdir "%UV_RUN_LOCK%"' in script
-    assert "Another uv-backed command is already running" in script
-    assert 'rmdir "%UV_RUN_LOCK%"' in script
-    assert "uv run python scripts\\check-real-model-readiness.py %*" in script
+    assert "PYTHON_EXE=%REPO_ROOT%\\.venv\\Scripts\\python.exe" in script
+    assert "READINESS_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\readiness-run.lock" in script
+    assert 'mkdir "%READINESS_RUN_LOCK%"' in script
+    assert "Another readiness command is already running" in script
+    assert 'rmdir "%READINESS_RUN_LOCK%"' in script
+    assert "\"%PYTHON_EXE%\" scripts\\check-real-model-readiness.py %*" in script
+    assert "uv run" not in script
     assert ".ps1" not in script.lower()
     assert "powershell" not in script.lower()

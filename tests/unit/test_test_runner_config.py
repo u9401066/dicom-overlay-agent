@@ -72,7 +72,9 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
     assert "set \"DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1\"" in runner
-    assert "uv run python -m pytest" in runner
+    assert "set \"PYTHON_EXE=%REPO_ROOT%\\.venv\\Scripts\\python.exe\"" in runner
+    assert "\"%PYTHON_EXE%\" -m pytest" in runner
+    assert "uv run" not in runner
     assert "-p no:cacheprovider" in runner
     assert "--basetemp" in runner
     assert "tests/unit" in runner
@@ -80,10 +82,10 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert "PYTEST_ARGS=tests/unit tests/smoke" in runner
     assert 'if not "%~1"=="" set "PYTEST_ARGS=%*"' in runner
     assert "basetemp-%RANDOM%" in runner
-    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in runner
-    assert 'mkdir "%UV_RUN_LOCK%"' in runner
-    assert "Another uv-backed command is already running" in runner
-    assert 'rmdir "%UV_RUN_LOCK%"' in runner
+    assert "PYTEST_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\pytest-run.lock" in runner
+    assert 'mkdir "%PYTEST_RUN_LOCK%"' in runner
+    assert "Another pytest command is already running" in runner
+    assert 'rmdir "%PYTEST_RUN_LOCK%"' in runner
     assert ".ps1" not in runner.lower()
     assert "powershell" not in runner.lower()
 
@@ -96,11 +98,13 @@ def test_safe_ruff_runner_cmd_avoids_appdata_and_serializes_uv() -> None:
     assert "set \"UV_PYTHON_DOWNLOADS=never\"" in runner
     assert "set \"TMP=%REPO_ROOT%\\data\\tmp\\uv\"" in runner
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\uv\"" in runner
-    assert "UV_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\uv-run.lock" in runner
-    assert 'mkdir "%UV_RUN_LOCK%"' in runner
-    assert "Another uv-backed command is already running" in runner
-    assert 'rmdir "%UV_RUN_LOCK%"' in runner
-    assert "uv run ruff %*" in runner
+    assert "RUFF_EXE=%REPO_ROOT%\\.venv\\Scripts\\ruff.exe" in runner
+    assert "RUFF_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\ruff-run.lock" in runner
+    assert 'mkdir "%RUFF_RUN_LOCK%"' in runner
+    assert "Another ruff command is already running" in runner
+    assert 'rmdir "%RUFF_RUN_LOCK%"' in runner
+    assert "\"%RUFF_EXE%\" %*" in runner
+    assert "uv run" not in runner
     assert "AppData" not in runner
     assert ".ps1" not in runner.lower()
     assert "powershell" not in runner.lower()
