@@ -77,7 +77,9 @@
     `local_candidate_count` and normalized `local_candidate_regions`, making the
     local-assist path auditable after 1000-case runs. The eval artifact
     verifier validates those trace fields when present and reports
-    `multipass_trace_artifacts`.
+    `multipass_trace_artifacts`; `scripts\verify-eval-artifacts.py` now also
+    exposes `--require-multipass-trace` so production multi-pass runs fail when
+    crop re-analysis trace evidence is missing.
   - Hardened annotation review completeness: no-bbox cases now produce
     case-level audit rows, so bbox-free normal cases are still counted in the
     1000-case review gate.
@@ -91,6 +93,11 @@
     `scripts\run-tests-safe.cmd -q` completed all 37 per-file pytest batches
     without OOM; observed result was 428 passed and 1 existing opt-in bundle
     smoke skipped.
+  - Latest multi-pass trace gate verification:
+    the targeted eval artifact validator tests passed, the 1000-case mock
+    artifact still passed the default gate, and the same artifact correctly
+    failed with `--require-multipass-trace` because it lacks
+    `multipass-trace.jsonl`.
   - Added real-model readiness gate:
     `scripts\check-real-model-readiness.cmd` writes a `ready`/`blocked` JSON
     artifact before any long Gateway-backed run. It checks provider credential

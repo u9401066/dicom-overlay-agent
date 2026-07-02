@@ -47,6 +47,7 @@ def verify_eval_artifacts(
     min_cases: int,
     require_review: bool = True,
     require_perfect_mock: bool = True,
+    require_multipass_trace: bool = False,
 ) -> EvalArtifactVerification:
     """Verify that an eval directory proves a complete large-image run.
 
@@ -86,6 +87,7 @@ def verify_eval_artifacts(
         )
         _verify_multipass_trace(
             eval_dir / "multipass-trace.jsonl",
+            require=require_multipass_trace,
             failures=failures,
             passed=passed,
         )
@@ -282,11 +284,16 @@ def _verify_review_artifacts(
 def _verify_multipass_trace(
     trace_path: Path,
     *,
+    require: bool,
     failures: list[str],
     passed: list[str],
 ) -> None:
     """Validate optional MultiPass trace rows when the artifact exists."""
     if not trace_path.exists():
+        if require:
+            failures.append(
+                "multipass_trace_artifacts: missing multipass-trace.jsonl"
+            )
         return
     lines = [line for line in trace_path.read_text(encoding="utf-8").splitlines() if line]
     for index, line in enumerate(lines, start=1):

@@ -83,8 +83,10 @@
   re-analysis，避免框格流程完全依賴第一輪 MLLM 座標。`multipass-trace.jsonl`
   也會記錄 `local_candidate_count` 與 normalized `local_candidate_regions`，
   方便 1000 張跑批後做審計；trace 存在時，
-  `scripts/verify-eval-artifacts.py` 也會以 `multipass_trace_artifacts` gate
-  檢查這些欄位。
+  `scripts/verify-eval-artifacts.py` 會以 `multipass_trace_artifacts` gate
+  檢查這些欄位。生產級 multi-pass 跑批請加
+  `--require-multipass-trace`，讓缺少 crop re-analysis trace 的 artifact
+  直接 fail。
 - `scripts/check-real-model-readiness.cmd` 會把真實模型 1000-case benchmark
   的先決條件寫成 `ready` 或 `blocked` JSON artifact；缺 OpenRouter/OpenAI
   key、manifest 不足 1000 case、mock artifact gate 未通過都會被機器可讀地

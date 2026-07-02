@@ -47,7 +47,8 @@
   `local_candidate_count` and normalized `local_candidate_regions` per case, so
   1000-case runs can audit how often local assist was available for crop
   re-analysis. `verify_eval_artifacts()` now validates these fields when the
-  trace exists and reports `multipass_trace_artifacts`.
+  trace exists and reports `multipass_trace_artifacts`; production multi-pass
+  runs can pass `--require-multipass-trace` to fail if the trace is missing.
 - Expert-review export now audits no-bbox cases at case level, so 1000-case
   review completeness is not inflated by bbox count alone. Review artifacts
   include PNG overlays, `bbox-audit.jsonl`, crop thumbnails, and `index.html`.
@@ -87,6 +88,9 @@
   runtime is `2026.6.11`, 1000-case assist verifier passed, targeted
   unit/smoke tests for the local assist gate passed, and
   `scripts\run-tests-safe.cmd -q` completed all 37 per-file batches without OOM.
+  The 1000-case mock artifact verifier still passes without the optional
+  multi-pass trace requirement, while the same artifact correctly fails with
+  `--require-multipass-trace` because it has no `multipass-trace.jsonl`.
 - Real-model 1000-case accuracy gate is still external-network/provider gated.
   `scripts\check-real-model-readiness.cmd --dotenv .env` now merges repo-local
   `.env` values into readiness checks without printing or serializing secrets

@@ -181,8 +181,10 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   depends entirely on the model's first-pass coordinates. The
   `multipass-trace.jsonl` artifact records `local_candidate_count` and
   normalized `local_candidate_regions` per case for audit. When that trace
-  exists, `scripts/verify-eval-artifacts.py` also validates those fields via
-  the optional `multipass_trace_artifacts` gate.
+  exists, `scripts/verify-eval-artifacts.py` validates those fields via
+  `multipass_trace_artifacts`; production multi-pass runs should add
+  `--require-multipass-trace` so missing crop re-analysis trace artifacts fail
+  the gate.
 - [`scripts/check-real-model-readiness.cmd`](scripts/check-real-model-readiness.cmd)
   is the OOM-safe readiness launcher that bridges the mock artifact gate to
   real-model benchmarking. It calls the existing uv-managed

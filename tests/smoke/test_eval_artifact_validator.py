@@ -256,3 +256,36 @@ def test_verify_eval_artifacts_cli_returns_zero_for_complete_run(
     assert proc.returncode == 0
     payload = json.loads(proc.stdout)
     assert payload["ok"] is True
+
+
+def test_verify_eval_artifacts_cli_can_require_multipass_trace(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 1000)
+    _write_scorecard(eval_dir, 1000)
+    script = Path(__file__).resolve().parents[2] / "scripts" / "verify-eval-artifacts.py"
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--eval-dir",
+            str(eval_dir),
+            "--manifest",
+            str(manifest),
+            "--min-cases",
+            "1000",
+            "--require-multipass-trace",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 1
+    payload = json.loads(proc.stdout)
+    assert payload["ok"] is False
+    assert "multipass_trace_artifacts: missing multipass-trace.jsonl" in payload[
+        "failures"
+    ]

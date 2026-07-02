@@ -40,6 +40,14 @@ def main() -> int:
             "benchmarks; schema/bbox/artifact completeness still gate."
         ),
     )
+    parser.add_argument(
+        "--require-multipass-trace",
+        action="store_true",
+        help=(
+            "Require multipass-trace.jsonl and validate local candidate audit "
+            "fields. Use for production multi-pass crop re-analysis runs."
+        ),
+    )
     args = parser.parse_args()
 
     verification = verify_eval_artifacts(
@@ -48,6 +56,7 @@ def main() -> int:
         min_cases=args.min_cases,
         require_review=not args.no_review,
         require_perfect_mock=not args.allow_nonperfect_real,
+        require_multipass_trace=args.require_multipass_trace,
     )
     print(verification.to_json())
     return 0 if verification.ok else 1

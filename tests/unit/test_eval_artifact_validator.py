@@ -126,3 +126,49 @@ def test_multipass_trace_with_local_candidate_audit_fields_passes(
 
     assert verification.ok
     assert "multipass_trace_artifacts" in verification.passed_checks
+
+
+def test_required_multipass_trace_rejects_missing_trace(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_multipass_trace=True,
+    )
+
+    assert not verification.ok
+    assert (
+        "multipass_trace_artifacts: missing multipass-trace.jsonl"
+        in verification.failures
+    )
+
+
+def test_required_multipass_trace_accepts_valid_trace(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    (eval_dir / "multipass-trace.jsonl").write_text(
+        json.dumps(
+            {
+                "case": "case_0",
+                "local_candidate_count": 0,
+                "local_candidate_regions": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_multipass_trace=True,
+    )
+
+    assert verification.ok
+    assert "multipass_trace_artifacts" in verification.passed_checks
