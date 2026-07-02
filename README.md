@@ -139,13 +139,20 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   [`scripts/run-tests-safe.cmd`](scripts/run-tests-safe.cmd). It runs pytest
   through the existing uv-managed `.venv\Scripts\python.exe` instead of
   `uv run`, routes temp files under `data/tmp/pytest-safe`, disables the pytest
-  cache provider, and runs only the default unit+smoke suite. Full integration
-  tests remain available by passing explicit paths. Prefer this over PowerShell
-  on memory-constrained Windows sessions. The runner takes a repo-local
+  cache provider, and defaults to the unit+smoke suite. To avoid one long-lived
+  pytest process OOMing on Windows, the `.cmd` wrapper delegates to
+  [`scripts/run_pytest_safe.py`](scripts/run_pytest_safe.py), which runs each
+  default `test_*.py` file in its own short pytest process. Pure pytest options
+  such as `-q` are applied to every batch; explicit targets such as
+  `tests/unit/test_agent.py -q` stay in a single targeted pytest session. Full
+  integration tests remain available by passing explicit paths. Prefer this
+  over PowerShell on memory-constrained Windows sessions. The runner takes a repo-local
   `data/tmp/pytest-run.lock`, so a second pytest command exits before spawning
   more Python processes. During this guarded test path it also sets
   `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, so accidental real Gateway /
-  OpenClaw launches fail fast unless an explicit integration run opts in.
+  OpenClaw launches fail fast unless an explicit integration run opts in. For a
+  deliberate diagnostic run of the old one-session behavior, set
+  `DICOM_OVERLAY_TEST_SINGLE_SESSION=1`.
 - The desktop Gateway launcher uses a repo-local
   `data/tmp/openclaw-gateway.lock` while the OpenClaw subprocess is alive, and
   Windows launches use `CREATE_NO_WINDOW`. The legacy real-stack batch launcher

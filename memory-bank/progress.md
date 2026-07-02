@@ -31,12 +31,14 @@
   - Added `scripts\run-tests-safe.cmd` as the OOM-safe local test entry point.
     It now calls the existing uv-managed `.venv\Scripts\python.exe` directly,
     routes temp files through `data\tmp\pytest-safe`, disables the pytest cache
-    provider, and runs the unit+smoke suite explicitly. PowerShell is no longer the default test path
-    after the 2026-07-02 OOM report. It now uses a unique
-    `basetemp-%RANDOM%-%RANDOM%` per run and lets user-supplied arguments
-    replace the default target set, so targeted checks stay targeted and do not
-    trip over a locked fixed basetemp. It also takes `data\tmp\pytest-run.lock`,
-    so a second pytest runner exits 75 before creating another test process.
+    provider, and defaults to the unit+smoke suite. PowerShell is no longer the
+    default test path after the 2026-07-02 OOM report. After the follow-up OOM
+    report, the runner now delegates to `scripts\run_pytest_safe.py`: default
+    and pure-option runs such as `scripts\run-tests-safe.cmd -q` execute each
+    `test_*.py` file in its own short-lived pytest process, while explicit
+    target paths remain a single targeted pytest session. It also takes
+    `data\tmp\pytest-run.lock`, so a second pytest runner exits 75 before
+    creating another test process.
     It also sets `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, preventing
     unit/smoke tests from accidentally starting a real OpenClaw Gateway unless
     an explicit integration run opts in.
@@ -85,6 +87,10 @@
   - Fresh verification: OpenClaw image harness smoke + verifier passed on
     `data\harness-smoke\latest-openclaw-20260702`; targeted unit/smoke tests
     for the assist gate passed.
+  - Latest OOM-safe test runner verification:
+    `scripts\run-tests-safe.cmd -q` completed all 37 per-file pytest batches
+    without OOM; observed result was 428 passed and 1 existing opt-in bundle
+    smoke skipped.
   - Added real-model readiness gate:
     `scripts\check-real-model-readiness.cmd` writes a `ready`/`blocked` JSON
     artifact before any long Gateway-backed run. It checks provider credential

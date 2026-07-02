@@ -60,10 +60,13 @@
   pytest `--basetemp`, and `-p no:cacheprovider`. Pytest defaults now collect only
   `tests/unit` and `tests/smoke`, exclude generated/vendored trees, and suppress
   captured-output dumps on failure. Prefer the `.cmd` path over PowerShell after
-  the 2026-07-02 PowerShell OOM report. The `.cmd` runner now uses a unique
-  `basetemp-%RANDOM%-%RANDOM%` per run and treats user-supplied arguments as the
-  full pytest target set, so targeted checks no longer trigger the whole suite
-  or fail on a locked fixed basetemp. It also takes
+  the 2026-07-02 PowerShell OOM report. The `.cmd` runner now delegates to
+  `scripts\run_pytest_safe.py`, so default/pure-option runs such as
+  `scripts\run-tests-safe.cmd -q` execute each `test_*.py` file in a separate
+  short-lived pytest process instead of one long-lived session. Explicit targets
+  such as `tests\unit\test_agent.py -q` stay targeted; set
+  `DICOM_OVERLAY_TEST_SINGLE_SESSION=1` only for deliberate diagnostics of the
+  old one-session behavior. It also takes
   `data\tmp\pytest-run.lock`; concurrent pytest runners exit 75 instead of
   spawning another Python test process. It now also sets
   `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, so unit/smoke tests cannot
@@ -81,8 +84,9 @@
   Python runner also takes the same Gateway lock before spawning OpenClaw, so
   GUI/manual runs and experiment runs cannot silently multi-launch Gateway.
 - Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
-  runtime is `2026.6.11`, 1000-case assist verifier passed, and targeted
-  unit/smoke tests for the local assist gate passed.
+  runtime is `2026.6.11`, 1000-case assist verifier passed, targeted
+  unit/smoke tests for the local assist gate passed, and
+  `scripts\run-tests-safe.cmd -q` completed all 37 per-file batches without OOM.
 - Real-model 1000-case accuracy gate is still external-network/provider gated.
   `scripts\check-real-model-readiness.cmd --dotenv .env` now merges repo-local
   `.env` values into readiness checks without printing or serializing secrets

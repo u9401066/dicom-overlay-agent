@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import tomllib
 from pathlib import Path
 
@@ -9,6 +10,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 def _pytest_config() -> dict[str, object]:
     pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text("utf-8"))
     return pyproject["tool"]["pytest"]["ini_options"]
+
+
+def _load_pytest_safe_runner():
+    runner_path = _REPO_ROOT / "scripts" / "run_pytest_safe.py"
+    spec = importlib.util.spec_from_file_location("run_pytest_safe", runner_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_local_pytest_defaults_avoid_heavy_integration_suite() -> None:
@@ -73,14 +84,11 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert "set \"TEMP=%REPO_ROOT%\\data\\tmp\\pytest-safe\"" in runner
     assert "set \"DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1\"" in runner
     assert "set \"PYTHON_EXE=%REPO_ROOT%\\.venv\\Scripts\\python.exe\"" in runner
-    assert "\"%PYTHON_EXE%\" -m pytest" in runner
+    assert "scripts\\run_pytest_safe.py" in runner
+    assert "\"%PYTHON_EXE%\" -m pytest" not in runner
     assert "uv run" not in runner
-    assert "-p no:cacheprovider" in runner
-    assert "--basetemp" in runner
-    assert "tests/unit" in runner
-    assert "tests/smoke" in runner
-    assert "PYTEST_ARGS=tests/unit tests/smoke" in runner
-    assert 'if not "%~1"=="" set "PYTEST_ARGS=%*"' in runner
+    assert "PYTEST_ARGS=tests/unit tests/smoke" not in runner
+    assert 'if not "%~1"=="" set "PYTEST_ARGS=%*"' not in runner
     assert "basetemp-%RANDOM%" in runner
     assert "PYTEST_RUN_LOCK=%REPO_ROOT%\\data\\tmp\\pytest-run.lock" in runner
     assert 'mkdir "%PYTEST_RUN_LOCK%"' in runner
@@ -88,6 +96,41 @@ def test_safe_test_runner_cmd_avoids_powershell_for_oom_recovery() -> None:
     assert 'rmdir "%PYTEST_RUN_LOCK%"' in runner
     assert ".ps1" not in runner.lower()
     assert "powershell" not in runner.lower()
+
+
+def test_safe_pytest_helper_batches_default_suite_when_only_options_are_passed() -> None:
+    runner = _load_pytest_safe_runner()
+
+    batches = runner.build_pytest_batches(["-q"], root=_REPO_ROOT)
+
+    assert len(batches) >= 2
+    assert all(batch[-1] == "-q" for batch in batches)
+    assert any("tests/unit/test_agent.py" in batch[0].replace("\\", "/") for batch in batches)
+
+
+def test_safe_pytest_helper_keeps_cache_and_temp_controls_in_child_pytest() -> None:
+    helper = (_REPO_ROOT / "scripts" / "run_pytest_safe.py").read_text("utf-8")
+
+    assert "no:cacheprovider" in helper
+    assert "--basetemp" in helper
+    assert "PYTEST_BASETEMP" in helper
+
+
+def test_safe_pytest_helper_keeps_default_unit_and_smoke_scope() -> None:
+    runner = _load_pytest_safe_runner()
+
+    assert runner.DEFAULT_TEST_DIRS == ("tests/unit", "tests/smoke")
+
+
+def test_safe_pytest_helper_keeps_explicit_targets_in_one_pytest_session() -> None:
+    runner = _load_pytest_safe_runner()
+
+    batches = runner.build_pytest_batches(
+        ["tests/unit/test_test_runner_config.py", "-q"],
+        root=_REPO_ROOT,
+    )
+
+    assert batches == [["tests/unit/test_test_runner_config.py", "-q"]]
 
 
 def test_safe_ruff_runner_cmd_avoids_appdata_and_serializes_uv() -> None:
