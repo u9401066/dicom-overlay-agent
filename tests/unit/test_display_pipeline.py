@@ -239,7 +239,7 @@ class TestHighlightConstruction:
         assert highlight[5] == "Test Label"
 
     def test_main_uses_bbox_projection_calibration_for_ai_bboxes(self):
-        """AI bbox overlay path must go through the drift-audited projector."""
+        """AI bbox overlay path must go through the drift-audited builder."""
         main_path = (
             Path(__file__).resolve().parents[2]
             / "src"
@@ -248,7 +248,7 @@ class TestHighlightConstruction:
         )
         source = main_path.read_text(encoding="utf-8")
 
-        assert "project_bbox_to_overlay_highlight" in source
+        assert "build_ai_bbox_highlights" in source
         assert "bbox_projection_calibrated" in source
 
 

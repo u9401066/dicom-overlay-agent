@@ -144,6 +144,10 @@
     and wired the AI bbox overlay path through it. It clamps overflow bboxes,
     rounds projected edges across DPR conversion, and records round-trip drift
     calibration before returning the 6-field overlay highlight tuple.
+  - Added `infrastructure.overlay_highlight_builder.build_ai_bbox_highlights()`
+    so the desktop AI bbox path produces PHI-free projection audit rows and
+    withholds any dynamic bbox whose round-trip drift calibration fails before
+    drawing it on the physician overlay.
   - Updated the OpenClaw harness manifest to explicitly advertise
     `bboxCropReanalysis`, `coordinateDriftCalibration`, and
     `gatewayOnlyDesktopBoundary`, clarifying that OpenClaw-side specialization

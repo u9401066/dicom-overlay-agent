@@ -135,6 +135,10 @@
   `infrastructure.overlay_geometry.project_bbox_to_overlay_highlight()`, which
   clamps overflow extents, uses edge rounding across DPR conversions, and
   records round-trip drift calibration evidence before drawing the highlight.
+  The desktop AI bbox path now uses
+  `infrastructure.overlay_highlight_builder.build_ai_bbox_highlights()` to emit
+  PHI-free audit rows for every attempted AI bbox and withhold dynamic boxes
+  whose round-trip drift calibration fails.
 - `OpenClawClient` disables client-side WebSocket keepalive pings and relies on
   explicit inference timeouts for long medical-image requests. This prevented
   false keepalive closure from hiding the real current blocker, which is local

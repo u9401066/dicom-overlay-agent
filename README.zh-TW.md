@@ -171,7 +171,10 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
 - **位置** — AI 回傳歸一化 `0-1` 邊界框（`Finding.bboxes`）。
   [`__main__.py`](src/dicom_overlay/__main__.py) 優先用 AI bbox highlight，
   fallback 到 [`region_mapper.py`](src/dicom_overlay/infrastructure/region_mapper.py)
-  解析的 static `region_maps`。
+  解析的 static `region_maps`。AI bbox 會先經過
+  [`overlay_highlight_builder.py`](src/dicom_overlay/infrastructure/overlay_highlight_builder.py)
+  產生 PHI-free 投影 audit；若 round-trip drift calibration 失敗，該動態框不會
+  畫回醫師圖層。
 - **內容** — 可拖曳的 [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
   顯示系統性 checklist（EKG 共 16 鍵、CXR 為 10 軸判讀），異常項優先、正常項摺疊；
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py) 讓醫師針對同一張影像追問。

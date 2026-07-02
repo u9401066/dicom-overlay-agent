@@ -84,7 +84,12 @@ The physician reads the original image; the agent annotates *on top* of it.
 - **Position** — AI returns normalized `0-1` bounding boxes (`Finding.bboxes`).
   [`__main__.py`](src/dicom_overlay/__main__.py) highlights AI bboxes first and
   falls back to static `region_maps` resolved by
-  [`region_mapper.py`](src/dicom_overlay/infrastructure/region_mapper.py).
+  [`region_mapper.py`](src/dicom_overlay/infrastructure/region_mapper.py). AI
+  bboxes now pass through
+  [`overlay_highlight_builder.py`](src/dicom_overlay/infrastructure/overlay_highlight_builder.py),
+  which records PHI-free projection audit rows and withholds any dynamic bbox
+  whose round-trip drift calibration fails before it reaches the physician
+  overlay.
 - **Content** — a draggable [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
   shows a systematic checklist (16 keys for EKG, a 10-axis read for CXR);
   abnormal items surface first, normal ones collapse. A
