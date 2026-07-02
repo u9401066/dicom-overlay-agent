@@ -65,6 +65,41 @@ def _bare_client() -> OpenClawClient:
     return client
 
 
+@pytest.mark.asyncio
+async def test_openclaw_client_disables_keepalive_during_long_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeWebSocket:
+        async def close(self) -> None:
+            return None
+
+    async def fake_connect(url: str, **kwargs: object) -> FakeWebSocket:
+        captured["url"] = url
+        captured.update(kwargs)
+        return FakeWebSocket()
+
+    async def fake_handshake(self: OpenClawClient) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.openclaw_client.websockets.connect",
+        fake_connect,
+    )
+    monkeypatch.setattr(OpenClawClient, "_handshake", fake_handshake)
+    client = OpenClawClient(
+        gateway_url="ws://127.0.0.1:18789",
+        timeout_sec=120,
+        gateway_token="test-token",
+    )
+
+    await client.connect()
+
+    assert captured["ping_interval"] is None
+    assert captured["ping_timeout"] is None
+
+
 # ── Item 3: prose JSON fallback ──────────────────────────────────────
 
 

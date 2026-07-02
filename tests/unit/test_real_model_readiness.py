@@ -177,3 +177,48 @@ def test_readiness_cli_writes_blocked_artifact_for_missing_key(tmp_path: Path) -
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["status"] == "blocked"
     assert payload["blockers"][0]["env_var"] == "OPENROUTER_API_KEY"
+
+
+def test_readiness_cli_loads_dotenv_without_leaking_values(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    dotenv = tmp_path / ".env"
+    output = tmp_path / "readiness.json"
+    _write_manifest(manifest, 2)
+    _write_eval_artifacts(eval_dir, 2)
+    dotenv.write_text("OPENROUTER_API_KEY=sk-secret-dotenv\n", encoding="utf-8")
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "check-real-model-readiness.py"
+    )
+    env = os.environ.copy()
+    env.pop("OPENROUTER_API_KEY", None)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--model-id",
+            "openrouter/openai/gpt-5.2-codex",
+            "--manifest",
+            str(manifest),
+            "--eval-dir",
+            str(eval_dir),
+            "--min-cases",
+            "2",
+            "--dotenv",
+            str(dotenv),
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert proc.returncode == 0
+    assert "sk-secret-dotenv" not in proc.stdout
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["status"] == "ready"
+    assert "sk-secret-dotenv" not in json.dumps(payload)

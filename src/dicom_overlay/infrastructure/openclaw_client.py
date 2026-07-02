@@ -102,8 +102,11 @@ class OpenClawClient(VisionAnalyzerService):
             self._ws = await asyncio.wait_for(
                 websockets.connect(
                     self._url,
-                    ping_interval=30,
-                    ping_timeout=60,
+                    # Long medical-image inference can occupy the Gateway long
+                    # enough for client-side WS keepalive to produce false
+                    # failures. Use the explicit inference timeout instead.
+                    ping_interval=None,
+                    ping_timeout=None,
                     max_size=_MAX_WS_MESSAGE_BYTES,
                 ),
                 timeout=self._connect_timeout,

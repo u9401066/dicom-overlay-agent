@@ -1,6 +1,7 @@
 param(
     [string]$ModelId = "openai/gpt-5.5-mini",
     [string]$ManifestPath = "",
+    [string]$ProviderProfile = "",
     [int]$TimeoutSec = 90,
     [int]$Limit = 0,
     [string]$ExperimentDir = "",
@@ -17,6 +18,59 @@ function Write-ExperimentJson {
         [hashtable]$Payload
     )
     $Payload | ConvertTo-Json -Depth 20 | Set-Content -Path $Path -Encoding UTF8
+}
+
+function Invoke-NativeCommand {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments
+    )
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & $FilePath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    return @{
+        Output = @($output)
+        ExitCode = $exitCode
+    }
+}
+
+function Invoke-EvalWithGatewayRetry {
+    param(
+        [string[]]$EvalArgs,
+        [int]$MaxAttempts = 6,
+        [int]$DelaySeconds = 5
+    )
+    $attempt = 1
+    $combinedOutput = @()
+    while ($attempt -le $MaxAttempts) {
+        $combinedOutput += "=== eval attempt $attempt ==="
+        $result = Invoke-NativeCommand -FilePath "uv" -Arguments $EvalArgs
+        $combinedOutput += $result.Output
+        $outputText = $result.Output | Out-String
+        if ($result.ExitCode -eq 0) {
+            return @{
+                Output = $combinedOutput
+                ExitCode = 0
+                Attempts = $attempt
+            }
+        }
+        if ($outputText -notmatch "gateway starting; retry shortly" -or $attempt -ge $MaxAttempts) {
+            return @{
+                Output = $combinedOutput
+                ExitCode = $result.ExitCode
+                Attempts = $attempt
+            }
+        }
+        $combinedOutput += "Gateway not ready; retrying after $DelaySeconds seconds."
+        Start-Sleep -Seconds $DelaySeconds
+        $attempt += 1
+    }
 }
 
 function Load-DotEnv {
@@ -41,6 +95,11 @@ function Load-DotEnv {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+if (-not $env:UV_CACHE_DIR) {
+    $env:UV_CACHE_DIR = Join-Path $repoRoot ".uv-cache-codex"
+}
+New-Item -ItemType Directory -Force -Path $env:UV_CACHE_DIR | Out-Null
+
 Load-DotEnv (Join-Path $repoRoot ".env")
 
 $env:OPENCLAW_HOME = Join-Path $repoRoot "openclaw-home"
@@ -59,10 +118,13 @@ New-Item -ItemType Directory -Force -Path $experimentDir | Out-Null
 
 $experimentJson = Join-Path $experimentDir "experiment.json"
 $modelsListPath = Join-Path $experimentDir "openclaw-models-list.txt"
+$configBuilderPath = Join-Path $experimentDir "build-openclaw-config.py"
+$configGenerationPath = Join-Path $experimentDir "openclaw-config-generation.json"
 $gatewayOut = Join-Path $experimentDir "gateway.stdout.log"
 $gatewayErr = Join-Path $experimentDir "gateway.stderr.log"
 $evalOut = Join-Path $experimentDir "eval-console.log"
 $evalDir = Join-Path $experimentDir "eval"
+$scorecardPath = Join-Path $evalDir "scorecard.json"
 $scorecardRebuilt = Join-Path $evalDir "scorecard.rebuilt.json"
 $reviewDir = Join-Path $evalDir "review"
 $configPath = Join-Path $experimentDir "openclaw.experiment.json"
@@ -75,16 +137,170 @@ $manifestPath = if ($ManifestPath) {
     Join-Path $repoRoot "data\eval-datasets\meeti-1000-all\manifest.json"
 }
 
-$modelListOutput = & node $openclawCli models list 2>&1 | Out-String
-$modelListOutput | Set-Content -Path $modelsListPath -Encoding UTF8
+$effectiveProviderProfile = $ProviderProfile
+if (-not $effectiveProviderProfile -and $env:DICOM_OVERLAY_PROVIDER_PROFILE) {
+    $effectiveProviderProfile = $env:DICOM_OVERLAY_PROVIDER_PROFILE
+}
+if (-not $effectiveProviderProfile -and $ModelId.ToLowerInvariant().StartsWith("openrouter/")) {
+    $effectiveProviderProfile = "openrouter"
+}
+$env:DICOM_OVERLAY_PROVIDER_PROFILE = $effectiveProviderProfile
 
-if ($modelListOutput -notmatch [regex]::Escape($ModelId)) {
+$configBuilder = @'
+from __future__ import annotations
+
+import json
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+from dicom_overlay.infrastructure.openclaw_settings import (
+    build_openclaw_config,
+    default_provider_profiles,
+    merge_openclaw_config,
+)
+
+
+def read_json(path: Path) -> dict:
+    if not path.exists() or not path.read_text(encoding="utf-8").strip():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else {}
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+base_config = Path(sys.argv[1])
+target_config = Path(sys.argv[2])
+model_id = sys.argv[3]
+profile_key = sys.argv[4]
+
+existing = read_json(base_config)
+metadata = {
+    "provider_profile": profile_key,
+    "requested_model": model_id,
+}
+
+if profile_key:
+    profiles = default_provider_profiles()
+    profile = next(
+        (
+            item
+            for item in profiles
+            if item.key == profile_key or item.provider_id == profile_key
+        ),
+        None,
+    )
+    if profile is None:
+        known = sorted({item.key for item in profiles} | {item.provider_id for item in profiles})
+        raise SystemExit(f"Unknown provider profile '{profile_key}'. Known profiles: {', '.join(known)}")
+
+    model = model_id
+    provider_prefix = f"{profile.provider_id}/"
+    if model.lower().startswith(provider_prefix.lower()):
+        model = model[len(provider_prefix):]
+    profile = replace(profile, model=model)
+    managed = build_openclaw_config(profile)
+    merged = merge_openclaw_config(existing, managed)
+    metadata.update(
+        {
+            "provider_profile": profile.key,
+            "provider_id": profile.provider_id,
+            "model_ref": profile.model_ref,
+            "api_key_env": profile.api_key_env,
+        }
+    )
+else:
+    merged = existing
+    defaults = merged.setdefault("agents", {}).setdefault("defaults", {})
+    defaults.setdefault("model", {})["primary"] = model_id
+    defaults["model"].setdefault("fallbacks", [])
+    models = defaults.setdefault("models", {})
+    models.setdefault(model_id, {"alias": model_id})
+    metadata.update(
+        {
+            "provider_profile": "",
+            "provider_id": "",
+            "model_ref": model_id,
+            "api_key_env": "",
+        }
+    )
+
+write_json(target_config, merged)
+print(json.dumps(metadata, indent=2, ensure_ascii=False))
+'@
+
+$configBuilder | Set-Content -Path $configBuilderPath -Encoding UTF8
+$configGenerationResult = Invoke-NativeCommand `
+    -FilePath "uv" `
+    -Arguments @("run", "python", $configBuilderPath, $baseConfigPath, $configPath, $ModelId, $effectiveProviderProfile)
+$configGenerationOutput = $configGenerationResult.Output
+$configGenerationExitCode = $configGenerationResult.ExitCode
+if ($configGenerationExitCode -ne 0) {
+    @($configGenerationOutput) | Set-Content -Path $configGenerationPath -Encoding UTF8
+    Write-ExperimentJson $experimentJson @{
+        status = "blocked"
+        reason = "could not generate experiment OpenClaw config"
+        requested_model = $ModelId
+        provider_profile = $effectiveProviderProfile
+        config_builder = $configBuilderPath
+        config_generation_log = $configGenerationPath
+        manifest = $manifestPath
+        created_at = (Get-Date).ToString("o")
+    }
+    Write-Host "BLOCKED: could not generate experiment OpenClaw config"
+    Write-Host "Experiment record: $experimentJson"
+    exit 20
+}
+@($configGenerationOutput) | Set-Content -Path $configGenerationPath -Encoding UTF8
+$env:OPENCLAW_CONFIG_PATH = $configPath
+
+$modelListResult = Invoke-NativeCommand `
+    -FilePath "node" `
+    -Arguments @($openclawCli, "models", "list")
+$modelListRaw = $modelListResult.Output
+$modelListExitCode = $modelListResult.ExitCode
+$modelListOutput = $modelListRaw | Out-String
+$modelListOutput | Set-Content -Path $modelsListPath -Encoding UTF8
+$modelCatalogWarning = ""
+
+if ($modelListExitCode -ne 0 -and -not $effectiveProviderProfile) {
+    Write-ExperimentJson $experimentJson @{
+        status = "blocked"
+        reason = "could not read the local OpenClaw model catalog"
+        requested_model = $ModelId
+        provider_profile = $effectiveProviderProfile
+        openclaw_config = $configPath
+        config_builder = $configBuilderPath
+        config_generation_log = $configGenerationPath
+        model_catalog_log = $modelsListPath
+        model_catalog_exit_code = $modelListExitCode
+        manifest = $manifestPath
+        created_at = (Get-Date).ToString("o")
+    }
+    Write-Host "BLOCKED: could not read local OpenClaw model catalog"
+    Write-Host "Experiment record: $experimentJson"
+    exit 20
+}
+if ($modelListExitCode -ne 0) {
+    $modelCatalogWarning = "OpenClaw models list failed before Gateway startup; provider-profile run will continue and rely on eval artifacts."
+}
+
+if ($modelListExitCode -eq 0 -and $modelListOutput -notmatch [regex]::Escape($ModelId)) {
     Write-ExperimentJson $experimentJson @{
         status = "blocked"
         reason = "requested model id is not exposed by the local OpenClaw catalog"
         requested_model = $ModelId
+        provider_profile = $effectiveProviderProfile
         suggested_models = @("openai/gpt-5.4-mini", "openai/gpt-5.5", "openai/gpt-5.5-pro")
+        openclaw_config = $configPath
+        config_builder = $configBuilderPath
+        config_generation_log = $configGenerationPath
         model_catalog_log = $modelsListPath
+        model_catalog_exit_code = $modelListExitCode
         manifest = $manifestPath
         created_at = (Get-Date).ToString("o")
     }
@@ -93,20 +309,12 @@ if ($modelListOutput -notmatch [regex]::Escape($ModelId)) {
     exit 20
 }
 
-$config = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
-$config.agents.defaults.model.primary = $ModelId
-$modelsObj = $config.agents.defaults.models
-if (-not ($modelsObj.PSObject.Properties.Name -contains $ModelId)) {
-    $modelsObj | Add-Member -NotePropertyName $ModelId -NotePropertyValue @{
-        alias = $ModelId
-    } -Force
-}
-$config | ConvertTo-Json -Depth 20 | Set-Content -Path $configPath -Encoding UTF8
-$env:OPENCLAW_CONFIG_PATH = $configPath
-
 $gatewayProcess = $null
 $exitCode = 1
 $postprocessExitCode = 0
+$evalAttempts = 0
+$evalExitCode = 1
+$evalErrorCount = 0
 $status = "failed"
 
 try {
@@ -145,6 +353,7 @@ try {
     Write-ExperimentJson $experimentJson @{
         status = "running"
         requested_model = $ModelId
+        provider_profile = $effectiveProviderProfile
         timeout_sec = $TimeoutSec
         limit = $Limit
         multi_pass = [bool]$MultiPass
@@ -153,7 +362,11 @@ try {
         manifest = $manifestPath
         experiment_dir = $experimentDir
         openclaw_config = $configPath
+        config_builder = $configBuilderPath
+        config_generation_log = $configGenerationPath
         model_catalog_log = $modelsListPath
+        model_catalog_exit_code = $modelListExitCode
+        model_catalog_warning = $modelCatalogWarning
         gateway_stdout = $gatewayOut
         gateway_stderr = $gatewayErr
         eval_console = $evalOut
@@ -164,31 +377,65 @@ try {
         updated_at = (Get-Date).ToString("o")
     }
 
-    $evalOutput = & uv @evalArgs 2>&1
-    $exitCode = $LASTEXITCODE
+    $evalResult = Invoke-EvalWithGatewayRetry -EvalArgs $evalArgs
+    $evalOutput = $evalResult.Output
+    $evalExitCode = $evalResult.ExitCode
+    $evalAttempts = $evalResult.Attempts
+    $exitCode = $evalExitCode
     $postOutput = @()
     $resultsDir = Join-Path $evalDir "results"
     if (Test-Path $resultsDir) {
         $postOutput += ""
         $postOutput += "=== rebuild scorecard ==="
-        $postOutput += & uv run python scripts\rebuild-eval-scorecard.py `
-            --eval-dir $evalDir `
-            --manifest $manifestPath `
-            --output $scorecardRebuilt 2>&1
-        $rebuildExitCode = $LASTEXITCODE
+        $rebuildResult = Invoke-NativeCommand `
+            -FilePath "uv" `
+            -Arguments @(
+                "run", "python", "scripts\rebuild-eval-scorecard.py",
+                "--eval-dir", $evalDir,
+                "--manifest", $manifestPath,
+                "--output", $scorecardRebuilt
+            )
+        $postOutput += $rebuildResult.Output
+        $rebuildExitCode = $rebuildResult.ExitCode
         $postOutput += ""
         $postOutput += "=== export annotations ==="
-        $postOutput += & uv run python scripts\export-eval-annotations.py `
-            --eval-dir $evalDir `
-            --manifest $manifestPath `
-            --output $reviewDir 2>&1
-        $exportExitCode = $LASTEXITCODE
+        $exportResult = Invoke-NativeCommand `
+            -FilePath "uv" `
+            -Arguments @(
+                "run", "python", "scripts\export-eval-annotations.py",
+                "--eval-dir", $evalDir,
+                "--manifest", $manifestPath,
+                "--output", $reviewDir
+            )
+        $postOutput += $exportResult.Output
+        $exportExitCode = $exportResult.ExitCode
         if ($rebuildExitCode -ne 0 -or $exportExitCode -ne 0) {
             $postprocessExitCode = 1
         }
     }
+    if (Test-Path $scorecardPath) {
+        try {
+            $scorecard = Get-Content $scorecardPath -Raw | ConvertFrom-Json
+            $evalErrorCount = [int]$scorecard.error_count
+        }
+        catch {
+            $evalErrorCount = 1
+            $postprocessExitCode = 1
+            $postOutput += ""
+            $postOutput += "Could not read eval error_count from scorecard.json: $_"
+        }
+    }
+    elseif ($evalExitCode -eq 0) {
+        $evalErrorCount = 1
+        $postprocessExitCode = 1
+        $postOutput += ""
+        $postOutput += "Missing eval scorecard.json after successful eval exit."
+    }
+    if ($evalExitCode -eq 0 -and $evalErrorCount -gt 0) {
+        $exitCode = 1
+    }
     @($evalOutput) + @($postOutput) | Set-Content -Path $evalOut -Encoding UTF8
-    $status = if ($exitCode -eq 0 -and $postprocessExitCode -eq 0) {
+    $status = if ($exitCode -eq 0 -and $postprocessExitCode -eq 0 -and $evalErrorCount -eq 0) {
         "completed"
     } else {
         "completed_with_failures"
@@ -201,16 +448,24 @@ finally {
     Write-ExperimentJson $experimentJson @{
         status = $status
         requested_model = $ModelId
+        provider_profile = $effectiveProviderProfile
         timeout_sec = $TimeoutSec
         limit = $Limit
         multi_pass = [bool]$MultiPass
         multi_pass_max_targets = $MultiPassMaxTargets
         require_perfect = [bool]$RequirePerfect
         exit_code = $exitCode
+        eval_exit_code = $evalExitCode
+        eval_error_count = $evalErrorCount
         manifest = $manifestPath
         experiment_dir = $experimentDir
         openclaw_config = $configPath
+        config_builder = $configBuilderPath
+        config_generation_log = $configGenerationPath
         model_catalog_log = $modelsListPath
+        model_catalog_exit_code = $modelListExitCode
+        model_catalog_warning = $modelCatalogWarning
+        eval_attempts = $evalAttempts
         gateway_stdout = $gatewayOut
         gateway_stderr = $gatewayErr
         eval_console = $evalOut

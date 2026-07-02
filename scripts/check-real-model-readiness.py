@@ -16,6 +16,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from dicom_overlay.infrastructure.env_file import read_env_file  # noqa: E402
 from dicom_overlay.infrastructure.real_model_readiness import (  # noqa: E402
     assess_real_model_readiness,
     write_readiness_report,
@@ -28,15 +29,25 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--eval-dir", type=Path, default=None)
     parser.add_argument("--min-cases", type=int, default=1000)
+    parser.add_argument(
+        "--dotenv",
+        type=Path,
+        default=None,
+        help="Optional .env file to merge into readiness checks without printing values.",
+    )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
+
+    env = dict(os.environ)
+    if args.dotenv is not None:
+        env.update(read_env_file(args.dotenv))
 
     report = assess_real_model_readiness(
         model_id=args.model_id,
         manifest_path=args.manifest,
         eval_dir=args.eval_dir,
         min_cases=args.min_cases,
-        env=os.environ,
+        env=env,
     )
     if args.output is not None:
         write_readiness_report(report, args.output)
