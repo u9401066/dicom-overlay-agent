@@ -296,7 +296,7 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-id", default="openai/gpt-5.5-mini")
+    parser.add_argument("--model-id", default="openai/gpt-5.5")
     parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--provider-profile", default="")
     parser.add_argument("--timeout-sec", type=int, default=90)

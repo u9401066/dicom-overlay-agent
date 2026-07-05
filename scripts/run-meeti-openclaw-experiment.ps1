@@ -1,5 +1,5 @@
 param(
-    [string]$ModelId = "openai/gpt-5.5-mini",
+    [string]$ModelId = "openai/gpt-5.5",
     [string]$ManifestPath = "",
     [string]$ProviderProfile = "",
     [int]$TimeoutSec = 90,
