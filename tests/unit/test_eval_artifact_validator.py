@@ -172,3 +172,57 @@ def test_required_multipass_trace_accepts_valid_trace(tmp_path: Path) -> None:
 
     assert verification.ok
     assert "multipass_trace_artifacts" in verification.passed_checks
+
+def test_required_projection_audit_rejects_missing_fields(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_projection_audit=True,
+    )
+
+    assert not verification.ok
+    assert any(
+        failure.startswith("projection_audit_artifacts:")
+        for failure in verification.failures
+    )
+
+
+def test_required_projection_audit_accepts_roundtrip_fields(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    rows = []
+    for index in range(2):
+        rows.append(
+            {
+                "case": f"case_{index}",
+                "projection_ok": True,
+                "projection_max_edge_drift_px": 0.4,
+                "projection_was_clamped": False,
+                "projection_back_projected_bbox": {
+                    "x": 0.1,
+                    "y": 0.2,
+                    "w": 0.3,
+                    "h": 0.2,
+                },
+            }
+        )
+    (eval_dir / "review" / "bbox-audit.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_projection_audit=True,
+    )
+
+    assert verification.ok
+    assert "projection_audit_artifacts" in verification.passed_checks

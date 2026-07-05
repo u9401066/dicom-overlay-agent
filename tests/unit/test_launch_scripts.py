@@ -191,6 +191,7 @@ def test_meeti_experiment_python_runner_verifies_eval_artifacts_after_export() -
     assert "skip_artifact_verify" in script
     assert "--min-cases" in script
     assert "--require-multipass-trace" in script
+    assert "--require-projection-audit" in script
     assert script.index("scripts/export-eval-annotations.py") < script.index(
         "scripts/verify-eval-artifacts.py"
     )

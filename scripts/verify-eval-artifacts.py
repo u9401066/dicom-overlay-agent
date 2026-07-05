@@ -48,6 +48,14 @@ def main() -> int:
             "fields. Use for production multi-pass crop re-analysis runs."
         ),
     )
+    parser.add_argument(
+        "--require-projection-audit",
+        action="store_true",
+        help=(
+            "Require review/bbox-audit.jsonl rows with model bboxes to include "
+            "overlay projection round-trip calibration fields."
+        ),
+    )
     args = parser.parse_args()
 
     verification = verify_eval_artifacts(
@@ -57,6 +65,7 @@ def main() -> int:
         require_review=not args.no_review,
         require_perfect_mock=not args.allow_nonperfect_real,
         require_multipass_trace=args.require_multipass_trace,
+        require_projection_audit=args.require_projection_audit,
     )
     print(verification.to_json())
     return 0 if verification.ok else 1

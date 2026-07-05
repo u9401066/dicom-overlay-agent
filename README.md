@@ -224,7 +224,10 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   `data/eval/meeti-1000-mock-oomfix-20260702` ran 1000/1000 MEETI cases,
   exported review artifacts, and passed `scripts/verify-eval-artifacts.py
   --min-cases 1000` including `local_preflight_artifacts`,
-  `model_assist_artifacts`, and `review_artifacts`.
+  `model_assist_artifacts`, and `review_artifacts`. Future MEETI experiment
+  verifier runs add `--require-projection-audit`, requiring bbox audit rows
+  with model boxes to include overlay projection round-trip calibration
+  fields before a production run is considered artifact-complete.
 
 ### Core 3 — OpenClaw plugin compatibility
 

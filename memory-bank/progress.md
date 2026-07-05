@@ -171,7 +171,10 @@
     `scripts\verify-eval-artifacts.py` after review export. Bounded smoke runs
     use `--limit` as the verifier minimum, full runs default to 1000 cases, and
     `--multi-pass` automatically adds `--require-multipass-trace` so crop
-    re-analysis trace evidence is mandatory for production multi-pass runs.
+    re-analysis trace evidence is mandatory for production multi-pass runs. The
+    same post-run verifier now adds `--require-projection-audit`, making
+    desktop-overlay projection round-trip calibration fields mandatory for
+    bbox audit rows with model boxes.
   - Disabled client-side WebSocket keepalive pings in `OpenClawClient` for long
     medical-image inference; explicit inference timeout remains the control.
   - Latest real 1-case smoke:

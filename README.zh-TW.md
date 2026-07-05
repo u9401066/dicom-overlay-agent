@@ -24,7 +24,9 @@
   它也會拿 `data\tmp\meeti-run.lock`，避免同時啟動第二個實驗 runner。postprocess
   後會再跑 `scripts/verify-eval-artifacts.py`；bounded smoke run 以 `--limit`
   作為驗證張數，完整跑批預設要求 1000 cases，`--multi-pass` 會自動加上
-  `--require-multipass-trace`。
+  `--require-multipass-trace`；post-run artifact verifier 也會加上
+  `--require-projection-audit`，要求 bbox audit row 含圖層投影 round-trip
+  校正欄位，避免未經位置校正的框被視為 production-complete。
 - `scripts/check-real-model-readiness.cmd` 也直接使用既有 uv-managed
   `.venv\Scripts\python.exe`，並持有 `data\tmp\readiness-run.lock`，
   避免 readiness probe 重新繞過 OOM-safe runner 而啟動第二個 runner。

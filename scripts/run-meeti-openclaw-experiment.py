@@ -237,6 +237,7 @@ def main() -> int:
                     str(manifest_path),
                     "--min-cases",
                     str(artifact_min_cases(args)),
+                    "--require-projection-audit",
                 ]
                 if args.multi_pass:
                     verify_command.append("--require-multipass-trace")

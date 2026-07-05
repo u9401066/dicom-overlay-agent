@@ -48,6 +48,7 @@ def verify_eval_artifacts(
     require_review: bool = True,
     require_perfect_mock: bool = True,
     require_multipass_trace: bool = False,
+    require_projection_audit: bool = False,
 ) -> EvalArtifactVerification:
     """Verify that an eval directory proves a complete large-image run.
 
@@ -92,7 +93,13 @@ def verify_eval_artifacts(
             passed=passed,
         )
         if require_review:
-            _verify_review_artifacts(eval_dir / "review", min_cases, failures, passed)
+            _verify_review_artifacts(
+                eval_dir / "review",
+                min_cases,
+                failures,
+                passed,
+                require_projection_audit=require_projection_audit,
+            )
 
     return EvalArtifactVerification(
         ok=not failures,
@@ -243,6 +250,8 @@ def _verify_review_artifacts(
     min_cases: int,
     failures: list[str],
     passed: list[str],
+    *,
+    require_projection_audit: bool = False,
 ) -> None:
     index_path = review_dir / "index.html"
     audit_path = review_dir / "bbox-audit.jsonl"
@@ -263,13 +272,18 @@ def _verify_review_artifacts(
         )
         return
     reviewed_cases: set[str] = set()
+    rows: list[dict[str, Any]] = []
     for line in lines:
         try:
             row = json.loads(line)
         except json.JSONDecodeError:
             failures.append("review_artifacts: bbox-audit contains invalid JSONL")
             return
-        case = row.get("case") if isinstance(row, dict) else None
+        if not isinstance(row, dict):
+            failures.append("review_artifacts: bbox-audit row is not an object")
+            return
+        rows.append(row)
+        case = row.get("case")
         if isinstance(case, str) and case:
             reviewed_cases.add(case)
     if len(reviewed_cases) < min_cases:
@@ -279,6 +293,55 @@ def _verify_review_artifacts(
         )
         return
     passed.append("review_artifacts")
+    if require_projection_audit:
+        _verify_projection_audit_rows(rows, failures, passed)
+
+
+def _verify_projection_audit_rows(
+    rows: list[dict[str, Any]],
+    failures: list[str],
+    passed: list[str],
+) -> None:
+    required_fields = (
+        "projection_ok",
+        "projection_max_edge_drift_px",
+        "projection_was_clamped",
+        "projection_back_projected_bbox",
+    )
+    bbox_rows = [row for row in rows if row.get("audit_type") != "case"]
+    for index, row in enumerate(bbox_rows, start=1):
+        missing = [field for field in required_fields if field not in row]
+        if missing:
+            failures.append(
+                "projection_audit_artifacts: "
+                f"row {index} missing {', '.join(missing)}"
+            )
+            return
+        if not isinstance(row.get("projection_ok"), bool):
+            failures.append(
+                f"projection_audit_artifacts: row {index} projection_ok is not boolean"
+            )
+            return
+        drift = row.get("projection_max_edge_drift_px")
+        if not isinstance(drift, int | float) or drift < 0:
+            failures.append(
+                "projection_audit_artifacts: "
+                f"row {index} projection_max_edge_drift_px is invalid"
+            )
+            return
+        if not isinstance(row.get("projection_was_clamped"), bool):
+            failures.append(
+                "projection_audit_artifacts: "
+                f"row {index} projection_was_clamped is not boolean"
+            )
+            return
+        if not _is_normalized_region(row.get("projection_back_projected_bbox")):
+            failures.append(
+                "projection_audit_artifacts: "
+                f"row {index} projection_back_projected_bbox is not normalized"
+            )
+            return
+    passed.append("projection_audit_artifacts")
 
 
 def _verify_multipass_trace(
