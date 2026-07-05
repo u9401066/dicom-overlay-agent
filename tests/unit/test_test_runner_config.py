@@ -133,6 +133,46 @@ def test_safe_pytest_helper_keeps_explicit_targets_in_one_pytest_session() -> No
     assert batches == [["tests/unit/test_test_runner_config.py", "-q"]]
 
 
+def test_safe_pytest_helper_batches_explicit_test_directories() -> None:
+    runner = _load_pytest_safe_runner()
+
+    batches = runner.build_pytest_batches(["tests/unit", "-q"], root=_REPO_ROOT)
+
+    assert len(batches) >= 2
+    assert all(batch[-1] == "-q" for batch in batches)
+    assert any("tests/unit/test_agent.py" in batch[0].replace("\\", "/") for batch in batches)
+    assert all(batch[0].replace("\\", "/").startswith("tests/unit/") for batch in batches)
+
+
+def test_safe_pytest_helper_batches_explicit_tests_tree() -> None:
+    runner = _load_pytest_safe_runner()
+
+    batches = runner.build_pytest_batches(["tests", "-q"], root=_REPO_ROOT)
+
+    assert len(batches) >= 2
+    assert all(batch[-1] == "-q" for batch in batches)
+    assert any("tests/unit/test_agent.py" in batch[0].replace("\\", "/") for batch in batches)
+    assert any("tests/smoke/test_mvp_smoke.py" in batch[0].replace("\\", "/") for batch in batches)
+
+
+def test_safe_pytest_helper_batches_multiple_explicit_test_files() -> None:
+    runner = _load_pytest_safe_runner()
+
+    batches = runner.build_pytest_batches(
+        [
+            "tests/unit/test_agent.py",
+            "tests/unit/test_annotation_exporter.py",
+            "-q",
+        ],
+        root=_REPO_ROOT,
+    )
+
+    assert batches == [
+        ["tests/unit/test_agent.py", "-q"],
+        ["tests/unit/test_annotation_exporter.py", "-q"],
+    ]
+
+
 def test_safe_ruff_runner_cmd_avoids_appdata_and_serializes_uv() -> None:
     runner = (_REPO_ROOT / "scripts" / "run-ruff-safe.cmd").read_text("utf-8")
 

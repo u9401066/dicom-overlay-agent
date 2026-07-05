@@ -36,12 +36,45 @@ def collect_default_test_files(root: Path) -> list[str]:
     return files
 
 
+def _collect_test_files_for_target(target: str, root: Path) -> list[str]:
+    normalized = target.replace("\\", "/")
+    if "::" in normalized:
+        return [normalized]
+
+    target_path = root / normalized
+    if target_path.is_dir():
+        return [
+            _relative_test_file(path, root)
+            for path in sorted(target_path.rglob("test_*.py"))
+        ]
+    if target_path.is_file():
+        return [_relative_test_file(target_path, root)]
+    return [normalized]
+
+
 def build_pytest_batches(args: list[str], *, root: Path) -> list[list[str]]:
     arg_list = list(args)
     force_single = os.environ.get("DICOM_OVERLAY_TEST_SINGLE_SESSION") == "1"
 
-    if force_single or any(_looks_like_explicit_target(arg) for arg in arg_list):
+    if force_single:
         return [arg_list or list(DEFAULT_TEST_DIRS)]
+
+    target_indexes = {
+        index for index, arg in enumerate(arg_list) if _looks_like_explicit_target(arg)
+    }
+    if target_indexes:
+        targets = [arg for index, arg in enumerate(arg_list) if index in target_indexes]
+        passthrough_args = [
+            arg for index, arg in enumerate(arg_list) if index not in target_indexes
+        ]
+        expanded_targets = [
+            test_file
+            for target in targets
+            for test_file in _collect_test_files_for_target(target, root)
+        ]
+        if len(targets) == 1 and len(expanded_targets) == 1:
+            return [arg_list]
+        return [[test_file, *passthrough_args] for test_file in expanded_targets]
 
     default_files = collect_default_test_files(root)
     if not default_files:

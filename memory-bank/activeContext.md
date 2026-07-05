@@ -64,8 +64,10 @@
   the 2026-07-02 PowerShell OOM report. The `.cmd` runner now delegates to
   `scripts\run_pytest_safe.py`, so default/pure-option runs such as
   `scripts\run-tests-safe.cmd -q` execute each `test_*.py` file in a separate
-  short-lived pytest process instead of one long-lived session. Explicit targets
-  such as `tests\unit\test_agent.py -q` stay targeted; set
+  short-lived pytest process instead of one long-lived session. Directory
+  targets such as `tests\unit -q` and multiple explicit test files also expand
+  into per-file batches after the follow-up OOM report; a single explicit target
+  such as `tests\unit\test_agent.py -q` stays targeted. Set
   `DICOM_OVERLAY_TEST_SINGLE_SESSION=1` only for deliberate diagnostics of the
   old one-session behavior. It also takes
   `data\tmp\pytest-run.lock`; concurrent pytest runners exit 75 instead of
@@ -87,7 +89,7 @@
 - Fresh checks on 2026-07-02: npm latest reports OpenClaw `2026.6.11`, local
   runtime is `2026.6.11`, 1000-case assist verifier passed, targeted
   unit/smoke tests for the local assist gate passed, and
-  `scripts\run-tests-safe.cmd -q` completed all 37 per-file batches without OOM.
+  `scripts\run-tests-safe.cmd -q` completed all 38 per-file batches without OOM.
   The 1000-case mock artifact verifier still passes without the optional
   multi-pass trace requirement, while the same artifact correctly fails with
   `--require-multipass-trace` because it has no `multipass-trace.jsonl`.

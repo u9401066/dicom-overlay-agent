@@ -46,8 +46,9 @@
   pytest cacheprovider、進度輸出或大型暫存樹造成 PowerShell/uv OOM。最新修正
   會透過 `scripts\run_pytest_safe.py` 把預設 unit+smoke suite 拆成每個
   `test_*.py` 一個短生命週期 pytest process；像 `-q` 這種純 pytest option
-  會套用到每個 batch，明確指定 `tests\unit\test_agent.py -q` 時才維持單一
-  targeted pytest session。若要診斷舊的一次性 session 行為，可設
+  會套用到每個 batch，明確指定 `tests\unit -q` 這種目錄 target 或多個
+  test file 時也會展開成逐檔 batch；只有單一
+  `tests\unit\test_agent.py -q` 會維持 targeted pytest session。若要診斷舊的一次性 session 行為，可設
   `DICOM_OVERLAY_TEST_SINGLE_SESSION=1`。目前已避免把 PowerShell 當作預設
   測試/實驗入口。runner 會使用
   `data\tmp\pytest-run.lock`，若另一個 pytest runner 已在跑，會直接 exit 75，

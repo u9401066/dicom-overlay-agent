@@ -35,8 +35,10 @@
     default test path after the 2026-07-02 OOM report. After the follow-up OOM
     report, the runner now delegates to `scripts\run_pytest_safe.py`: default
     and pure-option runs such as `scripts\run-tests-safe.cmd -q` execute each
-    `test_*.py` file in its own short-lived pytest process, while explicit
-    target paths remain a single targeted pytest session. It also takes
+    `test_*.py` file in its own short-lived pytest process. After the next OOM
+    report, explicit directory targets (`tests\unit -q`, `tests -q`) and
+    multiple explicit test files also expand into per-file batches, while a
+    single explicit test file remains one targeted pytest session. It also takes
     `data\tmp\pytest-run.lock`, so a second pytest runner exits 75 before
     creating another test process.
     It also sets `DICOM_OVERLAY_TEST_DISABLE_REAL_OPENCLAW=1`, preventing
@@ -90,8 +92,8 @@
     `data\harness-smoke\latest-openclaw-20260702`; targeted unit/smoke tests
     for the assist gate passed.
   - Latest OOM-safe test runner verification:
-    `scripts\run-tests-safe.cmd -q` completed all 37 per-file pytest batches
-    without OOM; observed result was 428 passed and 1 existing opt-in bundle
+    `scripts\run-tests-safe.cmd -q` completed all 38 per-file pytest batches
+    without OOM; observed result was 438 passed and 1 existing opt-in bundle
     smoke skipped.
   - Latest multi-pass trace gate verification:
     the targeted eval artifact validator tests passed, the 1000-case mock

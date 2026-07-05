@@ -148,8 +148,10 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   pytest process OOMing on Windows, the `.cmd` wrapper delegates to
   [`scripts/run_pytest_safe.py`](scripts/run_pytest_safe.py), which runs each
   default `test_*.py` file in its own short pytest process. Pure pytest options
-  such as `-q` are applied to every batch; explicit targets such as
-  `tests/unit/test_agent.py -q` stay in a single targeted pytest session. Full
+  such as `-q` are applied to every batch; explicit directories such as
+  `tests/unit -q` and multiple explicit test files are now expanded into
+  per-file batches too. A single explicit test file such as
+  `tests/unit/test_agent.py -q` stays in one targeted pytest session. Full
   integration tests remain available by passing explicit paths. Prefer this
   over PowerShell on memory-constrained Windows sessions. The runner takes a repo-local
   `data/tmp/pytest-run.lock`, so a second pytest command exits before spawning
