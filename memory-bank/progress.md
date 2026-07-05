@@ -2,6 +2,26 @@
 
 ## Done
 
+- **Harness 槓桿 1+2：rhythm-strip 二次 crop + empty-summary retry**（2026-07-05）:
+  - 槓桿 2（empty-summary retry）：`eval_harness.is_empty_read()` 判定空讀
+    （summary 空白且無 findings），`run-eval.py` 的 analyze closure 偵測到就
+    重送一次，救回挖掘發現的 ~8% 硬失敗；mock 永不觸發故不影響既有測試。
+  - 槓桿 1（rhythm-strip 二次 pass，通用）：新增
+    `application/rhythm_strip.py`——`resolve_rhythm_strip_region()` 只從模型
+    Step 0 宣告的 `layout.rhythm_strip_bbox` 取區域（無宣告即 no-op，不猜位置
+    → 單導極／局部／非標準安全）；`refine_rhythm_strip()` crop rhythm strip、
+    用 raw client 重讀一次（1 bounded call，不進 multipass trace）、
+    `merge_rhythm_strip()` 以 escalate-only 合併 rhythm 軸（heart_rate/rhythm/
+    regularity/p_wave/pr_interval/av_block）與新 abnormal findings（bbox remap
+    回 0-1），絕不降級。
+  - 支撐改動：`AnalysisResult` 加 optional `layout` field（additive）、
+    `_parse_result` passthrough layout；EKG SKILL.md ×2 加 `rhythm_strip_bbox`
+    宣告與 Step 0 指示；run-eval 加 `--rhythm-strip-pass`（預設開，
+    `--no-rhythm-strip-pass` 關）。
+  - 測試：新增 `tests/unit/test_rhythm_strip.py`（11 個：resolve/merge/refine，
+    含 non-EKG no-op、無 bbox no-op、never-downgrade、analyze 失敗回 coarse）
+    + `is_empty_read` 測試。完整套件 39 批全綠、無回歸。
+
 - **Real-model path + lead-aware EKG + scorer robustness** (2026-07-05):
   - Real-model path proven: on a network where OpenRouter/Anthropic are
     firewall-reset, `api.openai.com` is reachable and `OPENAI_API_KEY` is

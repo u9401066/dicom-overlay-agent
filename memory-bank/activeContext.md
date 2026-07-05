@@ -25,6 +25,11 @@
   second-pass crop, empty-summary retry (8% hard-fail), severity calibration,
   and manifest GT de-duplication. New `scripts/analyze-eval-failures.py`
   (OOM-safe) aggregates failure modes per run.
+- **Levers 1+2 implemented (2026-07-05)**: empty-summary retry
+  (`run-eval` re-sends once on a blank read) and a general rhythm-strip second
+  pass (`application/rhythm_strip.py` crops the model-declared
+  `layout.rhythm_strip_bbox` and re-reads it, escalate-only merge). Remaining
+  levers: severity calibration and manifest GT de-duplication.
 
 ## Current Eval Harness Focus (2026-07-02)
 

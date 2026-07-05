@@ -53,6 +53,14 @@
   （RBBB、afib、LVH、PVC…），避免把正確判讀誤判為 miss，同時仍尊重否定與
   真實分歧。`scripts/analyze-eval-failures.py` 可聚合每次 run 的失敗模式以
   指引下一步 harness 增量。
+- 2026-07-05 模型輔助精判：兩個 bounded 額外 pass 針對真漏診。**Empty-summary
+  retry**——`run-eval.py` 在讀回空 summary 且無 findings（模型暫時性失誤）時
+  自動重送一次，不再直接吞 0 分硬失敗。**Rhythm-strip 二次 pass**——
+  `src/dicom_overlay/application/rhythm_strip.py` 把模型宣告的
+  `layout.rhythm_strip_bbox` 從原解析度影像 crop 出來、只重讀 rhythm strip，
+  找回 rate／rhythm／P 波／AV block，並以 escalate-only 合併（絕不降級）。保持
+  layout 通用：除非 Step 0 定位到 rhythm strip 否則 no-op，單導極／局部／非標準
+  截圖不會被猜位置 crop。可用 `--no-rhythm-strip-pass` 關閉。
 
 ## 2026-07-02 OOM-safe uv / 題目測試入口
 

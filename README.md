@@ -153,6 +153,17 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   [`scripts/analyze-eval-failures.py`](scripts/analyze-eval-failures.py)
   aggregates per-run failure modes (severity confusion, missed keywords, schema
   failures, per-axis fail rates) to steer the next harness increment.
+- Model-assisted refinement (2026-07-05): two bounded extra passes attack the
+  genuine misses the mining surfaced. **Empty-summary retry** —
+  [`run-eval.py`](scripts/run-eval.py) re-sends once when a read comes back with
+  a blank summary and no findings (a transient model glitch), instead of banking
+  a 0-score hard failure. **Rhythm-strip second pass** —
+  [`rhythm_strip.py`](src/dicom_overlay/application/rhythm_strip.py) crops the
+  model-declared `layout.rhythm_strip_bbox` out of the full-resolution image and
+  re-reads just the strip to recover rate / rhythm / P-wave / AV-block findings,
+  merging them escalate-only (never downgrades). It stays layout-general: a no-op
+  unless Step 0 localized a rhythm strip, so single-strip / partial / non-standard
+  captures are never cropped on a guess. Toggle with `--no-rhythm-strip-pass`.
 - Local test runs should use
   [`scripts/run-tests-safe.cmd`](scripts/run-tests-safe.cmd). It runs pytest
   through the existing uv-managed `.venv\Scripts\python.exe` instead of
