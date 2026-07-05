@@ -268,6 +268,72 @@ def test_keyword_recall_uses_abnormal_checklist_axis(tmp_path: Path) -> None:
     assert score.keyword_misses == []
 
 
+def test_keyword_recall_credits_clinical_synonyms(tmp_path: Path) -> None:
+    """Abbreviations and equivalent phrasings must count as hits (mined from
+    real MEETI runs where correct reads were scored as misses)."""
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        (
+            "flutter waves",
+            "irregularly irregular",
+            "right bundle branch block",
+            "axis deviation",
+        ),
+    )
+    result = _result(
+        Severity.WARNING,
+        summary=(
+            "Sawtooth atrial activity consistent with atrial flutter; other "
+            "segments show atrial fibrillation with a leftward axis and RBBB "
+            "morphology."
+        ),
+    )
+    score = score_case(case, result, latency_ms=0)
+    assert score.keyword_misses == []
+
+
+def test_keyword_recall_normalizes_hyphens_and_plurals(tmp_path: Path) -> None:
+    """Hyphenation/spacing variants must not create false misses."""
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("poor r wave progression", "first degree av block", "low voltage"),
+    )
+    result = _result(
+        Severity.WARNING,
+        summary=(
+            "Poor R-wave progression across precordials with a first-degree "
+            "AV block and diffuse low-voltage QRS."
+        ),
+    )
+    score = score_case(case, result, latency_ms=0)
+    assert score.keyword_misses == []
+
+
+def test_keyword_recall_still_misses_genuine_disagreement(tmp_path: Path) -> None:
+    """Synonyms must not credit a finding the model did not actually report:
+    a model reading sinus rhythm must still miss an atrial-fibrillation label."""
+    case = _case(tmp_path, Severity.WARNING, ("atrial fibrillation",))
+    result = _result(
+        Severity.WARNING,
+        summary="Regular sinus rhythm at 80 bpm with narrow QRS complexes.",
+    )
+    score = score_case(case, result, latency_ms=0)
+    assert score.keyword_misses == ["atrial fibrillation"]
+
+
+def test_keyword_recall_honors_negation_for_synonyms(tmp_path: Path) -> None:
+    """A negated equivalent phrase must not count as a positive hit."""
+    case = _case(tmp_path, Severity.WARNING, ("st elevation",))
+    result = _result(
+        Severity.WARNING,
+        summary="No convincing ST-elevation STEMI pattern is present.",
+    )
+    score = score_case(case, result, latency_ms=0)
+    assert score.keyword_misses == ["st elevation"]
+
+
 def test_score_case_detects_out_of_bounds_bbox(tmp_path: Path) -> None:
     case = _case(tmp_path, Severity.WARNING, ())
     result = _result(

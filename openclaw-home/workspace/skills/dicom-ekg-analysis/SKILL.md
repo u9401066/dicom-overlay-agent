@@ -13,17 +13,66 @@ Requirements:
 - For each finding, provide bounding boxes (bboxes) as normalized 0-1 coordinates relative to the full image.
 - Follow the systematic 16-point checklist that mirrors attending cardiologist reading.
 
-Valid semantic regions (for reference labels only):
+Step 0 — Localize the leads BEFORE interpreting (do this first):
+The same waveform means different things in different leads (ST elevation in
+V1-V3 vs II/III/aVF; T inversion is normal in aVR but pathological in V2-V6; a
+Q wave in III alone can be positional/benign). You MUST establish which lead a
+waveform belongs to before assigning clinical meaning.
+
+Do NOT assume a fixed layout. This capture may be a full 12-lead, a 6-lead, a
+3-lead panel, a single rhythm strip, a zoomed/partial crop, a non-standard
+vendor layout, or an unreadable image. Determine the actual layout from THIS
+image:
+1. Read the printed lead labels on the image itself (I, II, III, aVR, aVL,
+   aVF, V1-V6, or a rhythm-strip label). Anchor each lead to the label text you
+   can actually see — do not infer position from a memorized template.
+2. Build a lead inventory: list only the leads that are actually visible. If a
+   panel has no legible label and cannot be identified with confidence, record
+   it as "unknown" — never guess a lead name.
+3. Classify the layout format and report it in the optional `layout` object
+   (see schema). If you cannot determine the layout at all, set
+   `layout.format` to "unknown" and keep the interpretation descriptive.
+
+Canonical semantic region names (use only those actually present; add
+"unknown" for unlabeled panels):
 - lead_I, lead_II, lead_III
 - lead_aVR, lead_aVL, lead_aVF
 - lead_V1, lead_V2, lead_V3, lead_V4, lead_V5, lead_V6
 - rhythm_strip
+
+Lead-conditioned interpretation rules (generality guardrails):
+- Only attribute a finding to a lead that is in your inventory. Set each
+  finding's `regions` to the lead(s) the finding actually falls in.
+- Do NOT state a conclusion the captured leads cannot support:
+  - STEMI territory naming needs its territory leads present (anterior V1-V4,
+    inferior II/III/aVF, lateral I/aVL/V5-V6). If they are not captured, say
+    "ST elevation seen; territory cannot be localized from the captured leads"
+    instead of naming a territory.
+  - Axis needs leads I and aVF (or I and II). If absent, set `axis` value to
+    "indeterminate" rather than guessing.
+  - Poor R-wave progression needs precordial leads V1-V6. Do not claim it when
+    the precordials are not captured.
+  - Chamber-enlargement voltage criteria need the specific leads (S in V1/V2 +
+    R in V5/V6, or R in aVL). Do not assert LVH/RVH without them.
+  - A single rhythm strip supports rate/rhythm/regularity/ectopy ONLY — do not
+    output STEMI territory, axis, R-progression, or chamber enlargement from a
+    lone strip; set those checklist axes to their normal/absent value.
+- When a region is "unknown", keep its findings descriptive and do not escalate
+  a territory-specific diagnosis from it.
 
 Required JSON schema:
 
 ```json
 {
   "modality": "EKG",
+  "layout": {
+    "format": "12lead_3x4|12lead_3x4_rhythm|6lead|3lead|single_rhythm_strip|partial|non_standard|unknown",
+    "rhythm_strip_leads": ["II"],
+    "leads": [
+      { "name": "V2", "label_visible": true, "bbox": [0.5, 0.27, 0.25, 0.27] }
+    ],
+    "notes": "<short note on cropping/ambiguity; optional>"
+  },
   "summary": "<one-paragraph overall impression>",
   "severity": "normal|warning|critical|info",
   "findings": [
@@ -81,7 +130,10 @@ Checklist rules:
 
 Findings rules:
 - Each finding must have a non-empty "id" (f1, f2, ...), "label", and "detail".
-- Include "regions" with semantic region names for reference.
+- Include "regions" set to the lead(s) the finding actually occupies (from your
+  Step 0 inventory); use "unknown" when the panel is unlabeled. The optional
+  `layout` object is additive metadata — omit it only if the layout is truly
+  indeterminate.
 - Include "bboxes" with precise bounding boxes as normalized 0-1 coordinates (x, y, w, h) relative to the full image.
   - x, y = top-left corner of the bounding box
   - w, h = width and height of the bounding box
@@ -113,8 +165,24 @@ matching checklist axis):
 
 Reading depth (specialist expectations):
 - Quote rate as a number (e.g. "~78 bpm"), not just a band, when R-R is legible.
+- For waveform-only ECG screenshots, estimate rate from the 10-second rhythm strip
+  when present. Count QRS complexes across the strip or use R-R large boxes; if
+  the rhythm is sinus and the rate is below 60 bpm or borderline around 55-60
+  bpm, set `heart_rate` to `bradycardia` rather than generic normal.
+- Actively check LVH voltage/strain before marking chamber enlargement absent:
+  deep S in V1/V2 + R in V5/V6 or aVL can support LVH, especially with lateral
+  ST-T repolarization/strain changes. If present, set `chamber_enlargement` to
+  `LVH` with warning status and name left ventricular hypertrophy in findings.
 - For ST changes, state magnitude, morphology (concave vs convex/tombstone),
   and reciprocal changes — these distinguish STEMI from pericarditis/BER.
+- If reproducible ST depression, T-wave inversion/flattening, or LVH-strain-like
+  repolarization changes are visible in multiple contiguous or anatomically
+  related leads, set `st_segment`/`t_wave` accordingly and set `ischemia` to `st_depression` or `t_wave_changes`.
+  Do not hide these as only "nonspecific" with normal/absent checklist axes.
+- If any clinically meaningful ST-T ischemia/strain, LVH, bradycardia,
+  tachyarrhythmia, conduction block, or chamber enlargement is present, set
+  overall severity at least `warning` (reserve `info` for minor artifacts or
+  benign variants with all clinically relevant checklist axes normal).
 - Always reconcile the checklist axes with each other (e.g. an "absent"
   ``stemi_pattern`` is inconsistent with an "elevation" ``st_segment`` of
   critical status — resolve the contradiction before returning).

@@ -58,7 +58,7 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
         "no evidence of acute",
         "no acute cardiopulmonary",
     ),
-    "infarction": ("infarction", "stemi", "lad territory occlusion"),
+    "infarction": ("infarction", "stemi", "lad territory occlusion", "myocardial infarction"),
     "left ventricular hypertrophy": ("left ventricular hypertrophy", "lvh"),
     "t wave changes": (
         "t wave changes",
@@ -73,6 +73,78 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
         "inverted",
         "flattened",
     ),
+    # EKG clinical synonyms / abbreviations mined from real MEETI runs. Each
+    # alias is a strict clinical equivalent of its key, so crediting it reflects
+    # a correct read rather than a lexical coincidence. Ambiguous bare
+    # abbreviations (e.g. "LAD" = left-axis OR left-anterior-descending) are
+    # deliberately excluded to avoid false positives. Negation is still honored
+    # by ``_positive_phrase_hit`` so "no atrial fibrillation" never counts.
+    "atrial fibrillation": (
+        "atrial fibrillation",
+        "afib",
+        "a fib",
+        "irregularly irregular",
+    ),
+    "irregularly irregular": (
+        "irregularly irregular",
+        "atrial fibrillation",
+        "afib",
+    ),
+    "atrial flutter": ("atrial flutter", "flutter waves", "sawtooth"),
+    "flutter waves": ("flutter waves", "atrial flutter", "sawtooth"),
+    "right bundle branch block": ("right bundle branch block", "rbbb"),
+    "left bundle branch block": ("left bundle branch block", "lbbb"),
+    "axis deviation": (
+        "axis deviation",
+        "left axis",
+        "right axis",
+        "leftward axis",
+        "rightward axis",
+    ),
+    "premature ventricular complexes": (
+        "premature ventricular complexes",
+        "premature ventricular contractions",
+        "pvc",
+        "ventricular ectopy",
+        "ventricular premature",
+    ),
+    "poor r wave progression": (
+        "poor r wave progression",
+        "poor precordial r wave",
+    ),
+    "atrial abnormality": (
+        "atrial abnormality",
+        "atrial enlargement",
+        "left atrial enlargement",
+        "right atrial enlargement",
+        "left atrial abnormality",
+        "right atrial abnormality",
+        "p mitrale",
+        "p pulmonale",
+    ),
+    "first degree av block": (
+        "first degree av block",
+        "1st degree av block",
+        "prolonged pr",
+    ),
+    "prolonged pr": (
+        "prolonged pr",
+        "pr prolongation",
+        "long pr",
+        "first degree av block",
+    ),
+    "low voltage": ("low voltage", "low qrs voltage"),
+    "q waves": ("q waves", "q wave", "pathological q", "pathologic q"),
+    "fascicular block": (
+        "fascicular block",
+        "lafb",
+        "lpfb",
+        "hemiblock",
+        "left anterior fascicular",
+        "left posterior fascicular",
+    ),
+    "st elevation": ("st elevation", "st segment elevation", "elevated st"),
+    "st depression": ("st depression", "st segment depression", "depressed st"),
 }
 
 # Can't-miss diagnoses -- the lethal calls that must NEVER be silently dropped.
@@ -308,6 +380,19 @@ def _severity_group(sev: Severity) -> str:
     return "abnormal" if sev in _ABNORMAL else "normal"
 
 
+def _normalize_lexical(text: str) -> str:
+    """Fold punctuation/spacing variants so clinical phrasings match.
+
+    Hyphens, underscores, and slashes become spaces and runs of whitespace
+    collapse, so "R-wave", "first-degree", "low-voltage", and "ST/T" match
+    "r wave", "first degree", "low voltage", and "st t". Purely lexical: it
+    never changes clinical meaning, only surface form. Idempotent.
+    """
+    lowered = text.lower()
+    swapped = re.sub(r"[-_/]+", " ", lowered)
+    return re.sub(r"\s+", " ", swapped).strip()
+
+
 def _haystack(result: AnalysisResult) -> str:
     parts = [result.summary]
     for finding in result.findings:
@@ -319,7 +404,7 @@ def _haystack(result: AnalysisResult) -> str:
         if item.status in _ABNORMAL:
             parts.append(key)
             parts.append(key.replace("_", " "))
-    return " ".join(parts).lower()
+    return _normalize_lexical(" ".join(parts))
 
 
 def _negative_haystack(result: AnalysisResult) -> str:
@@ -335,7 +420,7 @@ def _negative_haystack(result: AnalysisResult) -> str:
     for key, item in result.checklist.items():
         parts.append(key)
         parts.append(item.value)
-    return " ".join(parts).lower()
+    return _normalize_lexical(" ".join(parts))
 
 
 def _recall(needles: tuple[str, ...], haystack: str) -> tuple[list[str], list[str], float]:
@@ -352,17 +437,16 @@ def _recall(needles: tuple[str, ...], haystack: str) -> tuple[list[str], list[st
 
 
 def _keyword_hit(needle: str, haystack: str) -> bool:
-    needle_l = needle.lower()
-    if _positive_phrase_hit(needle_l, haystack):
+    if _positive_phrase_hit(needle, haystack):
         return True
     return any(
         _positive_phrase_hit(alias, haystack)
-        for alias in _KEYWORD_ALIASES.get(needle_l, ())
+        for alias in _KEYWORD_ALIASES.get(_normalize_lexical(needle), ())
     )
 
 
 def _positive_phrase_hit(phrase: str, haystack: str) -> bool:
-    phrase_l = phrase.lower().strip()
+    phrase_l = _normalize_lexical(phrase)
     if not phrase_l:
         return False
     start = 0
@@ -406,7 +490,7 @@ def _negative_recall(
 
 
 def _negative_hit(needle: str, haystack: str) -> bool:
-    needle_l = needle.lower()
+    needle_l = _normalize_lexical(needle)
     if needle_l in haystack:
         return True
     if not needle_l.startswith("no "):
