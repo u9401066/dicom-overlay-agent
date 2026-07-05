@@ -29,6 +29,7 @@ def test_project_bbox_uses_edge_rounding_and_reports_small_drift() -> None:
     assert projected.highlight[4:] == ("warning", "ST depression")
     assert projected.calibration.max_edge_drift_px <= 1.25
     assert projected.calibration.ok is True
+    assert projected.calibration.was_clamped is False
     assert projected.logical_rect.w > 0
     assert projected.logical_rect.h > 0
 
@@ -52,6 +53,18 @@ def test_project_bbox_clamps_overflow_before_screen_projection() -> None:
     assert projected.calibration.clamped_bbox.h == pytest.approx(0.2)
     assert projected.logical_rect.x + projected.logical_rect.w <= image_rect.right
     assert projected.logical_rect.y + projected.logical_rect.h <= image_rect.bottom
+
+
+def test_project_bbox_does_not_report_float_precision_clamp() -> None:
+    projected = project_bbox_to_overlay_highlight(
+        bbox=RegionRect(x=0.08, y=0.18, w=0.35, h=0.15),
+        image_rect=WindowRect(left=0, top=0, width=100, height=80),
+        dpr=1.0,
+        severity="warning",
+        label="in bounds",
+    )
+
+    assert projected.calibration.was_clamped is False
 
 
 def test_project_bbox_rejects_non_positive_dpr() -> None:

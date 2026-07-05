@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from PIL import Image, ImageDraw
 
 from dicom_overlay.infrastructure.annotation_exporter import export_eval_annotations
@@ -147,6 +148,15 @@ def test_export_eval_annotations_writes_bbox_audit_and_crops(
     assert audit_rows[0]["low_signal"] is False
     assert audit_rows[1]["low_signal"] is True
     assert audit_rows[0]["pixels"] == {"x0": 8, "y0": 14, "x1": 43, "y1": 26}
+    assert audit_rows[0]["projection_ok"] is True
+    assert audit_rows[0]["projection_was_clamped"] is False
+    assert audit_rows[0]["projection_max_edge_drift_px"] == pytest.approx(0.4)
+    assert audit_rows[0]["projection_back_projected_bbox"] == {
+        "x": 0.08,
+        "y": 0.175,
+        "w": 0.35,
+        "h": 0.15,
+    }
     assert Path(audit_rows[0]["crop"]).name == "case_1-f01-b01.png"
     assert (eval_dir / "review" / "crops" / "case_1-f01-b01.png").exists()
     assert (eval_dir / "review" / "crops" / "case_1-f01-b02.png").exists()
@@ -223,6 +233,8 @@ def test_export_eval_annotations_audits_clamped_overflow_bbox(
     }
     assert audit_row["pixels"] == {"x0": 90, "y0": 64, "x1": 100, "y1": 80}
     assert audit_row["was_clamped"] is True
+    assert audit_row["projection_ok"] is True
+    assert audit_row["projection_was_clamped"] is True
     assert audit_row["invalid_reason"] == "extent_out_of_bounds"
 
 

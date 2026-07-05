@@ -17,6 +17,12 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw, ImageFont
 
+from dicom_overlay.domain.entities import RegionRect, WindowRect
+from dicom_overlay.infrastructure.overlay_geometry import (
+    BboxProjectionCalibration,
+    project_bbox_to_overlay_highlight,
+)
+
 if TYPE_CHECKING:
     from PIL.ImageFont import ImageFont as PillowFont
 
@@ -67,6 +73,10 @@ class BboxAudit:
     low_signal: bool
     was_clamped: bool
     invalid_reason: str
+    projection_ok: bool
+    projection_max_edge_drift_px: float
+    projection_was_clamped: bool
+    projection_back_projected_bbox: dict[str, float]
     crop: str
 
     def to_json(self) -> dict[str, Any]:
@@ -87,6 +97,12 @@ class BboxAudit:
             "low_signal": self.low_signal,
             "was_clamped": self.was_clamped,
             "invalid_reason": self.invalid_reason,
+            "projection_ok": self.projection_ok,
+            "projection_max_edge_drift_px": round(
+                self.projection_max_edge_drift_px, 6
+            ),
+            "projection_was_clamped": self.projection_was_clamped,
+            "projection_back_projected_bbox": self.projection_back_projected_bbox,
             "crop": self.crop,
         }
 
@@ -100,6 +116,7 @@ class BboxPixelMapping:
     pixels: tuple[int, int, int, int]
     was_clamped: bool
     invalid_reason: str
+    projection: BboxProjectionCalibration
 
 
 def export_eval_annotations(
@@ -315,12 +332,21 @@ def _bbox_pixels(
     raw = _normalized_payload(x, y, w, h)
     clamped = _normalized_payload(x_start, y_start, x_end - x_start, y_end - y_start)
     reason = _clamp_reason(x, y, w, h)
+    projection = _project_bbox_for_review(
+        x=x,
+        y=y,
+        w=w,
+        h=h,
+        width=width,
+        height=height,
+    )
     return BboxPixelMapping(
         normalized=raw,
         clamped_normalized=clamped,
         pixels=(x0, y0, x1, y1),
         was_clamped=bool(reason),
         invalid_reason=reason,
+        projection=projection,
     )
 
 
@@ -357,8 +383,40 @@ def _audit_bbox(
         low_signal=ink_ratio < _LOW_SIGNAL_MIN_INK_RATIO,
         was_clamped=mapping.was_clamped,
         invalid_reason=mapping.invalid_reason,
+        projection_ok=mapping.projection.ok,
+        projection_max_edge_drift_px=mapping.projection.max_edge_drift_px,
+        projection_was_clamped=mapping.projection.was_clamped,
+        projection_back_projected_bbox=_normalized_payload(
+            mapping.projection.back_projected_bbox.x,
+            mapping.projection.back_projected_bbox.y,
+            mapping.projection.back_projected_bbox.w,
+            mapping.projection.back_projected_bbox.h,
+        ),
         crop=crop_rel,
     )
+
+
+def _project_bbox_for_review(
+    *,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    width: int,
+    height: int,
+) -> BboxProjectionCalibration:
+    return project_bbox_to_overlay_highlight(
+        bbox=RegionRect(
+            x=_clamp(x),
+            y=_clamp(y),
+            w=_clamp(w),
+            h=_clamp(h),
+        ),
+        image_rect=WindowRect(left=0, top=0, width=width, height=height),
+        dpr=1.0,
+        severity="info",
+        label="review",
+    ).calibration
 
 
 def _save_bbox_crop(

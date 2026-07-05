@@ -73,7 +73,7 @@ def project_bbox_to_overlay_highlight(
         clamped_bbox=clamped,
         back_projected_bbox=back_projected,
         max_edge_drift_px=drift,
-        was_clamped=clamped != bbox,
+        was_clamped=_bbox_changed(bbox, clamped),
         ok=drift <= drift_limit + 1e-9,
     )
     return ProjectedHighlight(
@@ -138,3 +138,15 @@ def _logical_rect_to_bbox(
 
 def _clamp_unit(value: float) -> float:
     return min(1.0, max(0.0, value))
+
+
+def _bbox_changed(original: RegionRect, clamped: RegionRect) -> bool:
+    return any(
+        abs(a - b) > 1e-9
+        for a, b in (
+            (original.x, clamped.x),
+            (original.y, clamped.y),
+            (original.w, clamped.w),
+            (original.h, clamped.h),
+        )
+    )
