@@ -32,6 +32,11 @@ image:
 3. Classify the layout format and report it in the optional `layout` object
    (see schema). If you cannot determine the layout at all, set
    `layout.format` to "unknown" and keep the interpretation descriptive.
+4. If a dedicated rhythm strip is present (a long single-lead tracing, usually
+   along the bottom), report its bounding box as `layout.rhythm_strip_bbox`
+   (`[x, y, w, h]`, normalized 0-1). Use `null` when there is no separate
+   strip. This lets the app re-examine the strip at higher resolution for
+   rate / rhythm / P-wave / AV-conduction.
 
 Canonical semantic region names (use only those actually present; add
 "unknown" for unlabeled panels):
@@ -68,6 +73,7 @@ Required JSON schema:
   "layout": {
     "format": "12lead_3x4|12lead_3x4_rhythm|6lead|3lead|single_rhythm_strip|partial|non_standard|unknown",
     "rhythm_strip_leads": ["II"],
+    "rhythm_strip_bbox": [0.0, 0.78, 1.0, 0.2],
     "leads": [
       { "name": "V2", "label_visible": true, "bbox": [0.5, 0.27, 0.25, 0.27] }
     ],

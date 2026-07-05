@@ -38,14 +38,18 @@ from dicom_overlay.application.multi_pass import (  # noqa: E402
     MultiPassAnalyzer,
     MultiPassInterpreter,
 )
+from dicom_overlay.application.rhythm_strip import refine_rhythm_strip  # noqa: E402
 from dicom_overlay.domain.entities import Modality, RegionRect, Severity  # noqa: E402
 from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
     EvalCase,
     EvalReport,
+    is_empty_read,
     run_evaluation,
 )
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient  # noqa: E402
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor  # noqa: E402
+
+logger = structlog.get_logger(__name__)
 
 _DATASET_DIR = _REPO_ROOT / "data" / "eval-datasets"
 # Match the production default (entities.OpenClawConfig.max_image_edge_px).
@@ -304,6 +308,7 @@ async def _run(
     multi_pass: bool,
     multi_pass_max_targets: int,
     partial_scorecard_interval: int,
+    rhythm_strip_pass: bool = True,
 ) -> EvalReport:
     processor = ImageProcessor()
 
@@ -352,22 +357,34 @@ async def _run(
             b64 = processor.to_base64(image_bytes)
             before_calls = counter.analyze_calls if counter else 0
             before_crops = crop_calls
-            try:
+
+            async def _invoke() -> Any:
                 analyze_with_source_size = getattr(
                     analyzer, "analyze_with_source_size", None
                 )
                 if callable(analyze_with_source_size):
-                    result = await analyze_with_source_size(
+                    return await analyze_with_source_size(
                         b64,
                         case.modality,
                         list(case.valid_regions),
                         source_size_px=source_size_px,
                         local_candidate_regions=local_candidate_regions,
                     )
-                else:
-                    result = await analyzer.analyze(
-                        b64, case.modality, list(case.valid_regions)
-                    )
+                return await analyzer.analyze(
+                    b64, case.modality, list(case.valid_regions)
+                )
+
+            try:
+                result = await _invoke()
+                # An empty read (blank summary + no findings) is a transient
+                # model glitch, not a real "normal" study. Retry once before
+                # banking a 0-score hard failure (mining showed ~8% of real
+                # cases returned empty JSON with no recovery).
+                if is_empty_read(result):
+                    logger.warning("empty_read_retry", case=case_key)
+                    retry = await _invoke()
+                    if not is_empty_read(retry):
+                        result = retry
             finally:
                 if multi_pass and counter:
                     calls = counter.analyze_calls - before_calls
@@ -394,6 +411,19 @@ async def _run(
                     }
                     with trace_path.open("a", encoding="utf-8") as fh:
                         fh.write(json.dumps(trace, ensure_ascii=False) + "\n")
+
+            if rhythm_strip_pass and case.modality == Modality.EKG:
+                # Re-read the model-declared rhythm strip at higher resolution
+                # to recover rhythm / P-wave / AV-block misses. Uses the raw
+                # client (one bounded extra call) and is a no-op unless Step 0
+                # localized a rhythm-strip bbox, so it stays layout-general.
+                result = await refine_rhythm_strip(
+                    result,
+                    b64,
+                    analyze_fn=client.analyze,
+                    cropper=processor.crop_region_base64,
+                    valid_regions=list(case.valid_regions),
+                )
             return result
 
         return await run_evaluation(
@@ -590,6 +620,16 @@ def main() -> int:
         help="Maximum abnormal findings to crop/refine per image in --multi-pass mode.",
     )
     parser.add_argument(
+        "--rhythm-strip-pass",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "For EKG, re-read the model-declared rhythm strip at higher "
+            "resolution to recover rhythm/P-wave/AV-block misses (one bounded "
+            "extra call; no-op unless Step 0 localized a rhythm-strip bbox)."
+        ),
+    )
+    parser.add_argument(
         "--case-print-limit",
         type=int,
         default=50,
@@ -656,6 +696,7 @@ def main() -> int:
                 multi_pass=args.multi_pass,
                 multi_pass_max_targets=args.multi_pass_max_targets,
                 partial_scorecard_interval=args.partial_scorecard_interval,
+                rhythm_strip_pass=args.rhythm_strip_pass,
             )
         )
     except (ConnectionError, OSError) as exc:

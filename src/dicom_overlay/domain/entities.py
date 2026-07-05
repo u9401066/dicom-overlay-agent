@@ -154,6 +154,12 @@ class AnalysisResult:
     # the medical guideline citation so the physician sees *why* it was flagged.
     review_required: bool = False
     review_reasons: list[str] = field(default_factory=list)
+    # Optional Step-0 layout declaration from the model (EKG): the recognized
+    # format plus the lead inventory and, when present, the rhythm-strip
+    # bounding box. Used by the rhythm-strip refinement pass to crop the strip
+    # at higher resolution without assuming a fixed layout. Empty when the model
+    # did not declare a layout (keeps non-EKG and legacy paths unchanged).
+    layout: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -48,6 +48,16 @@ _PARTIAL_CREDIT_WEIGHTS: dict[str, float] = {
     "keyword_recall": 0.35,
     "negative_recall": 0.15,
 }
+
+
+def is_empty_read(result: AnalysisResult) -> bool:
+    """True when a result is an unusable empty read (a retry candidate).
+
+    An empty read has a blank summary and no findings: the model returned an
+    empty or non-JSON response rather than a real "normal" study. The harness
+    retries these once instead of banking a 0-score hard failure.
+    """
+    return not result.summary.strip() and not result.findings
 _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
     "no acute": (
         "no acute",

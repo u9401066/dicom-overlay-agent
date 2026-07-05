@@ -573,6 +573,7 @@ class OpenClawClient(VisionAnalyzerService):
                 )
                 modality = request_modality
 
+        layout = payload.get("layout")
         return AnalysisResult(
             modality=modality,
             summary=payload.get("summary", ""),
@@ -581,6 +582,7 @@ class OpenClawClient(VisionAnalyzerService):
             checklist=checklist,
             analysis_time_ms=payload.get("analysis_time_ms", elapsed_ms),
             model_used=payload.get("model_used", ""),
+            layout=layout if isinstance(layout, dict) else {},
         )
 
 

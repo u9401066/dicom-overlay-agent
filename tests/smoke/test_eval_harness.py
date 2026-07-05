@@ -21,6 +21,7 @@ from dicom_overlay.infrastructure.eval_harness import (
     EvalCase,
     EvalReport,
     _write_raw_result,
+    is_empty_read,
     run_evaluation,
     score_case,
 )
@@ -332,6 +333,15 @@ def test_keyword_recall_honors_negation_for_synonyms(tmp_path: Path) -> None:
     )
     score = score_case(case, result, latency_ms=0)
     assert score.keyword_misses == ["st elevation"]
+
+
+def test_is_empty_read_flags_blank_summary_and_no_findings() -> None:
+    empty = _result(Severity.INFO, summary="")
+    assert is_empty_read(empty) is True
+    whitespace = _result(Severity.INFO, summary="   ")
+    assert is_empty_read(whitespace) is True
+    non_empty = _result(Severity.NORMAL, summary="Clear study, no acute finding.")
+    assert is_empty_read(non_empty) is False
 
 
 def test_score_case_detects_out_of_bounds_bbox(tmp_path: Path) -> None:
