@@ -140,6 +140,19 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   `scorecard.partial.json` every 50 cases by default instead of rewriting the
   full partial scorecard after every image (`--partial-scorecard-interval 0`
   writes only final/abort checkpoints).
+- Clinical accuracy hardening (2026-07-05): the EKG skill runs a **Step 0
+  lead-localization** pass that stays general ("declare, don't assume") — it
+  reads the printed lead labels, inventories only the leads actually visible,
+  marks unlabeled panels `unknown`, and gates lead-dependent conclusions
+  (STEMI territory, axis, R-wave progression, chamber enlargement) on the
+  captured leads, so a single rhythm strip or a partial/non-standard capture
+  never triggers a 12-lead-only claim. The recognition scorer folds hyphen/
+  plural variants and credits clinical synonyms/abbreviations (RBBB, afib, LVH,
+  PVC…) so a correct read is not scored as a miss, while negation and genuine
+  disagreements still count as misses.
+  [`scripts/analyze-eval-failures.py`](scripts/analyze-eval-failures.py)
+  aggregates per-run failure modes (severity confusion, missed keywords, schema
+  failures, per-axis fail rates) to steer the next harness increment.
 - Local test runs should use
   [`scripts/run-tests-safe.cmd`](scripts/run-tests-safe.cmd). It runs pytest
   through the existing uv-managed `.venv\Scripts\python.exe` instead of
@@ -283,6 +296,15 @@ portable across OpenClaw releases.
   still has the key, OpenClaw runtime, 1000-case manifest, and mock artifacts
   ready, but blocks before Gateway startup with WinError 10013 socket permission
   denial.
+- Real-model update (2026-07-05): on a network where OpenRouter and Anthropic
+  are firewall-reset, `api.openai.com` is reachable and `OPENAI_API_KEY` is
+  valid. A MEETI single-case real run with `openai/gpt-5.5` + the
+  `openai-vision` provider profile reached Gateway `connect` + `chat.send`,
+  returned a schema-valid read, and passed strict/schema/bbox at 1.0
+  (`gateway_mode: real`). The runner default model is `openai/gpt-5.5`
+  (the `-mini` id is absent from the OpenAI catalog). Copilot subscription
+  models (e.g. MAI Flash) remain unusable as an API provider because they use
+  an OAuth device-token flow, not an API key.
 
 ### Core 4 — Minimal packaged executable
 

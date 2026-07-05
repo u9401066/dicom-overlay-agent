@@ -1,6 +1,36 @@
-# Progress (Updated: 2026-07-02)
+# Progress (Updated: 2026-07-05)
 
 ## Done
+
+- **Real-model path + lead-aware EKG + scorer robustness** (2026-07-05):
+  - Real-model path proven: on a network where OpenRouter/Anthropic are
+    firewall-reset, `api.openai.com` is reachable and `OPENAI_API_KEY` is
+    valid. MEETI single-case real run with `openai/gpt-5.5` + `openai-vision`
+    passed (strict/schema/bbox 1.0, `gateway_mode: real`). Runner default
+    model fixed to `openai/gpt-5.5` (the `-mini` id is absent from the OpenAI
+    catalog). Copilot subscription models (MAI Flash) are unusable as an API
+    provider (OAuth device-token flow, not an API key).
+  - Harness increment 1 — lead-aware EKG (general, "declare don't assume"):
+    EKG SKILL.md runs a Step 0 lead-localization (read printed lead labels,
+    inventory only visible leads, mark unlabeled `unknown`) and gates
+    lead-dependent conclusions (STEMI territory / axis / R-progression /
+    chamber) on the captured leads. Handles 12-lead / 6-lead / single rhythm
+    strip / partial / non-standard / unknown. Optional additive `layout`
+    block; 16-key checklist contract unchanged.
+  - Harness increment 2 — scorer robustness: `eval_harness` adds
+    `_normalize_lexical` (hyphen/underscore/slash folding) + expanded clinical
+    synonym aliases (RBBB/afib/LVH/PVC/flutter/axis deviation…); ambiguous
+    bare abbreviations (LAD/RAD) excluded; negation still honored. +5
+    regression tests (incl. "genuine disagreement still misses" and "negation
+    still not counted").
+  - Mining verdict (25-case real gpt-5.5, free re-score with the new scorer):
+    keyword_recall 0.531→0.55, strict 0.24→0.28. Scorer false-negatives are
+    real but small; ~72% of failures are genuine misses (PR/AV-block/BBB/
+    rhythm) or noisy/aggregated MEETI ground-truth labels. Next levers:
+    lead-aware rhythm-strip second-pass crop, empty-summary retry (8%
+    hard-fail), severity calibration, manifest GT de-duplication. New
+    `scripts/analyze-eval-failures.py` (OOM-safe) aggregates per-run failure
+    modes.
 
 - **MEETI 1000+ production artifact gate + OpenClaw/OpenRouter refresh**
   (2026-07-02):

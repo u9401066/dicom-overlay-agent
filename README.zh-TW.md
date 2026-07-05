@@ -38,6 +38,21 @@
   OpenClaw 無法取得 OpenRouter model capabilities/pricing 或呼叫
   `minimax/minimax-m3`，所以 experiment 正確標為 `completed_with_failures`、
   exit 1。這不是 bbox/schema harness 通過，而是環境網路出口待處理。
+- 2026-07-05 real-model 更新：在 OpenRouter 與 Anthropic 被防火牆 reset 的
+  網路下，`api.openai.com` 可通且 `OPENAI_API_KEY` 有效。以 `openai/gpt-5.5`
+  ＋ `openai-vision` provider profile 跑 MEETI 單題真實批次，走到 Gateway
+  `connect` + `chat.send`、回傳 schema-valid 判讀，strict/schema/bbox 皆
+  1.0（`gateway_mode: real`）。runner 預設模型改為 `openai/gpt-5.5`
+  （`-mini` id 不在 OpenAI catalog）。Copilot 訂閱模型（如 MAI Flash）走
+  OAuth device-token，不是 API key，無法當 API provider。
+- 2026-07-05 臨床準確度強化：EKG skill 新增 **Step 0 導極定位**（保持通用，
+  「宣告不假設」：讀印在圖上的導極標籤、只登記實際可見的導極、無標籤標
+  `unknown`），並把 lead-dependent 結論（STEMI 定位／axis／R 波進展／腔室
+  肥大）鎖在實際拍到的導極上，單一 rhythm strip 或局部／非標準截圖不會誤觸
+  12-lead 專屬結論。辨識 scorer 會正規化連字號／複數並認可臨床同義詞／縮寫
+  （RBBB、afib、LVH、PVC…），避免把正確判讀誤判為 miss，同時仍尊重否定與
+  真實分歧。`scripts/analyze-eval-failures.py` 可聚合每次 run 的失敗模式以
+  指引下一步 harness 增量。
 
 ## 2026-07-02 OOM-safe uv / 題目測試入口
 

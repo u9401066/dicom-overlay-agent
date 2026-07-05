@@ -1,5 +1,31 @@
 # Active Context
 
+## Session Update (2026-07-05)
+
+- **Real-model path proven**: `api.openai.com` is reachable on this network
+  (OpenRouter / Anthropic are firewall-reset), `OPENAI_API_KEY` is valid, and a
+  MEETI single-case real run with `openai/gpt-5.5` + `openai-vision` profile
+  passed (strict 1.0, schema/bbox 1.0). Runner default model fixed to
+  `openai/gpt-5.5` (the `-mini` id is absent from the OpenAI catalog).
+- **Harness increment 1 — lead-aware EKG (general)**: `dicom-ekg-analysis`
+  SKILL.md now runs a Step 0 lead-localization ("declare, don't assume": read
+  printed lead labels, inventory only visible leads, mark unlabeled "unknown")
+  and lead-conditioned gating (no STEMI territory / axis / R-progression /
+  chamber claims the captured leads cannot support). Optional additive `layout`
+  block; 16-key checklist contract unchanged.
+- **Harness increment 2 — scorer robustness**: `eval_harness` adds
+  `_normalize_lexical` (hyphen/underscore/slash folding) and an expanded
+  clinical-synonym alias table so correct reads phrased as abbreviations
+  (RBBB, afib, LVH, PVC…) or hyphen/plural variants count; ambiguous bare
+  abbreviations (LAD/RAD) excluded; negation still honored.
+- **Mining verdict (25-case real gpt-5.5)**: scorer false-negatives are real
+  but small (keyword_recall 0.531→0.55, strict 0.24→0.28 on free re-score);
+  ~72% of failures are genuine misses (PR/AV-block/BBB/rhythm) or noisy/
+  aggregated MEETI ground-truth labels. Next levers: lead-aware rhythm-strip
+  second-pass crop, empty-summary retry (8% hard-fail), severity calibration,
+  and manifest GT de-duplication. New `scripts/analyze-eval-failures.py`
+  (OOM-safe) aggregates failure modes per run.
+
 ## Current Eval Harness Focus (2026-07-02)
 
 - Active goal: keep the local desktop OpenClaw co-reading app up to date,
