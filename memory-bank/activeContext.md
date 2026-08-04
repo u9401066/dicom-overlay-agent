@@ -30,7 +30,16 @@
   sidecar/MEETI paths, waveform/model suffixes, and includes the upstream MIT
   notice without bundling checkpoint or waveform data.
 - Current source verification: Ruff passed; unit+smoke `741 passed, 1 skipped`;
-  OpenClaw integration `55 passed`. Fresh bundle rebuild/hash remains pending.
+  OpenClaw integration `55 passed`; frozen bundle smoke `2 passed`.
+- Final portable rebuild from `bffd6c5` is manifest `ok`: 15,226 payload files,
+  363.91 MiB, OpenClaw `2026.7.1-2`, Node `v24.18.0`, EXE SHA-256
+  `0097097DECA61313FBF39EC48508520841CD47653FBED035B2713A82D20FE274`.
+  Two consecutive verifier runs had identical payload statistics and left no
+  `.log` or `openclaw-home`; source and bundled native plugin hashes match.
+- An isolated full GUI launch remained responding after 12 seconds and started
+  the bundled Node/OpenClaw gateway. The pinned/latest OpenClaw production tree
+  still has 7 moderate / 4 high / 0 critical transitive npm advisories; the
+  non-breaking audit-fix dry run proposed zero changes.
 
 ## Session Update (2026-08-04, reviewer-confirmed regional writeback)
 

@@ -19,7 +19,12 @@
     health, desktop evaluation-only status, full MIT notice, and bundle bans for
     model/waveform/sidecar payloads.
   - Ruff passed. Unit+smoke: 741 passed plus one release-only skip. OpenClaw
-    integration: 55/55. Fresh bundle rebuild is pending.
+    integration: 55/55; frozen bundle smoke: 2/2.
+  - Rebuilt the final portable bundle from `bffd6c5`: manifest `ok`, 363.91 MiB,
+    15,226 payload files, OpenClaw `2026.7.1-2`, Node `v24.18.0`, EXE SHA-256
+    `0097097DECA61313FBF39EC48508520841CD47653FBED035B2713A82D20FE274`.
+    Repeated verification was size-stable and residue-free; an isolated full GUI
+    launch remained responsive and started the bundled OpenClaw gateway.
 
 - **Reviewer-confirmed regional writeback and export provenance** (2026-08-04):
   - Wired `AnnotationAccumulator` into the desktop agent and added exact-crop,

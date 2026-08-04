@@ -13,6 +13,7 @@ or a schema-valid response is never mistaken for clinical accuracy evidence.
 | Full repository Ruff | passed | `scripts/run-ruff-safe.cmd check .` |
 | OpenClaw overlay integration | 55 passed | `tests/integration/test_openclaw_overlay.py` |
 | Fresh bundle smoke | 2 passed | `RUN_BUNDLE_SMOKE=1`, real frozen EXE self-check |
+| Isolated desktop launch | passed | GUI responding after 12 s; bundled `node.exe` started the OpenClaw gateway |
 | Packaged native plugin | loaded | `dicom_bbox_validate` and `ecg_founder_analyze_waveform`, zero diagnostics |
 | Interactive review writeback | passed | refine + JSON proposal -> Apply/Dismiss/no-change trace -> JSON/PNG smoke; all low-signal mutations rejected |
 | Real Win32/Qt coordinate probe | passed | Win32 window `1222x836`; mss capture `1222x836`; physical display `2560x1600`; Qt frame `1707x1067` |
@@ -218,13 +219,18 @@ Fresh artifact:
 
 - Path: `dist/DICOMOverlayAgent/DICOMOverlayAgent.exe`
 - SHA-256:
-  `3FFE577B3562965E34360BC765811F150BDA594AFA4E5BA7147E8575A4320D48`
-- Launcher: 6.91 MiB
-- App/Python/Qt layer: 94.59 MiB
+  `0097097DECA61313FBF39EC48508520841CD47653FBED035B2713A82D20FE274`
+- Launcher: 6.94 MiB
+- App/Python/Qt layer: 94.63 MiB
 - OpenClaw: 181.03 MiB, version `2026.7.1-2`
 - Node.js: 88.25 MiB, version `v24.18.0`
-- Total: 363.87 MiB, 15,225 files
-- Manifest: `dist/DICOMOverlayAgent/bundle-manifest.json`, status `ok`
+- Total: 363.91 MiB, 381,583,824 bytes, 15,226 payload files
+- Manifest: `dist/DICOMOverlayAgent/bundle-manifest.json`, status `ok`; two
+  consecutive verifier runs produced identical payload size/count data
+- Native harness plugin SHA-256 (source and bundle match):
+  `D5B172446E9AF7FEC74F73808C97F89B59A1C87DCA9D7878B19D230D11FAE73A`
+- Freshness: no top-level `.log` or `openclaw-home` existed before or after the
+  frozen self-check and verifier runs
 - Frozen module proof: PyInstaller `PYZ-00.toc` contains
   `dicom_overlay.presentation.screen_selection` and
   `dicom_overlay.infrastructure.overlay_geometry`. Direct PYZ inspection also
@@ -233,15 +239,21 @@ Fresh artifact:
 
 Bundled surfaces include the executable, config, portable Node, slim pinned
 OpenClaw runtime, native harness plugin, EKG/CXR/CT skills, and clinical rules.
-The verifier found no banned components. A separate recursive filename scan
+The verifier found no banned components. The native plugin runtime check loaded
+`dicom_bbox_validate` and `ecg_founder_analyze_waveform` with zero diagnostics.
+An isolated full desktop launch remained responsive after 12 seconds and started
+the bundled Node/OpenClaw gateway. A separate recursive filename scan
 also found no `.env*`, Torch, ECGFounder runtime, checkpoint/weight, MEETI,
 waveform, SQLite, or sidecar content. The build stage removes npm-package
 development environment files and the verifier rejects any such file that
 reaches the final bundle.
 
 The pinned OpenClaw dependency audit currently reports 7 moderate and 4 high
-transitive vulnerabilities, 0 critical. A force upgrade was not applied because
-it can break the runtime compatibility contract; this remains release debt.
+transitive vulnerabilities, 0 critical. `2026.7.1-2` is also the current npm
+release, and `npm audit fix --omit=dev --dry-run --json` proposed zero package
+changes while leaving the advisory count unchanged. A force upgrade was not
+applied because it can break the runtime compatibility contract; this remains
+upstream release debt.
 
 ## Website QA
 
