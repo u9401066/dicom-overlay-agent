@@ -10,6 +10,9 @@ const EKG_MAX_BOX_HEIGHT = 0.3;
 const EKG_MAX_BOX_AREA = 0.08;
 const ECG_FOUNDER_TOOL = "ecg_founder_analyze_waveform";
 const ECG_FOUNDER_MODEL_ID = "PKUDigitalHealth/ECGFounder";
+const ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23";
+const ECG_FOUNDER_12_LEAD_CHECKPOINT_SHA256 =
+  "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997";
 const ECG_FOUNDER_SCHEMA_VERSION = 1;
 const ECG_FOUNDER_DEFAULT_TIMEOUT_MS = 45_000;
 const ECG_FOUNDER_MAX_RESPONSE_CHARS = 1_000_000;
@@ -24,7 +27,7 @@ const ECG_FOUNDER_ALLOWED_HOSTS = new Set([
 const ecgFounderParameters = {
   type: "object",
   additionalProperties: false,
-  required: ["artifact_id", "lead_mode"],
+  required: ["artifact_id", "lead_mode", "evidence_nonce"],
   properties: {
     artifact_id: {
       type: "string",
@@ -36,8 +39,14 @@ const ecgFounderParameters = {
     },
     lead_mode: {
       type: "string",
-      enum: ["12_lead", "single_lead"],
+      enum: ["12_lead"],
       description: "Checkpoint/input mode declared by the waveform artifact.",
+    },
+    evidence_nonce: {
+      type: "string",
+      pattern: "^[a-f0-9]{32}$",
+      description:
+        "Per-analysis correlation nonce supplied by the trusted app. Copy it exactly and never reuse or invent it.",
     },
     max_predictions: {
       type: "integer",
@@ -204,7 +213,27 @@ function cleanStringList(value, maxItems = 24, maxLength = 160) {
     .filter(Boolean);
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function sanitizeEcgFounderResponse(raw, request) {
+  if (request?.lead_mode !== "12_lead") {
+    throw new Error("Only the pinned ECGFounder 12-lead contract is supported");
+  }
+  if (!/^[a-f0-9]{32}$/.test(String(request?.evidence_nonce ?? ""))) {
+    throw new Error("ECGFounder evidence nonce does not match the tool contract");
+  }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("ECGFounder sidecar returned a non-object response");
   }
@@ -222,6 +251,7 @@ function sanitizeEcgFounderResponse(raw, request) {
     evidence_type: "ecg_waveform_classification",
     artifact_id: request.artifact_id,
     lead_mode: request.lead_mode,
+    evidence_nonce: request.evidence_nonce,
     use_policy: "supporting_evidence_only",
     spatial_localization: "not_provided",
     limitations: cleanStringList(raw.limitations),
@@ -245,8 +275,11 @@ function sanitizeEcgFounderResponse(raw, request) {
   }
   const revision = cleanText(model.revision, 128);
   const checkpointSha256 = cleanText(model.checkpoint_sha256, 64).toLowerCase();
-  if (!revision || !/^[a-f0-9]{64}$/.test(checkpointSha256)) {
-    throw new Error("ECGFounder response lacks pinned checkpoint provenance");
+  if (
+    revision !== ECG_FOUNDER_MODEL_REVISION ||
+    checkpointSha256 !== ECG_FOUNDER_12_LEAD_CHECKPOINT_SHA256
+  ) {
+    throw new Error("ECGFounder response does not match the pinned 12-lead model");
   }
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("ECGFounder response is missing input provenance");
@@ -341,6 +374,9 @@ function sanitizeEcgFounderResponse(raw, request) {
         : "uncalibrated_score",
     };
   });
+  if (predictions.length === 0) {
+    throw new Error("ECGFounder status=ok response contains no predictions");
+  }
 
   return {
     ...common,
@@ -374,22 +410,45 @@ function sanitizeEcgFounderResponse(raw, request) {
   };
 }
 
-async function appendEcgFounderAuditRecord(toolCallId, details, config) {
+async function appendEcgFounderAuditRecord(
+  toolCallId,
+  details,
+  config,
+  { latencyMs = 0 } = {},
+) {
   if (!config.auditPath) return;
   const artifactDigest = createHash("sha256")
     .update(details.artifact_id)
     .digest("hex");
+  const { artifact_id: _artifactId, ...responseEvidenceWithoutDigest } = details;
+  const responseEvidence = {
+    ...responseEvidenceWithoutDigest,
+    artifact_id_sha256: artifactDigest,
+  };
   const record = {
     schema_version: 1,
     recorded_at: new Date().toISOString(),
     tool: ECG_FOUNDER_TOOL,
     tool_call_id: String(toolCallId ?? ""),
+    evidence_nonce: details.evidence_nonce,
     status: details.status,
     artifact_id_sha256: artifactDigest,
+    lead_mode: details.lead_mode ?? "",
+    model_id: details.model?.id ?? "",
     model_revision: details.model?.revision ?? "",
     checkpoint_sha256: details.model?.checkpoint_sha256 ?? "",
+    source_sha256: details.input?.source_sha256 ?? "",
+    preprocessing_revision: details.preprocessing?.implementation_revision ?? "",
     calibration_status: details.calibration?.status ?? "",
+    calibration_revision: details.calibration?.revision ?? "",
     prediction_count: details.predictions.length,
+    predictions: details.predictions,
+    response_evidence: responseEvidence,
+    response_sha256: createHash("sha256")
+      .update(canonicalJson(responseEvidence))
+      .digest("hex"),
+    latency_ms: Math.max(0, Math.trunc(Number(latencyMs) || 0)),
+    failure_reason: details.reason ?? "",
   };
   await mkdir(dirname(config.auditPath), { recursive: true });
   await appendFile(config.auditPath, `${JSON.stringify(record)}\n`, {
@@ -420,9 +479,11 @@ function createEcgFounderTool(config, fetchImpl = globalThis.fetch) {
         schema_version: ECG_FOUNDER_SCHEMA_VERSION,
         artifact_id: String(args?.artifact_id ?? ""),
         lead_mode: String(args?.lead_mode ?? ""),
+        evidence_nonce: String(args?.evidence_nonce ?? ""),
         max_predictions: Number(args?.max_predictions ?? 10),
       };
       const controller = new AbortController();
+      const startedAt = Date.now();
       const abortFromCaller = () => controller.abort(signal?.reason);
       signal?.addEventListener("abort", abortFromCaller, { once: true });
       const timer = setTimeout(() => controller.abort("sidecar_timeout"), config.timeoutMs);
@@ -459,11 +520,26 @@ function createEcgFounderTool(config, fetchImpl = globalThis.fetch) {
           throw new Error("ECGFounder sidecar returned invalid JSON");
         }
         const details = sanitizeEcgFounderResponse(raw, request);
-        await appendEcgFounderAuditRecord(toolCallId, details, config);
+        await appendEcgFounderAuditRecord(toolCallId, details, config, {
+          latencyMs: Date.now() - startedAt,
+        });
         return {
           content: [{ type: "text", text: JSON.stringify(details) }],
           details,
         };
+      } catch (error) {
+        const failure = {
+          status: "error",
+          artifact_id: request.artifact_id,
+          lead_mode: request.lead_mode,
+          evidence_nonce: request.evidence_nonce,
+          reason: cleanText(error?.message || "ecgfounder_tool_error", 240),
+          predictions: [],
+        };
+        await appendEcgFounderAuditRecord(toolCallId, failure, config, {
+          latencyMs: Date.now() - startedAt,
+        });
+        throw error;
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abortFromCaller);

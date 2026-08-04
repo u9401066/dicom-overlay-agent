@@ -72,7 +72,9 @@ def _make_result(
             "st_segment": ChecklistItem(value="normal", status=Severity.NORMAL),
             "t_wave": ChecklistItem(value="normal", status=Severity.NORMAL),
             "qtc_interval": ChecklistItem(value="normal", status=Severity.NORMAL),
-            "chamber_enlargement": ChecklistItem(value="absent", status=Severity.NORMAL),
+            "chamber_enlargement": ChecklistItem(
+                value="absent", status=Severity.NORMAL
+            ),
             "conduction": ChecklistItem(value="normal", status=Severity.NORMAL),
             "av_block": ChecklistItem(value="absent", status=Severity.NORMAL),
             "stemi_pattern": ChecklistItem(value="absent", status=Severity.NORMAL),
@@ -140,6 +142,15 @@ class TestOutputValidator:
         req = _make_request()
         result = _make_result(summary="")
         with pytest.raises(HookError, match="summary"):
+            validator.post_analyze(req, result)
+
+    def test_duplicate_finding_ids_are_rejected(self):
+        validator = OutputValidator()
+        req = _make_request()
+        result = _make_result()
+        result.findings.append(result.findings[0])
+
+        with pytest.raises(HookError, match="duplicates id 'f1'"):
             validator.post_analyze(req, result)
 
     def test_pre_analyze_passthrough(self):
@@ -265,9 +276,7 @@ class _FakeProvider(MCPToolProvider):
     async def list_tools(self) -> list[ToolDefinition]:
         return self._tools
 
-    async def call_tool(
-        self, name: str, arguments: dict[str, Any]
-    ) -> ToolCallResult:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> ToolCallResult:
         self._call_log.append((name, arguments))
         return ToolCallResult(
             content=[{"type": "text", "text": f"result from {name}"}],
@@ -324,9 +333,7 @@ class TestMcpAdapter:
         # Index tools
         adapter._tool_index["pubmed_search"] = ("pubmed", "search")
 
-        result = await adapter.call_tool(
-            "pubmed_search", {"query": "airway"}
-        )
+        result = await adapter.call_tool("pubmed_search", {"query": "airway"})
         assert result.success
         assert "result from search" in result.text
         assert provider._call_log == [("search", {"query": "airway"})]

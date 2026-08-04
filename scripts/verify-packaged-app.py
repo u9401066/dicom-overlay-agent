@@ -26,6 +26,7 @@ PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC = 180
 REQUIRED_FILES = (
     "DICOMOverlayAgent.exe",
     "config.yaml",
+    "THIRD_PARTY_NOTICES.md",
     "node/node.exe",
     "openclaw/node_modules/openclaw/openclaw.mjs",
     "openclaw/node_modules/openclaw/package.json",
@@ -42,8 +43,43 @@ REQUIRED_FILES = (
     "clinical_rules/ekg-cxr.rules.yaml.example",
 )
 
-_BANNED_PARTS = {"numpy", "scipy", "matplotlib", "pandas", "imagehash"}
+_BANNED_PARTS = {
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pandas",
+    "imagehash",
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "sidecars",
+    "meeti",
+}
+_BANNED_PART_PREFIXES = (
+    "meeti-",
+    "numpy-",
+    "numpy.",
+    "scipy-",
+    "scipy.",
+    "torch-",
+    "torch_",
+)
 _BANNED_FILENAMES = {"opengl32sw.dll"}
+_BANNED_MODEL_DATA_SUFFIXES = {
+    ".mat",
+    ".bin",
+    ".ckpt",
+    ".joblib",
+    ".npy",
+    ".npz",
+    ".onnx",
+    ".pt",
+    ".pth",
+    ".pickle",
+    ".pkl",
+    ".safetensors",
+}
+_BANNED_WORKSPACE_ARCHIVE_SUFFIXES = {".7z", ".gz", ".tar", ".zip"}
 _BANNED_ENV_FILENAMES = {".env"}
 _BANNED_ENV_PREFIXES = (".env.",)
 _BANNED_QT_PREFIXES = (
@@ -83,9 +119,21 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
 
                 folded_parts = {part.casefold() for part in relative.parts}
                 folded_name = filename.casefold()
+                has_banned_part_prefix = any(
+                    part.startswith(_BANNED_PART_PREFIXES) for part in folded_parts
+                )
+                in_openclaw_workspace = tuple(
+                    part.casefold() for part in relative.parts[:2]
+                ) == ("openclaw", "workspace")
                 if (
                     folded_parts & _BANNED_PARTS
+                    or has_banned_part_prefix
                     or folded_name in _BANNED_FILENAMES
+                    or path.suffix.casefold() in _BANNED_MODEL_DATA_SUFFIXES
+                    or (
+                        in_openclaw_workspace
+                        and path.suffix.casefold() in _BANNED_WORKSPACE_ARCHIVE_SUFFIXES
+                    )
                     or folded_name in _BANNED_ENV_FILENAMES
                     or folded_name.startswith(_BANNED_ENV_PREFIXES)
                     or folded_name.startswith(_BANNED_QT_PREFIXES)
@@ -288,16 +336,12 @@ def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
                 {
                     "gateway": {"mode": "local"},
                     "agents": {
-                        "defaults": {
-                            "model": {"primary": "openai/gpt-5.6-luna"}
-                        }
+                        "defaults": {"model": {"primary": "openai/gpt-5.6-luna"}}
                     },
                     "plugins": {
                         "allow": ["dicom-overlay-agent-harness"],
                         "load": {"paths": [str(plugin_root.resolve())]},
-                        "entries": {
-                            "dicom-overlay-agent-harness": {"enabled": True}
-                        },
+                        "entries": {"dicom-overlay-agent-harness": {"enabled": True}},
                     },
                 }
             ),
@@ -313,13 +357,7 @@ def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
         process = _run_process(
             [
                 str(bundle / "node" / "node.exe"),
-                str(
-                    bundle
-                    / "openclaw"
-                    / "node_modules"
-                    / "openclaw"
-                    / "openclaw.mjs"
-                ),
+                str(bundle / "openclaw" / "node_modules" / "openclaw" / "openclaw.mjs"),
                 "plugins",
                 "inspect",
                 "dicom-overlay-agent-harness",

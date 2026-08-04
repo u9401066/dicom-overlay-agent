@@ -1,5 +1,37 @@
 # Active Context
 
+## Session Update (2026-08-04, regional/ECGFounder audit hardening)
+
+- Published analysis state is now one immutable `ReviewSnapshot`: image bytes,
+  result, capture rectangle, and revision become visible atomically only after a
+  successful analysis. Export, image QA, regional review, and writeback all read
+  that snapshot; writeback is rejected outside `DISPLAYING` or after revision
+  drift. Apply executes on `AsyncBridge`, not the Qt thread.
+- Regional QA audits the original source-pixel crop. When MultiPass is enabled,
+  it runs a bounded refine turn before the JSON-only proposal turn and records
+  both OpenClaw sessions/runs/tools/receipts. Missing, failed, or low-signal
+  audit blocks every `ADD`, `REVISE`, and `RETRACT`. Exact finding ids survive
+  the canvas click path; duplicate ids fail closed; single-crop edits cannot
+  rewrite multi-box or multi-static-region findings; unprocessed manual regions
+  survive rerender.
+- Image follow-ups now use unique OpenClaw sessions and accept tool events only
+  after response/run correlation. Applied, dismissed, blocked, and no-change
+  regional turns all persist in `analysis_trace`. Manual-mode image changes
+  invalidate the old snapshot immediately, and edge crops clamp to real source
+  pixels instead of padding blank space outside the ROI.
+- ECGFounder evaluation now accepts only 12-lead input and exact official model
+  revision/checkpoint provenance. Each case has a random evidence nonce; exactly
+  one matching `status=ok` receipt is required, transport failures leave an
+  audit row, and invalid evidence becomes an infrastructure failure. Desktop
+  Settings explicitly says evaluation-only because no trusted desktop
+  study-to-waveform resolver exists yet.
+- Sidecar deep health verifies model readiness; per-lead finite/flat/clipping
+  gates run before preprocessing. The portable bundle verifier now bans Torch,
+  sidecar/MEETI paths, waveform/model suffixes, and includes the upstream MIT
+  notice without bundling checkpoint or waveform data.
+- Current source verification: Ruff passed; unit+smoke `738 passed, 1 skipped`;
+  OpenClaw integration `55 passed`. Fresh bundle rebuild/hash remains pending.
+
 ## Session Update (2026-08-04, reviewer-confirmed regional writeback)
 
 - AI boxes and reviewer-drawn regions now send the exact app-owned crop through
@@ -14,13 +46,13 @@
   ids, missing targets, id collisions, malformed/out-of-ROI boxes, normal
   add/revise proposals, and missing/error/low-signal crop receipts. The local
   signal gate checks blank fields, ink/bright pixels, edge density, entropy, and
-  robust dynamic range; QA/manual export and reviewer-controlled retract remain
-  available when signal is low.
+  robust dynamic range; QA/manual export remains available when signal is low,
+  but no report-changing action is allowed.
 - Chat expiry is independent from the report/markers, model/user text renders as
   plain text, and promoting a manual region consumes that region to avoid a
   duplicate export marker. Native Qt and annotated-PNG visual probes were
   inspected at production dimensions.
-- Current source verification: full Ruff passed; OOM-safe unit+smoke is 706
+- Superseded source verification: full Ruff passed; OOM-safe unit+smoke was 706
   passed plus one release-only skip; OpenClaw integration is 55/55. A fresh
   Windows bundle rebuild and its final hash are still pending in this session.
 

@@ -100,3 +100,5 @@ def test_multi_pass_is_wired() -> None:
     source = _main_source()
     assert "MultiPassInterpreter" in source
     assert "MultiPassAnalyzer" in source
+    assert "openclaw_client.refine" in source
+    assert "review_region_about_image_with_trace" in source

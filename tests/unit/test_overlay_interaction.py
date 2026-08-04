@@ -8,7 +8,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
 from dicom_overlay.domain.entities import (
@@ -147,12 +148,42 @@ def test_promoted_manual_region_is_consumed_without_removing_other_regions(
     promoted = (0.1, 0.2, 0.3, 0.2)
     retained = (0.6, 0.5, 0.2, 0.2)
     overlay._user_regions = [promoted, retained]
+    overlay._content_rect = (0, 0, 1000, 500)
 
     assert overlay.consume_user_region(RegionRect(*promoted)) is True
     assert overlay.user_regions == [retained]
+    overlay.show_result(_result(), [], content_rect=(0, 0, 1000, 500))
+    assert [item[5] for item in overlay._highlights] == ["User region"]
     assert overlay.consume_user_region(RegionRect(*promoted)) is False
     overlay.clear_user_regions()
     assert overlay.user_regions == []
+    overlay.close()
+
+
+def test_retained_manual_region_can_be_selected_again(
+    qt_app: QApplication,
+) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(1000, 500)
+    overlay._content_rect = (0, 0, 1000, 500)
+    overlay._user_regions = [(0.1, 0.2, 0.3, 0.2)]
+    overlay._refresh_user_region_highlights()
+    selected: list[tuple[float, float, float, float]] = []
+    ai_selected: list[tuple[object, ...]] = []
+    overlay.user_region_selected.connect(lambda *values: selected.append(values))
+    overlay.highlight_selected.connect(lambda *values: ai_selected.append(values))
+    overlay.set_interaction_mode("inspect")
+    overlay.show()
+    qt_app.processEvents()
+
+    QTest.mouseClick(
+        overlay,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(150, 150),
+    )
+
+    assert selected == [pytest.approx((0.1, 0.2, 0.3, 0.2))]
+    assert ai_selected == []
     overlay.close()
 
 
@@ -197,7 +228,7 @@ def test_chat_timeout_hides_only_chat_and_preserves_report(
     qt_app: QApplication,
 ) -> None:
     overlay = OverlayWindow()
-    highlights = [(10, 20, 30, 40, "warning", "ST-T change")]
+    highlights = [(10, 20, 30, 40, "warning", "ST-T change", "f1")]
     overlay.show_result(
         _result(),
         highlights,

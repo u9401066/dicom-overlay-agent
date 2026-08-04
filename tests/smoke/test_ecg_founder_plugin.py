@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -8,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from dicom_overlay.infrastructure.eval_artifact_validator import (
+    _valid_ecg_founder_evidence,
+)
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PLUGIN_ROOT = (
-    _REPO_ROOT
-    / "openclaw"
-    / "workspace"
-    / "plugins"
-    / "dicom-overlay-agent-harness"
+    _REPO_ROOT / "openclaw" / "workspace" / "plugins" / "dicom-overlay-agent-harness"
 )
 
 
@@ -49,7 +50,9 @@ def _valid_payload() -> dict[str, object]:
         "model": {
             "id": "PKUDigitalHealth/ECGFounder",
             "revision": "04edac702b61c91face519774ddcc0cd712fef23",
-            "checkpoint_sha256": "a" * 64,
+            "checkpoint_sha256": (
+                "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+            ),
         },
         "input": {
             "source_kind": "raw_waveform",
@@ -120,7 +123,7 @@ const config = module.resolveEcgFounderConfig({{
 }});
 const details = module.sanitizeEcgFounderResponse(
   {payload},
-  {{ artifact_id: "artifact-1", lead_mode: "12_lead", max_predictions: 10 }}
+  {{ artifact_id: "artifact-1", lead_mode: "12_lead", evidence_nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", max_predictions: 10 }}
 );
 console.log(JSON.stringify({{
   remoteRejected,
@@ -152,7 +155,7 @@ let rejected = false;
 try {{
   module.sanitizeEcgFounderResponse(
     {json.dumps(payload)},
-    {{ artifact_id: "artifact-1", lead_mode: "12_lead", max_predictions: 10 }}
+    {{ artifact_id: "artifact-1", lead_mode: "12_lead", evidence_nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", max_predictions: 10 }}
   );
 }} catch {{
   rejected = true;
@@ -161,3 +164,77 @@ console.log(JSON.stringify({{ rejected }}));
 """
 
     assert _run_node_module(source)["rejected"] is True
+
+
+def test_ecg_founder_tool_persists_bounded_success_and_failure_receipts(
+    tmp_path: Path,
+) -> None:
+    module_uri = (_PLUGIN_ROOT / "index.js").as_uri()
+    audit_path = tmp_path / "ecgfounder-audit.jsonl"
+    payload = json.dumps(_valid_payload())
+    source = f"""
+const module = await import({json.dumps(module_uri)});
+const config = {{
+  endpoint: "http://127.0.0.1:18790/v1/analyze",
+  token: "secret",
+  timeoutMs: 5000,
+  auditPath: {json.dumps(str(audit_path))}
+}};
+const okFetch = async () => new Response({json.dumps(payload)}, {{
+  status: 200,
+  headers: {{ "content-type": "application/json" }}
+}});
+const tool = module.createEcgFounderTool(config, okFetch);
+await tool.execute("call-ok", {{
+  artifact_id: "artifact-1",
+  lead_mode: "12_lead",
+  evidence_nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  max_predictions: 10
+}});
+const failedTool = module.createEcgFounderTool(config, async () => {{
+  throw new Error("transport_down");
+}});
+try {{
+  await failedTool.execute("call-failed", {{
+    artifact_id: "artifact-1",
+    lead_mode: "12_lead",
+    evidence_nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    max_predictions: 10
+  }});
+}} catch {{}}
+console.log(JSON.stringify({{ done: true }}));
+"""
+
+    assert _run_node_module(source)["done"] is True
+    records = [
+        json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in records] == ["ok", "error"]
+    assert {record["evidence_nonce"] for record in records} == {"a" * 32}
+    assert records[0]["source_sha256"] == "b" * 64
+    assert records[0]["predictions"][0]["label"] == "ATRIAL FIBRILLATION"
+    response_evidence = records[0]["response_evidence"]
+    assert "artifact_id" not in response_evidence
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            response_evidence,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+    assert records[0]["response_sha256"] == expected_digest
+    evidence = {
+        "requested": True,
+        "verified_exactly_once": True,
+        "artifact_id_sha256": hashlib.sha256(b"artifact-1").hexdigest(),
+        "lead_mode": "12_lead",
+        "evidence_nonce": "a" * 32,
+        "receipt_count": 1,
+        "receipts": [records[0]],
+    }
+    assert _valid_ecg_founder_evidence(
+        evidence,
+        expected_preprocessing_revision="test",
+    )
+    assert records[1]["failure_reason"] == "transport_down"

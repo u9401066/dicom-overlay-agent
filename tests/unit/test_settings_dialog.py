@@ -81,7 +81,8 @@ def test_settings_dialog_shows_configured_waveform_assist_without_secret(
     dialog = SettingsDialog(repo_root=tmp_path)
     qtbot.addWidget(dialog)
 
-    assert dialog._waveform_assist_status.text() == (
-        "Configured (paired waveform studies)"
+    assert dialog._waveform_assist_status.text() == "Evaluation sidecar configured"
+    assert (
+        "trusted study-to-waveform binding" in dialog._waveform_assist_status.toolTip()
     )
     assert "super-secret" not in dialog._waveform_assist_status.text()

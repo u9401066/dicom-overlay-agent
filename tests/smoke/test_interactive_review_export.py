@@ -12,6 +12,7 @@ from PIL import Image
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.application.review_chat import parse_region_review_response
 from dicom_overlay.domain.entities import (
+    AgentState,
     AnalysisResult,
     AppConfig,
     Modality,
@@ -46,6 +47,7 @@ def test_reviewer_confirmed_crop_proposal_reaches_json_and_png(tmp_path) -> None
     agent._last_result = initial
     agent._annotation_accumulator.reset([])
     agent._result_revision = 1
+    agent._state = AgentState.DISPLAYING
     selected = RegionRect(0.2, 0.2, 0.25, 0.25)
     response = parse_region_review_response(
         json.dumps(
@@ -98,7 +100,9 @@ def test_reviewer_confirmed_crop_proposal_reaches_json_and_png(tmp_path) -> None
     assert exported["source"] == "interactive_ai_review"
     assert exported["bboxes"] == [{"x": 0.2, "y": 0.2, "w": 0.25, "h": 0.25}]
     assert payload["analysis_trace"][-1]["user_confirmed"] is True
-    assert payload["analysis_trace"][-1]["bbox_source"] == ("app_selected_original_roi")
+    assert payload["analysis_trace"][-1]["bbox_source"] == (
+        "reviewer_selected_original_roi"
+    )
     assert payload["analysis_trace"][-1]["local_signal_audit"]["low_signal"] is False
     with Image.open(review_path) as review:
         assert review.size[0] > 800

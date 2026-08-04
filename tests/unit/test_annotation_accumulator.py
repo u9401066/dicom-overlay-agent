@@ -221,6 +221,35 @@ def test_apply_delta_revise_may_downgrade_severity() -> None:
     assert "physician reviewed" in result[0].notes
 
 
+def test_apply_delta_revise_updates_confidence_and_reviewer_question() -> None:
+    current = Finding(
+        id="a",
+        regions=[],
+        label="lesion",
+        detail="old",
+        severity=Severity.WARNING,
+        confidence="high",
+        question="Old question",
+    )
+    revised = Finding(
+        id="a",
+        regions=[],
+        label="lesion",
+        detail="re-read",
+        severity=Severity.INFO,
+        confidence="low",
+        question="New reviewer question",
+    )
+
+    result = apply_delta(
+        [current],
+        FindingDelta(op=FindingOp.REVISE, finding=revised),
+    )
+
+    assert result[0].confidence == "low"
+    assert result[0].question == "New reviewer question"
+
+
 def test_apply_delta_revise_missing_falls_back_to_add() -> None:
     findings = [_finding("a")]
     delta = FindingDelta(
@@ -266,6 +295,14 @@ def test_accumulator_reset_preserves_primary_result_exactly() -> None:
 
     assert snapshot == findings
     assert [finding.id for finding in acc.findings] == ["a", "b"]
+
+
+def test_accumulator_reset_rejects_duplicate_finding_ids() -> None:
+    acc = AnnotationAccumulator()
+    finding = _finding("a")
+
+    with pytest.raises(ValueError, match="duplicate ids"):
+        acc.reset([finding, finding])
 
 
 def test_accumulator_findings_returns_copy() -> None:

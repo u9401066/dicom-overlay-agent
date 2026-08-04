@@ -16,7 +16,7 @@ from dicom_overlay.infrastructure.overlay_geometry import (
     project_bbox_to_overlay_highlight,
 )
 
-HighlightTuple = tuple[int, int, int, int, str, str]
+HighlightTuple = tuple[int, int, int, int, str, str, str]
 
 
 @dataclass(frozen=True)
@@ -39,9 +39,7 @@ class BboxHighlightAuditRow:
             "drawn": self.drawn,
             "original_bbox": _bbox_to_dict(self.calibration.original_bbox),
             "clamped_bbox": _bbox_to_dict(self.calibration.clamped_bbox),
-            "back_projected_bbox": _bbox_to_dict(
-                self.calibration.back_projected_bbox
-            ),
+            "back_projected_bbox": _bbox_to_dict(self.calibration.back_projected_bbox),
             "max_edge_drift_px": self.calibration.max_edge_drift_px,
             "was_clamped": self.calibration.was_clamped,
             "ok": self.calibration.ok,
@@ -91,7 +89,7 @@ def build_ai_bbox_highlights(
                 )
             )
             if drawn:
-                highlights.append(projected.highlight)
+                highlights.append((*projected.highlight, finding.id))
     return BboxHighlightBuildResult(highlights=highlights, audit_rows=audit_rows)
 
 

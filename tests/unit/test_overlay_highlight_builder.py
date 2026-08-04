@@ -22,7 +22,7 @@ def test_ai_bbox_highlight_builder_draws_calibrated_boxes_with_audit() -> None:
         dpr=1.0,
     )
 
-    assert result.highlights == [(100, 160, 300, 160, "warning", "ST depression")]
+    assert result.highlights == [(100, 160, 300, 160, "warning", "ST depression", "f1")]
     assert len(result.audit_rows) == 1
     row = result.audit_rows[0]
     assert row.finding_id == "f1"
@@ -77,6 +77,6 @@ def test_ai_bbox_highlight_builder_draws_info_box_for_uncertainty_review() -> No
     )
 
     assert result.highlights == [
-        (200, 240, 200, 80, "info", "Review possible ST change")
+        (200, 240, 200, 80, "info", "Review possible ST change", "uncertain-1")
     ]
     assert result.audit_rows[0].drawn is True

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -96,6 +97,149 @@ def test_make_client_uses_eval_timeout_for_inference() -> None:
     assert client._inference_timeout == 90
     assert client._registry is module.get_active_registry()
     assert client._base_dir == module._REPO_ROOT
+
+
+def test_waveform_evidence_requires_one_nonce_correlated_pinned_receipt() -> None:
+    module = _load_run_eval_module()
+    artifact_id = "wf-opaque-123"
+    nonce = "a" * 32
+    artifact_digest = hashlib.sha256(artifact_id.encode()).hexdigest()
+    predictions = [{"label": "NORMAL SINUS RHYTHM", "probability": 0.9}]
+    response_evidence = {
+        "schema_version": 1,
+        "status": "ok",
+        "evidence_type": "ecg_waveform_classification",
+        "lead_mode": "12_lead",
+        "evidence_nonce": nonce,
+        "artifact_id_sha256": artifact_digest,
+        "use_policy": "supporting_evidence_only",
+        "spatial_localization": "not_provided",
+        "model": {
+            "id": "PKUDigitalHealth/ECGFounder",
+            "revision": "04edac702b61c91face519774ddcc0cd712fef23",
+            "checkpoint_sha256": (
+                "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+            ),
+        },
+        "input": {"source_sha256": "b" * 64},
+        "preprocessing": {"implementation_revision": "preprocess-v1"},
+        "calibration": {"status": "uncalibrated", "revision": ""},
+        "predictions": predictions,
+    }
+    receipt = {
+        "schema_version": 1,
+        "tool": "ecg_founder_analyze_waveform",
+        "tool_call_id": "call-1",
+        "status": "ok",
+        "evidence_nonce": nonce,
+        "artifact_id_sha256": artifact_digest,
+        "lead_mode": "12_lead",
+        "model_id": "PKUDigitalHealth/ECGFounder",
+        "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+        "checkpoint_sha256": (
+            "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+        ),
+        "source_sha256": "b" * 64,
+        "preprocessing_revision": "preprocess-v1",
+        "calibration_status": "uncalibrated",
+        "calibration_revision": "",
+        "prediction_count": 1,
+        "predictions": predictions,
+        "response_evidence": response_evidence,
+        "response_sha256": hashlib.sha256(
+            json.dumps(
+                response_evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+    }
+
+    evidence = module._build_waveform_evidence(
+        artifact_id=artifact_id,
+        lead_mode="12_lead",
+        evidence_nonce=nonce,
+        receipts=[receipt],
+    )
+
+    assert evidence["verified_exactly_once"] is True
+    assert evidence["receipt_count"] == 1
+
+    wrong_nonce = dict(receipt, evidence_nonce="b" * 32)
+    rejected = module._build_waveform_evidence(
+        artifact_id=artifact_id,
+        lead_mode="12_lead",
+        evidence_nonce=nonce,
+        receipts=[wrong_nonce],
+    )
+    duplicate = module._build_waveform_evidence(
+        artifact_id=artifact_id,
+        lead_mode="12_lead",
+        evidence_nonce=nonce,
+        receipts=[receipt, receipt],
+    )
+    assert rejected["verified_exactly_once"] is False
+    assert duplicate["verified_exactly_once"] is False
+
+
+def test_ecgfounder_deep_health_requires_pinned_ready_provenance() -> None:
+    module = _load_run_eval_module()
+    requests: list[tuple[str, str, float]] = []
+    payload = {
+        "status": "ready",
+        "deep": True,
+        "model_id": "PKUDigitalHealth/ECGFounder",
+        "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+        "checkpoint_sha256": (
+            "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+        ),
+        "preprocessing_revision": "preprocess-v1",
+        "artifact_count": 1000,
+    }
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return json.dumps(payload).encode()
+
+    def opener(request, *, timeout: float):
+        requests.append(
+            (request.full_url, request.get_header("Authorization"), timeout)
+        )
+        return Response()
+
+    environment = {
+        "DICOM_ECGFOUNDER_ENDPOINT": "http://127.0.0.1:18790/v1/analyze",
+        "DICOM_ECGFOUNDER_TOKEN": "secret-token",
+        "DICOM_ECGFOUNDER_TIMEOUT_MS": "5000",
+    }
+    health, reason = module._probe_ecg_founder_deep_health(
+        environment,
+        opener=opener,
+    )
+
+    assert health is not None
+    assert health["preprocessing_revision"] == "preprocess-v1"
+    assert reason == "ready"
+    assert requests == [
+        (
+            "http://127.0.0.1:18790/health?deep=1",
+            "Bearer secret-token",
+            5.0,
+        )
+    ]
+
+    payload["checkpoint_sha256"] = "f" * 64
+    health, reason = module._probe_ecg_founder_deep_health(
+        environment,
+        opener=opener,
+    )
+    assert (health, reason) == (None, "health_provenance_mismatch")
 
 
 def test_counting_analyzer_counts_delegated_analyze_calls() -> None:

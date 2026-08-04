@@ -2,6 +2,25 @@
 
 ## Done
 
+- **Regional review and ECGFounder evidence-chain hardening** (2026-08-04):
+  - Made image/result/capture/revision publication atomic; moved reviewer Apply
+    to `AsyncBridge` and rejected stale or in-flight writeback.
+  - Regional review now audits source pixels, performs a bounded refine plus
+    structured proposal turn, preserves both public tool traces, and blocks all
+    report mutations on low/missing/failed signal evidence.
+  - Preserved exact finding ids and manual-region lifecycle; protected
+    multi-box/multi-static-region findings from a single-crop rewrite and
+    persisted revised confidence/questions. Unique image sessions reject stale
+    tool events, while applied/dismissed/blocked/no-change outcomes are audited.
+  - Invalidated manual-mode snapshots on image changes, clamped source crops at
+    right/bottom edges, and kept thin ECG traces out of the blank-crop gate.
+  - Added ECGFounder per-case nonce correlation, exactly-one pinned success
+    receipts, success/failure provenance, strict 12-lead/per-lead gates, deep
+    health, desktop evaluation-only status, full MIT notice, and bundle bans for
+    model/waveform/sidecar payloads.
+  - Ruff passed. Unit+smoke: 738 passed plus one release-only skip. OpenClaw
+    integration: 55/55. Fresh bundle rebuild is pending.
+
 - **Reviewer-confirmed regional writeback and export provenance** (2026-08-04):
   - Wired `AnnotationAccumulator` into the desktop agent and added exact-crop,
     JSON-only regional follow-ups with explicit Apply/Dismiss controls.
@@ -13,7 +32,7 @@
     consumed after promotion so exports do not duplicate them.
   - Corrected geometry dedup to require a matching normalized diagnosis label
     in addition to IoU, retaining multiple diagnoses over the same waveform.
-  - Full Ruff passed. OOM-safe unit+smoke: 706 passed plus one release-only
+  - Superseded verification: OOM-safe unit+smoke was 706 passed plus one release-only
     skip. OpenClaw integration: 55/55. Fresh bundle rebuild is pending.
 
 - **Luna default, recoverable Gateway, and ECGFounder held-out evaluation**

@@ -9,12 +9,12 @@ or a schema-valid response is never mistaken for clinical accuracy evidence.
 | Surface | Status | Evidence |
 | --- | --- | --- |
 | Source self-check | passed | Node, OpenClaw, 51 bundled skills, native plugin, rules, writable base |
-| Unit + smoke suite | 706 passed, 1 release-only skip | `scripts/run-tests-safe.cmd -q` |
+| Unit + smoke suite | 738 passed, 1 release-only skip | `uv run python -m pytest -q` |
 | Full repository Ruff | passed | `scripts/run-ruff-safe.cmd check .` |
 | OpenClaw overlay integration | 55 passed | `tests/integration/test_openclaw_overlay.py` |
 | Fresh bundle smoke | 2 passed | `RUN_BUNDLE_SMOKE=1`, real frozen EXE self-check |
 | Packaged native plugin | loaded | `dicom_bbox_validate` and `ecg_founder_analyze_waveform`, zero diagnostics |
-| Interactive review writeback | passed | JSON proposal -> reviewer Apply -> report/trace -> JSON/PNG smoke; low-signal writeback rejected |
+| Interactive review writeback | passed | refine + JSON proposal -> Apply/Dismiss/no-change trace -> JSON/PNG smoke; all low-signal mutations rejected |
 | Real Win32/Qt coordinate probe | passed | Win32 window `1222x836`; mss capture `1222x836`; physical display `2560x1600`; Qt frame `1707x1067` |
 | ECGFounder paired waveform arm | 1,000/1,000 completed | `data/eval-runs/ecgfounder-meeti-1000-fullscores-20260804` |
 | ECGFounder full-score research audit | 23 supported concepts | CV macro BA 0.865; 3-5 diagnosis complete recall 0.479 |
@@ -45,15 +45,25 @@ The auditable MultiPass flow is:
 8. Keep a reviewer-safe `analysis_trace` with stages, registered tools, crop
    coordinates, decisions, and provenance. Hidden chain-of-thought is neither
    requested nor stored.
-9. A clicked AI box or reviewer-drawn region may start a separate structured
-   crop follow-up. The model cannot return coordinates; a deterministic local
-   signal audit and explicit reviewer Apply gate any report writeback.
+9. A clicked AI box or reviewer-drawn region may start a source-pixel regional
+   refine turn followed by a separate structured crop follow-up. Both runtime
+   traces are retained. The model cannot return coordinates; a deterministic
+   local signal audit and explicit reviewer Apply gate every report writeback.
+10. Each image follow-up uses a unique OpenClaw session and records tool events
+    only after the response id/run id matches. No-change, blocked, dismissed,
+    and applied outcomes all remain in the exported Process trace.
 
 OpenClaw's native plugin always exposes `dicom_bbox_validate`. The conditional
 `ecg_founder_analyze_waveform` tool is usable only with an authenticated
 loopback sidecar and an app-supplied opaque waveform artifact id. It cannot read
 arbitrary paths, cannot treat a PNG as a waveform, and cannot create image
 boxes. See [the ECGFounder tool contract](ecgfounder-tool.md).
+
+The desktop does not yet resolve the current viewer study to a trusted waveform
+artifact; ECGFounder binding is evaluation-only. Each bound case receives a
+random evidence nonce. A case is valid only with exactly one `status=ok` tool
+receipt matching that nonce, the artifact digest, the official model revision,
+and the pinned 12-lead checkpoint. Transport failures also leave receipts.
 
 ## ECGFounder Waveform Run
 
@@ -187,10 +197,14 @@ Interactive regional review now keeps the same coordinate boundary. `ADD`
 uses the reviewer-selected original-ROI rectangle; `REVISE` and `RETRACT` bind
 to the selected finding id and its existing accepted boxes. A deterministic
 gate combines bright-blank detection, edge density, robust dynamic range, and
-pixel density; a crop it marks low-signal (or a failed audit) may still be
-discussed and exported as a manual region, but cannot become an
-`ADD`/`REVISE` AI finding. A monotonic chat request id also rejects late
+pixel density and original source resolution; a crop it marks low-signal (or a
+missing/failed audit) may still be discussed and exported as a manual region,
+but cannot perform `ADD`, `REVISE`, or `RETRACT`. A monotonic chat request id also rejects late
 same-image responses, while result revision rejects responses from older images.
+Manual-mode image changes invalidate the prior review snapshot immediately, so
+old boxes, crops, and exports cannot remain actionable while a new image awaits
+analysis. Duplicate finding ids fail validation instead of selecting an
+ambiguous writeback target.
 The deterministic end-to-end smoke verifies proposal parsing, explicit Apply,
 result-revision protection, report provenance, JSON coordinates, and a nonblank
 box-border pixel in the annotated PNG. A native Qt snapshot also verified the

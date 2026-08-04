@@ -10,6 +10,7 @@ import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from json import JSONDecodeError
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -48,7 +49,6 @@ from dicom_overlay.infrastructure.openclaw_runtime import build_openclaw_chat_fr
 logger = structlog.get_logger(__name__)
 
 _OPENCLAW_VERSION = "2026.3.11"
-_SESSION_KEY = "main"
 # The websockets default frame limit is 1 MiB. A real medical screenshot,
 # even after downscaling to the configured max edge, base64-encodes to a few
 # MiB, which overflows the default and closes the connection (close code 1009).
@@ -62,6 +62,17 @@ _DEFAULT_SCOPES = [
     "operator.pairing",
 ]
 _WAVEFORM_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
+@dataclass
+class _WaveformArtifactBinding:
+    artifact_id: str
+    lead_mode: str
+    evidence_nonce: str
+    audit_offset: int
+    receipts: list[dict[str, object]] = field(default_factory=list)
+    tool_call_ids: set[str] = field(default_factory=set)
+
 
 # Skill resolution is driven by the modality registry (single source of truth).
 # A modality's OpenClaw skill folder name comes from its ``ModalityProfile``;
@@ -121,8 +132,9 @@ class OpenClawClient(VisionAnalyzerService):
         self._ecg_founder_tool_audit_offset = _file_size(
             self._ecg_founder_tool_audit_path
         )
+        self._last_waveform_binding: _WaveformArtifactBinding | None = None
         self._last_tool_audit_records: list[dict[str, object]] = []
-        self._waveform_artifact_context: ContextVar[tuple[str, str] | None] = (
+        self._waveform_artifact_context: ContextVar[_WaveformArtifactBinding | None] = (
             ContextVar(
                 f"openclaw_waveform_artifact_{id(self)}",
                 default=None,
@@ -135,19 +147,41 @@ class OpenClawClient(VisionAnalyzerService):
         artifact_id: str,
         *,
         lead_mode: str = "12_lead",
-    ) -> Iterator[None]:
+    ) -> Iterator[str]:
         """Bind one opaque waveform artifact to the current async analysis task."""
 
         clean_id = artifact_id.strip()
         if not _WAVEFORM_ARTIFACT_ID.fullmatch(clean_id):
             raise ValueError("invalid waveform artifact id")
-        if lead_mode not in {"12_lead", "single_lead"}:
+        if lead_mode != "12_lead":
             raise ValueError("invalid waveform lead mode")
-        token = self._waveform_artifact_context.set((clean_id, lead_mode))
+        binding = _WaveformArtifactBinding(
+            artifact_id=clean_id,
+            lead_mode=lead_mode,
+            evidence_nonce=uuid4().hex,
+            audit_offset=_file_size(self._ecg_founder_tool_audit_path),
+        )
+        token = self._waveform_artifact_context.set(binding)
         try:
-            yield
+            yield binding.evidence_nonce
         finally:
+            self._refresh_waveform_binding(binding)
+            self._last_waveform_binding = binding
             self._waveform_artifact_context.reset(token)
+
+    def waveform_evidence_receipts(
+        self,
+        evidence_nonce: str,
+    ) -> list[dict[str, object]]:
+        """Return nonce-correlated receipts across all turns and parse retries."""
+
+        binding = self._waveform_artifact_context.get()
+        if binding is None or binding.evidence_nonce != evidence_nonce:
+            binding = self._last_waveform_binding
+        if binding is None or binding.evidence_nonce != evidence_nonce:
+            return []
+        self._refresh_waveform_binding(binding)
+        return [dict(receipt) for receipt in binding.receipts]
 
     async def connect(self) -> None:
         try:
@@ -404,8 +438,13 @@ class OpenClawClient(VisionAnalyzerService):
             valid_regions,
             skill,
             base_dir=self._base_dir,
-            waveform_artifact_id=(waveform_context or ("", ""))[0],
-            waveform_lead_mode=(waveform_context or ("", ""))[1],
+            waveform_artifact_id=(
+                waveform_context.artifact_id if waveform_context else ""
+            ),
+            waveform_lead_mode=(waveform_context.lead_mode if waveform_context else ""),
+            waveform_evidence_nonce=(
+                waveform_context.evidence_nonce if waveform_context else ""
+            ),
         )
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
@@ -514,9 +553,11 @@ class OpenClawClient(VisionAnalyzerService):
         self._last_run_tools = []
         self._last_parse_retry_count = 0
         self._tool_audit_offset = _file_size(self._tool_audit_path)
-        self._ecg_founder_tool_audit_offset = _file_size(
-            self._ecg_founder_tool_audit_path
-        )
+        waveform_context = self._waveform_artifact_context.get()
+        if waveform_context is None:
+            self._ecg_founder_tool_audit_offset = _file_size(
+                self._ecg_founder_tool_audit_path
+            )
         self._last_tool_audit_records = []
 
     def last_run_trace(self) -> dict[str, object]:
@@ -537,16 +578,45 @@ class OpenClawClient(VisionAnalyzerService):
             self._tool_audit_offset,
             _valid_bbox_tool_audit_record,
         )
-        self._ecg_founder_tool_audit_offset, ecg_records = _read_new_tool_audit_records(
-            self._ecg_founder_tool_audit_path,
-            self._ecg_founder_tool_audit_offset,
-            _valid_ecg_founder_tool_audit_record,
-        )
+        binding = self._waveform_artifact_context.get()
+        if binding is not None:
+            ecg_records = self._refresh_waveform_binding(binding)
+        else:
+            self._ecg_founder_tool_audit_offset, _discarded = (
+                _read_new_tool_audit_records(
+                    self._ecg_founder_tool_audit_path,
+                    self._ecg_founder_tool_audit_offset,
+                    _valid_ecg_founder_tool_audit_record,
+                )
+            )
+            ecg_records = []
         for record in [*bbox_records, *ecg_records]:
             self._last_tool_audit_records.append(record)
             tool = record["tool"]
             if isinstance(tool, str) and tool not in self._last_run_tools:
                 self._last_run_tools.append(tool)
+
+    def _refresh_waveform_binding(
+        self,
+        binding: _WaveformArtifactBinding,
+    ) -> list[dict[str, object]]:
+        binding.audit_offset, records = _read_new_tool_audit_records(
+            self._ecg_founder_tool_audit_path,
+            binding.audit_offset,
+            _valid_ecg_founder_tool_audit_record,
+        )
+        new_records: list[dict[str, object]] = []
+        for record in records:
+            if record.get("evidence_nonce") != binding.evidence_nonce:
+                continue
+            tool_call_id = str(record.get("tool_call_id") or "")
+            if not tool_call_id or tool_call_id in binding.tool_call_ids:
+                continue
+            binding.tool_call_ids.add(tool_call_id)
+            copied = dict(record)
+            binding.receipts.append(copied)
+            new_records.append(copied)
+        return new_records
 
     async def chat(self, message: str) -> str:
         """Send a free-text question with auto-reconnect on connection loss."""
@@ -607,15 +677,42 @@ class OpenClawClient(VisionAnalyzerService):
             image_base64=image_base64,
         )
 
+    async def review_region_about_image_with_trace(
+        self,
+        prompt: str,
+        *,
+        image_base64: str,
+    ) -> tuple[str, dict[str, object]]:
+        """Run a regional review and atomically return its public run trace."""
+
+        if not prompt.strip():
+            raise ValueError("prompt is required for regional review")
+        return await self._chat_about_image_prompt_and_trace(
+            prompt,
+            image_base64=image_base64,
+        )
+
     async def _chat_about_image_prompt(
         self,
         prompt: str,
         *,
         image_base64: str,
     ) -> str:
+        response, _trace = await self._chat_about_image_prompt_and_trace(
+            prompt,
+            image_base64=image_base64,
+        )
+        return response
+
+    async def _chat_about_image_prompt_and_trace(
+        self,
+        prompt: str,
+        *,
+        image_base64: str,
+    ) -> tuple[str, dict[str, object]]:
         async with self._ws_lock:
             try:
-                return await self._do_image_chat_prompt(
+                response = await self._do_image_chat_prompt(
                     prompt,
                     image_base64=image_base64,
                 )
@@ -627,7 +724,7 @@ class OpenClawClient(VisionAnalyzerService):
                 self._connected = False
                 try:
                     await self.connect()
-                    return await self._do_image_chat_prompt(
+                    response = await self._do_image_chat_prompt(
                         prompt,
                         image_base64=image_base64,
                     )
@@ -641,6 +738,7 @@ class OpenClawClient(VisionAnalyzerService):
                 except Exception as exc:
                     self._connected = False
                     raise ConnectionError(f"Reconnect failed: {exc}") from None
+            return response, self.last_run_trace()
 
     async def _do_chat(self, message: str) -> str:
         if not self.is_connected():
@@ -650,10 +748,12 @@ class OpenClawClient(VisionAnalyzerService):
 
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
+        session_key = f"image-followup-{idempotency_key}"
+        self._begin_run_trace(session_key)
 
         frame = build_openclaw_chat_frame(
             request_id=request_id,
-            session_key=_SESSION_KEY,
+            session_key=session_key,
             message=message,
             idempotency_key=idempotency_key,
         )
@@ -676,10 +776,12 @@ class OpenClawClient(VisionAnalyzerService):
 
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
+        session_key = f"image-followup-{idempotency_key}"
+        self._begin_run_trace(session_key)
 
         frame = build_openclaw_chat_frame(
             request_id=request_id,
-            session_key=_SESSION_KEY,
+            session_key=session_key,
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
@@ -707,10 +809,10 @@ class OpenClawClient(VisionAnalyzerService):
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
 
             frame = json.loads(raw)
-            self._record_tool_events(frame)
             frame_type = frame.get("type")
 
             if frame_type == "res" and frame.get("id") == request_id:
+                self._record_tool_events(frame)
                 if not frame.get("ok"):
                     error = frame.get("error", {})
                     raise RuntimeError(
@@ -737,6 +839,7 @@ class OpenClawClient(VisionAnalyzerService):
                     continue
                 if payload.get("runId") != run_id:
                     continue
+                self._record_tool_events(frame)
                 state = payload.get("state")
                 if state == "error":
                     raise RuntimeError(payload.get("errorMessage", "Chat event error"))
@@ -813,7 +916,6 @@ class OpenClawClient(VisionAnalyzerService):
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
 
             frame = json.loads(raw)
-            self._record_tool_events(frame)
             frame_type = frame.get("type")
             # Only log non-event frames to avoid flooding logs
             # (Gateway pushes dozens of event frames per request)
@@ -826,6 +928,7 @@ class OpenClawClient(VisionAnalyzerService):
                 )
 
             if frame_type == "res" and frame.get("id") == request_id:
+                self._record_tool_events(frame)
                 if not frame.get("ok"):
                     error = frame.get("error", {})
                     raise RuntimeError(
@@ -859,6 +962,8 @@ class OpenClawClient(VisionAnalyzerService):
                     continue
                 if payload.get("runId") != run_id:
                     continue
+
+                self._record_tool_events(frame)
 
                 state = payload.get("state")
                 if state == "error":
@@ -1093,6 +1198,7 @@ def _build_analysis_prompt(
     base_dir: Path | None = None,
     waveform_artifact_id: str = "",
     waveform_lead_mode: str = "",
+    waveform_evidence_nonce: str = "",
 ) -> str:
     skill_prompt = _load_skill_prompt(skill_name, base_dir=base_dir)
     return build_initial_analysis_prompt(
@@ -1102,6 +1208,7 @@ def _build_analysis_prompt(
         skill_prompt=skill_prompt,
         waveform_artifact_id=waveform_artifact_id,
         waveform_lead_mode=waveform_lead_mode,
+        waveform_evidence_nonce=waveform_evidence_nonce,
     )
 
 
@@ -1633,12 +1740,15 @@ def _valid_ecg_founder_tool_audit_record(value: object) -> bool:
     checkpoint_digest = value.get("checkpoint_sha256")
     prediction_count = value.get("prediction_count")
     status = value.get("status")
+    evidence_nonce = value.get("evidence_nonce")
     return (
         value.get("schema_version") == 1
         and value.get("tool") == "ecg_founder_analyze_waveform"
         and isinstance(value.get("tool_call_id"), str)
         and bool(value["tool_call_id"])
         and status in {"ok", "ineligible", "unavailable", "error"}
+        and isinstance(evidence_nonce, str)
+        and bool(re.fullmatch(r"[a-f0-9]{32}", evidence_nonce))
         and isinstance(prediction_count, int)
         and not isinstance(prediction_count, bool)
         and 0 <= prediction_count <= 150

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import dataclasses
 import inspect
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +40,70 @@ if TYPE_CHECKING:
     from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 
 logger = structlog.get_logger(__name__)
+
+_LOCAL_SIGNAL_AUDIT_KEYS = frozenset(
+    {
+        "status",
+        "width_px",
+        "height_px",
+        "ink_pixel_ratio",
+        "bright_pixel_ratio",
+        "entropy_bits",
+        "robust_dynamic_range",
+        "edge_pixel_ratio",
+        "source_short_edge_px",
+        "insufficient_source_resolution",
+        "low_signal",
+    }
+)
+_REGIONAL_TRACE_KEYS = frozenset(
+    {
+        "stage",
+        "status",
+        "reason",
+        "error_type",
+        "session_key",
+        "run_id",
+        "tools",
+        "tool_audit",
+        "parse_retry_count",
+    }
+)
+_REGIONAL_REVIEW_OUTCOMES = frozenset(
+    {"no_change", "blocked", "dismissed", "superseded"}
+)
+
+
+def _safe_local_signal_audit(
+    audit: dict[str, object] | None,
+) -> dict[str, object]:
+    if not isinstance(audit, dict):
+        return {}
+    return {
+        key: value for key, value in audit.items() if key in _LOCAL_SIGNAL_AUDIT_KEYS
+    }
+
+
+def _safe_regional_turns(
+    turns: list[dict[str, object]] | None,
+) -> list[dict[str, object]]:
+    if not isinstance(turns, list):
+        return []
+    return [
+        {key: value for key, value in turn.items() if key in _REGIONAL_TRACE_KEYS}
+        for turn in turns
+        if isinstance(turn, dict)
+    ]
+
+
+@dataclasses.dataclass(frozen=True)
+class ReviewSnapshot:
+    """Atomically published image/result pair for UI review operations."""
+
+    image_base64: str
+    result: AnalysisResult
+    capture_rect: WindowRect
+    revision: int
 
 
 class OverlayAgent:
@@ -88,6 +153,7 @@ class OverlayAgent:
         self._display_frame: DisplayFrame | None = None
         self._last_capture_rect: WindowRect | None = None
 
+        self._review_lock = threading.RLock()
         self._state = AgentState.INIT
         self._current_modality = Modality.EKG
         self._trigger_mode = config.analysis.trigger_mode
@@ -100,6 +166,7 @@ class OverlayAgent:
         self._target_window: WindowRect | None = None
         self._last_result: AnalysisResult | None = None
         self._result_revision = 0
+        self._review_snapshot: ReviewSnapshot | None = None
         self._annotation_accumulator = annotation_accumulator or AnnotationAccumulator()
         self._last_image_base64 = ""
         self._running = False
@@ -112,7 +179,8 @@ class OverlayAgent:
 
     @property
     def state(self) -> AgentState:
-        return self._state
+        with self._review_lock:
+            return self._state
 
     @property
     def current_modality(self) -> Modality:
@@ -134,7 +202,24 @@ class OverlayAgent:
     def result_revision(self) -> int:
         """Monotonic guard against applying a follow-up to a newer image."""
 
-        return self._result_revision
+        with self._review_lock:
+            return self._result_revision
+
+    @property
+    def review_snapshot(self) -> ReviewSnapshot | None:
+        """Return one immutable, internally consistent image/result revision."""
+
+        with self._review_lock:
+            return self._review_snapshot
+
+    @property
+    def displayed_review_snapshot(self) -> ReviewSnapshot | None:
+        """Return the snapshot only while it is valid for user interaction."""
+
+        with self._review_lock:
+            if self._state is not AgentState.DISPLAYING:
+                return None
+            return self._review_snapshot
 
     @property
     def last_image_base64(self) -> str:
@@ -174,6 +259,7 @@ class OverlayAgent:
         *,
         expected_revision: int,
         local_signal_audit: dict[str, object] | None = None,
+        regional_review_trace: list[dict[str, object]] | None = None,
     ) -> AnalysisResult:
         """Apply a reviewer-confirmed regional proposal to the displayed result.
 
@@ -183,20 +269,58 @@ class OverlayAgent:
         to the reviewer-visible process trace.
         """
 
+        with self._review_lock:
+            return self._apply_finding_delta_locked(
+                delta,
+                expected_revision=expected_revision,
+                local_signal_audit=local_signal_audit,
+                regional_review_trace=regional_review_trace,
+            )
+
+    def _apply_finding_delta_locked(
+        self,
+        delta: FindingDelta,
+        *,
+        expected_revision: int,
+        local_signal_audit: dict[str, object] | None,
+        regional_review_trace: list[dict[str, object]] | None,
+    ) -> AnalysisResult:
+        """Apply one delta while ``_review_lock`` is held."""
+
         if self._last_result is None:
             raise RuntimeError("No analysis result is available for review writeback")
+        if self._state is not AgentState.DISPLAYING:
+            raise RuntimeError("Review writeback requires the displayed result")
         if expected_revision != self._result_revision:
             raise RuntimeError(
                 "The image result changed before this proposal was applied"
             )
 
-        current_ids = {finding.id for finding in self._last_result.findings}
+        current_id_list = [finding.id for finding in self._last_result.findings]
+        current_ids = set(current_id_list)
+        if len(current_ids) != len(current_id_list):
+            raise ValueError("Current result contains duplicate finding ids")
+        target_finding = next(
+            (
+                finding
+                for finding in self._last_result.findings
+                if finding.id == delta.finding.id
+            ),
+            None,
+        )
         if delta.op is FindingOp.ADD and delta.finding.id in current_ids:
             raise ValueError("Review proposal add id already exists in current result")
         if delta.op in {FindingOp.REVISE, FindingOp.RETRACT} and (
             not delta.finding.id or delta.finding.id not in current_ids
         ):
             raise ValueError("Review proposal target is not in the current result")
+        signal_is_accepted = (
+            isinstance(local_signal_audit, dict)
+            and local_signal_audit.get("status") == "ok"
+            and local_signal_audit.get("low_signal") is False
+        )
+        if not signal_is_accepted:
+            raise ValueError("Review proposal failed the local-signal writeback gate")
         if delta.op in {FindingOp.ADD, FindingOp.REVISE}:
             if (
                 not delta.finding.id.strip()
@@ -206,15 +330,6 @@ class OverlayAgent:
                 raise ValueError("Review proposal finding payload is incomplete")
             if delta.finding.severity is Severity.NORMAL:
                 raise ValueError("Use retract instead of a normal overlay finding")
-            signal_is_accepted = (
-                isinstance(local_signal_audit, dict)
-                and local_signal_audit.get("status") == "ok"
-                and local_signal_audit.get("low_signal") is False
-            )
-            if not signal_is_accepted:
-                raise ValueError(
-                    "Review proposal failed the local-signal writeback gate"
-                )
             if not delta.finding.bboxes:
                 raise ValueError("Review proposal has no app-owned bbox")
             if any(
@@ -246,30 +361,25 @@ class OverlayAgent:
             "tool": "openclaw_region_followup",
             "operation": delta.op.value,
             "target_id": delta.finding.id,
-            "bbox_source": "app_selected_original_roi",
+            "bbox_source": (
+                "reviewer_selected_original_roi"
+                if delta.op is FindingOp.ADD
+                else "selected_finding_existing_bbox"
+                if target_finding is not None and target_finding.bboxes
+                else "selected_static_region_fallback"
+            ),
             "user_confirmed": True,
             "bboxes": [
                 {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
                 for box in delta.finding.bboxes
             ],
         }
-        if isinstance(local_signal_audit, dict):
-            allowed_audit_keys = {
-                "status",
-                "width_px",
-                "height_px",
-                "ink_pixel_ratio",
-                "bright_pixel_ratio",
-                "entropy_bits",
-                "robust_dynamic_range",
-                "edge_pixel_ratio",
-                "low_signal",
-            }
-            trace_entry["local_signal_audit"] = {
-                key: value
-                for key, value in local_signal_audit.items()
-                if key in allowed_audit_keys
-            }
+        safe_signal_audit = _safe_local_signal_audit(local_signal_audit)
+        if safe_signal_audit:
+            trace_entry["local_signal_audit"] = safe_signal_audit
+        safe_regional_turns = _safe_regional_turns(regional_review_trace)
+        if safe_regional_turns:
+            trace_entry["regional_turns"] = safe_regional_turns
         trace = [*self._last_result.analysis_trace, trace_entry]
         updated = dataclasses.replace(
             self._last_result,
@@ -281,6 +391,13 @@ class OverlayAgent:
         )
         self._last_result = updated
         self._result_revision += 1
+        snapshot = self._review_snapshot
+        if snapshot is not None:
+            self._review_snapshot = dataclasses.replace(
+                snapshot,
+                result=updated,
+                revision=self._result_revision,
+            )
         logger.info(
             "interactive_review_applied",
             operation=delta.op.value,
@@ -289,16 +406,83 @@ class OverlayAgent:
         )
         return updated
 
+    def record_regional_review_outcome(
+        self,
+        *,
+        expected_revision: int,
+        outcome: str,
+        local_signal_audit: dict[str, object] | None = None,
+        regional_review_trace: list[dict[str, object]] | None = None,
+        user_confirmed: bool = False,
+        proposed_operation: str = "none",
+        target_id: str = "",
+    ) -> AnalysisResult:
+        """Persist a crop-review turn that did not mutate report findings."""
+
+        if outcome not in _REGIONAL_REVIEW_OUTCOMES:
+            raise ValueError(f"Unsupported regional review outcome: {outcome}")
+        if proposed_operation not in {"none", *(op.value for op in FindingOp)}:
+            raise ValueError(
+                f"Unsupported regional review operation: {proposed_operation}"
+            )
+        with self._review_lock:
+            if self._last_result is None:
+                raise RuntimeError("No analysis result is available for review audit")
+            if self._state is not AgentState.DISPLAYING:
+                raise RuntimeError("Review audit requires the displayed result")
+            if expected_revision != self._result_revision:
+                raise RuntimeError(
+                    "The image result changed before this review was recorded"
+                )
+
+            trace_entry: dict[str, object] = {
+                "stage": "interactive_review",
+                "status": outcome,
+                "tool": "openclaw_region_followup",
+                "operation": proposed_operation,
+                "user_confirmed": bool(user_confirmed),
+            }
+            if target_id.strip():
+                trace_entry["target_id"] = target_id.strip()
+            safe_signal_audit = _safe_local_signal_audit(local_signal_audit)
+            if safe_signal_audit:
+                trace_entry["local_signal_audit"] = safe_signal_audit
+            safe_regional_turns = _safe_regional_turns(regional_review_trace)
+            if safe_regional_turns:
+                trace_entry["regional_turns"] = safe_regional_turns
+
+            updated = dataclasses.replace(
+                self._last_result,
+                analysis_trace=[*self._last_result.analysis_trace, trace_entry],
+            )
+            self._last_result = updated
+            self._result_revision += 1
+            snapshot = self._review_snapshot
+            if snapshot is not None:
+                self._review_snapshot = dataclasses.replace(
+                    snapshot,
+                    result=updated,
+                    revision=self._result_revision,
+                )
+            logger.info(
+                "interactive_review_recorded",
+                outcome=outcome,
+                user_confirmed=bool(user_confirmed),
+                result_revision=self._result_revision,
+            )
+            return updated
+
     def _transition(self, new_state: AgentState) -> None:
-        old = self._state
-        self._state = new_state
-        if new_state == AgentState.ERROR:
-            self._error_time = time.monotonic()
-        if new_state == AgentState.DISPLAYING:
-            # Reset hash baseline so first tick after overlay renders
-            # establishes a new baseline (with overlay visible).
-            self._last_hash = ""
-            self._display_enter_time = time.monotonic()
+        with self._review_lock:
+            old = self._state
+            self._state = new_state
+            if new_state == AgentState.ERROR:
+                self._error_time = time.monotonic()
+            if new_state == AgentState.DISPLAYING:
+                # Reset hash baseline so first tick after overlay renders
+                # establishes a new baseline (with overlay visible).
+                self._last_hash = ""
+                self._display_enter_time = time.monotonic()
         logger.info("State: %s → %s", old.name, new_state.name)
         if self.on_state_change:
             self.on_state_change(old, new_state)
@@ -524,7 +708,12 @@ class OverlayAgent:
                 self._transition(AgentState.MONITORING)
             return
 
-        logger.info("Image change ignored in manual trigger mode")
+        self._mark_pending_analysis("image_changed_manual")
+        with self._review_lock:
+            self._review_snapshot = None
+        if self._state == AgentState.DISPLAYING:
+            self._transition(AgentState.MONITORING)
+        logger.info("Image change invalidated the manual-mode review snapshot")
 
     def _mark_pending_analysis(self, reason: str) -> None:
         if self._pending_analysis:
@@ -584,7 +773,6 @@ class OverlayAgent:
             logger.exception("ROI capture failed")
             self._transition(AgentState.ERROR)
             return
-        self._last_capture_rect = capture_rect
         logger.debug("Captured %d bytes", len(screenshot))
         source_screenshot = screenshot
         source_size_px = self._processor.image_size(source_screenshot)
@@ -595,10 +783,6 @@ class OverlayAgent:
         max_edge = self._config.openclaw.max_image_edge_px
         screenshot = self._processor.downscale_to_max_edge(screenshot, max_edge)
         image_b64 = self._processor.to_base64(screenshot)
-        # Follow-up QA and review exports must use the same original ROI frame
-        # that all normalized overlay coordinates reference.
-        self._last_image_base64 = source_image_b64
-
         # Analyze
         self._transition(AgentState.ANALYZING)
 
@@ -629,8 +813,17 @@ class OverlayAgent:
                 )
                 return
             self._annotation_accumulator.reset(result.findings)
-            self._last_result = result
-            self._result_revision += 1
+            with self._review_lock:
+                self._last_capture_rect = capture_rect
+                self._last_image_base64 = source_image_b64
+                self._last_result = result
+                self._result_revision += 1
+                self._review_snapshot = ReviewSnapshot(
+                    image_base64=source_image_b64,
+                    result=result,
+                    capture_rect=capture_rect,
+                    revision=self._result_revision,
+                )
             self._transition(AgentState.DISPLAYING)
             if self.on_analysis_result:
                 self.on_analysis_result(result)

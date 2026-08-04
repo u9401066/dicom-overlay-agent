@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import math
 import statistics
 from collections.abc import Callable
 
@@ -193,6 +194,7 @@ class ImageProcessor(ImageProcessorService):
     # Upscale a second-pass crop so its short edge reaches at least this many
     # pixels, keeping small lesions legible for the closer look.
     _MIN_CROP_EDGE_PX = 512
+    _MIN_SOURCE_SIGNAL_EDGE_PX = 64
 
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int
@@ -231,14 +233,7 @@ class ImageProcessor(ImageProcessorService):
         """
         import base64
 
-        data = base64.b64decode(image_base64)
-        img = Image.open(io.BytesIO(data))
-        w, h = img.size
-        x0 = max(0, min(w, round(region.x * w)))  # type: ignore[attr-defined]
-        y0 = max(0, min(h, round(region.y * h)))  # type: ignore[attr-defined]
-        x1 = max(x0 + 1, min(w, round((region.x + region.w) * w)))  # type: ignore[attr-defined]
-        y1 = max(y0 + 1, min(h, round((region.y + region.h) * h)))  # type: ignore[attr-defined]
-        cropped = img.crop((x0, y0, x1, y1))
+        cropped = self._crop_region_image(image_base64, region)
         cw, ch = cropped.size
         short_edge = min(cw, ch)
         if 0 < short_edge < self._MIN_CROP_EDGE_PX:
@@ -250,6 +245,41 @@ class ImageProcessor(ImageProcessorService):
         buf = io.BytesIO()
         cropped.save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode("ascii")
+
+    def crop_region_bytes(self, image_base64: str, region: object) -> bytes:
+        """Return the exact source-pixel crop without synthetic upscaling."""
+
+        cropped = self._crop_region_image(image_base64, region)
+        buf = io.BytesIO()
+        cropped.save(buf, format="PNG")
+        return buf.getvalue()
+
+    @staticmethod
+    def _crop_region_image(image_base64: str, region: object) -> Image.Image:
+        import base64
+
+        data = base64.b64decode(image_base64, validate=True)
+        with Image.open(io.BytesIO(data)) as source:
+            w, h = source.size
+            if w <= 0 or h <= 0:
+                raise ValueError("cannot crop an empty image")
+            x0 = max(  # type: ignore[attr-defined]
+                0,
+                min(w - 1, math.floor(region.x * w)),
+            )
+            y0 = max(  # type: ignore[attr-defined]
+                0,
+                min(h - 1, math.floor(region.y * h)),
+            )
+            x1 = max(  # type: ignore[attr-defined]
+                x0 + 1,
+                min(w, math.ceil((region.x + region.w) * w)),
+            )
+            y1 = max(  # type: ignore[attr-defined]
+                y0 + 1,
+                min(h, math.ceil((region.y + region.h) * h)),
+            )
+            return source.crop((x0, y0, x1, y1))
 
     def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
         if max_edge <= 0:
@@ -311,10 +341,21 @@ class ImageProcessor(ImageProcessorService):
         edge_total = max(1, edges.width * edges.height)
         edge_pixel_ratio = sum(edge_histogram[24:]) / edge_total
 
-        bright_blank = bright_ratio > 0.75 and ink_ratio < 0.01
+        bright_blank = (
+            bright_ratio > 0.75 and ink_ratio < 0.01 and edge_pixel_ratio < 0.005
+        )
         structure_blank = edge_pixel_ratio < 0.001
         near_uniform = robust_dynamic_range < 8 and edge_pixel_ratio < 0.002
-        low_signal = bright_blank or structure_blank or near_uniform
+        source_short_edge_px = min(img.width, img.height)
+        insufficient_source_resolution = (
+            source_short_edge_px < self._MIN_SOURCE_SIGNAL_EDGE_PX
+        )
+        low_signal = (
+            bright_blank
+            or structure_blank
+            or near_uniform
+            or insufficient_source_resolution
+        )
         return {
             "width_px": img.width,
             "height_px": img.height,
@@ -324,6 +365,8 @@ class ImageProcessor(ImageProcessorService):
             "entropy_bits": round(entropy_bits, 6),
             "robust_dynamic_range": robust_dynamic_range,
             "edge_pixel_ratio": round(edge_pixel_ratio, 6),
+            "source_short_edge_px": source_short_edge_px,
+            "insufficient_source_resolution": insufficient_source_resolution,
             "low_signal": low_signal,
         }
 

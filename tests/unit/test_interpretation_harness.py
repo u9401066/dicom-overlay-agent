@@ -42,10 +42,12 @@ def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
         skill_prompt="EKG skill instructions",
         waveform_artifact_id="wf-opaque-123",
         waveform_lead_mode="12_lead",
+        waveform_evidence_nonce="a" * 32,
     )
 
     assert "ecg_founder_analyze_waveform exactly once" in prompt
     assert "artifact_id='wf-opaque-123'" in prompt
+    assert f"evidence_nonce='{'a' * 32}'" in prompt
     assert "uncalibrated_score is neither a positive nor a negative" in prompt
     assert "has no image localization" in prompt
 

@@ -10,6 +10,7 @@ Covers the hardening fixes for the OpenClaw interpretation harness:
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 from pathlib import Path
@@ -115,11 +116,15 @@ def test_openclaw_waveform_artifact_context_is_scoped_and_reset(tmp_path: Path) 
     client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
 
     assert client._waveform_artifact_context.get() is None
-    with client.use_waveform_artifact("wf-opaque-123", lead_mode="12_lead"):
-        assert client._waveform_artifact_context.get() == (
-            "wf-opaque-123",
-            "12_lead",
-        )
+    with client.use_waveform_artifact(
+        "wf-opaque-123", lead_mode="12_lead"
+    ) as evidence_nonce:
+        binding = client._waveform_artifact_context.get()
+        assert binding is not None
+        assert binding.artifact_id == "wf-opaque-123"
+        assert binding.lead_mode == "12_lead"
+        assert binding.evidence_nonce == evidence_nonce
+        assert len(evidence_nonce) == 32
     assert client._waveform_artifact_context.get() is None
 
 
@@ -348,6 +353,82 @@ class TestHypothesisAwareRefinement:
         }
 
         assert _extract_tool_names(frame) == ["dicom_bbox_validate"]
+
+
+@pytest.mark.asyncio
+async def test_image_followup_uses_unique_session_and_ignores_stale_tool_events(
+    tmp_path: Path,
+) -> None:
+    client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.sent: dict[str, object] = {}
+            self.index = 0
+
+        async def send(self, raw: str) -> None:
+            self.sent = json.loads(raw)
+
+        async def recv(self) -> str:
+            request_id = str(self.sent["id"])
+            frames = [
+                {
+                    "type": "event",
+                    "payload": {
+                        "runId": "stale-run",
+                        "event": {"type": "tool_call", "name": "stale_tool"},
+                    },
+                },
+                {
+                    "type": "res",
+                    "id": request_id,
+                    "ok": True,
+                    "payload": {"status": "accepted", "runId": "current-run"},
+                },
+                {
+                    "type": "event",
+                    "payload": {
+                        "runId": "stale-run",
+                        "event": {"type": "tool_call", "name": "stale_tool_2"},
+                    },
+                },
+                {
+                    "type": "event",
+                    "payload": {
+                        "runId": "current-run",
+                        "state": "working",
+                        "event": {
+                            "type": "tool_call",
+                            "name": "dicom_bbox_validate",
+                        },
+                    },
+                },
+                {
+                    "type": "event",
+                    "payload": {
+                        "runId": "current-run",
+                        "state": "final",
+                        "message": {"content": [{"type": "text", "text": "done"}]},
+                    },
+                },
+            ]
+            frame = frames[self.index]
+            self.index += 1
+            return json.dumps(frame)
+
+    websocket = FakeWebSocket()
+    client._ws = websocket
+    client._connected = True
+
+    response = await client._do_image_chat_prompt("review", image_base64="image")
+
+    assert response == "done"
+    session_key = websocket.sent["params"]["sessionKey"]  # type: ignore[index]
+    assert str(session_key).startswith("image-followup-")
+    assert session_key != "main"
+    trace = client.last_run_trace()
+    assert trace["run_id"] == "current-run"
+    assert trace["tools"] == ["dicom_bbox_validate"]
 
 
 # ── Item 6: out-of-bounds bbox dropped, not crashed ──────────────────
@@ -611,25 +692,67 @@ class TestNativeToolAuditTrace:
         monkeypatch.setenv("DICOM_ECGFOUNDER_AUDIT_PATH", str(audit_path))
         client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
 
-        client._begin_run_trace("analysis-ecg-founder")
-        receipt = {
-            "schema_version": 1,
-            "tool": "ecg_founder_analyze_waveform",
-            "tool_call_id": "ecg-call-1",
-            "status": "ok",
-            "artifact_id_sha256": "a" * 64,
-            "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
-            "checkpoint_sha256": "b" * 64,
-            "calibration_status": "uncalibrated",
-            "prediction_count": 10,
-        }
-        audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+        with client.use_waveform_artifact("wf-opaque-123") as evidence_nonce:
+            client._begin_run_trace("analysis-ecg-founder")
+            receipt = {
+                "schema_version": 1,
+                "tool": "ecg_founder_analyze_waveform",
+                "tool_call_id": "ecg-call-1",
+                "status": "ok",
+                "evidence_nonce": evidence_nonce,
+                "artifact_id_sha256": "a" * 64,
+                "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+                "checkpoint_sha256": "b" * 64,
+                "calibration_status": "uncalibrated",
+                "prediction_count": 10,
+            }
+            foreign_receipt = {
+                **receipt,
+                "tool_call_id": "foreign-call",
+                "evidence_nonce": "f" * 32,
+            }
+            audit_path.write_text(
+                f"{json.dumps(foreign_receipt)}\n{json.dumps(receipt)}\n",
+                encoding="utf-8",
+            )
 
-        trace = client.last_run_trace()
+            trace = client.last_run_trace()
 
         assert trace["tools"] == ["ecg_founder_analyze_waveform"]
         assert trace["tool_audit"] == [receipt]
         assert "artifact_id" not in trace["tool_audit"][0]
+
+    def test_waveform_binding_accumulates_receipts_across_turn_resets(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "ecgfounder-audit.jsonl"
+        monkeypatch.setenv("DICOM_ECGFOUNDER_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+
+        with client.use_waveform_artifact("wf-opaque-123") as evidence_nonce:
+            for index in (1, 2):
+                client._begin_run_trace(f"analysis-turn-{index}")
+                receipt = {
+                    "schema_version": 1,
+                    "tool": "ecg_founder_analyze_waveform",
+                    "tool_call_id": f"ecg-call-{index}",
+                    "status": "ok",
+                    "evidence_nonce": evidence_nonce,
+                    "artifact_id_sha256": "a" * 64,
+                    "checkpoint_sha256": "b" * 64,
+                    "prediction_count": 1,
+                }
+                with audit_path.open("a", encoding="utf-8") as handle:
+                    handle.write(f"{json.dumps(receipt)}\n")
+
+        receipts = client.waveform_evidence_receipts(evidence_nonce)
+
+        assert [row["tool_call_id"] for row in receipts] == [
+            "ecg-call-1",
+            "ecg-call-2",
+        ]
 
 
 # ── Item 5: image size guard ─────────────────────────────────────────
@@ -703,6 +826,56 @@ class TestImageDownscale:
 
         assert profile["robust_dynamic_range"] > 8
         assert profile["edge_pixel_ratio"] > 0.001
+        assert profile["low_signal"] is False
+
+    def test_source_crop_audit_is_not_run_on_upscaled_model_pixels(self):
+        image = Image.new("RGB", (320, 320), "white")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        region = RegionRect(0.1, 0.1, 0.1, 0.1)
+        processor = ImageProcessor()
+
+        source_crop = processor.crop_region_bytes(encoded, region)
+        model_crop = base64.b64decode(processor.crop_region_base64(encoded, region))
+
+        assert Image.open(io.BytesIO(source_crop)).size == (32, 32)
+        assert Image.open(io.BytesIO(model_crop)).size == (512, 512)
+        profile = processor.image_quality_profile(source_crop)
+        assert profile["source_short_edge_px"] == 32
+        assert profile["insufficient_source_resolution"] is True
+        assert profile["low_signal"] is True
+
+    def test_source_crop_at_bottom_right_uses_last_real_pixel(self):
+        image = Image.new("RGB", (10, 10), "white")
+        image.putpixel((9, 9), (1, 2, 3))
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        cropped = Image.open(
+            io.BytesIO(
+                ImageProcessor().crop_region_bytes(
+                    encoded,
+                    RegionRect(0.99, 0.99, 0.01, 0.01),
+                )
+            )
+        )
+
+        assert cropped.size == (1, 1)
+        assert cropped.getpixel((0, 0)) == (1, 2, 3)
+
+    def test_thin_high_contrast_waveform_is_not_treated_as_blank(self):
+        image = Image.new("RGB", (200, 100), "white")
+        for x in range(10, 190):
+            image.putpixel((x, 50), (0, 0, 0))
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+
+        profile = ImageProcessor().image_quality_profile(buffer.getvalue())
+
+        assert profile["ink_pixel_ratio"] < 0.01
+        assert profile["edge_pixel_ratio"] > 0.005
         assert profile["low_signal"] is False
 
     def test_local_signal_candidates_detect_waveform_bbox(self):

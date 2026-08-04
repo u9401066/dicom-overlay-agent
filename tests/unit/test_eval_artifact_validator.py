@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 from dicom_overlay.infrastructure.eval_artifact_validator import (
+    _valid_ecg_founder_evidence,
     verify_eval_artifacts,
 )
 
@@ -14,12 +15,136 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _write_minimal_eval(eval_dir: Path, manifest_path: Path, count: int = 2) -> None:
+def _ecg_receipt() -> dict[str, object]:
+    predictions = [{"label": "NORMAL SINUS RHYTHM", "probability": 0.9}]
+    response_evidence = {
+        "schema_version": 1,
+        "status": "ok",
+        "evidence_type": "ecg_waveform_classification",
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "artifact_id_sha256": "a" * 64,
+        "use_policy": "supporting_evidence_only",
+        "spatial_localization": "not_provided",
+        "model": {
+            "id": "PKUDigitalHealth/ECGFounder",
+            "revision": "04edac702b61c91face519774ddcc0cd712fef23",
+            "checkpoint_sha256": (
+                "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+            ),
+        },
+        "input": {"source_sha256": "b" * 64},
+        "preprocessing": {"implementation_revision": "preprocess-v1"},
+        "calibration": {"status": "uncalibrated", "revision": ""},
+        "predictions": predictions,
+    }
+    return {
+        "schema_version": 1,
+        "tool": "ecg_founder_analyze_waveform",
+        "tool_call_id": "call-1",
+        "status": "ok",
+        "evidence_nonce": "d" * 32,
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "model_id": "PKUDigitalHealth/ECGFounder",
+        "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+        "checkpoint_sha256": (
+            "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+        ),
+        "source_sha256": "b" * 64,
+        "response_evidence": response_evidence,
+        "response_sha256": hashlib.sha256(
+            json.dumps(
+                response_evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "preprocessing_revision": "preprocess-v1",
+        "calibration_status": "uncalibrated",
+        "calibration_revision": "",
+        "prediction_count": 1,
+        "predictions": predictions,
+    }
+
+
+def test_ecgfounder_evidence_requires_one_matching_pinned_receipt() -> None:
+    receipt = _ecg_receipt()
+    evidence = {
+        "requested": True,
+        "verified_exactly_once": True,
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "receipt_count": 1,
+        "receipts": [receipt],
+    }
+
+    assert (
+        _valid_ecg_founder_evidence(
+            evidence,
+            expected_artifact_sha256="a" * 64,
+        )
+        is True
+    )
+    assert (
+        _valid_ecg_founder_evidence(
+            evidence,
+            expected_artifact_sha256="f" * 64,
+        )
+        is False
+    )
+    receipt["evidence_nonce"] = "e" * 32
+    assert _valid_ecg_founder_evidence(evidence) is False
+    receipt["evidence_nonce"] = "d" * 32
+    evidence["receipts"] = [receipt, receipt]
+    evidence["receipt_count"] = 2
+    assert _valid_ecg_founder_evidence(evidence) is False
+
+
+def test_ecgfounder_response_hash_cannot_mask_provenance_disagreement() -> None:
+    receipt = _ecg_receipt()
+    evidence = {
+        "requested": True,
+        "verified_exactly_once": True,
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "receipt_count": 1,
+        "receipts": [receipt],
+    }
+    response = receipt["response_evidence"]
+    assert isinstance(response, dict)
+    model = response["model"]
+    assert isinstance(model, dict)
+    model["revision"] = "tampered-revision"
+    receipt["response_sha256"] = hashlib.sha256(
+        json.dumps(response, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    assert _valid_ecg_founder_evidence(evidence) is False
+
+
+def _write_minimal_eval(
+    eval_dir: Path,
+    manifest_path: Path,
+    count: int = 2,
+    *,
+    ecgfounder: bool = False,
+) -> None:
     manifest_path.write_text(
         json.dumps(
             {
                 "cases": [
-                    {"label": f"case_{index}", "image": f"case_{index}.png"}
+                    {
+                        "label": f"case_{index}",
+                        "image": f"case_{index}.png",
+                        **(
+                            {"waveform_artifact_id": f"wf-case-{index}"}
+                            if ecgfounder
+                            else {}
+                        ),
+                    }
                     for index in range(count)
                 ]
             }
@@ -47,7 +172,13 @@ def _write_minimal_eval(eval_dir: Path, manifest_path: Path, count: int = 2) -> 
         },
         "prompts": [{"path": "prompt.py", "sha256": "0" * 64}],
         "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
-        "flags": {"multi_pass": False},
+        "flags": {
+            "multi_pass": False,
+            "ecgfounder_waveform_evidence": ecgfounder,
+            "ecgfounder_preprocessing_revision": (
+                "preprocess-v1" if ecgfounder else ""
+            ),
+        },
         "manifest": {
             "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
             "selected_case_count": count,
@@ -192,6 +323,29 @@ def test_multipass_trace_requires_local_candidate_audit_fields(tmp_path: Path) -
     )
 
 
+def test_required_ecgfounder_arm_rejects_missing_case_evidence(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(
+        eval_dir,
+        manifest_path,
+        count=1,
+        ecgfounder=True,
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+    )
+
+    assert not verification.ok
+    assert any(
+        "required ECGFounder evidence is missing" in failure
+        for failure in verification.failures
+    )
+
+
 def test_multipass_trace_with_local_candidate_audit_fields_passes(
     tmp_path: Path,
 ) -> None:
@@ -307,10 +461,12 @@ def test_required_multipass_refinement_rejects_trace_only_run(
 
     assert not verification.ok
     assert any(
-        "no real crop/refine model turn" in failure
+        "no real crop/refine model turn" in failure for failure in verification.failures
+    )
+    assert any(
+        "lack actual dicom_bbox_validate" in failure
         for failure in verification.failures
     )
-    assert any("lack actual dicom_bbox_validate" in failure for failure in verification.failures)
 
 
 def _write_refinement_evidence(
@@ -439,8 +595,7 @@ def test_required_multipass_refinement_rejects_unaccepted_bbox_tool_call(
 
     assert not verification.ok
     assert any(
-        "lack an accepted dicom_bbox_validate" in item
-        for item in verification.failures
+        "lack an accepted dicom_bbox_validate" in item for item in verification.failures
     )
 
 
@@ -499,8 +654,7 @@ def test_required_ekg_systematic_probes_rejects_legacy_multipass(
 
     assert not verification.ok
     assert any(
-        "no completed discovery probe" in failure
-        for failure in verification.failures
+        "no completed discovery probe" in failure for failure in verification.failures
     )
 
 
@@ -537,9 +691,7 @@ def test_results_reject_ekg_bbox_outside_declared_lead(tmp_path: Path) -> None:
         ]
     }
     result["findings"][0]["regions"] = ["lead_V5"]
-    result["findings"][0]["bboxes"] = [
-        {"x": 0.1, "y": 0.55, "w": 0.2, "h": 0.1}
-    ]
+    result["findings"][0]["bboxes"] = [{"x": 0.1, "y": 0.55, "w": 0.2, "h": 0.1}]
     result_path.write_text(json.dumps(result), encoding="utf-8")
 
     verification = verify_eval_artifacts(

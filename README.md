@@ -104,12 +104,15 @@ The physician reads the original image; the agent annotates *on top* of it.
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py)
   lets the physician ask follow-up questions about the same image.
 - **Reviewer-confirmed regional writeback** — clicking an AI box or drawing a
-  reviewer region sends the exact crop through a separate structured OpenClaw
-  follow-up contract. The model may propose `ADD`, `REVISE`, or `RETRACT`, but
+  reviewer region sends the exact source-pixel crop through a bounded refine
+  turn and then a separate structured OpenClaw follow-up contract. Both turns
+  retain their session, run, and tool receipts. The model may propose `ADD`,
+  `REVISE`, or `RETRACT`, but
   it cannot return or move coordinates and nothing changes until the reviewer
   clicks **Apply to report**. A deterministic local signal gate combines dark
   pixels, edge density, robust dynamic range, and blank-field checks to block
-  low-signal `ADD`/`REVISE` proposals; accepted changes retain
+  every report-changing proposal when the crop is low-signal or its audit is
+  missing/failed; accepted changes retain
   `interactive_ai_review` provenance in the report, Process trace, JSON, and
   annotated PNG export. Overlapping boxes with different diagnostic labels are
   preserved as separate findings.
@@ -307,6 +310,11 @@ portable across OpenClaw releases.
   screenshot as a waveform or its class scores as image bboxes. Torch and the
   370 MB checkpoint stay outside the portable app. See
   [the external tool contract](docs/ecgfounder-tool.md).
+  Each evaluation binding also carries a random per-case evidence nonce; only
+  one successful receipt matching that nonce, artifact digest, pinned model
+  revision, and checkpoint is accepted. The current desktop has no trusted
+  study-to-waveform resolver, so Settings reports this integration as an
+  evaluation sidecar rather than implying that screenshot reads use it.
   The paired MEETI build now includes 1,000 matched raw 12-lead waveforms; a
   real pinned-checkpoint batch completed all 1,000 and records each result as
   uncalibrated supporting evidence. A separate full-150-score evaluator uses

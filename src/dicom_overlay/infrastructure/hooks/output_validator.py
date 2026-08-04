@@ -52,9 +52,14 @@ class OutputValidator(AnalyzeHook):
             result.modality = request.modality
 
         # 3. Validate findings
+        seen_finding_ids: set[str] = set()
         for i, finding in enumerate(result.findings):
             if not finding.id:
                 errors.append(f"Finding[{i}] missing id")
+            elif finding.id in seen_finding_ids:
+                errors.append(f"Finding[{i}] duplicates id '{finding.id}'")
+            else:
+                seen_finding_ids.add(finding.id)
             if not finding.label:
                 errors.append(f"Finding[{i}] missing label")
             # Check regions are from valid set

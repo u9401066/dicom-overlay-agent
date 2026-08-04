@@ -6,6 +6,12 @@ ECGFounder is integrated as an optional, local waveform-evidence tool for
 OpenClaw. It is not an image model and its Torch runtime or checkpoints are not
 bundled in `DICOMOverlayAgent.exe`.
 
+The current trusted artifact binding exists in the evaluation runner, where a
+manifest explicitly pairs one image with one registered waveform. The desktop
+capture flow does not yet have a trusted study-to-waveform resolver and does
+not invoke ECGFounder for screenshot-only analysis. Its Settings status is
+therefore informational and says `Evaluation sidecar configured`.
+
 The native harness plugin registers `ecg_founder_analyze_waveform` only when
 both variables are present in the Gateway environment:
 
@@ -77,6 +83,10 @@ Use the same endpoint and token in the shell that starts the desktop app or
 OpenClaw experiment. The sidecar runs in the foreground so lifecycle and logs
 remain visible.
 
+`GET /health` reports `configured` without loading the model. Authenticated
+`GET /health?deep=1` verifies and loads the pinned checkpoint and reports
+`ready`; model-load failures return HTTP 503 with a bounded reason.
+
 ## Input Boundary
 
 The agent sends only:
@@ -86,12 +96,21 @@ The agent sends only:
   "schema_version": 1,
   "artifact_id": "opaque-artifact-id",
   "lead_mode": "12_lead",
+  "evidence_nonce": "32-lowercase-hex-characters",
   "max_predictions": 10
 }
 ```
 
 The sidecar owns a trusted artifact registry and resolves the opaque id. The id
 must not be a path and must not contain PHI.
+
+`evidence_nonce` is generated afresh by the app for one analysis binding. It is
+not clinical data and does not select a waveform; the plugin copies it into
+every success/failure receipt so the app can reject records written by another
+run or process. A valid experiment case requires exactly one `status=ok`
+receipt matching the nonce, artifact digest, official model revision, and
+12-lead checkpoint hash. Zero, duplicate, mismatched, or failed receipts make
+that case an infrastructure failure rather than a scored model result.
 
 The contract recognizes these eligible source classes:
 
@@ -236,3 +255,9 @@ not compute diagnostic accuracy because no deployment thresholds are installed.
 Accuracy and partial-credit comparison belong to the paired image experiment's
 scorecard and still require clinician review; this integration is a co-reading
 aid, not an autonomous diagnostic device.
+
+The upstream MIT notice is retained in
+[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and is included in the
+portable bundle. The bundle verifier rejects Torch modules, sidecar source,
+MEETI paths, waveform/model data suffixes, and checkpoint files anywhere in the
+desktop bundle.

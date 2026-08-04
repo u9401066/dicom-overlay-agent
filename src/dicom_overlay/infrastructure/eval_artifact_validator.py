@@ -13,6 +13,10 @@ from PIL import Image
 
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
 _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
+_ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23"
+_ECG_FOUNDER_CHECKPOINT_SHA256 = (
+    "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,7 @@ class _ExpectedCase:
     image_path: Path
     image_sha256: str
     image_size_bytes: int
+    waveform_artifact_sha256: str = ""
 
 
 @dataclass
@@ -104,6 +109,20 @@ def verify_eval_artifacts(
     protocol_digest = (
         str(fingerprint.get("protocol_digest")) if isinstance(fingerprint, dict) else ""
     )
+    protocol = fingerprint.get("protocol") if isinstance(fingerprint, dict) else None
+    flags = protocol.get("flags") if isinstance(protocol, dict) else None
+    require_ecgfounder_evidence = bool(
+        isinstance(flags, dict) and flags.get("ecgfounder_waveform_evidence") is True
+    )
+    expected_ecgfounder_preprocessing_revision = (
+        str(flags.get("ecgfounder_preprocessing_revision") or "")
+        if isinstance(flags, dict)
+        else ""
+    )
+    if require_ecgfounder_evidence and not expected_ecgfounder_preprocessing_revision:
+        failures.append(
+            "protocol_fingerprint: ECGFounder arm lacks preprocessing revision"
+        )
     if isinstance(scorecard, dict):
         _verify_scorecard(
             scorecard,
@@ -119,6 +138,10 @@ def verify_eval_artifacts(
         eval_dir / "results",
         expected_cases=expected_cases,
         protocol_digest=protocol_digest,
+        require_ecgfounder_evidence=require_ecgfounder_evidence,
+        expected_ecgfounder_preprocessing_revision=(
+            expected_ecgfounder_preprocessing_revision
+        ),
         failures=failures,
         passed=passed,
     )
@@ -168,6 +191,146 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_sha256(value: object) -> bool:
+    return bool(
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdef" for char in value.lower())
+    )
+
+
+def _is_evidence_nonce(value: object) -> bool:
+    return bool(
+        isinstance(value, str)
+        and len(value) == 32
+        and all(char in "0123456789abcdef" for char in value)
+    )
+
+
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _valid_ecg_predictions(value: object) -> bool:
+    if not isinstance(value, list) or not 1 <= len(value) <= 20:
+        return False
+    for prediction in value:
+        if not isinstance(prediction, dict) or not isinstance(
+            prediction.get("label"), str
+        ):
+            return False
+        probability = prediction.get("probability")
+        if (
+            not prediction["label"].strip()
+            or not isinstance(probability, (int, float))
+            or isinstance(probability, bool)
+            or not math.isfinite(float(probability))
+            or not 0.0 <= float(probability) <= 1.0
+        ):
+            return False
+    return True
+
+
+def _ecg_response_matches_receipt(
+    response: object,
+    receipt: dict[str, Any],
+    evidence: dict[str, Any],
+) -> bool:
+    if not isinstance(response, dict) or "artifact_id" in response:
+        return False
+    model = response.get("model")
+    input_provenance = response.get("input")
+    preprocessing = response.get("preprocessing")
+    calibration = response.get("calibration")
+    return bool(
+        response.get("schema_version") == 1
+        and response.get("status") == "ok"
+        and response.get("evidence_type") == "ecg_waveform_classification"
+        and response.get("lead_mode") == "12_lead"
+        and response.get("evidence_nonce") == evidence.get("evidence_nonce")
+        and response.get("artifact_id_sha256") == evidence.get("artifact_id_sha256")
+        and response.get("use_policy") == "supporting_evidence_only"
+        and response.get("spatial_localization") == "not_provided"
+        and isinstance(model, dict)
+        and model.get("id") == receipt.get("model_id")
+        and model.get("revision") == receipt.get("model_revision")
+        and model.get("checkpoint_sha256") == receipt.get("checkpoint_sha256")
+        and isinstance(input_provenance, dict)
+        and input_provenance.get("source_sha256") == receipt.get("source_sha256")
+        and isinstance(preprocessing, dict)
+        and preprocessing.get("implementation_revision")
+        == receipt.get("preprocessing_revision")
+        and isinstance(calibration, dict)
+        and calibration.get("status") == receipt.get("calibration_status")
+        and calibration.get("revision") == receipt.get("calibration_revision")
+        and response.get("predictions") == receipt.get("predictions")
+    )
+
+
+def _valid_ecg_founder_evidence(
+    value: object,
+    *,
+    expected_artifact_sha256: str = "",
+    expected_preprocessing_revision: str = "",
+) -> bool:
+    if not isinstance(value, dict) or value.get("requested") is not True:
+        return False
+    receipts = value.get("receipts")
+    receipt = (
+        receipts[0]
+        if isinstance(receipts, list)
+        and len(receipts) == 1
+        and isinstance(receipts[0], dict)
+        else None
+    )
+    response_evidence = receipt.get("response_evidence") if receipt else None
+    return bool(
+        value.get("verified_exactly_once") is True
+        and value.get("receipt_count") == 1
+        and value.get("lead_mode") == "12_lead"
+        and _is_sha256(value.get("artifact_id_sha256"))
+        and (
+            not expected_artifact_sha256
+            or value.get("artifact_id_sha256") == expected_artifact_sha256
+        )
+        and receipt is not None
+        and receipt.get("schema_version") == 1
+        and receipt.get("tool") == "ecg_founder_analyze_waveform"
+        and isinstance(receipt.get("tool_call_id"), str)
+        and bool(receipt.get("tool_call_id"))
+        and receipt.get("status") == "ok"
+        and receipt.get("lead_mode") == "12_lead"
+        and _is_evidence_nonce(value.get("evidence_nonce"))
+        and receipt.get("evidence_nonce") == value.get("evidence_nonce")
+        and receipt.get("artifact_id_sha256") == value.get("artifact_id_sha256")
+        and receipt.get("model_id") == "PKUDigitalHealth/ECGFounder"
+        and receipt.get("model_revision") == _ECG_FOUNDER_MODEL_REVISION
+        and receipt.get("checkpoint_sha256") == _ECG_FOUNDER_CHECKPOINT_SHA256
+        and _is_sha256(receipt.get("source_sha256"))
+        and _is_sha256(receipt.get("response_sha256"))
+        and isinstance(response_evidence, dict)
+        and _ecg_response_matches_receipt(response_evidence, receipt, value)
+        and _canonical_sha256(response_evidence) == receipt.get("response_sha256")
+        and isinstance(receipt.get("preprocessing_revision"), str)
+        and bool(receipt.get("preprocessing_revision"))
+        and (
+            not expected_preprocessing_revision
+            or receipt.get("preprocessing_revision") == expected_preprocessing_revision
+        )
+        and _valid_ecg_predictions(receipt.get("predictions"))
+        and isinstance(receipt.get("prediction_count"), int)
+        and not isinstance(receipt.get("prediction_count"), bool)
+        and 1 <= receipt["prediction_count"] <= 20
+        and len(receipt["predictions"]) == receipt.get("prediction_count")
+    )
+
+
 def _protocol_digest(protocol: dict[str, Any]) -> str:
     encoded = json.dumps(
         protocol,
@@ -201,12 +364,18 @@ def _manifest_case_index(
                 f"manifest_identity: missing image for {label}: {image_path}"
             )
             continue
+        waveform_artifact_id = str(row.get("waveform_artifact_id") or "")
         index[label] = _ExpectedCase(
             label=label,
             image_name=image_path.name,
             image_path=image_path,
             image_sha256=_sha256_file(image_path),
             image_size_bytes=image_path.stat().st_size,
+            waveform_artifact_sha256=(
+                hashlib.sha256(waveform_artifact_id.encode("utf-8")).hexdigest()
+                if waveform_artifact_id
+                else ""
+            ),
         )
     return index
 
@@ -445,6 +614,8 @@ def _verify_results(
     *,
     expected_cases: dict[str, _ExpectedCase],
     protocol_digest: str,
+    require_ecgfounder_evidence: bool,
+    expected_ecgfounder_preprocessing_revision: str,
     failures: list[str],
     passed: list[str],
 ) -> _ResultInventory:
@@ -500,6 +671,28 @@ def _verify_results(
         signal = raw.get("local_signal_candidates")
         if not isinstance(signal, dict) or "candidate_count" not in signal:
             missing_signal_candidates.append(path.name)
+
+        waveform_evidence = raw.get("waveform_evidence")
+        evidence_requested = bool(
+            isinstance(waveform_evidence, dict)
+            and waveform_evidence.get("requested") is True
+        )
+        if require_ecgfounder_evidence and not evidence_requested:
+            failures.append(
+                "results_artifacts: required ECGFounder evidence is missing in "
+                f"{path.name}"
+            )
+        elif evidence_requested and not _valid_ecg_founder_evidence(
+            waveform_evidence,
+            expected_artifact_sha256=case.waveform_artifact_sha256,
+            expected_preprocessing_revision=(
+                expected_ecgfounder_preprocessing_revision
+            ),
+        ):
+            failures.append(
+                "results_artifacts: ECGFounder evidence lacks exactly one "
+                f"pinned status=ok receipt in {path.name}"
+            )
 
         findings = raw.get("findings")
         if findings is None:
@@ -577,9 +770,7 @@ def _verify_results(
                     inventory.refinement_completed_cases.add(case.label)
                     if event.get("crop_source") == "original_roi":
                         inventory.original_roi_refinement_cases.add(case.label)
-                    if str(event.get("target_id", "")).startswith(
-                        "ekg_systematic_"
-                    ):
+                    if str(event.get("target_id", "")).startswith("ekg_systematic_"):
                         inventory.ekg_systematic_completed_cases.add(case.label)
                         if event.get("crop_source") == "original_roi":
                             inventory.original_roi_ekg_systematic_cases.add(case.label)
@@ -637,9 +828,7 @@ def _verify_ekg_systematic_probes(
     if not results.ekg_cases:
         failures.append("ekg_systematic_probe_artifacts: no EKG result cases")
         return
-    missing_planned = sorted(
-        results.ekg_cases - results.ekg_systematic_planned_cases
-    )
+    missing_planned = sorted(results.ekg_cases - results.ekg_systematic_planned_cases)
     missing_completed = sorted(
         results.ekg_cases - results.ekg_systematic_completed_cases
     )

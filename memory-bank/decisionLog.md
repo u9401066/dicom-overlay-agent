@@ -37,6 +37,7 @@
 | 2026-07-05 | 真模型供應商改走 OpenAI 直連（gpt-5.5） | 本網路防火牆 reset openrouter.ai / api.anthropic.com；api.openai.com 可通且 key 有效，單題實測 strict_pass 1.0。Copilot 訂閱模型（MAI Flash）為 OAuth token 流，無法作 API 供應商 |
 | 2026-07-05 | EKG harness 採「宣告，不要假設」lead-awareness | 25 題 strict_pass 0.24，漏題全是 lead-dependent。不硬塞 config standard_4x3 座標（會在非標準/局部/單導極圖災難性錯歸極）；改由模型讀印刷導極標籤建 inventory，結論鎖在實際導極上，保持通用。config standard_4x3 降級為可選先驗 |
 | 2026-08-04 | ECGFounder 採條件式 loopback sidecar tool，不進主 bundle | 官方模型吃 500 Hz/10 秒 waveform、checkpoint 約 370 MB 且需要 Torch；MEETI 圖片有相符 raw waveform，可做明確配對。主 plugin 只傳 opaque artifact id，要求 hash/preprocessing/calibration provenance，禁止 screenshot-only 與 bbox 推導，保住封裝尺寸、OOM 與臨床可追溯性。 |
+| 2026-08-04 | ECGFounder 桌面標示 evaluation-only，receipt 以 per-case nonce 歸因 | 目前只有 eval manifest 能可信任地配對圖片與 raw waveform；桌面不能從 screenshot 猜 artifact。每 case 需恰好一筆 nonce、artifact digest、官方 model revision/checkpoint 全相符的成功 receipt，否則記 infrastructure failure，避免跨程序 audit 或零/多次呼叫被誤算。 |
 | 2026-08-04 | ECGFounder 未校準輸出只作 supporting evidence | 官方驗證程式會從有標註資料動態求各類 threshold，沒有發布可直接部署的固定 threshold；真實 canary 也出現與影像急性 ST concern 強烈分歧。因此分數只能做排序與分歧提示，不得覆寫影像結論或自行宣告陰性。 |
 | 2026-08-04 | Overlay 座標改用 monitor-bound physical/logical frame | Win32/mss 與 Qt 使用不同座標系，primary DPR 無法處理負座標或 mixed-DPI。保存實際 `last_capture_rect`，以完整 Win32/Qt display bounds 做 X/Y edge 映射及 round-trip audit；bbox、static region、點框 QA、人工框選共用同一 original ROI frame。 |
 | 2026-08-04 | 公開網站只用 synthetic ECG 與已驗證數字 | 不把 MEETI 病例衍生圖直接發布，也不以未完成的 MLLM JSON 宣稱準確率。GitHub Pages 明列 quota blocker、ECGFounder 未校準邊界與人工最終決策。 |
@@ -48,7 +49,7 @@
 | 2026-08-04 | ECGFounder threshold 只做 out-of-fold 研究評估 | MEETI 是弱報告標籤且沒有 patient id；只用 affirmative concepts，uncertain 不當正/負，abnormal 只對明確正常 control，五折門檻永不寫回 sidecar。避免同資料調參後宣稱 deployment accuracy。 |
 | 2026-08-04 | Windows PID 存活檢查走 Win32 API | 本機證實 `os.kill(pid, 0)` 對已結束 PID 仍可能成功，造成 Gateway stale lock 永遠卡住。桌面與 runner 共用 `OpenProcess/GetExitCodeProcess`，access denied 保守視為存活。 |
 | 2026-08-04 | 區域 AI 追問只能提案，人工 Apply 才能寫回 | 自由文字不能安全地改寫醫療 overlay。JSON-only contract 不接受模型座標，`ADD` 綁人工框、`REVISE/RETRACT` 綁既有 id/bbox；result revision 防舊回覆套錯影像，report triage 不因追問降級，所有套用保留 provenance 與 confirmation receipt。 |
-| 2026-08-04 | 互動 finding 寫回採 deterministic local-signal gate | 座標正確不代表框內有影像證據。crop dark-pixel ratio <1% 或 audit error 時仍允許 QA/人工匯出與撤回建議，但禁止 `ADD/REVISE`；不同診斷也不能只因 IoU 重疊就合併。 |
+| 2026-08-04 | 互動 finding 寫回採 deterministic local-signal gate | 座標正確不代表框內有影像證據。原始來源像素 crop 若低訊號、audit 缺失或失敗，仍允許 QA/人工匯出，但禁止任何 `ADD/REVISE/RETRACT`；不同診斷也不能只因 IoU 重疊就合併。 |
 
 ---
 

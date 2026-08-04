@@ -45,6 +45,7 @@ def build_initial_analysis_prompt(
     skill_prompt: str,
     waveform_artifact_id: str = "",
     waveform_lead_mode: str = "",
+    waveform_evidence_nonce: str = "",
 ) -> str:
     """Build the initial structured analysis prompt for an attached image."""
     allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
@@ -57,7 +58,8 @@ def build_initial_analysis_prompt(
             "- Then call ecg_founder_analyze_waveform exactly once with "
             f"artifact_id='{waveform_artifact_id}', "
             f"lead_mode='{waveform_lead_mode or '12_lead'}', and "
-            "max_predictions=10. Do not alter or invent the artifact id.\n"
+            f"evidence_nonce='{waveform_evidence_nonce}', and max_predictions=10. "
+            "Do not alter or invent the artifact id or evidence nonce.\n"
             "- Treat returned probabilities only as supporting waveform evidence. "
             "An uncalibrated_score is neither a positive nor a negative diagnosis.\n"
             "- Explicitly reconcile agreement or disagreement in the summary and "

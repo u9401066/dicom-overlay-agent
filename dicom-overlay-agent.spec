@@ -17,6 +17,7 @@ def optional_file(source: str, target: str):
 
 datas = [
     ("config.yaml", "."),
+    ("THIRD_PARTY_NOTICES.md", "."),
     *optional_tree("clinical_rules", "clinical_rules"),
     *optional_tree("openclaw/workspace", "openclaw/workspace"),
     *optional_tree("build/openclaw-runtime/openclaw", "openclaw"),

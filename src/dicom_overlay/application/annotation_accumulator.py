@@ -231,6 +231,8 @@ def apply_delta(
                     bboxes=payload.bboxes or current.bboxes,
                     regions=payload.regions or current.regions,
                     notes=notes,
+                    confidence=payload.confidence,
+                    question=payload.question,
                     source=payload.source or current.source,
                 )
             )
@@ -312,6 +314,9 @@ class AnnotationAccumulator:
         Preserve it byte-for-byte here; deduplication is only for later turns.
         """
 
+        ids = [finding.id for finding in findings]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Initial findings contain duplicate ids")
         self._findings = list(findings)
         return self.findings
 

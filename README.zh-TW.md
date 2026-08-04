@@ -12,7 +12,7 @@
 
 - Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
   負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
-- OOM-safe unit + smoke suite 為 706 passed（另 1 個 release-only skip）；
+- OOM-safe unit + smoke suite 為 738 passed（另 1 個 release-only skip）；
   OpenClaw overlay integration 為 55 passed；重建後真實 EXE bundle smoke
   為 2 passed，整個 repo 的 Ruff 也已全數通過。
 - 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
@@ -234,12 +234,13 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
 - **內容** — 可拖曳的 [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
   顯示系統性 checklist（EKG 共 16 鍵、CXR 為 10 軸判讀），異常項優先、正常項摺疊；
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py) 讓醫師針對同一張影像追問。
-- **區域問答寫回** — 點選 AI 框或自行框選時，桌面程式會把該精確 crop 交給
-  獨立的結構化 OpenClaw follow-up contract。模型只能提出 `ADD`、`REVISE`、
+- **區域問答寫回** — 點選 AI 框或自行框選時，桌面程式會把原始來源像素的
+  精確 crop 先送進 bounded refine，再交給獨立的結構化 OpenClaw follow-up
+  contract；兩輪都保留 session、run 與 tool receipts。模型只能提出 `ADD`、`REVISE`、
   `RETRACT`，不能回傳或移動座標，而且醫師按下 **Apply to report** 前不會修改
   報告。框內 deterministic signal gate 會合併暗像素、邊緣密度、robust dynamic
-  range 與空白場檢查；若判為低訊號，仍可保留 QA 與人工匯出，
-  但不允許 `ADD`／`REVISE` 成為 AI finding；成功套用會在報告、Process trace、
+  range 與空白場檢查；若判為低訊號、audit 缺失或失敗，仍可保留 QA 與人工匯出，
+  但不允許任何 `ADD`／`REVISE`／`RETRACT` 改動報告；成功套用會在報告、Process trace、
   JSON 與標框 PNG 保留 `interactive_ai_review` provenance。不同診斷即使框重疊，
   也不會再只因 IoU 高就被誤合併。
 - **多趟放大** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
@@ -294,6 +295,10 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   當波形或把 150 類分數當作影像 bbox。Torch 與約 370 MB checkpoint 不會
   塞進可攜式主程式，完整契約見
   [`docs/ecgfounder-tool.md`](docs/ecgfounder-tool.md)。
+  每個實驗 case 另綁定隨機 evidence nonce；只有 nonce、artifact digest、
+  固定 model revision 與 checkpoint 全部相符的唯一成功 receipt 才算有效。
+  桌面目前尚未實作可信任的 study-to-waveform resolver，因此設定頁只會顯示
+  「evaluation sidecar configured」，不會暗示一般 screenshot 判讀已使用它。
   MEETI paired build 已保留 1,000 筆相符的原始 12 導程波形；固定官方
   checkpoint 的真實批次已完成 1,000/1,000，所有結果都明確標記為未校準的
   supporting evidence。

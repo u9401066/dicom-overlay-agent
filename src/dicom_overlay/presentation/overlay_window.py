@@ -37,6 +37,7 @@ SEVERITY_COLORS: dict[str, QColor] = {
     "normal": QColor(40, 167, 69, 180),  # green
     "info": QColor(108, 117, 125, 150),  # gray
 }
+_USER_REGION_HIGHLIGHT_ID = "__user_region__"
 
 
 class _DraggableWindowMixin:
@@ -353,10 +354,34 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     signal_bits.append(
                         f"range={float(signal_audit['robust_dynamic_range']):.0f}"
                     )
+                if isinstance(signal_audit.get("source_short_edge_px"), (int, float)):
+                    signal_bits.append(
+                        f"source_edge={int(signal_audit['source_short_edge_px'])}px"
+                    )
+                if signal_audit.get("insufficient_source_resolution") is True:
+                    signal_bits.append("source_resolution=insufficient")
                 if isinstance(signal_audit.get("low_signal"), bool):
                     signal_bits.append(f"low_signal={signal_audit['low_signal']}")
                 if signal_bits:
                     details.append(f"Local signal audit: {', '.join(signal_bits)}")
+            regional_turns = entry.get("regional_turns")
+            if isinstance(regional_turns, list):
+                for turn in regional_turns:
+                    if not isinstance(turn, dict):
+                        continue
+                    turn_stage = str(turn.get("stage", "regional turn")).replace(
+                        "_", " "
+                    )
+                    turn_status = str(turn.get("status", ""))
+                    details.append(
+                        f"Regional turn: {turn_stage}"
+                        + (f" [{turn_status}]" if turn_status else "")
+                    )
+                    turn_tools = turn.get("tools")
+                    if isinstance(turn_tools, list) and turn_tools:
+                        details.append(
+                            f"Regional OpenClaw tools: {', '.join(map(str, turn_tools))}"
+                        )
             if entry.get("hypothesis"):
                 details.append(f"Hypothesis: {entry['hypothesis']}")
             crop_source = str(entry.get("crop_source") or entry.get("source") or "")
@@ -627,8 +652,9 @@ class OverlayWindow(QWidget):
     """
 
     display_expired = pyqtSignal()
-    highlight_selected = pyqtSignal(str, float, float, float, float)
+    highlight_selected = pyqtSignal(str, str, float, float, float, float)
     user_region_created = pyqtSignal(float, float, float, float)
+    user_region_selected = pyqtSignal(float, float, float, float)
     chat_proposal_accepted = pyqtSignal()
     chat_proposal_dismissed = pyqtSignal()
 
@@ -672,7 +698,7 @@ class OverlayWindow(QWidget):
 
         # Region highlights to draw
         self._highlights: list[
-            tuple[int, int, int, int, str, str]
+            tuple[int, int, int, int, str, str, str]
         ] = []  # x, y, w, h, severity, label
 
     def set_interaction_mode(self, mode: str) -> None:
@@ -705,6 +731,7 @@ class OverlayWindow(QWidget):
         """Clear reviewer-drawn regions at a new-image boundary."""
 
         self._user_regions.clear()
+        self._refresh_user_region_highlights()
 
     def consume_user_region(
         self,
@@ -721,8 +748,30 @@ class OverlayWindow(QWidget):
                 for actual, expected in zip(values, target, strict=True)
             ):
                 self._user_regions.pop(index)
+                self._refresh_user_region_highlights()
+                self.update()
                 return True
         return False
+
+    def _refresh_user_region_highlights(self) -> None:
+        self._highlights = [
+            item for item in self._highlights if item[6] != _USER_REGION_HIGHLIGHT_ID
+        ]
+        if self._content_rect is None:
+            return
+        content_x, content_y, content_w, content_h = self._content_rect
+        for nx, ny, nw, nh in self._user_regions:
+            self._highlights.append(
+                (
+                    round(content_x + nx * content_w),
+                    round(content_y + ny * content_h),
+                    round(nw * content_w),
+                    round(nh * content_h),
+                    "info",
+                    "User region",
+                    _USER_REGION_HIGHLIGHT_ID,
+                )
+            )
 
     def configure(
         self,
@@ -796,7 +845,7 @@ class OverlayWindow(QWidget):
     def show_result(
         self,
         result: AnalysisResult,
-        highlights: list[tuple[int, int, int, int, str, str]] | None = None,
+        highlights: list[tuple[int, int, int, int, str, str, str]] | None = None,
         *,
         append: bool = False,
         content_rect: tuple[int, int, int, int] | None = None,
@@ -818,6 +867,7 @@ class OverlayWindow(QWidget):
             self._highlights = [*self._highlights, *(highlights or [])]
         else:
             self._highlights = highlights or []
+        self._refresh_user_region_highlights()
 
         self.setWindowOpacity(1.0)
         self.show()
@@ -926,11 +976,14 @@ class OverlayWindow(QWidget):
         point = event.position().toPoint()
         if self._interaction_mode == "inspect":
             for highlight in reversed(self._highlights):
-                x, y, width, height, _severity, label = highlight
+                x, y, width, height, _severity, label, finding_id = highlight
                 if x <= point.x() <= x + width and y <= point.y() <= y + height:
                     normalized = self._normalized_rect((x, y, width, height))
                     if normalized is not None:
-                        self.highlight_selected.emit(label, *normalized)
+                        if finding_id == _USER_REGION_HIGHLIGHT_ID:
+                            self.user_region_selected.emit(*normalized)
+                        else:
+                            self.highlight_selected.emit(finding_id, label, *normalized)
                     event.accept()
                     return
         if self._interaction_mode == "annotate" and self._point_in_content(point):
@@ -959,23 +1012,8 @@ class OverlayWindow(QWidget):
         if draft is not None:
             normalized = self._normalized_rect(draft)
             if normalized is not None:
-                content_x, content_y, content_w, content_h = self._content_rect or (
-                    0,
-                    0,
-                    0,
-                    0,
-                )
-                nx, ny, nw, nh = normalized
-                clipped = (
-                    round(content_x + nx * content_w),
-                    round(content_y + ny * content_h),
-                    round(nw * content_w),
-                    round(nh * content_h),
-                    "info",
-                    "User region",
-                )
-                self._highlights.append(clipped)
                 self._user_regions.append(normalized)
+                self._refresh_user_region_highlights()
                 self.user_region_created.emit(*normalized)
         self.update()
         event.accept()
@@ -989,7 +1027,7 @@ class OverlayWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        for x, y, w, h, severity, label in self._highlights:
+        for x, y, w, h, severity, label, _finding_id in self._highlights:
             color = SEVERITY_COLORS.get(severity, SEVERITY_COLORS["info"])
             # Semi-transparent fill
             fill_color = QColor(color.red(), color.green(), color.blue(), 40)

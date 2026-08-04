@@ -23,7 +23,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 SCHEMA_VERSION = 1
 MODEL_ID = "PKUDigitalHealth/ECGFounder"
@@ -156,7 +156,9 @@ def load_registry(path: Path) -> dict[str, ArtifactRecord]:
     expected_index_hash = str(raw.get("artifact_index_sha256") or "").lower()
     if not _SHA256.fullmatch(expected_index_hash):
         raise RegistryError("waveform registry lacks artifact index provenance")
-    if not hmac.compare_digest(expected_index_hash, _canonical_artifact_hash(artifacts)):
+    if not hmac.compare_digest(
+        expected_index_hash, _canonical_artifact_hash(artifacts)
+    ):
         raise RegistryError("waveform registry artifact index hash mismatch")
 
     records: dict[str, ArtifactRecord] = {}
@@ -283,6 +285,19 @@ class ECGFounderRuntime:
     def tasks(self) -> tuple[str, ...]:
         return self._tasks
 
+    @property
+    def ready(self) -> bool:
+        return self._model is not None
+
+    @property
+    def preprocessing_revision(self) -> str:
+        return self._preprocessing_revision
+
+    def ensure_ready(self) -> None:
+        """Load and verify the pinned checkpoint for a deep health probe."""
+
+        self._ensure_model()
+
     def _ensure_model(self) -> None:
         if self._model is not None:
             return
@@ -331,9 +346,7 @@ class ECGFounderRuntime:
             if not isinstance(state_dict, dict):
                 raise RuntimeUnavailable("checkpoint_state_dict_missing")
             if state_dict and all(str(key).startswith("module.") for key in state_dict):
-                state_dict = {
-                    str(key)[7:]: value for key, value in state_dict.items()
-                }
+                state_dict = {str(key)[7:]: value for key, value in state_dict.items()}
             load_result = model.load_state_dict(state_dict, strict=False)
             if load_result.missing_keys or load_result.unexpected_keys:
                 raise RuntimeUnavailable("checkpoint_architecture_mismatch")
@@ -367,14 +380,23 @@ class ECGFounderRuntime:
             raise ArtifactIneligible("waveform_shape_must_be_12_by_5000")
         if not np.issubdtype(signal.dtype, np.number) or np.iscomplexobj(signal):
             raise ArtifactIneligible("waveform_signal_must_be_real_numeric")
+        finite_ratio = np.mean(np.isfinite(signal), axis=1)
+        if np.any(finite_ratio < 0.999):
+            raise ArtifactIneligible("waveform_lead_non_finite_ratio")
         signal = np.nan_to_num(
             signal.astype(np.float64, copy=False),
             nan=0.0,
             posinf=0.0,
             neginf=0.0,
         )
-        if float(np.std(signal)) <= 1e-12:
-            raise ArtifactIneligible("waveform_has_no_dynamic_signal")
+        lead_std = np.std(signal, axis=1)
+        if np.any(lead_std <= 1e-12):
+            raise ArtifactIneligible("waveform_contains_flat_lead")
+        for lead in signal:
+            low_count = int(np.count_nonzero(lead == np.min(lead)))
+            high_count = int(np.count_nonzero(lead == np.max(lead)))
+            if max(low_count, high_count) / lead.size > 0.20:
+                raise ArtifactIneligible("waveform_lead_clipping_or_saturation")
 
         lead_indices = [record.source_lead_names.index(lead) for lead in MODEL_LEADS]
         signal = signal[lead_indices, :]
@@ -404,7 +426,9 @@ class ECGFounderRuntime:
             raise ArtifactIneligible("waveform_preprocessing_produced_non_finite_data")
         return np.ascontiguousarray(normalized, dtype=np.float32)
 
-    def analyze(self, record: ArtifactRecord, *, max_predictions: int) -> dict[str, Any]:
+    def analyze(
+        self, record: ArtifactRecord, *, max_predictions: int
+    ) -> dict[str, Any]:
         self._ensure_model()
         signal = self._load_and_preprocess(record)
         assert self._torch is not None
@@ -494,8 +518,38 @@ class ECGFounderService:
     def artifact_count(self) -> int:
         return len(self._registry)
 
+    def health(self, *, deep: bool) -> dict[str, Any]:
+        try:
+            if deep:
+                self._runtime.ensure_ready()
+        except RuntimeUnavailable as exc:
+            return {
+                "schema_version": SCHEMA_VERSION,
+                "status": "unavailable",
+                "reason": str(exc),
+                "model_id": MODEL_ID,
+                "model_revision": MODEL_REVISION,
+                "checkpoint_sha256": CHECKPOINT_SHA256_12_LEAD,
+                "preprocessing_revision": self._runtime.preprocessing_revision,
+                "artifact_count": self.artifact_count,
+                "deep": deep,
+            }
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "status": "ready" if self._runtime.ready else "configured",
+            "model_id": MODEL_ID,
+            "model_revision": MODEL_REVISION,
+            "checkpoint_sha256": CHECKPOINT_SHA256_12_LEAD,
+            "preprocessing_revision": self._runtime.preprocessing_revision,
+            "artifact_count": self.artifact_count,
+            "deep": deep,
+        }
+
     def analyze(self, request: object) -> dict[str, Any]:
-        if not isinstance(request, dict) or request.get("schema_version") != SCHEMA_VERSION:
+        if (
+            not isinstance(request, dict)
+            or request.get("schema_version") != SCHEMA_VERSION
+        ):
             return _status_payload("ineligible", "invalid_request_schema")
         artifact_id = request.get("artifact_id")
         lead_mode = request.get("lead_mode")
@@ -575,22 +629,21 @@ def build_handler(
             self.wfile.write(body)
 
         def do_GET(self) -> None:
-            if urlsplit(self.path).path != "/health":
+            parsed = urlsplit(self.path)
+            if parsed.path != "/health":
                 self._json(HTTPStatus.NOT_FOUND, {"status": "not_found"})
                 return
             if not _authorized(self.headers, token):
                 self._json(HTTPStatus.UNAUTHORIZED, {"status": "unauthorized"})
                 return
-            self._json(
-                HTTPStatus.OK,
-                {
-                    "schema_version": SCHEMA_VERSION,
-                    "status": "ready",
-                    "model_id": MODEL_ID,
-                    "model_revision": MODEL_REVISION,
-                    "artifact_count": service.artifact_count,
-                },
+            deep = parse_qs(parsed.query).get("deep") == ["1"]
+            payload = service.health(deep=deep)
+            status = (
+                HTTPStatus.OK
+                if payload["status"] != "unavailable"
+                else HTTPStatus.SERVICE_UNAVAILABLE
             )
+            self._json(status, payload)
 
         def do_POST(self) -> None:
             if urlsplit(self.path).path != endpoint_path:
@@ -692,8 +745,9 @@ def main(argv: list[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "status": "ready",
+                "status": "configured",
                 "endpoint": f"http://{args.host}:{args.port}/v1/analyze",
+                "deep_health": f"http://{args.host}:{args.port}/health?deep=1",
                 "artifact_count": service.artifact_count,
                 "model_revision": MODEL_REVISION,
             }

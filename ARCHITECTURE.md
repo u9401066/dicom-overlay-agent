@@ -72,6 +72,12 @@ lead inventory、MultiPass crop/refine、座標校正與 `dicom_bbox_validate` �
 建立。詳細輸入、provenance、校準與實驗契約見
 [`docs/ecgfounder-tool.md`](docs/ecgfounder-tool.md)。
 
+目前只有 evaluation runner 能從 manifest 取得可信任的 waveform artifact
+binding；桌面 screenshot 流程沒有自行猜測 study 對應波形。每次 evaluation
+binding 會產生隨機 evidence nonce，plugin receipt 必須與該 nonce、artifact
+digest、固定 model revision 與 checkpoint 完全相符，且每 case 恰好一次成功，
+否則該 case 記為 infrastructure failure，不進入有效 ECGFounder 比較。
+
 MEETI 的 paired build 會為每張圖片建立一個 hash-derived waveform artifact
 id；只有顯式啟用第三實驗組時，該 id 才綁進單一 case 的 OpenClaw context。
 比較必須保持三組分離：single-pass image、MultiPass image、MultiPass 加

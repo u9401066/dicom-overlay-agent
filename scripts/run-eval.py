@@ -26,14 +26,20 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import structlog
 import websockets
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
@@ -56,6 +62,9 @@ from dicom_overlay.infrastructure.bbox_signal_calibrator import (  # noqa: E402
 )
 from dicom_overlay.infrastructure.clinical_rule_loader import (  # noqa: E402
     build_clinical_engine,
+)
+from dicom_overlay.infrastructure.eval_artifact_validator import (  # noqa: E402
+    _valid_ecg_founder_evidence,
 )
 from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
     EvalCase,
@@ -87,6 +96,11 @@ _MAX_IMAGE_EDGE_PX = 1568
 _DEFAULT_TIMEOUT_SEC = 90
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
 _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
+_ECG_FOUNDER_MODEL_ID = "PKUDigitalHealth/ECGFounder"
+_ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23"
+_ECG_FOUNDER_CHECKPOINT_SHA256 = (
+    "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+)
 _PROMPT_SOURCE_PATHS = (
     "src/dicom_overlay/application/hooked_analyzer.py",
     "src/dicom_overlay/application/interpretation_harness.py",
@@ -609,9 +623,7 @@ def _load_cases(manifest_path: Path) -> list[EvalCase]:
                 ungradable_reasons=tuple(entry.get("ungradable_reasons", [])),
                 label=entry.get("label", ""),
                 valid_regions=_valid_regions_for(entry, modality),
-                waveform_artifact_id=str(
-                    entry.get("waveform_artifact_id") or ""
-                ),
+                waveform_artifact_id=str(entry.get("waveform_artifact_id") or ""),
                 waveform_lead_mode=str(entry.get("waveform_lead_mode") or ""),
             )
         )
@@ -789,9 +801,10 @@ class _MockGateway:
                         ]
                     }
             elif "final report-reconciliation turn" in prompt:
-                payload = self._current_payload or self._payloads[
-                    min(self._index, len(self._payloads) - 1)
-                ]
+                payload = (
+                    self._current_payload
+                    or self._payloads[min(self._index, len(self._payloads) - 1)]
+                )
             else:
                 payload = self._payloads[min(self._index, len(self._payloads) - 1)]
                 self._current_payload = payload
@@ -984,6 +997,100 @@ async def _invoke_analyzer_with_source(
     )
 
 
+def _build_waveform_evidence(
+    *,
+    artifact_id: str,
+    lead_mode: str,
+    evidence_nonce: str,
+    receipts: list[dict[str, object]],
+    expected_preprocessing_revision: str = "",
+) -> dict[str, object]:
+    artifact_digest = (
+        hashlib.sha256(artifact_id.encode("utf-8")).hexdigest() if artifact_id else ""
+    )
+    evidence: dict[str, object] = {
+        "requested": bool(artifact_id),
+        "verified_exactly_once": bool(artifact_id and len(receipts) == 1),
+        "artifact_id_sha256": artifact_digest,
+        "lead_mode": (lead_mode or "12_lead") if artifact_id else "",
+        "evidence_nonce": evidence_nonce if artifact_id else "",
+        "receipt_count": len(receipts),
+        "receipts": receipts,
+    }
+    evidence["verified_exactly_once"] = _valid_ecg_founder_evidence(
+        evidence,
+        expected_artifact_sha256=artifact_digest,
+        expected_preprocessing_revision=expected_preprocessing_revision,
+    )
+    return evidence
+
+
+def _probe_ecg_founder_deep_health(
+    environment: Mapping[str, str],
+    *,
+    opener: Any | None = None,
+) -> tuple[dict[str, object] | None, str]:
+    endpoint = environment.get("DICOM_ECGFOUNDER_ENDPOINT", "").strip()
+    token = environment.get("DICOM_ECGFOUNDER_TOKEN", "").strip()
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError:
+        return None, "invalid_endpoint"
+    if parsed.scheme != "http" or (parsed.hostname or "").casefold() not in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }:
+        return None, "endpoint_not_loopback_http"
+    if parsed.username or parsed.password or not token:
+        return None, "invalid_auth_configuration"
+    health_url = urlunsplit((parsed.scheme, parsed.netloc, "/health", "deep=1", ""))
+    request = urllib.request.Request(
+        health_url,
+        method="GET",
+        headers={"authorization": f"Bearer {token}", "accept": "application/json"},
+    )
+    try:
+        timeout_ms = int(environment.get("DICOM_ECGFOUNDER_TIMEOUT_MS", "45000"))
+    except ValueError:
+        timeout_ms = 45_000
+    timeout_sec = max(1.0, min(120.0, timeout_ms / 1000))
+    open_request = opener or urllib.request.urlopen
+    try:
+        with open_request(request, timeout=timeout_sec) as response:
+            body = response.read(65_537)
+    except urllib.error.HTTPError as exc:
+        return None, f"health_http_{exc.code}"
+    except (OSError, urllib.error.URLError):
+        return None, "health_unreachable"
+    if len(body) > 65_536:
+        return None, "health_response_too_large"
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, "health_response_invalid_json"
+    if not isinstance(payload, dict) or payload.get("status") != "ready":
+        return None, "sidecar_not_ready"
+    if (
+        payload.get("deep") is not True
+        or payload.get("model_id") != _ECG_FOUNDER_MODEL_ID
+        or payload.get("model_revision") != _ECG_FOUNDER_MODEL_REVISION
+        or payload.get("checkpoint_sha256") != _ECG_FOUNDER_CHECKPOINT_SHA256
+        or not isinstance(payload.get("preprocessing_revision"), str)
+        or not payload["preprocessing_revision"]
+        or not isinstance(payload.get("artifact_count"), int)
+        or payload["artifact_count"] <= 0
+    ):
+        return None, "health_provenance_mismatch"
+    return {
+        "model_id": payload["model_id"],
+        "model_revision": payload["model_revision"],
+        "checkpoint_sha256": payload["checkpoint_sha256"],
+        "preprocessing_revision": payload["preprocessing_revision"],
+        "artifact_count": payload["artifact_count"],
+    }, "ready"
+
+
 async def _run(
     cases: list[EvalCase],
     gateway_url: str,
@@ -997,6 +1104,7 @@ async def _run(
     partial_scorecard_interval: int,
     rhythm_strip_pass: bool = True,
     ecg_founder_waveform_evidence: bool = False,
+    ecg_founder_preprocessing_revision: str = "",
     protocol_digest: str = "",
     source_image_hashes: dict[str, str] | None = None,
 ) -> EvalReport:
@@ -1011,6 +1119,7 @@ async def _run(
         trace_path = output_dir / "multipass-trace.jsonl"
         local_quality_by_case: dict[str, dict[str, object]] = {}
         local_signal_by_case: dict[str, dict[str, object]] = {}
+        waveform_evidence_by_case: dict[str, dict[str, object]] = {}
 
         if multi_pass:
 
@@ -1023,9 +1132,7 @@ async def _run(
                 client,
                 cropper=cropper,
                 max_zoom_targets=multi_pass_max_targets,
-                max_ekg_systematic_probes=(
-                    multi_pass_max_ekg_systematic_probes
-                ),
+                max_ekg_systematic_probes=(multi_pass_max_ekg_systematic_probes),
             )
             analyzer = _wrap_with_app_hooks(
                 multi_pass_analyzer,
@@ -1055,6 +1162,26 @@ async def _run(
             before_calls = counter.analyze_calls if counter else 0
             before_crops = crop_calls
             coarse_invocations = 0
+            artifact_id = (
+                case.waveform_artifact_id if ecg_founder_waveform_evidence else ""
+            )
+            waveform_receipts: list[dict[str, object]] = []
+
+            waveform_evidence_by_case[case_key] = {
+                "requested": bool(artifact_id),
+                "verified_exactly_once": False,
+                "artifact_id_sha256": (
+                    hashlib.sha256(artifact_id.encode("utf-8")).hexdigest()
+                    if artifact_id
+                    else ""
+                ),
+                "lead_mode": (case.waveform_lead_mode or "12_lead")
+                if artifact_id
+                else "",
+                "evidence_nonce": "",
+                "receipt_count": 0,
+                "receipts": [],
+            }
 
             async def _invoke() -> Any:
                 nonlocal coarse_invocations
@@ -1069,32 +1196,39 @@ async def _run(
                     local_candidate_regions=local_candidate_regions,
                 )
 
-            artifact_id = (
-                case.waveform_artifact_id
-                if ecg_founder_waveform_evidence
-                else ""
-            )
             evidence_context = (
                 client.use_waveform_artifact(
                     artifact_id,
                     lead_mode=case.waveform_lead_mode or "12_lead",
                 )
                 if artifact_id
-                else nullcontext()
+                else nullcontext("")
             )
             result = None
+            evidence_nonce = ""
             try:
-                with evidence_context:
+                with evidence_context as bound_nonce:
+                    evidence_nonce = str(bound_nonce or "")
                     result = await _invoke()
-                    # An empty read (blank summary + no findings) is a transient
-                    # model glitch, not a real "normal" study. Retry once before
-                    # banking a 0-score hard failure (mining showed ~8% of real
-                    # cases returned empty JSON with no recovery).
-                    if is_empty_read(result):
-                        logger.warning("empty_read_retry", case=case_key)
-                        retry = await _invoke()
-                        if not is_empty_read(retry):
-                            result = retry
+                # Retry an empty image read without re-binding waveform evidence;
+                # an ECGFounder arm must prove exactly one tool call per case.
+                if is_empty_read(result):
+                    logger.warning("empty_read_retry", case=case_key)
+                    retry = await _invoke()
+                    if not is_empty_read(retry):
+                        result = retry
+            except Exception:
+                waveform_receipts = client.waveform_evidence_receipts(evidence_nonce)
+                waveform_evidence_by_case[case_key] = _build_waveform_evidence(
+                    artifact_id=artifact_id,
+                    lead_mode=case.waveform_lead_mode,
+                    evidence_nonce=evidence_nonce,
+                    receipts=waveform_receipts,
+                    expected_preprocessing_revision=(
+                        ecg_founder_preprocessing_revision
+                    ),
+                )
+                raise
             finally:
                 if multi_pass and counter:
                     calls = counter.analyze_calls - before_calls
@@ -1141,9 +1275,7 @@ async def _run(
                             multi_pass_max_ekg_systematic_probes
                         ),
                         "ekg_systematic_probe_count": len(systematic_targets),
-                        "ekg_systematic_completed_count": len(
-                            systematic_completed
-                        ),
+                        "ekg_systematic_completed_count": len(systematic_completed),
                         "ekg_systematic_probe_targets": systematic_targets,
                         "ekg_systematic_completed_targets": systematic_completed,
                         "local_candidate_count": len(local_candidate_regions),
@@ -1160,64 +1292,84 @@ async def _run(
                     with trace_path.open("a", encoding="utf-8") as fh:
                         fh.write(json.dumps(trace, ensure_ascii=False) + "\n")
 
-            if rhythm_strip_pass and case.modality == Modality.EKG:
-                # Re-read the model-declared rhythm strip at higher resolution
-                # to recover rhythm / P-wave / AV-block misses. It is a no-op
-                # unless Step 0 localized a rhythm-strip bbox, so it stays
-                # layout-general. Keep this pass separately traceable even
-                # when the broader --multi-pass option is disabled.
-                rhythm_region = resolve_rhythm_strip_region(result)
-                rhythm_counter = _CountingAnalyzer(hooked_analyzer)
-                rhythm_crop_calls = 0
+            try:
+                if rhythm_strip_pass and case.modality == Modality.EKG:
+                    # Re-read the model-declared rhythm strip at higher resolution
+                    # to recover rhythm / P-wave / AV-block misses. It is a no-op
+                    # unless Step 0 localized a rhythm-strip bbox, so it stays
+                    # layout-general. Keep this pass separately traceable even
+                    # when the broader --multi-pass option is disabled.
+                    rhythm_region = resolve_rhythm_strip_region(result)
+                    rhythm_counter = _CountingAnalyzer(hooked_analyzer)
+                    rhythm_crop_calls = 0
 
-                def rhythm_cropper(image_base64: str, region: Any) -> str:
-                    nonlocal rhythm_crop_calls
-                    rhythm_crop_calls += 1
-                    return processor.crop_region_base64(image_base64, region)
+                    def rhythm_cropper(image_base64: str, region: Any) -> str:
+                        nonlocal rhythm_crop_calls
+                        rhythm_crop_calls += 1
+                        return processor.crop_region_base64(image_base64, region)
 
-                result = await refine_rhythm_strip(
-                    result,
-                    image_payload.source_image_base64,
-                    analyze_fn=rhythm_counter.analyze,
-                    cropper=rhythm_cropper,
-                    valid_regions=list(case.valid_regions),
-                )
-                rhythm_trace = {
-                    "case": case.label or case.image_path.name,
-                    "image": case.image_path.name,
-                    "model_path": "RhythmStripRefinement",
-                    "openclaw_analyze_calls": rhythm_counter.analyze_calls,
-                    "coarse_passes": 0,
-                    "zoom_passes": 1 if rhythm_counter.analyze_calls else 0,
-                    "crop_calls": rhythm_crop_calls,
-                    "crop_source": "original_roi",
-                    "source_size_px": list(image_payload.source_size_px),
-                    "coarse_size_px": list(image_payload.coarse_size_px),
-                    "max_zoom_targets": 1,
-                    "retry_attempts": 1,
-                    "rhythm_strip_region": (
-                        {
-                            "x": rhythm_region.x,
-                            "y": rhythm_region.y,
-                            "w": rhythm_region.w,
-                            "h": rhythm_region.h,
-                        }
-                        if rhythm_region is not None
-                        else None
+                    result = await refine_rhythm_strip(
+                        result,
+                        image_payload.source_image_base64,
+                        analyze_fn=rhythm_counter.analyze,
+                        cropper=rhythm_cropper,
+                        valid_regions=list(case.valid_regions),
+                    )
+                    rhythm_trace = {
+                        "case": case.label or case.image_path.name,
+                        "image": case.image_path.name,
+                        "model_path": "RhythmStripRefinement",
+                        "openclaw_analyze_calls": rhythm_counter.analyze_calls,
+                        "coarse_passes": 0,
+                        "zoom_passes": 1 if rhythm_counter.analyze_calls else 0,
+                        "crop_calls": rhythm_crop_calls,
+                        "crop_source": "original_roi",
+                        "source_size_px": list(image_payload.source_size_px),
+                        "coarse_size_px": list(image_payload.coarse_size_px),
+                        "max_zoom_targets": 1,
+                        "retry_attempts": 1,
+                        "rhythm_strip_region": (
+                            {
+                                "x": rhythm_region.x,
+                                "y": rhythm_region.y,
+                                "w": rhythm_region.w,
+                                "h": rhythm_region.h,
+                            }
+                            if rhythm_region is not None
+                            else None
+                        ),
+                        "local_candidate_count": len(local_candidate_regions),
+                        "local_candidate_regions": [
+                            {
+                                "x": region.x,
+                                "y": region.y,
+                                "w": region.w,
+                                "h": region.h,
+                            }
+                            for region in local_candidate_regions
+                        ],
+                    }
+                    with trace_path.open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(rhythm_trace, ensure_ascii=False) + "\n")
+            finally:
+                waveform_receipts = client.waveform_evidence_receipts(evidence_nonce)
+                waveform_evidence_by_case[case_key] = _build_waveform_evidence(
+                    artifact_id=artifact_id,
+                    lead_mode=case.waveform_lead_mode,
+                    evidence_nonce=evidence_nonce,
+                    receipts=waveform_receipts,
+                    expected_preprocessing_revision=(
+                        ecg_founder_preprocessing_revision
                     ),
-                    "local_candidate_count": len(local_candidate_regions),
-                    "local_candidate_regions": [
-                        {
-                            "x": region.x,
-                            "y": region.y,
-                            "w": region.w,
-                            "h": region.h,
-                        }
-                        for region in local_candidate_regions
-                    ],
-                }
-                with trace_path.open("a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(rhythm_trace, ensure_ascii=False) + "\n")
+                )
+            if (
+                artifact_id
+                and not waveform_evidence_by_case[case_key]["verified_exactly_once"]
+            ):
+                raise RuntimeError(
+                    "ECGFounder evidence arm requires exactly one matching status=ok "
+                    "receipt from the pinned 12-lead model"
+                )
             return result
 
         return await run_evaluation(
@@ -1240,26 +1392,10 @@ async def _run(
                     case.label or case.image_path.name,
                     "",
                 ),
-                "waveform_evidence": {
-                    "requested": bool(
-                        ecg_founder_waveform_evidence
-                        and case.waveform_artifact_id
-                    ),
-                    "artifact_id_sha256": (
-                        hashlib.sha256(
-                            case.waveform_artifact_id.encode("utf-8")
-                        ).hexdigest()
-                        if ecg_founder_waveform_evidence
-                        and case.waveform_artifact_id
-                        else ""
-                    ),
-                    "lead_mode": (
-                        case.waveform_lead_mode or "12_lead"
-                        if ecg_founder_waveform_evidence
-                        and case.waveform_artifact_id
-                        else ""
-                    ),
-                },
+                "waveform_evidence": waveform_evidence_by_case.get(
+                    case.label or case.image_path.name,
+                    {"requested": False, "verified_exactly_once": False},
+                ),
             },
         )
 
@@ -1732,6 +1868,7 @@ def main() -> int:
         return 2
 
     mode = "mock" if args.mock else "real"
+    ecgfounder_health: dict[str, object] = {}
     if args.ecgfounder_waveform_evidence:
         if mode != "real":
             print(
@@ -1743,6 +1880,20 @@ def main() -> int:
             print(
                 "ERROR: ECGFounder evidence requires "
                 "DICOM_ECGFOUNDER_ENDPOINT and DICOM_ECGFOUNDER_TOKEN.",
+                file=sys.stderr,
+            )
+            return 2
+        audit_path_text = os.environ.get("DICOM_ECGFOUNDER_AUDIT_PATH", "").strip()
+        audit_path = Path(audit_path_text) if audit_path_text else None
+        if (
+            audit_path is None
+            or not audit_path.is_absolute()
+            or not audit_path.parent.is_dir()
+            or not os.access(audit_path.parent, os.W_OK)
+        ):
+            print(
+                "ERROR: ECGFounder evidence requires an absolute, writable "
+                "DICOM_ECGFOUNDER_AUDIT_PATH shared with the Gateway plugin.",
                 file=sys.stderr,
             )
             return 2
@@ -1758,6 +1909,15 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
+        health_payload, sidecar_reason = _probe_ecg_founder_deep_health(os.environ)
+        if health_payload is None:
+            print(
+                "ERROR: ECGFounder deep health did not prove the pinned sidecar "
+                f"ready ({sidecar_reason}).",
+                file=sys.stderr,
+            )
+            return 2
+        ecgfounder_health = health_payload
     model_id = args.model_id or (
         "mock-eval-gateway"
         if args.mock
@@ -1804,11 +1964,18 @@ def main() -> int:
                 "partial_scorecard_interval": args.partial_scorecard_interval,
                 "require_perfect": bool(args.require_perfect),
                 "rhythm_strip_pass": bool(args.rhythm_strip_pass),
-                "ecgfounder_waveform_evidence": bool(
-                    args.ecgfounder_waveform_evidence
-                ),
+                "ecgfounder_waveform_evidence": bool(args.ecgfounder_waveform_evidence),
                 "ecgfounder_paired_case_count": sum(
                     bool(case.waveform_artifact_id) for case in cases
+                ),
+                "ecgfounder_model_revision": str(
+                    ecgfounder_health.get("model_revision") or ""
+                ),
+                "ecgfounder_checkpoint_sha256": str(
+                    ecgfounder_health.get("checkpoint_sha256") or ""
+                ),
+                "ecgfounder_preprocessing_revision": str(
+                    ecgfounder_health.get("preprocessing_revision") or ""
                 ),
                 "timeout_sec": args.timeout_sec,
             },
@@ -1865,8 +2032,9 @@ def main() -> int:
                 ),
                 partial_scorecard_interval=args.partial_scorecard_interval,
                 rhythm_strip_pass=args.rhythm_strip_pass,
-                ecg_founder_waveform_evidence=(
-                    args.ecgfounder_waveform_evidence
+                ecg_founder_waveform_evidence=(args.ecgfounder_waveform_evidence),
+                ecg_founder_preprocessing_revision=str(
+                    ecgfounder_health.get("preprocessing_revision") or ""
                 ),
                 protocol_digest=protocol_digest,
                 source_image_hashes=_fingerprint_image_hashes(fingerprint),

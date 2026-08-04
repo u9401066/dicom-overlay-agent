@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 
 import pytest
@@ -135,6 +136,25 @@ class MockSourceSizeAnalyzer(MockVisionAnalyzer):
         return await self.analyze(image_base64, modality, valid_regions)
 
 
+class BlockingVisionAnalyzer(MockVisionAnalyzer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def analyze(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        del image_base64, modality, valid_regions
+        self.analyze_calls += 1
+        self.entered.set()
+        await self.release.wait()
+        return self.result
+
+
 class MockRegionMapper(RegionMapperService):
     def get_region_rect(
         self, region_name: str, modality: Modality
@@ -194,6 +214,7 @@ class TestOverlayAgent:
         )
         agent._annotation_accumulator.reset([original])
         agent._result_revision = 4
+        agent._state = AgentState.DISPLAYING
         revised = Finding(
             id="f1",
             regions=["lead_V2"],
@@ -225,7 +246,7 @@ class TestOverlayAgent:
         assert updated.analysis_trace[-1]["stage"] == "interactive_review"
         assert updated.analysis_trace[-1]["user_confirmed"] is True
         assert updated.analysis_trace[-1]["bbox_source"] == (
-            "app_selected_original_roi"
+            "selected_finding_existing_bbox"
         )
         assert updated.analysis_trace[-1]["local_signal_audit"] == {
             "status": "ok",
@@ -233,6 +254,149 @@ class TestOverlayAgent:
             "low_signal": False,
         }
         assert agent.result_revision == 5
+
+    def test_regional_no_change_is_recorded_without_mutating_findings(self, agent):
+        from dicom_overlay.application.overlay_agent import ReviewSnapshot
+
+        finding = Finding(
+            id="f1",
+            regions=["lead_II"],
+            label="Candidate",
+            detail="Initial observation.",
+            severity=Severity.INFO,
+        )
+        original = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Review",
+            severity=Severity.INFO,
+            findings=[finding],
+            checklist={},
+        )
+        agent._last_result = original
+        agent._annotation_accumulator.reset([finding])
+        agent._result_revision = 8
+        agent._state = AgentState.DISPLAYING
+        agent._review_snapshot = ReviewSnapshot(
+            image_base64="image",
+            result=original,
+            capture_rect=WindowRect(10, 20, 300, 200),
+            revision=8,
+        )
+
+        updated = agent.record_regional_review_outcome(
+            expected_revision=8,
+            outcome="blocked",
+            local_signal_audit={
+                "status": "ok",
+                "low_signal": True,
+                "private_value": "drop-me",
+            },
+            regional_review_trace=[
+                {
+                    "stage": "regional_structured_review",
+                    "status": "completed",
+                    "run_id": "run-8",
+                    "private_value": "drop-me",
+                }
+            ],
+        )
+
+        assert updated.findings == [finding]
+        assert updated.analysis_trace[-1] == {
+            "stage": "interactive_review",
+            "status": "blocked",
+            "tool": "openclaw_region_followup",
+            "operation": "none",
+            "user_confirmed": False,
+            "local_signal_audit": {"status": "ok", "low_signal": True},
+            "regional_turns": [
+                {
+                    "stage": "regional_structured_review",
+                    "status": "completed",
+                    "run_id": "run-8",
+                }
+            ],
+        }
+        assert agent.result_revision == 9
+        assert agent.review_snapshot is not None
+        assert agent.review_snapshot.result is updated
+        assert agent.review_snapshot.revision == 9
+
+    def test_reviewer_retract_records_static_region_fallback(self, agent):
+        original = Finding(
+            id="f-static",
+            regions=["lead_V3"],
+            label="Static mapped finding",
+            detail="No model bbox was supplied.",
+            severity=Severity.WARNING,
+        )
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Review",
+            severity=Severity.WARNING,
+            findings=[original],
+            checklist={},
+        )
+        agent._annotation_accumulator.reset([original])
+        agent._result_revision = 3
+        agent._state = AgentState.DISPLAYING
+        fallback = RegionRect(0.4, 0.3, 0.2, 0.2)
+
+        updated = agent.apply_finding_delta(
+            FindingDelta(
+                op=FindingOp.RETRACT,
+                finding=Finding(
+                    id=original.id,
+                    regions=original.regions,
+                    label=original.label,
+                    detail=original.detail,
+                    severity=original.severity,
+                    bboxes=[fallback],
+                ),
+            ),
+            expected_revision=3,
+            local_signal_audit={"status": "ok", "low_signal": False},
+        )
+
+        assert updated.findings == []
+        assert updated.analysis_trace[-1]["bbox_source"] == (
+            "selected_static_region_fallback"
+        )
+        assert updated.analysis_trace[-1]["bboxes"] == [
+            {"x": 0.4, "y": 0.3, "w": 0.2, "h": 0.2}
+        ]
+
+    def test_reviewer_delta_rejects_ambiguous_duplicate_current_ids(self, agent):
+        first = Finding(
+            id="same",
+            regions=[],
+            label="One",
+            detail="First.",
+            severity=Severity.INFO,
+        )
+        second = Finding(
+            id="same",
+            regions=[],
+            label="Two",
+            detail="Second.",
+            severity=Severity.WARNING,
+        )
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Ambiguous",
+            severity=Severity.WARNING,
+            findings=[first, second],
+            checklist={},
+        )
+        agent._result_revision = 1
+        agent._state = AgentState.DISPLAYING
+
+        with pytest.raises(ValueError, match="duplicate finding ids"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.RETRACT, finding=first),
+                expected_revision=1,
+                local_signal_audit={"status": "ok", "low_signal": False},
+            )
 
     def test_reviewer_delta_rejects_stale_result_revision(self, agent):
         finding = Finding(
@@ -251,6 +415,7 @@ class TestOverlayAgent:
         )
         agent._annotation_accumulator.reset([finding])
         agent._result_revision = 7
+        agent._state = AgentState.DISPLAYING
 
         with pytest.raises(RuntimeError, match="changed"):
             agent.apply_finding_delta(
@@ -268,6 +433,7 @@ class TestOverlayAgent:
         )
         agent._annotation_accumulator.reset([])
         agent._result_revision = 2
+        agent._state = AgentState.DISPLAYING
         candidate = Finding(
             id="review-blank",
             regions=[],
@@ -282,6 +448,33 @@ class TestOverlayAgent:
                 FindingDelta(op=FindingOp.ADD, finding=candidate),
                 expected_revision=2,
                 local_signal_audit={"status": "ok", "low_signal": True},
+            )
+
+    def test_reviewer_delta_rejects_while_new_image_is_analyzing(self, agent):
+        finding = Finding(
+            id="f1",
+            regions=[],
+            label="Candidate",
+            detail="Candidate detail",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.2, 0.2, 0.2)],
+        )
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Review",
+            severity=Severity.WARNING,
+            findings=[finding],
+            checklist={},
+        )
+        agent._annotation_accumulator.reset([finding])
+        agent._result_revision = 3
+        agent._state = AgentState.ANALYZING
+
+        with pytest.raises(RuntimeError, match="displayed"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.RETRACT, finding=finding),
+                expected_revision=3,
+                local_signal_audit={"status": "ok", "low_signal": False},
             )
 
     @pytest.mark.parametrize(
@@ -305,6 +498,7 @@ class TestOverlayAgent:
         )
         agent._annotation_accumulator.reset([])
         agent._result_revision = 2
+        agent._state = AgentState.DISPLAYING
         candidate = Finding(
             id="review-outside",
             regions=[],
@@ -440,7 +634,7 @@ class TestOverlayAgent:
         assert agent_deps["vision_analyzer"].analyze_calls == 0
 
     @pytest.mark.asyncio
-    async def test_manual_mode_ignores_automatic_change_detection(
+    async def test_manual_mode_marks_changed_image_pending_without_auto_analysis(
         self, agent, agent_deps
     ):
         pending_events: list[str] = []
@@ -459,9 +653,28 @@ class TestOverlayAgent:
         await agent.tick()
 
         assert agent.state == AgentState.MONITORING
-        assert not agent.pending_analysis
-        assert pending_events == []
+        assert agent.pending_analysis
+        assert pending_events == ["image_changed_manual"]
         assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_manual_image_change_invalidates_displayed_review_snapshot(
+        self, agent, agent_deps
+    ):
+        agent.set_trigger_mode(TriggerMode.MANUAL)
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+        await agent.trigger_manual()
+        assert agent.displayed_review_snapshot is not None
+
+        await agent._handle_stable_image_change("new-image-hash")
+
+        assert agent.state is AgentState.MONITORING
+        assert agent.displayed_review_snapshot is None
+        assert agent.pending_analysis is True
 
     @pytest.mark.asyncio
     async def test_auto_mode_analyzes_after_stable_change(self, agent, agent_deps):
@@ -519,6 +732,38 @@ class TestOverlayAgent:
 
         assert agent.state == AgentState.DISPLAYING
         assert agent.last_image_base64 == "ZmFrZQ=="
+        assert agent.review_snapshot is not None
+        assert agent.review_snapshot.image_base64 == agent.last_image_base64
+        assert agent.review_snapshot.result is agent.last_result
+
+    @pytest.mark.asyncio
+    async def test_review_snapshot_is_published_only_after_analysis_completes(
+        self, agent_deps
+    ):
+        from dicom_overlay.application.overlay_agent import OverlayAgent
+
+        analyzer = BlockingVisionAnalyzer()
+        agent_deps["vision_analyzer"] = analyzer
+        agent = OverlayAgent(config=AppConfig(), **agent_deps)
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+
+        task = asyncio.create_task(agent.trigger_manual())
+        await analyzer.entered.wait()
+
+        assert agent.state is AgentState.ANALYZING
+        assert agent.review_snapshot is None
+        assert agent.last_image_base64 == ""
+
+        analyzer.release.set()
+        await task
+
+        assert agent.state is AgentState.DISPLAYING
+        assert agent.review_snapshot is not None
+        assert agent.review_snapshot.image_base64 == "ZmFrZQ=="
 
     @pytest.mark.asyncio
     async def test_analysis_passes_downscaled_source_size_when_supported(

@@ -11,7 +11,6 @@ Threading model:
 
 from __future__ import annotations
 
-import base64
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -31,12 +30,13 @@ from dicom_overlay.application.multi_pass import (
     MultiPassAnalyzer,
     MultiPassInterpreter,
 )
-from dicom_overlay.application.overlay_agent import OverlayAgent
+from dicom_overlay.application.overlay_agent import OverlayAgent, ReviewSnapshot
 from dicom_overlay.application.review_chat import (
     ReviewChatResponse,
     build_region_review_prompt,
     match_selected_finding,
     parse_region_review_response,
+    summarize_regional_refinement,
 )
 from dicom_overlay.domain.entities import (
     AgentState,
@@ -95,7 +95,11 @@ class _SignalBridge(QObject):
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
     chat_done = pyqtSignal(str, str, int, int)
-    review_chat_done = pyqtSignal(str, object, int, object, int)
+    review_chat_done = pyqtSignal(str, object, int, object, object, int)
+    review_apply_done = pyqtSignal(object, object)
+    review_apply_failed = pyqtSignal(str)
+    review_outcome_done = pyqtSignal(str)
+    review_outcome_failed = pyqtSignal(str)
     chat_failed = pyqtSignal(int)
     vision_test_done = pyqtSignal(object)
 
@@ -331,7 +335,9 @@ def main() -> None:
     bridge.start()
 
     signals = _SignalBridge()
-    _pending_review: list[tuple[FindingDelta, int, dict[str, object]] | None] = [None]
+    _pending_review: list[
+        tuple[FindingDelta, int, dict[str, object], list[dict[str, object]]] | None
+    ] = [None]
     _chat_request_id = [0]
 
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
@@ -356,6 +362,9 @@ def main() -> None:
             "they cannot be selected via the cycle button until added to the enum.",
             _unmapped,
         )
+
+    def _current_review_snapshot() -> ReviewSnapshot | None:
+        return agent.displayed_review_snapshot
 
     def on_state_change(_old: AgentState, new: AgentState) -> None:
         control_bar.update_state(new)
@@ -384,7 +393,7 @@ def main() -> None:
         )
         # Position first so every projected box uses the same target-display
         # coordinate frame as the screenshot that was actually analyzed.
-        highlights: list[tuple[int, int, int, int, str, str]] = []
+        highlights: list[tuple[int, int, int, int, str, str, str]] = []
         overlay_content_rect: tuple[int, int, int, int] | None = None
         coordinate_frame = None
         if agent.target_window:
@@ -393,7 +402,12 @@ def main() -> None:
                 agent.display_frame,
             )
 
-        content_rect = agent.last_capture_rect
+        snapshot = agent.review_snapshot
+        content_rect = (
+            snapshot.capture_rect
+            if snapshot is not None and snapshot.result is result
+            else agent.last_capture_rect
+        )
         if content_rect is None and agent.target_window:
             try:
                 content_rect = agent._get_roi_rect()
@@ -458,6 +472,7 @@ def main() -> None:
                                     logical.h,
                                     finding.severity.value,
                                     finding.label,
+                                    finding.id,
                                 )
                             )
         overlay.show_result(
@@ -651,14 +666,15 @@ def main() -> None:
     control_bar.interaction_mode_changed.connect(on_interaction_mode_changed)
 
     def on_export_review() -> None:
-        if not agent.last_image_base64 or not agent.last_result:
+        snapshot = _current_review_snapshot()
+        if snapshot is None:
             control_bar.set_status("Analyze an image before export")
             return
         try:
             user_regions = [RegionRect(*values) for values in overlay.user_regions]
             review_path = export_desktop_review(
-                image_base64=agent.last_image_base64,
-                result=agent.last_result,
+                image_base64=snapshot.image_base64,
+                result=snapshot.result,
                 output_root=app_base_dir() / "data" / "exports",
                 user_regions=user_regions,
             )
@@ -682,8 +698,8 @@ def main() -> None:
         question: str,
         image_base64: str,
         context: str,
+        revision: int,
     ) -> None:
-        revision = agent.result_revision
         request_id = _begin_chat_request()
         if agent.target_window:
             overlay.position_over_window(agent.target_window, agent.display_frame)
@@ -710,47 +726,103 @@ def main() -> None:
         *,
         question: str,
         crop_base64: str,
+        source_crop_bytes: bytes,
+        snapshot: ReviewSnapshot,
         selected_region: RegionRect,
         selected_finding: Finding | None,
         allow_add: bool,
     ) -> None:
-        current_result = agent.last_result
-        if current_result is None:
-            control_bar.set_status("Analysis result is no longer available")
-            return
-        revision = agent.result_revision
+        current_result = snapshot.result
+        revision = snapshot.revision
         request_id = _begin_chat_request()
         try:
-            crop_bytes = base64.b64decode(crop_base64, validate=True)
             signal_audit = {
                 "status": "ok",
-                **image_processor.image_quality_profile(crop_bytes),
+                **image_processor.image_quality_profile(source_crop_bytes),
             }
         except Exception:
             logger.exception("Interactive crop signal audit failed")
             signal_audit = {"status": "error", "low_signal": True}
-        prompt = build_region_review_prompt(
-            user_question=question,
-            prior_context=summarize_result_for_followup(current_result),
-            selected_region=selected_region,
-            selected_finding=selected_finding,
-            local_signal_audit=signal_audit,
-            allow_add=allow_add,
-        )
         new_finding_id = f"review-{uuid4().hex[:12]}"
         if agent.target_window:
             overlay.position_over_window(agent.target_window, agent.display_frame)
         overlay.show_chat_waiting(question)
-        future = bridge.submit(
-            openclaw_client.review_region_about_image(
+
+        async def _run_regional_review():
+            turn_trace: list[dict[str, object]] = []
+            refinement_evidence = ""
+            if config.analysis.multi_pass_enabled:
+                if signal_audit.get("low_signal") is True:
+                    turn_trace.append(
+                        {
+                            "stage": "regional_refine",
+                            "status": "skipped",
+                            "reason": "low_signal_or_source_resolution",
+                        }
+                    )
+                else:
+                    try:
+                        refinement = await openclaw_client.refine(
+                            crop_base64,
+                            current_result.modality,
+                            region_mapper.get_valid_regions(current_result.modality),
+                            hypothesis=selected_finding,
+                            crop_region=selected_region,
+                        )
+                        refinement_evidence = summarize_regional_refinement(
+                            refinement,
+                            expected_target_id=(
+                                selected_finding.id if selected_finding else None
+                            ),
+                            allow_add=allow_add,
+                        )
+                        turn_trace.append(
+                            {
+                                "stage": "regional_refine",
+                                "status": "completed",
+                                **openclaw_client.last_run_trace(),
+                            }
+                        )
+                    except Exception as exc:
+                        logger.exception("Bounded regional refinement failed")
+                        turn_trace.append(
+                            {
+                                "stage": "regional_refine",
+                                "status": "failed",
+                                "error_type": type(exc).__name__,
+                            }
+                        )
+
+            prompt = build_region_review_prompt(
+                user_question=question,
+                prior_context=summarize_result_for_followup(current_result),
+                selected_region=selected_region,
+                selected_finding=selected_finding,
+                local_signal_audit=signal_audit,
+                refinement_evidence=refinement_evidence,
+                allow_add=allow_add,
+            )
+            (
+                raw_response,
+                final_trace,
+            ) = await openclaw_client.review_region_about_image_with_trace(
                 prompt,
                 image_base64=crop_base64,
             )
-        )
+            turn_trace.append(
+                {
+                    "stage": "regional_structured_review",
+                    "status": "completed",
+                    **final_trace,
+                }
+            )
+            return raw_response, turn_trace
+
+        future = bridge.submit(_run_regional_review())
 
         def _review_done(f):
             try:
-                raw_response = f.result()
+                raw_response, turn_trace = f.result()
                 response = parse_region_review_response(
                     raw_response,
                     selected_region=selected_region,
@@ -759,11 +831,21 @@ def main() -> None:
                     local_signal_audit=signal_audit,
                     allow_add=allow_add,
                 )
+                recorded_revision = revision
+                if response.delta is None:
+                    agent.record_regional_review_outcome(
+                        expected_revision=revision,
+                        outcome="blocked" if response.warning else "no_change",
+                        local_signal_audit=signal_audit,
+                        regional_review_trace=turn_trace,
+                    )
+                    recorded_revision = agent.result_revision
                 signals.review_chat_done.emit(
                     question,
                     response,
-                    revision,
+                    recorded_revision,
                     signal_audit,
+                    turn_trace,
                     request_id,
                 )
             except Exception:
@@ -784,12 +866,14 @@ def main() -> None:
         question = text.strip()
         logger.info("User chat question: %s", question)
 
-        if agent.last_image_base64 and agent.last_result:
-            context = summarize_result_for_followup(agent.last_result)
+        snapshot = _current_review_snapshot()
+        if snapshot is not None:
+            context = summarize_result_for_followup(snapshot.result)
             _submit_image_chat(
                 question=question,
-                image_base64=agent.last_image_base64,
+                image_base64=snapshot.image_base64,
                 context=context,
+                revision=snapshot.revision,
             )
             return
 
@@ -810,6 +894,7 @@ def main() -> None:
         future.add_done_callback(_chat_done)
 
     def _ask_about_region(
+        finding_id: str,
         label: str,
         x: float,
         y: float,
@@ -818,7 +903,8 @@ def main() -> None:
     ) -> None:
         control_bar.set_interaction_mode("passive")
         overlay.set_interaction_mode("passive")
-        if not agent.last_image_base64 or not agent.last_result:
+        snapshot = _current_review_snapshot()
+        if snapshot is None:
             control_bar.set_status("Analyze an image before regional QA")
             return
         title = label.strip() or "Selected region"
@@ -830,19 +916,30 @@ def main() -> None:
         if not ok or not question.strip():
             control_bar.set_status("Regional QA cancelled")
             return
+        current_snapshot = _current_review_snapshot()
+        if current_snapshot is None or current_snapshot.revision != snapshot.revision:
+            control_bar.set_status("Image changed; select the region again")
+            return
         region = RegionRect(x=x, y=y, w=width, h=height)
         selected_finding = match_selected_finding(
-            agent.last_result.findings,
+            snapshot.result.findings,
+            finding_id=finding_id,
             label=title,
             selected_region=region,
         )
         crop_base64 = image_processor.crop_region_base64(
-            agent.last_image_base64,
+            snapshot.image_base64,
+            region,
+        )
+        source_crop_bytes = image_processor.crop_region_bytes(
+            snapshot.image_base64,
             region,
         )
         _submit_region_review(
             question=question.strip(),
             crop_base64=crop_base64,
+            source_crop_bytes=source_crop_bytes,
+            snapshot=snapshot,
             selected_region=region,
             selected_finding=selected_finding,
             allow_add=False,
@@ -856,7 +953,8 @@ def main() -> None:
     ) -> None:
         control_bar.set_interaction_mode("passive")
         overlay.set_interaction_mode("passive")
-        if not agent.last_image_base64 or not agent.last_result:
+        snapshot = _current_review_snapshot()
+        if snapshot is None:
             control_bar.set_status("Analyze an image before regional QA")
             return
         question, ok = QInputDialog.getText(
@@ -867,14 +965,24 @@ def main() -> None:
         if not ok or not question.strip():
             control_bar.set_status("Region retained for export")
             return
+        current_snapshot = _current_review_snapshot()
+        if current_snapshot is None or current_snapshot.revision != snapshot.revision:
+            control_bar.set_status("Image changed; draw the region again")
+            return
         region = RegionRect(x=x, y=y, w=width, h=height)
         crop_base64 = image_processor.crop_region_base64(
-            agent.last_image_base64,
+            snapshot.image_base64,
+            region,
+        )
+        source_crop_bytes = image_processor.crop_region_bytes(
+            snapshot.image_base64,
             region,
         )
         _submit_region_review(
             question=question.strip(),
             crop_base64=crop_base64,
+            source_crop_bytes=source_crop_bytes,
+            snapshot=snapshot,
             selected_region=region,
             selected_finding=None,
             allow_add=True,
@@ -882,6 +990,7 @@ def main() -> None:
 
     overlay.highlight_selected.connect(_ask_about_region)
     overlay.user_region_created.connect(_ask_about_user_region)
+    overlay.user_region_selected.connect(_ask_about_user_region)
 
     def _show_chat_response(
         question: str,
@@ -891,7 +1000,10 @@ def main() -> None:
     ) -> None:
         if request_id != _chat_request_id[0]:
             return
-        if revision >= 0 and revision != agent.result_revision:
+        if revision >= 0 and (
+            agent.state is not AgentState.DISPLAYING
+            or revision != agent.result_revision
+        ):
             return
         overlay.show_chat_response(question, answer)
         control_bar.set_status("💬 回覆已顯示")
@@ -901,12 +1013,16 @@ def main() -> None:
         response: ReviewChatResponse,
         revision: int,
         signal_audit: dict[str, object],
+        review_trace: list[dict[str, object]],
         request_id: int,
     ) -> None:
         if request_id != _chat_request_id[0]:
             return
         _pending_review[0] = None
-        if revision != agent.result_revision:
+        if (
+            agent.state is not AgentState.DISPLAYING
+            or revision != agent.result_revision
+        ):
             return
         answer = response.answer
         if response.warning:
@@ -914,8 +1030,17 @@ def main() -> None:
 
         proposal_summary = ""
         if response.delta is not None:
-            _pending_review[0] = (response.delta, revision, signal_audit)
+            _pending_review[0] = (
+                response.delta,
+                revision,
+                signal_audit,
+                review_trace,
+            )
             proposal_summary = response.proposal_summary
+        else:
+            recorded_snapshot = _current_review_snapshot()
+            if recorded_snapshot is not None and recorded_snapshot.revision == revision:
+                overlay.summary_panel.update_result(recorded_snapshot.result)
         overlay.show_chat_response(
             question,
             answer,
@@ -932,18 +1057,31 @@ def main() -> None:
             overlay.clear_chat_proposal(restart_timeout=True)
             control_bar.set_status("No current report update")
             return
-        delta, revision, signal_audit = pending
-        try:
-            updated = agent.apply_finding_delta(
+        delta, revision, signal_audit, review_trace = pending
+        control_bar.set_status("Applying reviewed report update...")
+
+        async def _apply():
+            return agent.apply_finding_delta(
                 delta,
                 expected_revision=revision,
                 local_signal_audit=signal_audit,
+                regional_review_trace=review_trace,
             )
-        except (RuntimeError, ValueError) as exc:
-            logger.warning("Interactive review writeback rejected", reason=str(exc))
-            overlay.clear_chat_proposal(restart_timeout=True)
-            control_bar.set_status("Report changed; suggestion was not applied")
-            return
+
+        future = bridge.submit(_apply())
+
+        def _done(f):
+            try:
+                signals.review_apply_done.emit(f.result(), delta)
+            except (RuntimeError, ValueError) as exc:
+                signals.review_apply_failed.emit(str(exc))
+            except Exception as exc:
+                logger.exception("Interactive review writeback failed")
+                signals.review_apply_failed.emit(type(exc).__name__)
+
+        future.add_done_callback(_done)
+
+    def _on_review_apply_done(updated, delta: FindingDelta) -> None:
         if delta.op is FindingOp.ADD:
             for box in delta.finding.bboxes:
                 overlay.consume_user_region(box)
@@ -955,9 +1093,54 @@ def main() -> None:
         overlay.clear_chat_proposal(restart_timeout=True)
         control_bar.set_status("Report update applied and recorded")
 
+    def _on_review_apply_failed(reason: str) -> None:
+        logger.warning("Interactive review writeback rejected", reason=reason)
+        overlay.clear_chat_proposal(restart_timeout=True)
+        control_bar.set_status("Report changed; suggestion was not applied")
+
     def _dismiss_review_proposal() -> None:
+        pending = _pending_review[0]
         _pending_review[0] = None
         overlay.clear_chat_proposal(restart_timeout=True)
+        if pending is None:
+            control_bar.set_status("Report unchanged")
+            return
+        delta, revision, signal_audit, review_trace = pending
+        control_bar.set_status("Recording dismissed report update...")
+
+        async def _record_dismissal():
+            return agent.record_regional_review_outcome(
+                expected_revision=revision,
+                outcome="dismissed",
+                local_signal_audit=signal_audit,
+                regional_review_trace=review_trace,
+                user_confirmed=True,
+                proposed_operation=delta.op.value,
+                target_id=delta.finding.id,
+            )
+
+        future = bridge.submit(_record_dismissal())
+
+        def _done(f):
+            try:
+                f.result()
+                signals.review_outcome_done.emit("Report unchanged; dismissal recorded")
+            except (RuntimeError, ValueError) as exc:
+                signals.review_outcome_failed.emit(str(exc))
+            except Exception as exc:
+                logger.exception("Interactive review dismissal audit failed")
+                signals.review_outcome_failed.emit(type(exc).__name__)
+
+        future.add_done_callback(_done)
+
+    def _on_review_outcome_done(status: str) -> None:
+        snapshot = _current_review_snapshot()
+        if snapshot is not None:
+            overlay.summary_panel.update_result(snapshot.result)
+        control_bar.set_status(status)
+
+    def _on_review_outcome_failed(reason: str) -> None:
+        logger.warning("Interactive review outcome audit rejected", reason=reason)
         control_bar.set_status("Report unchanged")
 
     def _on_chat_error(request_id: int) -> None:
@@ -970,6 +1153,10 @@ def main() -> None:
 
     signals.chat_done.connect(_show_chat_response)
     signals.review_chat_done.connect(_show_review_chat_response)
+    signals.review_apply_done.connect(_on_review_apply_done)
+    signals.review_apply_failed.connect(_on_review_apply_failed)
+    signals.review_outcome_done.connect(_on_review_outcome_done)
+    signals.review_outcome_failed.connect(_on_review_outcome_failed)
     signals.chat_failed.connect(_on_chat_error)
     overlay.chat_proposal_accepted.connect(_apply_review_proposal)
     overlay.chat_proposal_dismissed.connect(_dismiss_review_proposal)

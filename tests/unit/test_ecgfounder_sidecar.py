@@ -62,9 +62,7 @@ def test_registry_loads_explicit_meeti_to_model_lead_contract(
 
     assert records[artifact_id].source_lead_names[4:6] == ("aVF", "aVL")
     assert records[artifact_id].model_lead_names[4:6] == ("aVL", "aVF")
-    assert records[artifact_id].path == (
-        tmp_path / "waveforms" / "case.mat"
-    ).resolve()
+    assert records[artifact_id].path == (tmp_path / "waveforms" / "case.mat").resolve()
 
 
 def test_registry_rejects_path_escape(tmp_path: Path) -> None:
@@ -85,6 +83,12 @@ def test_registry_rejects_tampered_index(tmp_path: Path) -> None:
 
 
 class _FakeRuntime:
+    ready = False
+    preprocessing_revision = "preprocess-test-revision"
+
+    def ensure_ready(self) -> None:
+        self.ready = True
+
     def analyze(
         self,
         record: server.ArtifactRecord,
@@ -97,6 +101,44 @@ class _FakeRuntime:
             "artifact_seen": record.artifact_id,
             "max_predictions_seen": max_predictions,
         }
+
+
+class _UnavailableRuntime(_FakeRuntime):
+    def ensure_ready(self) -> None:
+        raise server.RuntimeUnavailable("checkpoint_not_installed")
+
+
+def test_service_health_distinguishes_configured_from_deep_ready(
+    tmp_path: Path,
+) -> None:
+    registry_path, _artifact_id = _registry_payload(tmp_path)
+    runtime = _FakeRuntime()
+    service = server.ECGFounderService(
+        registry=server.load_registry(registry_path),
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+
+    shallow = service.health(deep=False)
+    deep = service.health(deep=True)
+
+    assert shallow["status"] == "configured"
+    assert shallow["deep"] is False
+    assert deep["status"] == "ready"
+    assert deep["deep"] is True
+    assert deep["preprocessing_revision"] == "preprocess-test-revision"
+
+
+def test_service_deep_health_reports_runtime_unavailable(tmp_path: Path) -> None:
+    registry_path, _artifact_id = _registry_payload(tmp_path)
+    service = server.ECGFounderService(
+        registry=server.load_registry(registry_path),
+        runtime=_UnavailableRuntime(),  # type: ignore[arg-type]
+    )
+
+    result = service.health(deep=True)
+
+    assert result["status"] == "unavailable"
+    assert result["reason"] == "checkpoint_not_installed"
 
 
 def test_service_resolves_only_registered_opaque_artifact(tmp_path: Path) -> None:
@@ -170,6 +212,7 @@ def test_http_endpoint_requires_bearer_token(tmp_path: Path) -> None:
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     endpoint = f"http://127.0.0.1:{httpd.server_port}/v1/analyze"
+    health_endpoint = f"http://127.0.0.1:{httpd.server_port}/health"
     payload = json.dumps(
         {
             "schema_version": 1,
@@ -184,6 +227,22 @@ def test_http_endpoint_requires_bearer_token(tmp_path: Path) -> None:
                 timeout=2,
             )
         assert unauthorized.value.code == 401
+
+        health_request = urllib.request.Request(
+            health_endpoint,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        with urllib.request.urlopen(health_request, timeout=2) as response:
+            health = json.loads(response.read())
+        assert health["status"] == "configured"
+
+        deep_health_request = urllib.request.Request(
+            f"{health_endpoint}?deep=1",
+            headers={"authorization": f"Bearer {token}"},
+        )
+        with urllib.request.urlopen(deep_health_request, timeout=2) as response:
+            deep_health = json.loads(response.read())
+        assert deep_health["status"] == "ready"
 
         request = urllib.request.Request(
             endpoint,
@@ -238,9 +297,10 @@ def test_batch_loader_requires_one_registered_waveform_per_case(tmp_path: Path) 
 
     assert cases[0]["artifact_id"] == artifact_id
     assert cases[0]["case_label"] == "meeti_case"
-    assert cases[0]["reference_report_sha256"] == hashlib.sha256(
-        b"Sinus rhythm."
-    ).hexdigest()
+    assert (
+        cases[0]["reference_report_sha256"]
+        == hashlib.sha256(b"Sinus rhythm.").hexdigest()
+    )
     assert cases[0]["uncertain_concepts"] == ["st_elevation"]
     assert cases[0]["ungradable_reasons"] == ["lead_quality"]
     assert "report" not in cases[0]

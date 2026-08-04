@@ -201,16 +201,15 @@ class SettingsDialog(QDialog):
 
         waveform_configured = self._store.ecg_founder_configured()
         self._waveform_assist_status = QLabel(
-            "Configured (paired waveform studies)"
-            if waveform_configured
-            else "Not configured"
+            "Evaluation sidecar configured" if waveform_configured else "Not configured"
         )
         self._waveform_assist_status.setStyleSheet(
-            "color: #287a3f;" if waveform_configured else "color: #666;"
+            "color: #8a5a00;" if waveform_configured else "color: #666;"
         )
         self._waveform_assist_status.setToolTip(
-            "ECGFounder is optional supporting evidence for an app-supplied "
-            "raw-waveform artifact; screenshot-only reads do not invoke it."
+            "ECGFounder is evaluation-only until the desktop has a trusted "
+            "study-to-waveform binding. Configured does not prove sidecar readiness; "
+            "screenshot-only reads do not invoke it."
         )
         form.addRow("Waveform assist", self._waveform_assist_status)
 

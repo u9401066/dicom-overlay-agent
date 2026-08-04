@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import io
 import json
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
 from PIL import Image
 
+from dicom_overlay.application.multi_pass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
+)
 from dicom_overlay.application.review_chat import (
     build_region_review_prompt,
     match_selected_finding,
     parse_region_review_response,
+    summarize_regional_refinement,
 )
 from dicom_overlay.domain.entities import (
     Finding,
@@ -136,11 +143,136 @@ def test_parse_retract_targets_existing_finding_only() -> None:
         selected_region=selected.bboxes[0],
         selected_finding=selected,
         new_finding_id="unused",
+        local_signal_audit={"status": "ok", "low_signal": False},
     )
 
     assert parsed.delta is not None
     assert parsed.delta.op is FindingOp.RETRACT
-    assert parsed.delta.finding is selected
+    assert parsed.delta.finding == selected
+    assert parsed.delta.finding.bboxes == selected.bboxes
+
+
+def test_low_signal_crop_cannot_retract_existing_finding() -> None:
+    selected = _finding()
+    parsed = parse_region_review_response(
+        '{"answer":"Not supported.","proposal":{"op":"retract"}}',
+        selected_region=selected.bboxes[0],
+        selected_finding=selected,
+        new_finding_id="unused",
+        local_signal_audit={"status": "ok", "low_signal": True},
+    )
+
+    assert parsed.delta is None
+    assert "cannot change the report" in parsed.warning
+
+
+def test_single_crop_cannot_mutate_multi_marker_finding() -> None:
+    selected = _finding()
+    selected.bboxes.append(RegionRect(0.6, 0.3, 0.1, 0.1))
+    parsed = parse_region_review_response(
+        json.dumps(
+            {
+                "answer": "One marker appears different.",
+                "proposal": {
+                    "op": "revise",
+                    "label": "Revised label",
+                    "detail": "Only one marker was visible.",
+                    "severity": "warning",
+                },
+            }
+        ),
+        selected_region=selected.bboxes[0],
+        selected_finding=selected,
+        new_finding_id="unused",
+        local_signal_audit={"status": "ok", "low_signal": False},
+    )
+
+    assert parsed.delta is None
+    assert "outside" in parsed.warning
+
+
+def test_single_crop_cannot_mutate_multi_static_region_finding() -> None:
+    selected = replace(
+        _finding(),
+        bboxes=[],
+        regions=["lead_V2", "lead_V3"],
+    )
+
+    parsed = parse_region_review_response(
+        json.dumps(
+            {
+                "answer": "Only V2 was visible.",
+                "proposal": {
+                    "op": "retract",
+                },
+            }
+        ),
+        selected_region=RegionRect(0.2, 0.3, 0.1, 0.1),
+        selected_finding=selected,
+        new_finding_id="unused",
+        local_signal_audit={"status": "ok", "low_signal": False},
+    )
+
+    assert parsed.delta is None
+    assert "outside" in parsed.warning
+
+
+def test_revise_omitted_confidence_and_question_preserves_existing_values() -> None:
+    selected = replace(
+        _finding(),
+        confidence="medium",
+        question="Existing reviewer question",
+    )
+    parsed = parse_region_review_response(
+        json.dumps(
+            {
+                "answer": "Description can be tightened.",
+                "proposal": {
+                    "op": "revise",
+                    "label": "ST elevation",
+                    "detail": "Tighter detail",
+                    "severity": "warning",
+                },
+            }
+        ),
+        selected_region=selected.bboxes[0],
+        selected_finding=selected,
+        new_finding_id="unused",
+        local_signal_audit={"status": "ok", "low_signal": False},
+    )
+
+    assert parsed.delta is not None
+    assert parsed.delta.finding.confidence == "medium"
+    assert parsed.delta.finding.question == "Existing reviewer question"
+
+
+def test_regional_refinement_summary_drops_out_of_scope_deltas() -> None:
+    result = RefinementResult(
+        (
+            RefinementDelta(
+                action=RefinementAction.REVISE,
+                target_id="other-finding",
+                finding=_finding(finding_id="other-finding"),
+                rationale="Different target",
+            ),
+            RefinementDelta(
+                action=RefinementAction.ADD,
+                finding=_finding(finding_id="new-finding"),
+                rationale="Adjacent finding",
+            ),
+        )
+    )
+
+    summary = json.loads(
+        summarize_regional_refinement(
+            result,
+            expected_target_id="selected-finding",
+            allow_add=False,
+        )
+    )
+
+    assert summary["deltas"] == []
+    assert summary["dropped_out_of_scope_count"] == 2
 
 
 def test_out_of_scope_operation_keeps_answer_but_has_no_delta() -> None:
@@ -251,6 +383,21 @@ def test_match_selected_finding_uses_label_then_original_roi_iou() -> None:
     assert matched is second
 
 
+def test_match_selected_finding_prefers_app_owned_finding_id_on_tied_geometry() -> None:
+    box = RegionRect(0.1, 0.1, 0.2, 0.2)
+    first = _finding(finding_id="f1", box=box)
+    second = _finding(finding_id="f2", box=box)
+
+    matched = match_selected_finding(
+        [first, second],
+        finding_id="f2",
+        label="ST elevation",
+        selected_region=box,
+    )
+
+    assert matched is second
+
+
 def test_clicked_box_with_unmatched_label_does_not_bind_another_finding() -> None:
     matched = match_selected_finding(
         [_finding(label="ST elevation")],
@@ -303,3 +450,25 @@ async def test_openclaw_regional_review_uses_complete_prompt_without_prose_wrapp
 
     assert '"answer":"ok"' in answer
     sender.assert_awaited_once_with(prompt, image_base64="ZmFrZQ==")
+
+
+@pytest.mark.asyncio
+async def test_openclaw_regional_review_returns_trace_in_same_locked_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = OpenClawClient(gateway_url="ws://127.0.0.1:1")
+    sender = AsyncMock(
+        return_value=(
+            '{"answer":"ok","proposal":{"op":"none"}}',
+            {"session_key": "image-followup-1", "tools": ["dicom_bbox_validate"]},
+        )
+    )
+    monkeypatch.setattr(client, "_chat_about_image_prompt_and_trace", sender)
+
+    answer, trace = await client.review_region_about_image_with_trace(
+        "RETURN_EXACT_REVIEW_JSON",
+        image_base64="ZmFrZQ==",
+    )
+
+    assert '"answer":"ok"' in answer
+    assert trace["tools"] == ["dicom_bbox_validate"]
