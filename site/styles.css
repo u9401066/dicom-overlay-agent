@@ -136,7 +136,7 @@ a {
   grid-template-columns: minmax(250px, 0.72fr) minmax(620px, 1.9fr);
   align-items: center;
   gap: clamp(30px, 4vw, 70px);
-  min-height: calc(100svh - 106px);
+  min-height: calc(100svh - 180px);
   padding: 42px 38px 50px;
 }
 
@@ -940,40 +940,93 @@ h1 {
     padding: 34px 18px 38px;
   }
 
+  .hero {
+    align-content: start;
+    gap: 20px;
+    min-height: auto;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
   .hero-copy {
     display: block;
   }
 
   h1 {
+    margin-bottom: 14px;
     font-size: 44px;
   }
 
   .hero-lede {
+    margin-bottom: 16px;
     font-size: 19px;
   }
 
+  .hero-detail {
+    display: none;
+  }
+
+  .hero-actions {
+    flex-wrap: nowrap;
+  }
+
+  .hero-actions .button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .hero-meta {
+    margin-top: 16px;
+    padding-top: 10px;
+  }
+
+  .window-bar {
+    min-height: 30px;
+  }
+
   .window-body {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 3fr) minmax(112px, 1fr);
+    min-height: 0;
+    height: clamp(180px, 32vw, 240px);
   }
 
   .ecg-canvas {
-    min-height: 330px;
+    min-height: 0;
   }
 
   .report-panel {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    border-top: 1px solid var(--line);
-    border-left: 0;
+    display: block;
+    overflow: hidden;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+    font-size: 8px;
+  }
+
+  .report-heading,
+  .report-section,
+  .report-facts,
+  .qa-box {
+    padding: 6px;
+  }
+
+  .report-heading {
+    font-size: 10px;
+  }
+
+  .report-section + .report-section,
+  .report-facts {
+    display: none;
   }
 
   .qa-box {
-    margin: 8px;
+    margin: 4px;
   }
 
   .window-toolbar {
     overflow: hidden;
-    gap: 12px;
+    min-height: 26px;
+    gap: 10px;
+    font-size: 8px;
     white-space: nowrap;
   }
 
@@ -1066,7 +1119,6 @@ h1 {
     font-size: 38px;
   }
 
-  .hero-actions .button,
   .build-actions .button {
     width: 100%;
   }
@@ -1075,12 +1127,15 @@ h1 {
     justify-content: space-between;
   }
 
-  .ecg-canvas {
-    min-height: 260px;
+  .hero-actions .button {
+    min-height: 38px;
+    padding: 0 8px;
+    font-size: 12px;
   }
 
-  .report-panel {
-    grid-template-columns: 1fr;
+  .window-body {
+    grid-template-columns: minmax(0, 1fr) 108px;
+    height: 190px;
   }
 
   .section-heading h2,
@@ -1095,6 +1150,134 @@ h1 {
   .workflow-visual {
     transform: scale(0.8);
     transform-origin: left center;
+  }
+}
+
+@media (max-width: 760px) and (max-height: 700px) {
+  .workflow {
+    padding-top: 20px;
+  }
+
+  .hero {
+    gap: 12px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  h1 {
+    margin-bottom: 8px;
+    font-size: 32px;
+  }
+
+  .hero-lede {
+    margin-bottom: 10px;
+    font-size: 15px;
+  }
+
+  .hero-meta {
+    display: none;
+  }
+
+  .hero-actions .button {
+    min-height: 34px;
+  }
+
+  .window-bar {
+    min-height: 26px;
+  }
+
+  .window-body {
+    height: 135px;
+  }
+
+  .report-section,
+  .report-facts {
+    display: none;
+  }
+
+  .qa-box {
+    margin: 3px;
+    padding: 4px;
+    font-size: 7px;
+  }
+
+  .window-toolbar {
+    min-height: 22px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1060px) and (max-height: 700px) {
+  .workflow {
+    padding-top: 20px;
+  }
+
+  .hero {
+    grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.4fr);
+    gap: 20px;
+    min-height: auto;
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .hero-copy {
+    display: block;
+  }
+
+  .hero-copy h1 {
+    margin-bottom: 10px;
+    font-size: 36px;
+  }
+
+  .hero-copy .hero-lede {
+    margin-bottom: 14px;
+    font-size: 16px;
+  }
+
+  .hero-detail,
+  .hero-meta {
+    display: none;
+  }
+
+  .window-body {
+    grid-template-columns: minmax(0, 3fr) minmax(120px, 1fr);
+    min-height: 0;
+    height: 150px;
+  }
+
+  .ecg-canvas {
+    min-height: 0;
+  }
+
+  .report-panel {
+    overflow: hidden;
+    font-size: 8px;
+  }
+
+  .report-heading,
+  .report-section,
+  .report-facts,
+  .qa-box {
+    padding: 5px;
+  }
+
+  .report-section + .report-section,
+  .report-facts {
+    display: none;
+  }
+
+  .report-section {
+    display: none;
+  }
+
+  .qa-box {
+    margin: 3px;
+    padding: 4px;
+    font-size: 7px;
+  }
+
+  .window-bar,
+  .window-toolbar {
+    min-height: 25px;
   }
 }
 
