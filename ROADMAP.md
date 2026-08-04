@@ -45,7 +45,7 @@
 
 - [x] 跨輪註記去重（`AnnotationAccumulator`）：幾何 IoU 去重為純函式（永不降級嚴重度），臨床判斷走顯式 `FindingDelta`（ADD/REVISE/RETRACT）
 - [x] 接線護欄（`tests/unit/test_wiring.py`）：列舉 application 層 orchestrator，強制每個「已接線（`__main__` 可達）或顯式登記為 DEFERRED（附原因）」，CI 自動攔截孤兒功能
-- [x] 多趟放大判讀正式接線：`MultiPassAnalyzer` 作為 `VisionAnalyzerService` drop-in 包進 `OverlayAgent`，由 `analysis.multi_pass_enabled` 旗標啟用（預設關閉，零狀態機改動）；新增 `ImageProcessor.crop_region_base64`（PIL，PHI-safe 子集裁剪）
+- [x] 多趟放大判讀正式接線：`MultiPassAnalyzer` 作為 `VisionAnalyzerService` drop-in 包進 `OverlayAgent`，由 `analysis.multi_pass_enabled` 旗標啟用（目前預設開啟且可在 Settings 關閉）；新增 `ImageProcessor.crop_region_base64`（PIL，PHI-safe 子集裁剪）
 - [x] 臨床一致性引擎（`ClinicalConsistencyEngine`）：以資料驅動、有醫學指引根據的規則檢查 AI 自身結構化輸出的「自我矛盾」與「不可漏診的低估」，僅升級嚴重度（永不降級）並標記人工複核；內建規則附指引引用（STEMI 未標記、高鉀尖 T 波、氣胸/縱膈擴大低估），可由 `clinical_rules/*.rules.yaml` 規則包依 id 覆寫或新增（指引更新時模組化抽換，免改程式碼）；接成 `ClinicalConsistencyHook` post-analyze 階段，overlay 以「🚨 需人工複核」紅字面板呈現
 - [x] 臨床規則可審核性：`--explain-rules` CLI 輸出規則對照表（白話條件＋醫學依據＋命中行為，供臨床人員審核，不啟動 GUI）；命中時記錄實際比中的關鍵字證據（`audit_line` / hook log）；YAML 規則包強制 `description`（沒寫說明的規則不載入，把可審核性變成上線門檻）
 - [x] `AnnotationAccumulator` 接線：區域 chat 產生受限 `FindingDelta`，經人工
@@ -75,11 +75,11 @@
   the same 1000-case manifest and use expert review to refine prompt/rules for
   recurrent misses.
 
-### v0.4.3 Luna + waveform evidence audit (2026-08-04)
+### v0.4.3 Provider profiles + waveform evidence audit (2026-08-04)
 
-- [x] `openai/gpt-5.6-luna` is the desktop and experiment-runner default;
-  GPT-5.4 Mini, OpenRouter, Anthropic, Azure, and compatible endpoints remain
-  explicit profiles.
+- [x] Provider profiles cover GPT-5.4 Mini, Luna, OpenRouter, Anthropic, Azure,
+  and compatible endpoints. The later v0.4.5 release default is
+  `openai/gpt-5.4-mini`.
 - [x] Settings reads the actually active model and exposes a secret-free
   ECGFounder configuration status; the report Process tab records crop/refine,
   OpenClaw tools, waveform status, prediction count, and calibration state.
@@ -92,7 +92,7 @@
   concepts, macro BA 0.865, top-20 concept recall 0.837, and 3-5 diagnosis
   complete recall 0.479. Thresholds remain research-only.
 - [ ] Run the current-protocol 1,000-case single-pass, MultiPass, and
-  MultiPass+ECGFounder Luna arms after provider credits are available; the
+  MultiPass+ECGFounder GPT-5.4 Mini arms after provider credits are available; the
   latest real canary is correctly blocked by `credit_balance_exhausted`.
 - [ ] Perform clean-machine Windows 10 verification. The modern runtime remains
   unsupported on Windows 7; any Win7 target needs a separately maintained
@@ -130,6 +130,12 @@
   calls, 2,869 crops, 2,000 systematic probes, 1,000 review PNGs, and 865 bbox
   projection audits with zero failures/clamps/drift. Perfect mock scores are
   explicitly protocol evidence, not model accuracy.
+- [x] Formal scoring uses 299 asserted-reference cases while 701 weak-label
+  cases remain exploratory; 49 explicit-normal controls verify that the harness
+  does not force an abnormal answer.
+- [x] ECGFounder v3 traversed 1,000 paired waveforms, retained 999 eligible, and
+  explicitly excluded one all-zero V5. Eligibility-aware reports preserve
+  99.9% coverage and the reason instead of forcing a prediction.
 - [x] Desktop Gateway migration/startup moved off the Qt thread, has a separate
   180-second readiness budget, displays `AI starting` / `AI ready` /
   `AI offline`, and generates an authenticated loopback token on first launch.

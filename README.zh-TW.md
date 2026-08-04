@@ -10,8 +10,9 @@
 
 ## 2026-08-05 最新驗證狀態
 
-- unit + smoke suite 為 769 passed（另 2 個 release-only skip），Ruff 與
-  whitespace gate 全數通過；重建後 frozen bundle 的 selfcheck、native plugin、
+- unit + smoke suite 為 791 passed（另 3 個 opt-in skip），OpenClaw integration
+  55 passed，Windows 原生 capture-exclusion smoke、Ruff、mypy 63 個 source files
+  與 whitespace gate 全數通過；重建後 frozen bundle 的 selfcheck、native plugin、
   authenticated Gateway cold-start/connect/clean-stop 為 3/3 passed。
 - 最新 MEETI 1,000-case strict mock protocol 已完整跑完：4,869 次 analyzer
   call、2,869 個原圖 crop、2,000 個 limb/precordial systematic probe，並匯出
@@ -20,14 +21,15 @@
 - harness 現在明確區分 minimal control、clinical single-pass、MultiPass、
   MultiPass+ECGFounder 四臂；低於 strict 0.75 或 partial credit 0.85 不能標記
   completed，比較器也會拒絕不同 manifest/case/scorer/protocol 的結果。
-- 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
-  全部仍標記為 uncalibrated supporting evidence，不會產生影像 bbox。
+- 官方 checkpoint 的 ECGFounder paired waveform arm 已遍歷 MEETI 1,000/1,000；
+  999 筆 eligible，另 1 筆因原始 V5 導程全零而明確標成 `ineligible`，沒有硬產生
+  預測。有效結果仍是 uncalibrated supporting evidence，不會產生影像 bbox。
 - 完整 150 分數的五折 out-of-fold 研究評估在 23 個支撐足夠的概念得到
-  macro balanced accuracy 0.865、sensitivity 0.848、明確正常對照 specificity
+  macro balanced accuracy 0.865、sensitivity 0.847、明確正常對照 specificity
   0.883；holdout top-20 概念 recall 為 0.837，但 3-5 診斷完整 recall 只有
   0.479，尚未達 0.75 產品目標。這是波形弱標籤研究，不是影像 agent 準確率。
 - 指定的 `openai/gpt-5.4-mini` 最新 MultiPass canary 已由 catalog 確認
-  `text,image`，Gateway 於 88.384 秒 ready，第一張圖的 coarse call 真實抵達
+  `text,image`，Gateway 於 72.359 秒 ready，第一張圖的 coarse call 真實抵達
   OpenAI 後被 `provider_credit_exhausted` 阻擋；因此紀錄為 infrastructure
   `blocked`，不把它算成病例答錯。在額度恢復並完成四臂前不宣稱真實準確率。
 - 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
@@ -74,7 +76,7 @@
   `connect` + `chat.send`、回傳 schema-valid 判讀，strict/schema/bbox 皆
   1.0（`gateway_mode: real`）。該次使用當時的模型設定；目前 runner 與
   Settings 與 runner 預設已改為 image-capable
-  `openai/gpt-5.6-luna`，另保留 GPT-5.4 Mini 與其他 API profile。Copilot 訂閱模型
+  `openai/gpt-5.4-mini`，另保留 Luna 與其他 API profile。Copilot 訂閱模型
   （如 MAI Flash）走 OAuth device-token，不是 API key，無法當 API provider。
 - 2026-07-05 臨床準確度強化：EKG skill 新增 **Step 0 導極定位**（保持通用，
   「宣告不假設」：讀印在圖上的導極標籤、只登記實際可見的導極、無標籤標
@@ -303,8 +305,8 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   桌面目前尚未實作可信任的 study-to-waveform resolver，因此設定頁只會顯示
   「evaluation sidecar configured」，不會暗示一般 screenshot 判讀已使用它。
   MEETI paired build 已保留 1,000 筆相符的原始 12 導程波形；固定官方
-  checkpoint 的真實批次已完成 1,000/1,000，所有結果都明確標記為未校準的
-  supporting evidence。
+  checkpoint 的真實批次已完整遍歷 1,000 筆，其中 999 筆 eligible，1 筆全零
+  V5 導程被安全閘門排除；有效結果都明確標記為未校準的 supporting evidence。
 - **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema 與 image
   attachment 格式未變；只有發現真正不兼容時才拉高下限。
 
@@ -392,13 +394,14 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 
 ## 🧪 測試支援
 
-模板包含完整的測試配置：
+目前 repo 的測試配置包含：
 
 - **靜態分析**：ruff、mypy、bandit
-- **單元測試**：pytest，80% 覆蓋率要求
-- **整合測試**：pytest-asyncio
-- **E2E 測試**：Playwright
-- **CI/CD**：GitHub Actions，6 個 jobs
+- **單元與 smoke 測試**：pytest，coverage floor 60%
+- **整合測試**：pytest-asyncio 與 OpenClaw 公開 Gateway contract
+- **Windows 原生 smoke**：opt-in rendered capture-exclusion 驗證
+- **CI/CD**：4 個 OS/Python compatibility executions、1 個 pytest job，另有
+  GitHub Pages deployment workflow
 
 ## 📄 授權
 

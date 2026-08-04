@@ -172,7 +172,8 @@ does not match.
 ```powershell
 data\external\ecgfounder-runtime\.venv\Scripts\python.exe `
   scripts\run-ecgfounder-meeti-batch.py `
-  --output-dir data\eval-runs\ecgfounder-meeti-1000-fullscores-20260804 `
+  --manifest data\eval-datasets\meeti-1000-all\manifest.json `
+  --output-dir data\eval-runs\ecgfounder-meeti-1000-v3-20260805 `
   --max-predictions 150
 ```
 
@@ -181,12 +182,12 @@ It writes `protocol.json`, one line per case in `results.jsonl`, and an atomic
 hash/reference metadata, provenance, latency, and sanitized predictions; no
 waveform path is emitted.
 
-The full-score 2026-08-04 run completed 1,000/1,000 unique paired artifacts
-with no failures in 605.847 seconds. Median inference latency was 547.202 ms
-and p95 was 783.532 ms. Every row contains the complete 150-statement score
-vector. Its protocol fingerprint is
-`a7a55cca53031e799b678b43f9a6e4499c54342326e6f9d51facd95bffd7742b`.
-All 1,000 rows are explicitly `uncalibrated`.
+The v3 run traversed 1,000/1,000 unique paired artifacts in 555.086 seconds.
+The pinned input-quality gate accepted 999; one case with an exactly flat V5
+lead is retained as `ineligible` with no prediction. Median recorded latency
+was 550.782 ms and p95 was 589.445 ms. Every accepted row contains the complete
+150-statement score vector and remains explicitly `uncalibrated`. Batch protocol
+fingerprint: `88d9e83d89025ef592a218c90d72973ea4fffe71384067ad6d7849d4d5b9f4b1`.
 
 ## Leakage-aware Research Evaluation
 
@@ -194,7 +195,8 @@ Run the hash-pinned evaluator after a complete 150-score batch:
 
 ```powershell
 .venv\Scripts\python.exe scripts\evaluate-ecgfounder-meeti.py `
-  --run-dir data\eval-runs\ecgfounder-meeti-1000-fullscores-20260804
+  --run-dir data\eval-runs\ecgfounder-meeti-1000-v3-20260805 `
+  --allow-ineligible
 ```
 
 The evaluator maps only exact ECGFounder statements, keeps uncertain concepts
@@ -204,10 +206,15 @@ reports. Thresholds are selected independently inside deterministic five-fold
 out-of-fold evaluation using ECGFounder's official 0.01-0.99 balanced-accuracy
 grid; no learned threshold is installable in the sidecar.
 
-The current research result (`0384ed02442200be8132943cf87210f8b52ac4ca8c9730de3a2237118c5dd40a`)
-covers 33 of 38 observed reference concepts and 99.157% of asserted concept
+`--allow-ineligible` is explicit and fail-closed: it first verifies complete
+cohort traversal, exact status counts, and recorded reasons, then reports
+coverage and exclusions. It never converts an ineligible waveform into a
+negative or a failed diagnosis.
+
+The current research result (`07c3c0c8c305f167e6d1f10e04ee1764ab4157516a930826c4fbb0f9ff16ded3`)
+covers 33 of 38 observed reference concepts and 99.156% of asserted concept
 instances. Across 23 concepts with enough fold support, macro balanced accuracy
-is 0.865, sensitivity is 0.848, and explicit-normal-control specificity is
+is 0.865, sensitivity is 0.847, and explicit-normal-control specificity is
 0.883; 15/23 concepts have point-estimate balanced accuracy at least 0.85.
 Holdout top-20 mapped-concept recall is 0.837. For the 188 holdout cases with
 3-5 mapped diagnoses, complete top-20 recall is only 0.479, so the requested

@@ -50,6 +50,10 @@
 | 2026-08-04 | Windows PID 存活檢查走 Win32 API | 本機證實 `os.kill(pid, 0)` 對已結束 PID 仍可能成功，造成 Gateway stale lock 永遠卡住。桌面與 runner 共用 `OpenProcess/GetExitCodeProcess`，access denied 保守視為存活。 |
 | 2026-08-04 | 區域 AI 追問只能提案，人工 Apply 才能寫回 | 自由文字不能安全地改寫醫療 overlay。JSON-only contract 不接受模型座標，`ADD` 綁人工框、`REVISE/RETRACT` 綁既有 id/bbox；result revision 防舊回覆套錯影像，report triage 不因追問降級，所有套用保留 provenance 與 confirmation receipt。 |
 | 2026-08-04 | 互動 finding 寫回採 deterministic local-signal gate | 座標正確不代表框內有影像證據。原始來源像素 crop 若低訊號、audit 缺失或失敗，仍允許 QA/人工匯出，但禁止任何 `ADD/REVISE/RETRACT`；不同診斷也不能只因 IoU 重疊就合併。 |
+| 2026-08-05 | GPT-5.4 Mini 取代 Luna 成為 release default | 依使用者最後指定，桌面、Gateway seed、Python/PowerShell runner 統一為 `openai/gpt-5.4-mini`；Luna 保留為顯式 profile。catalog/image capability 與真實 provider transaction 分開記錄，額度失敗仍是 blocked。 |
+| 2026-08-05 | 正式準確率只計 asserted references | MEETI 701 筆 weak/partial labels 只回報探索性 recall，299 筆 asserted references 才進 strict、partial、diagnosis 與 normal-specificity 正式分母，避免把報告沉默或不確定概念當成完整 ground truth。 |
+| 2026-08-05 | Bbox receipt 綁定精確原圖與座標 payload | production receipt 必須同時吻合原圖 SHA-256、case nonce、turn/session 與 canonical exact-coordinate digest；舊 receipt 或只驗證範圍不再足以讓框進 overlay/export。 |
+| 2026-08-05 | 壞波形以可見 coverage 排除，不強迫 ECGFounder 作答 | held-out evaluator 預設仍拒絕 non-ok；只有明確 `--allow-ineligible` 才能在確認 1,000 筆完整遍歷、status counts 與排除原因後計算 999 eligible metrics，並在 protocol/report 中保留 99.9% coverage 與全零 V5 exclusion。 |
 
 ---
 

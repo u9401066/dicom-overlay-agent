@@ -10,8 +10,9 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## 2026-08-05 Verification Status
 
-- The full suite passes with 769 tests and 2 release-only skips; Ruff and the
-  whitespace gate pass.
+- The unit + smoke suite passes with 791 tests and 3 opt-in skips; the 55-test
+  OpenClaw integration suite, native Windows capture smoke, Ruff, mypy, and the
+  whitespace gate also pass.
 - A 1,000-case strict mock MultiPass run completed 4,869 analyzer calls, 2,869
   source-image crops, 2,000 systematic EKG probes, and 1,000 annotated review
   PNGs. All 865 bbox projection audits passed with zero clamp or drift. These
@@ -331,11 +332,12 @@ portable across OpenClaw releases.
   study-to-waveform resolver, so Settings reports this integration as an
   evaluation sidecar rather than implying that screenshot reads use it.
   The paired MEETI build now includes 1,000 matched raw 12-lead waveforms; a
-  real pinned-checkpoint batch completed all 1,000 and records each result as
+  real pinned-checkpoint batch traversed all 1,000: 999 were eligible and one
+  all-zero V5 lead was explicitly rejected. Each accepted result remains
   uncalibrated supporting evidence. A separate full-150-score evaluator uses
   deterministic five-fold out-of-fold threshold selection and never treats
   report silence as a negative label. Across 23 sufficiently supported mapped
-  concepts it measured macro balanced accuracy 0.865, sensitivity 0.848, and
+  concepts it measured macro balanced accuracy 0.865, sensitivity 0.847, and
   specificity 0.883 against explicit-normal controls. Holdout top-20 mapped
   concept recall was 0.837, but complete recall for cases with 3-5 mapped
   diagnoses was only 0.479, below the 0.75 product target. These are
@@ -345,10 +347,10 @@ portable across OpenClaw releases.
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
 - The desktop Settings dialog exposes AI Provider profiles and selects the
-  model currently active in OpenClaw. The default `openai-luna` profile
-  registers `openai/gpt-5.6-luna` as `text+image` over the Responses API with
-  its 1,050,000-token context; GPT-5.4 Mini remains an explicit lower-cost
-  profile. OpenRouter is also available through
+  model currently active in OpenClaw. The release default is the
+  `openai-vision` profile with `openai/gpt-5.4-mini` registered as `text+image`
+  over the Responses API. Luna remains an explicit profile. OpenRouter is also
+  available through
   `OPENROUTER_API_KEY` and `https://openrouter.ai/api/v1`. Saving a profile
   writes only app-managed OpenClaw provider/model sections and keeps secrets in
   environment variables or `.env`, not in git or experiment logs.
@@ -383,18 +385,19 @@ portable across OpenClaw releases.
   `openai-vision` provider profile reached Gateway `connect` + `chat.send`,
   returned a schema-valid read, and passed strict/schema/bbox at 1.0
   (`gateway_mode: real`). That dated run used the then-current model profile;
-  the runner and Settings default are now `openai/gpt-5.6-luna`. Copilot
+  the runner and Settings default are now `openai/gpt-5.4-mini`. Copilot
   subscription models (e.g. MAI Flash) remain unusable as an API provider
   because they use an OAuth device-token flow, not an API key.
 - Current experiment status (2026-08-05): the requested
   `openai/gpt-5.4-mini` MultiPass canary used the full `manifest-v2` protocol,
   clinical prompt, rhythm pass, three refinement slots, and two systematic
   EKG probes. The catalog declared `text,image`; the Gateway became ready in
-  88.384 seconds and the first image request reached OpenAI. The provider then
+  72.359 seconds and the first image request reached OpenAI. The provider then
   returned `provider_credit_exhausted`, so the run is `blocked` and no answer
   is scored. No full four-arm accuracy claim is made until minimal-control,
   clinical single-pass, MultiPass, and MultiPass+ECGFounder all finish. The
-  independent ECGFounder waveform batch did finish 1,000/1,000 paired cases.
+  independent ECGFounder waveform batch traversed 1,000/1,000 paired cases,
+  with 999 eligible and one flat-lead exclusion.
   See [`docs/verification-2026-08-05.md`](docs/verification-2026-08-05.md).
 
 ### Core 4 — Minimal packaged executable
@@ -485,13 +488,14 @@ internal `dist` chunks would couple the app to OpenClaw internals and break
 
 ## 🧪 Testing Support
 
-The template includes comprehensive testing configuration:
+The repository's current testing configuration includes:
 
 - **Static Analysis**: ruff, mypy, bandit
-- **Unit Tests**: pytest with 80% coverage requirement
-- **Integration Tests**: pytest-asyncio
-- **E2E Tests**: Playwright
-- **CI/CD**: GitHub Actions with 6 jobs
+- **Unit + Smoke Tests**: pytest with a 60% coverage floor
+- **Integration Tests**: pytest-asyncio plus the public OpenClaw Gateway contract
+- **Native Windows Smoke**: opt-in rendered capture-exclusion verification
+- **CI/CD**: four OS/Python compatibility executions, one pytest job, and a
+  separate GitHub Pages deployment workflow
 
 ## 📄 License
 

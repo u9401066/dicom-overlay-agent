@@ -205,16 +205,18 @@
           </div>
         </div>
         <dl class="evidence-rail">
-          <div><dt>1,000</dt><dd>paired waveform cases completed</dd></div>
-          <div><dt>741</dt><dd>unit + smoke tests passed</dd></div>
+          <div><dt>999 / 1,000</dt><dd>waveforms eligible after full traversal</dd></div>
+          <div><dt>791</dt><dd>unit + smoke tests passed</dd></div>
           <div><dt>55</dt><dd>OpenClaw integration tests passed</dd></div>
           <div><dt>Audited</dt><dd>coordinate edge round-trip</dd></div>
         </dl>
         <p class="evidence-note">
-          GPT-5.6 Luna is the default, was verified as image-capable, and its canary reached the Responses API;
-          the full new MLLM comparison remains blocked until provider quota is available.
+          OpenAI GPT-5.4 Mini is the release default and was verified as image-capable. Its canary reached
+          the Responses API but provider credits were exhausted, so no MLLM answer was scored and the full
+          comparison remains blocked.
           ECGFounder five-fold waveform research reached 0.865 macro balanced accuracy, while
-          3-5 diagnosis complete recall was 0.479; its outputs remain supporting evidence, not final labels.
+          3-5 diagnosis complete recall was 0.479; one all-zero V5 waveform was excluded and its outputs
+          remain supporting evidence, not final labels.
         </p>
       </section>
 

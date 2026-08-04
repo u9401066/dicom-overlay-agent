@@ -18,6 +18,9 @@
   connect、乾淨停止並確認無殘留 listener
 - **人工確認的區域問答寫回**：AI 框與人工框可送出 exact crop 結構化追問；OpenClaw 只能建議 `ADD`／`REVISE`／`RETRACT`，不能控制座標，須按 Apply 才寫回 report/overlay/export，並保留 `interactive_ai_review`、result revision、chat request id、local signal 與 reviewer confirmation audit
 - **ECGFounder 全分數研究評估**：offline runner 可保留完整 150 statement scores，新增 exact ontology mapping、protocol/hash 完整性檢查、deterministic five-fold out-of-fold evaluator 與 JSON/Markdown evidence；live OpenClaw tool 仍限制最多 20 筆 supporting predictions
+- **Eligibility-aware waveform coverage**：完整遍歷的 ECGFounder cohort 可在顯式
+  `--allow-ineligible` 下排除被 pinned 品質閘門拒絕的波形，報告仍保留 coverage、
+  artifact id 與原因；預設模式維持 fail-closed
 - **工具證據 UI**：Settings 顯示 secret-free waveform assist 配置狀態，Report 的 Process tab 顯示 ECGFounder status、prediction count 與 calibration state
 - **多趟放大判讀（resolution-aware）**：`application/multi_pass.py`（`MultiPassInterpreter`）以完整 ROI 解析度重讀異常區域精修 bbox；當區域在截到的像素中太小（≤4K 截圖無法有意義數位放大）時，改以 `domain/entities.py` 新增的 `AnalysisResult.zoom_hints` 提示醫師在 viewer 內放大重截，`presentation/overlay_window.py` 以藍色 hint 標籤呈現
 - **CXR 10 軸系統性判讀**：`domain/modality_profile.py` 擴充 CXR checklist 與 validator 強制；skills（`dicom-cxr-analysis`、`dicom-ekg-analysis`）prompt 強化
@@ -45,6 +48,9 @@
 - **MultiPass 報告一致性與 lead inventory**：no-delta refine 仍進行 final
   reconciliation；人工寫回同步 summary/triage/checklist；共用 typed parser
   正確辨認 `I`／`II`／`V1` 等 12-lead 名稱，避免 parser/UI/bbox 規則漂移
+- **BBox evidence binding**：production receipt 改綁 exact source-image SHA、case
+  nonce、turn/session 與 canonical coordinate digest；座標投影在進 overlay 前完成
+  physical/logical round-trip，無效框 fail-closed
 - **桌面首次 Gateway 啟動**：把 migration/startup 移出 Qt main thread，將
   180 秒 readiness budget 與推論 timeout 分離，並呈現 AI starting/ready/offline
   狀態；首次啟動自動建立本機 token，乾淨 bundle 不含 secret
@@ -58,9 +64,12 @@
 
 - mock perfect gate 現在明確只驗證 label-derived protocol self-test；真實 provider
   quota/auth/parser 失敗保留為 infrastructure blocker，不轉成病例答錯或部分分數
+- 正式臨床分數只使用 asserted references；weak/partial references 另列探索性
+  recall，明確 normal/within-range ECG 不被強迫產生異常 finding
 - OpenClaw 影像分析停用 web search/fetch；臨床影像只使用有界的 app-native
   bbox 工具與選配、驗證過的 ECGFounder waveform tool
-- 桌面程式、Gateway seed 與 MEETI runner 預設模型統一為 `openai/gpt-5.6-luna`；GPT-5.4 Mini 與其他 API provider 保留為顯式 profile
+- 桌面程式、Gateway seed 與 MEETI runner 預設模型統一為
+  `openai/gpt-5.4-mini`；Luna 與其他 API provider 保留為顯式 profile
 - `test-runner` agent 模型優先序改為 `GPT-5.5 mini → GPT-5 mini → GPT-4.1`
 - ruff 設定忽略 `RUF001`/`RUF003`（zh-TW 全形標點為正確排版，非錯字）
 - 遷移 4 個 `.chatmode.md` 至 `.agent.md` 格式

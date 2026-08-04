@@ -54,7 +54,7 @@ call it out and propose mitigation before proceeding.
   (`2026.4.22`), `build_harness_manifest`, and `build_openclaw_chat_frame`
   (protocol `3`; image in `params.attachments[]` with `type` / `mimeType` /
   `content`, `image/png`).
-- Before bumping OpenClaw (`openclaw/package.json`, currently `^2026.5.27`),
+- Before bumping OpenClaw (`openclaw/package.json`, currently `2026.7.1-2`),
   confirm the `connect` / `chat.send` schema and attachment format are
   unchanged. Raise the version floor only for a real, verified incompatibility,
   and keep `manifest.json` in sync.
@@ -70,9 +70,9 @@ call it out and propose mitigation before proceeding.
   minimal. `scripts/fetch-node.ps1` provides the opt-in portable `node\node.exe`
   that `gateway_manager._find_node()` prefers for zero-install. `pywin32` stays a
   Windows-only conditional dependency.
-- **Measured budget:** launcher `.exe` < 50 MB (currently ~6.75 MB); app +
-  Python/Qt layer < 100 MB (currently ~89 MB); full bundle including the
-  vendored OpenClaw runtime is ~205 MB. Do NOT prune OpenClaw's internal `dist`
+- **Measured budget:** launcher `.exe` < 50 MiB (currently ~6.96 MiB); app +
+  Python/Qt layer < 100 MiB (currently ~94.64 MiB); full zero-install bundle
+  including pinned Node/OpenClaw is ~363.92 MiB. Do NOT prune OpenClaw's internal `dist`
   chunks to hit a smaller number — that couples to OpenClaw internals and breaks
   Core 3. Trim only *around* the vendored runtime, and re-check sizes after any
   dependency change.

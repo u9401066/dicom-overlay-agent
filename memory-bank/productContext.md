@@ -41,19 +41,21 @@ Presentation → Application → Domain ← Infrastructure
 | 語言 | Python 3.11+ |
 | 套件管理 | uv (優先) / pip |
 | Linting | Ruff, MyPy, Bandit |
-| 測試 | pytest, Playwright |
+| 測試 | pytest、Qt offscreen、opt-in Windows native capture smoke |
 | CI/CD | GitHub Actions |
 | AI 工具 | VS Code + Claude Skills |
 
 ## 📦 依賴
 
 ### 核心依賴
-- (根據專案填寫)
+- PyQt6、mss、Pillow、websockets、PyYAML、pystray、structlog
+- Windows-only pywin32；portable Node 24 + pinned OpenClaw runtime
 
 ### 開發依賴
 - pytest, pytest-cov
+- pytest-asyncio, pytest-qt, pytest-mock
 - ruff, mypy, bandit
-- playwright (E2E)
+- PyInstaller (build extra)
 
 ---
-*Last updated: 2025-12-15*
+*Last updated: 2026-08-05*

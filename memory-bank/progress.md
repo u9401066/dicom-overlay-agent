@@ -2,7 +2,7 @@
 
 ## Done
 
-- **Current MultiPass protocol, scorer, startup, and package verification**
+- **Evidence-v3 MultiPass, formal scoring, coordinates, and waveform coverage**
   (2026-08-05):
   - Added four distinct experiment arms, quality completion thresholds, strict
     protocol/scorer compatibility checks, corrected extra-claim scoring, and
@@ -10,18 +10,26 @@
   - Shared typed EKG lead parsing across MultiPass, validation, bbox calibration,
     and UI; final report reconciliation now runs after every completed refine
     path and reviewer writeback updates report/triage provenance coherently.
-  - Completed the 1,000-case strict mock protocol with 4,869 calls, 2,869 crops,
-    2,000 probes, 1,000 marked review images, and zero bbox projection failures.
-    This is protocol-plumbing evidence only.
+  - Completed clean-source protocol `9408a142...dd4` on all 1,000 MEETI images
+    with 4,869 calls, 2,869 crops, 2,000 probes, 1,000 marked review images, and
+    865/865 coordinate projections at 0 px drift. Formal metrics use 299
+    asserted-reference cases; 701 weak-label cases remain exploratory. This is
+    protocol-plumbing evidence only.
   - A real `openai/gpt-5.4-mini` image canary reached OpenAI and was retained as
     `blocked` after `provider_credit_exhausted`; no clinical output or accuracy
     was manufactured, so the real four-arm benchmark remains pending credits.
+  - Ran pinned ECGFounder v3 over the entire waveform cohort: 999/1,000 eligible,
+    with one exact-flat V5 safely excluded. Eligibility-aware 5-fold metrics are
+    macro BA 0.865, sensitivity 0.847, explicit-normal specificity 0.883, and
+    3-5 diagnosis complete recall 0.479.
   - Moved first-run Gateway startup off the GUI thread, added generated loopback
     auth and observable AI startup state, and separated its 180-second readiness
     budget from inference timeout.
-  - Ruff/whitespace pass; full suite `769 passed, 2 skipped`; frozen release
-    smoke 3/3. Final bundle is 363.92 MiB / 15,226 files with EXE SHA-256
-    `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`.
+  - Release default is now `openai/gpt-5.4-mini`; the final canary again reached
+    an image-capable OpenAI transaction but credits remained exhausted.
+  - Ruff, mypy, whitespace, unit+smoke `791 passed, 3 opt-in skipped`, OpenClaw
+    integration 55/55, and rendered Windows capture exclusion all pass. Fresh
+    frozen release rebuild is pending this record.
 
 - **Regional review and ECGFounder evidence-chain hardening** (2026-08-04):
   - Made image/result/capture/revision publication atomic; moved reviewer Apply

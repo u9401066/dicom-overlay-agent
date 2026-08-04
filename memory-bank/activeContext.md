@@ -1,31 +1,35 @@
 # Active Context
 
-## Session Update (2026-08-05, protocol hardening and final frozen bundle)
+## Session Update (2026-08-05, evidence-v3 and GPT-5.4 Mini release default)
 
-- The MEETI experiment is now four explicitly recorded arms: one-look
-  `minimal_control`, clinical `single_pass`, `multipass`, and
+- The release default is `openai/gpt-5.4-mini` through the `openai-vision`
+  Responses profile; Luna remains explicitly selectable. The four experiment
+  arms are one-look `minimal_control`, clinical `single_pass`, `multipass`, and
   `multipass_ecgfounder`. Real completion requires strict pass >=0.75 and mean
-  partial credit >=0.85; incomplete, mismatched-manifest/scorer, and mixed
-  protocol comparisons fail closed unless explicitly exploratory.
-- A current `manifest-v2.json` strict mock MultiPass run completed 1,000/1,000,
-  4,869 analyzer calls, 2,869 source crops, 2,000 systematic probes, and 1,000
-  review PNGs. All 865 bbox projection rows passed with zero clamp/failure and
-  0 px drift. The label-derived mock receipts are marked as protocol self-test
-  evidence and are not a model-accuracy claim.
-- The requested `openai/gpt-5.4-mini` current-protocol canary started the real
-  Gateway, confirmed `text,image`, and reached the first provider image call.
-  OpenAI returned `provider_credit_exhausted`; the experiment is `blocked`, has
-  no clinical answer, and cannot yet establish four-arm accuracy/improvement.
-- MultiPass now uses one typed 12-lead parser, always performs final report
-  reconciliation after no-delta refinements, and reconciles reviewer-confirmed
-  changes into summary/triage/checklist provenance. Web search/fetch are
-  disabled during medical-image analysis.
-- Full source verification passes: Ruff, whitespace, and 769 passed with 2
-  release-only skips. The rebuilt 363.92 MiB bundle contains OpenClaw
-  `2026.7.1-2` and
-  Node `v24.18.0`; source/EXE checks plus isolated authenticated Gateway
-  cold-start/connect/clean-stop pass 3/3. EXE SHA-256 is
-  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`.
+  partial credit >=0.85; incompatible protocols fail closed.
+- The clean-source `manifest-v2.json` mock MultiPass artifact is
+  `data/eval/meeti-v2-1000-mock-multipass-evidencev3-20260805`, protocol
+  `9408a142...dd4`. It completed 1,000/1,000, 4,869 analyzer calls, 2,869 source
+  crops, 2,000 systematic probes, and 1,000 review PNGs. All 865 bbox rows pass
+  with zero clamp/invalid/low-signal and 0 px drift. The 1.0 mock scores remain
+  protocol self-test evidence, not model accuracy.
+- Formal score denominators are asserted references only: 299 clinical cases,
+  244 diagnosis-scorable, 49 explicit-normal controls, and 32 urgent concerns.
+  The remaining 701 weak-label cases are exploratory and no abnormal finding is
+  forced for normal/within-range ECGs.
+- The current real GPT-5.4 Mini canary reached an image-capable OpenAI Responses
+  transaction after a 72.359-second Gateway start, then returned
+  `provider_credit_exhausted`. It is `blocked`, contains zero model answers, and
+  cannot establish four-arm accuracy or significant improvement.
+- The pinned ECGFounder v3 batch traversed 1,000 waveforms in 555.086 seconds:
+  999 eligible and one exact-flat V5 exclusion. Eligibility-aware 5-fold
+  research metrics are macro BA 0.865, sensitivity 0.847, explicit-normal
+  specificity 0.883, and 3-5 diagnosis complete recall 0.479. The tool stays
+  uncalibrated supporting evidence and supplies no screenshot bbox.
+- Verification passes Ruff, mypy for 63 source files, unit+smoke 791 passed with
+  3 opt-in skips, OpenClaw integration 55 passed, and the opt-in native Windows
+  rendered capture-exclusion smoke. A fresh frozen bundle rebuild is the next
+  release step.
 
 ## Session Update (2026-08-04, regional/ECGFounder audit hardening)
 
@@ -539,7 +543,7 @@
 ## 🔧 Gateway 啟動要點
 
 - 正確指令：`gateway run`（非 `gateway start`）
-- Gateway port: 18789, auth token: `aa1d6c0c9ee5a36df1446e0dc0266bc0f7319ecb93fd82ba`
+- Gateway port: 18789; auth token is generated locally and never recorded here
 - 模型：`github-copilot/gpt-5-mini`
 - 現在由 `GatewayManager` 自動管理啟動/停止
 
