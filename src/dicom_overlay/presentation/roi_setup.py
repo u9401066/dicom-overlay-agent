@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 from dicom_overlay.application.roi import (
     compute_roi_crop_from_safe_rect,
     normalize_selection,
+    scaled_roi_crop,
 )
 from dicom_overlay.domain.entities import DisplayFrame, ROICrop, WindowRect
 from dicom_overlay.presentation.screen_selection import (
@@ -52,22 +53,25 @@ class ROISetupDialog(QDialog):
         self._target_offset_x = self._target_rect.left - base_rect.left
         self._target_offset_y = self._target_rect.top - base_rect.top
 
-        # Pre-populate selection from existing ROI (screen-relative margins)
-        if existing_roi is not None and (
-            existing_roi.left > 0
-            or existing_roi.top > 0
-            or existing_roi.right > 0
-            or existing_roi.bottom > 0
-        ):
-            safe_x = existing_roi.left
-            safe_y = existing_roi.top
-            safe_w = self._base_rect.width - existing_roi.left - existing_roi.right
-            safe_h = self._base_rect.height - existing_roi.top - existing_roi.bottom
-            if safe_w > 0 and safe_h > 0:
-                # Dialog covers full screen, so dialog-local = screen coords
-                self._selection_start = QPoint(safe_x, safe_y)
-                self._selection_end = QPoint(safe_x + safe_w, safe_y + safe_h)
-                self._has_existing = True
+        # Pre-populate a viewer-relative ROI, scaled to the viewer's current size.
+        if existing_roi is not None and existing_roi.configured:
+            try:
+                scaled = scaled_roi_crop(
+                    existing_roi,
+                    self._target_rect.width,
+                    self._target_rect.height,
+                )
+            except ValueError:
+                scaled = None
+            if scaled is not None:
+                safe_x = self._target_offset_x + scaled.left
+                safe_y = self._target_offset_y + scaled.top
+                safe_w = self._target_rect.width - scaled.left - scaled.right
+                safe_h = self._target_rect.height - scaled.top - scaled.bottom
+                if safe_w > 0 and safe_h > 0:
+                    self._selection_start = QPoint(safe_x, safe_y)
+                    self._selection_end = QPoint(safe_x + safe_w, safe_y + safe_h)
+                    self._has_existing = True
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -207,20 +211,28 @@ class ROISetupDialog(QDialog):
             self._status.setText("請先拖曳框選安全區域")
             self._status.adjustSize()
             return
-        # Selection is in dialog-local coords (= screen coords since dialog
-        # covers the full screen).  Compute ROI margins relative to the full
-        # screen so they are position-independent of the viewer window.
-        adj_x = max(0, rect.x())
-        adj_y = max(0, rect.y())
-        adj_w = min(rect.width(), self._base_rect.width - adj_x)
-        adj_h = min(rect.height(), self._base_rect.height - adj_y)
-        if adj_w <= 0 or adj_h <= 0:
-            self._status.setText("選取區域無效, 請重新選取")
+        # Refuse any safe area outside the detected viewer.  This prevents a
+        # moved/windowed viewer from turning a saved full-screen rectangle into
+        # a capture of unrelated desktop content.
+        local_x = rect.x() - self._target_offset_x
+        local_y = rect.y() - self._target_offset_y
+        if (
+            local_x < 0
+            or local_y < 0
+            or local_x + rect.width() > self._target_rect.width
+            or local_y + rect.height() > self._target_rect.height
+        ):
+            self._status.setText("安全影像區域必須完整位於藍色 viewer 範圍內")
             self._status.adjustSize()
             return
         self._selected_crop = compute_roi_crop_from_safe_rect(
-            self._base_rect,
-            (adj_x, adj_y, adj_w, adj_h),
+            WindowRect(
+                left=0,
+                top=0,
+                width=self._target_rect.width,
+                height=self._target_rect.height,
+            ),
+            (local_x, local_y, rect.width(), rect.height()),
         )
         logger.info(
             "ROI selected: top=%d bottom=%d left=%d right=%d",
@@ -275,6 +287,9 @@ def run_roi_setup(
     to Qt logical pixels for the dialog, then convert the result back.
     ``existing_roi`` is also in physical pixels.
     """
+    if target_rect is None:
+        logger.warning("ROI setup requires a detected viewer window")
+        return None
     screen = select_qt_screen(app, display_frame)
     if screen is None:
         return None

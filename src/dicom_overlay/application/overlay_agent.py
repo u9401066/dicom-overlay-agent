@@ -8,7 +8,7 @@ import dataclasses
 import inspect
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
@@ -16,6 +16,7 @@ from dicom_overlay.application.annotation_accumulator import (
     AnnotationAccumulator,
     max_severity,
 )
+from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
 from dicom_overlay.domain.entities import (
     AgentState,
     AnalysisResult,
@@ -232,12 +233,14 @@ class OverlayAgent:
         self._annotation_accumulator = annotation_accumulator or AnnotationAccumulator()
         self._last_image_base64 = ""
         self._running = False
+        self._roi_setup_notified = False
 
         # Callbacks for presentation layer
         self.on_state_change: Any = None
         self.on_analysis_result: Any = None
         self.on_pending_analysis: Any = None
         self.on_error: Any = None
+        self.on_roi_setup_required: Any = None
 
     @property
     def state(self) -> AgentState:
@@ -579,7 +582,11 @@ class OverlayAgent:
 
     def has_roi_config(self) -> bool:
         roi = self._config.phi_roi
-        return roi.top > 0 or roi.bottom > 0 or roi.left > 0 or roi.right > 0
+        try:
+            scaled_roi_crop(roi, roi.reference_width, roi.reference_height)
+        except ValueError:
+            return False
+        return True
 
     async def start(self) -> None:
         """Start the agent loop."""
@@ -587,6 +594,7 @@ class OverlayAgent:
         self._transition(AgentState.INIT)
 
         if not self.has_roi_config():
+            self._roi_setup_notified = False
             self._transition(AgentState.SETUP)
             return  # Wait for ROI setup from UI
 
@@ -618,6 +626,8 @@ class OverlayAgent:
             return
 
         match self._state:
+            case AgentState.SETUP:
+                await self._tick_setup()
             case AgentState.WAITING:
                 await self._tick_waiting()
             case AgentState.MONITORING:
@@ -630,6 +640,24 @@ class OverlayAgent:
                 await self._tick_error()
             case _:
                 pass
+
+    async def _tick_setup(self) -> None:
+        """Wait for the actual viewer before asking for a PHI-safe ROI."""
+
+        window = self._monitor.find_target_window(
+            self._config.monitor.window_title_keywords
+        )
+        if window is None:
+            if self._target_window is not None:
+                self._set_target_window(None)
+                self._roi_setup_notified = False
+            return
+        self._set_target_window(window)
+        if not self._roi_setup_notified:
+            self._roi_setup_notified = True
+            logger.info("Viewer found; requesting viewer-relative ROI setup")
+            if self.on_roi_setup_required:
+                self.on_roi_setup_required()
 
     async def _tick_waiting(self) -> None:
         window = self._monitor.find_target_window(
@@ -647,23 +675,11 @@ class OverlayAgent:
             )
 
     def _get_roi_rect(self) -> WindowRect:
-        """Compute the screen-relative ROI capture rectangle.
+        """Compute an absolute capture rectangle inside the current viewer."""
 
-        ``left``/``top`` include the target screen origin so the rectangle is
-        expressed in absolute virtual-desktop coordinates (required by
-        ``mss.grab`` on multi-monitor layouts).
-        """
-        roi = self._config.phi_roi
-        width = self._screen_width - roi.left - roi.right
-        height = self._screen_height - roi.top - roi.bottom
-        if width <= 0 or height <= 0:
-            raise ValueError("ROI crop margins exceed the target display dimensions")
-        return WindowRect(
-            left=self._screen_left + roi.left,
-            top=self._screen_top + roi.top,
-            width=width,
-            height=height,
-        )
+        if self._target_window is None:
+            raise ValueError("No target viewer is available for ROI capture")
+        return compute_viewer_roi_rect(self._target_window, self._config.phi_roi)
 
     def _set_target_window(self, window: WindowRect | None) -> None:
         self._target_window = window
@@ -973,12 +989,15 @@ class OverlayAgent:
                         extra["source_image_base64"] = source_image_base64
                     if accepts_extra or "local_candidate_regions" in names:
                         extra["local_candidate_regions"] = local_candidate_regions
-                    return await analyze_with_source_size(
-                        image_b64,
-                        modality,
-                        valid_regions,
-                        source_size_px=source_size_px,
-                        **extra,
+                    return cast(
+                        "AnalysisResult",
+                        await analyze_with_source_size(
+                            image_b64,
+                            modality,
+                            valid_regions,
+                            source_size_px=source_size_px,
+                            **extra,
+                        ),
                     )
                 return await self._analyzer.analyze(image_b64, modality, valid_regions)
             except TimeoutError:
@@ -1072,6 +1091,7 @@ class OverlayAgent:
     def on_roi_setup_complete(self, roi: ROICrop) -> None:
         """Called when user completes ROI setup wizard."""
         self._config.phi_roi = roi
+        self._roi_setup_notified = False
         self._transition(AgentState.WAITING)
 
     def on_display_timeout(self) -> None:

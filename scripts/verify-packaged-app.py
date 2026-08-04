@@ -422,6 +422,7 @@ def _valid_harness_manifest(payload: dict[str, Any]) -> bool:
         and capabilities.get("multiTurnImageFollowup") is True
         and capabilities.get("bboxCropReanalysis") is True
         and capabilities.get("coordinateDriftCalibration") is True
+        and capabilities.get("imageTurnBoundBboxReceipts") is True
         and capabilities.get("ecgFounderWaveformAssist") is True
         and capabilities.get("noScreenshotToWaveformInference") is True
     )

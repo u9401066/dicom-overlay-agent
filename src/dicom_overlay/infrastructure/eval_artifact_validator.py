@@ -654,7 +654,10 @@ def _verify_minimum_rate(
     if minimum is None:
         return
     try:
-        actual = float(scorecard.get(field))
+        raw_actual = scorecard.get(field)
+        if not isinstance(raw_actual, int | float | str):
+            raise TypeError
+        actual = float(raw_actual)
     except (TypeError, ValueError):
         failures.append(f"{check}: {field} is missing or invalid")
         return
@@ -784,6 +787,8 @@ def _verify_results(
                         f"{finding_index}: {mismatch}"
                     )
         inventory.bbox_counts[case.label] = bbox_count
+        final_bbox_digest, final_bbox_digest_count = _bbox_payload_digest(findings)
+        source_image_sha256 = str(raw.get("source_image_sha256") or "")
         trace = raw.get("analysis_trace")
         if isinstance(trace, list):
             for event in trace:
@@ -801,11 +806,13 @@ def _verify_results(
                         inventory.original_roi_finalization_cases.add(case.label)
                     tool_audit = event.get("tool_audit")
                     if isinstance(tool_audit, list) and any(
-                        isinstance(record, dict)
-                        and record.get("tool") == "dicom_bbox_validate"
-                        and isinstance(record.get("accepted_count"), int)
-                        and not isinstance(record.get("accepted_count"), bool)
-                        and record["accepted_count"] > 0
+                        _valid_bound_bbox_receipt(
+                            record,
+                            event,
+                            expected_source_image_sha256=source_image_sha256,
+                            expected_boxes_sha256=final_bbox_digest,
+                            expected_count=final_bbox_digest_count,
+                        )
                         for record in tool_audit
                     ):
                         inventory.finalization_bbox_tool_accepted_cases.add(case.label)
@@ -831,11 +838,7 @@ def _verify_results(
                             inventory.original_roi_ekg_systematic_cases.add(case.label)
                 tool_audit = event.get("tool_audit")
                 if isinstance(tool_audit, list) and any(
-                    isinstance(record, dict)
-                    and record.get("tool") == "dicom_bbox_validate"
-                    and isinstance(record.get("accepted_count"), int)
-                    and not isinstance(record.get("accepted_count"), bool)
-                    and record["accepted_count"] > 0
+                    _valid_bound_bbox_receipt(record, event)
                     for record in tool_audit
                 ):
                     inventory.refinement_bbox_tool_accepted_cases.add(case.label)
@@ -869,6 +872,68 @@ def _verify_results(
     if len(failures) == failure_count:
         passed.append("results_artifacts")
     return inventory
+
+
+def _bbox_payload_digest(findings: list[object]) -> tuple[str, int]:
+    coordinates: list[list[str]] = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        bboxes = finding.get("bboxes")
+        if not isinstance(bboxes, list):
+            continue
+        for box in bboxes:
+            if not isinstance(box, dict):
+                continue
+            try:
+                values = [
+                    math.floor(float(box[key]) * 10_000 + 0.5) / 10_000
+                    for key in ("x", "y", "w", "h")
+                ]
+            except (KeyError, TypeError, ValueError):
+                continue
+            coordinates.append([f"{value:.4f}" for value in values])
+    coordinates.sort()
+    encoded = json.dumps(coordinates, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest(), len(coordinates)
+
+
+def _valid_bound_bbox_receipt(
+    record: object,
+    event: dict[str, Any],
+    *,
+    expected_source_image_sha256: str = "",
+    expected_boxes_sha256: str = "",
+    expected_count: int | None = None,
+) -> bool:
+    if not isinstance(record, dict) or record.get("schema_version") != 2:
+        return False
+    binding = event.get("bbox_evidence")
+    if not isinstance(binding, dict):
+        return False
+    accepted_count = record.get("accepted_count")
+    source_sha = record.get("source_image_sha256")
+    nonce = record.get("evidence_nonce")
+    boxes_sha = record.get("accepted_boxes_sha256")
+    if not (
+        record.get("tool") == "dicom_bbox_validate"
+        and isinstance(accepted_count, int)
+        and not isinstance(accepted_count, bool)
+        and accepted_count > 0
+        and _is_sha256(source_sha)
+        and _is_sha256(boxes_sha)
+        and isinstance(nonce, str)
+        and len(nonce) == 32
+        and all(character in "0123456789abcdef" for character in nonce)
+        and binding.get("source_image_sha256") == source_sha
+        and binding.get("evidence_nonce") == nonce
+    ):
+        return False
+    if expected_source_image_sha256 and source_sha != expected_source_image_sha256:
+        return False
+    if expected_boxes_sha256 and boxes_sha != expected_boxes_sha256:
+        return False
+    return expected_count is None or accepted_count == expected_count
 
 
 def _verify_ekg_systematic_probes(
@@ -919,7 +984,7 @@ def _canonical_ekg_region(value: object) -> str | None:
 def _ekg_layout_regions(layout: object) -> list[tuple[str, tuple[float, ...]]]:
     if not isinstance(layout, dict):
         return []
-    regions = [
+    regions: list[tuple[str, tuple[float, ...]]] = [
         (
             lead.name,
             (lead.bbox.x, lead.bbox.y, lead.bbox.w, lead.bbox.h),

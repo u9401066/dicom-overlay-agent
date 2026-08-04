@@ -85,7 +85,10 @@ from dicom_overlay.infrastructure.hooks.input_guard import InputGuard  # noqa: E
 from dicom_overlay.infrastructure.hooks.output_validator import (  # noqa: E402
     OutputValidator,
 )
-from dicom_overlay.infrastructure.openclaw_client import OpenClawClient  # noqa: E402
+from dicom_overlay.infrastructure.openclaw_client import (  # noqa: E402
+    OpenClawClient,
+    _bbox_coordinates_digest,
+)
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor  # noqa: E402
 
 logger = structlog.get_logger(__name__)
@@ -828,12 +831,14 @@ class _MockGateway:
             )
 
 
-def _bbox_count(value: object) -> int:
+def _bbox_regions(value: object) -> list[RegionRect]:
     findings = getattr(value, "findings", None)
     if isinstance(findings, list):
-        return sum(_bbox_count(finding) for finding in findings)
+        return [box for finding in findings for box in _bbox_regions(finding)]
     bboxes = getattr(value, "bboxes", None)
-    return len(bboxes) if isinstance(bboxes, list) else 0
+    if not isinstance(bboxes, list):
+        return []
+    return [box for box in bboxes if isinstance(box, RegionRect)]
 
 
 class _CountingAnalyzer(VisionAnalyzerService):
@@ -858,7 +863,7 @@ class _CountingAnalyzer(VisionAnalyzerService):
     ) -> Any:
         self.analyze_calls += 1
         result = await self._inner.analyze(image_base64, modality, valid_regions)
-        self._set_synthetic_bbox_receipt(_bbox_count(result))
+        self._set_synthetic_bbox_receipt(_bbox_regions(result))
         return result
 
     async def refine(
@@ -881,10 +886,10 @@ class _CountingAnalyzer(VisionAnalyzerService):
             hypothesis=hypothesis,
             crop_region=crop_region,
         )
-        accepted = _bbox_count(hypothesis)
+        accepted_boxes = _bbox_regions(hypothesis)
         for delta in getattr(result, "deltas", ()):
-            accepted += _bbox_count(getattr(delta, "finding", None))
-        self._set_synthetic_bbox_receipt(accepted)
+            accepted_boxes.extend(_bbox_regions(getattr(delta, "finding", None)))
+        self._set_synthetic_bbox_receipt(accepted_boxes)
         return result
 
     async def finalize(
@@ -907,7 +912,7 @@ class _CountingAnalyzer(VisionAnalyzerService):
             draft=draft,
             refinement_trace=refinement_trace,
         )
-        self._set_synthetic_bbox_receipt(_bbox_count(draft))
+        self._set_synthetic_bbox_receipt(_bbox_regions(draft))
         return result
 
     def last_run_trace(self) -> dict[str, object]:
@@ -927,10 +932,15 @@ class _CountingAnalyzer(VisionAnalyzerService):
             trace["tool_audit"] = [*audit, *self._last_synthetic_receipts]
         return trace
 
-    def _set_synthetic_bbox_receipt(self, accepted_count: int) -> None:
+    def _set_synthetic_bbox_receipt(self, boxes: list[RegionRect]) -> None:
         self._last_synthetic_receipts = []
         if not self._synthetic_bbox_receipts:
             return
+        trace_method = getattr(self._inner, "last_run_trace", None)
+        trace = trace_method() if callable(trace_method) else {}
+        binding = trace.get("bbox_evidence") if isinstance(trace, dict) else None
+        binding = binding if isinstance(binding, dict) else {}
+        accepted_count = len(boxes)
         details = {
             "mode": "mock_protocol_selftest",
             "accepted_count": accepted_count,
@@ -938,11 +948,18 @@ class _CountingAnalyzer(VisionAnalyzerService):
         }
         self._last_synthetic_receipts = [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "tool": "dicom_bbox_validate",
                 "tool_call_id": f"mock-{uuid4()}",
                 "accepted_count": accepted_count,
                 "rejected_count": 0,
+                "source_image_sha256": str(
+                    binding.get("source_image_sha256") or "0" * 64
+                ),
+                "evidence_nonce": str(
+                    binding.get("evidence_nonce") or "0" * 32
+                ),
+                "accepted_boxes_sha256": _bbox_coordinates_digest(boxes),
                 "details_sha256": hashlib.sha256(
                     json.dumps(details, sort_keys=True).encode("utf-8")
                 ).hexdigest(),
@@ -1470,6 +1487,7 @@ async def _run(
                 gw.url,
                 timeout_sec=timeout_sec,
                 analysis_prompt_profile=analysis_prompt_profile,
+                require_bound_bbox_receipts=False,
             )
             try:
                 return await analyze_with_client(client)
@@ -1492,6 +1510,7 @@ def _make_client(
     *,
     timeout_sec: int,
     analysis_prompt_profile: str = "clinical",
+    require_bound_bbox_receipts: bool = True,
 ) -> OpenClawClient:
     return OpenClawClient(
         gateway_url=gateway_url,
@@ -1501,6 +1520,7 @@ def _make_client(
         registry=get_active_registry(),
         base_dir=_REPO_ROOT,
         analysis_prompt_profile=analysis_prompt_profile,
+        require_bound_bbox_receipts=require_bound_bbox_receipts,
     )
 
 
@@ -1680,8 +1700,12 @@ def _print_summary(
         f"(errors={report.error_count})"
     )
     print(
-        f"  clinical cases ...... {report.clinical_scorable_count}/{report.total} "
-        "(ungradable excluded)"
+        f"  formal references ... {report.clinical_scorable_count}/{report.total} "
+        "(complete asserted labels only)"
+    )
+    print(
+        f"  weak references ..... {report.weak_label_case_count}/{report.total} "
+        "(exploratory positive-label recall only)"
     )
     print(
         f"  severity accuracy ... {report.severity_accuracy:.0%} (exact, "
@@ -1694,8 +1718,35 @@ def _print_summary(
     print(f"  strict pass rate .... {report.strict_pass_rate:.0%}")
     print(f"  partial credit ...... {report.mean_partial_credit:.0%} (mean)")
     print(
-        f"  keyword recall ...... {report.mean_keyword_recall:.0%} "
+        f"  known-label recall .. {report.mean_keyword_recall:.0%} "
         f"(n={report.keyword_scorable_count})"
+    )
+    if report.weak_label_keyword_scorable_count:
+        print(
+            f"  weak-label recall ... {report.mean_weak_label_keyword_recall:.0%} "
+            f"(n={report.weak_label_keyword_scorable_count}, exploratory)"
+        )
+    print(
+        f"  diagnosis exact set . {report.diagnosis_exact_set_accuracy:.0%} "
+        f"(n={report.diagnosis_scorable_count})"
+    )
+    print(
+        f"  diagnosis complete .. {report.diagnosis_complete_recall_rate:.0%} "
+        f"(all referenced diagnoses found)"
+    )
+    print(
+        f"  single-dx exact ..... {report.single_diagnosis_exact_set_accuracy:.0%} "
+        f"(n={report.single_diagnosis_scorable_count})"
+    )
+    print(
+        "  3-5 dx exact/recall . "
+        f"{report.multi_diagnosis_3_to_5_exact_set_accuracy:.0%}/"
+        f"{report.multi_diagnosis_3_to_5_complete_recall_rate:.0%} "
+        f"(n={report.multi_diagnosis_3_to_5_scorable_count})"
+    )
+    print(
+        f"  normal specificity .. {report.normal_control_specificity:.0%} "
+        f"(n={report.normal_control_count})"
     )
     print(
         f"  negative recall ..... {report.mean_negative_recall:.0%} "
@@ -1879,11 +1930,12 @@ def main() -> int:
     parser.add_argument(
         "--rhythm-strip-pass",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=None,
         help=(
             "For EKG, re-read the model-declared rhythm strip at higher "
             "resolution to recover rhythm/P-wave/AV-block misses (one bounded "
-            "extra call; no-op unless Step 0 localized a rhythm-strip bbox)."
+            "extra call; no-op unless Step 0 localized a rhythm-strip bbox). "
+            "Defaults to enabled only with --multi-pass."
         ),
     )
     parser.add_argument(
@@ -1931,6 +1983,8 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
+    if args.rhythm_strip_pass is None:
+        args.rhythm_strip_pass = bool(args.multi_pass)
     if args.analysis_prompt_profile == "minimal_control" and args.multi_pass:
         parser.error("minimal_control cannot be combined with --multi-pass")
     if args.analysis_prompt_profile == "minimal_control" and args.rhythm_strip_pass:

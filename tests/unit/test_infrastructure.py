@@ -47,7 +47,8 @@ class TestConfigLoader:
         )
         config = load_config(tmp_path / "nonexistent.yaml")
         assert config.monitor.polling_interval_ms == 500
-        assert config.phi_roi.top == 60
+        assert config.phi_roi.top == 0
+        assert config.phi_roi.configured is False
         assert config.analysis.trigger_mode == TriggerMode.HYBRID
 
     def test_load_from_file(self, tmp_path):
@@ -65,6 +66,7 @@ class TestConfigLoader:
         assert config.monitor.polling_interval_ms == 250
         assert config.monitor.hash_threshold == 15
         assert config.phi_roi.top == 100
+        assert config.phi_roi.configured is False
         assert config.openclaw.gateway_url == "ws://localhost:9999"
         assert config.openclaw.gateway_start_timeout_sec == 180
         assert config.analysis.trigger_mode == TriggerMode.MANUAL
@@ -75,15 +77,53 @@ class TestConfigLoader:
         with config_file.open("w") as f:
             yaml.dump(initial, f)
 
-        roi = ROICrop(top=80, bottom=40, left=5, right=5)
+        roi = ROICrop(
+            top=80,
+            bottom=40,
+            left=5,
+            right=5,
+            configured=True,
+            reference_width=1920,
+            reference_height=1080,
+        )
         save_roi_config(config_file, roi)
 
         with config_file.open() as f:
             raw = yaml.safe_load(f)
         assert raw["phi_roi"]["top"] == 80
         assert raw["phi_roi"]["bottom"] == 40
+        assert raw["phi_roi"]["configured"] is True
+        assert raw["phi_roi"]["coordinate_space"] == "viewer"
+        assert raw["phi_roi"]["reference_width"] == 1920
+        assert raw["phi_roi"]["reference_height"] == 1080
         # Original data preserved
         assert raw["monitor"]["polling_interval_ms"] == 500
+
+    def test_explicit_viewer_roi_loads_as_configured(self, tmp_path):
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            yaml.safe_dump(
+                {
+                    "phi_roi": {
+                        "configured": True,
+                        "coordinate_space": "viewer",
+                        "reference_width": 1200,
+                        "reference_height": 800,
+                        "top": 40,
+                        "bottom": 20,
+                        "left": 10,
+                        "right": 10,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        config = load_config(config_file)
+
+        assert config.phi_roi.configured is True
+        assert config.phi_roi.reference_width == 1200
+        assert config.phi_roi.reference_height == 800
 
 
 class TestOpenClawSettings:
@@ -219,6 +259,7 @@ class TestOpenClawRuntimeCompatibility:
         ]
         assert manifest["capabilities"]["bboxCropReanalysis"] is True
         assert manifest["capabilities"]["coordinateDriftCalibration"] is True
+        assert manifest["capabilities"]["imageTurnBoundBboxReceipts"] is True
         assert manifest["capabilities"]["ecgFounderWaveformAssist"] is True
         assert manifest["capabilities"]["noScreenshotToWaveformInference"] is True
         assert (

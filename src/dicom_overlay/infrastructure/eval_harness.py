@@ -345,6 +345,11 @@ class CaseScore:
     bbox_in_bounds: bool
     finding_count: int
     latency_ms: int
+    # A complete reference is required for formal accuracy, exact-set, and
+    # false-positive scoring. MEETI reports marked partially uncertain or
+    # ungradable still provide useful positive-label recall, but silence in
+    # those reports is not evidence that an extra model finding is wrong.
+    reference_complete: bool = True
     clinical_scorable: bool = True
     severity_scorable: bool = True
     false_positive_scorable: bool = True
@@ -372,6 +377,10 @@ class CaseScore:
     concept_hits: list[str] = field(default_factory=list)
     concept_misses: list[str] = field(default_factory=list)
     concept_false_positives: list[str] = field(default_factory=list)
+    expected_concept_count: int = 0
+    predicted_concept_count: int = 0
+    diagnosis_exact_set_match: bool = False
+    diagnosis_complete_recall: bool = False
     concept_precision: float = 1.0
     concept_recall: float = 1.0
     concept_f1: float = 1.0
@@ -420,6 +429,22 @@ class EvalReport:
     negative_scorable_count: int = 0
     false_positive_scorable_count: int = 0
     concept_recall_scorable_count: int = 0
+    weak_label_case_count: int = 0
+    weak_label_keyword_scorable_count: int = 0
+    weak_label_concept_recall_scorable_count: int = 0
+    mean_weak_label_keyword_recall: float = 0.0
+    mean_weak_label_concept_recall: float = 0.0
+    diagnosis_scorable_count: int = 0
+    diagnosis_exact_set_accuracy: float = 0.0
+    diagnosis_complete_recall_rate: float = 0.0
+    diagnosis_mean_concept_f1: float = 0.0
+    single_diagnosis_scorable_count: int = 0
+    single_diagnosis_exact_set_accuracy: float = 0.0
+    multi_diagnosis_3_to_5_scorable_count: int = 0
+    multi_diagnosis_3_to_5_exact_set_accuracy: float = 0.0
+    multi_diagnosis_3_to_5_complete_recall_rate: float = 0.0
+    normal_control_count: int = 0
+    normal_control_specificity: float = 0.0
     urgent_concern_total: int = 0
     urgent_concern_caught_count: int = 0
     urgent_concern_missed: list[str] = field(default_factory=list)
@@ -798,6 +823,8 @@ class _ConceptMetrics:
     hits: list[str]
     misses: list[str]
     false_positives: list[str]
+    expected_count: int
+    predicted_count: int
     precision: float
     recall: float
     f1: float
@@ -828,6 +855,8 @@ def _concept_metrics(
             hits=[],
             misses=[],
             false_positives=[],
+            expected_count=0,
+            predicted_count=0,
             precision=1.0,
             recall=1.0,
             f1=1.0,
@@ -895,6 +924,8 @@ def _concept_metrics(
         hits=hits,
         misses=misses,
         false_positives=false_positives,
+        expected_count=len(expected),
+        predicted_count=len(predicted),
         precision=round(precision, 3),
         recall=round(recall, 3),
         f1=round(f1, 3),
@@ -1219,7 +1250,8 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
     has_positive_reference = any(
         not _is_negative_expectation(keyword) for keyword in case.expected_keywords
     )
-    false_positive_scorable = case.label_status == "asserted" and (
+    reference_complete = case.label_status == "asserted"
+    false_positive_scorable = reference_complete and (
         has_positive_reference or case.expected_severity is Severity.NORMAL
     )
     concept = _concept_metrics(
@@ -1235,12 +1267,12 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
 
     schema_ok, schema_issue = _schema_check(case, result)
 
-    severity_scorable = case.expected_severity is not Severity.INFO
-    clinical_scorable = severity_scorable or bool(
-        case.expected_keywords
-        or case.expected_negatives
-        or case.cant_miss
-        or case.urgent_concerns
+    severity_scorable = (
+        reference_complete and case.expected_severity is not Severity.INFO
+    )
+    clinical_scorable = reference_complete and (
+        severity_scorable
+        or bool(case.expected_keywords or case.expected_negatives or case.cant_miss)
     )
     abnormal_match = _severity_group(result.severity) == _severity_group(
         case.expected_severity
@@ -1274,7 +1306,7 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         urgent_concern_missed=bool(urgent_missed),
     )
     bbox_in_bounds = _bbox_in_bounds(result)
-    strict_pass = (
+    strict_pass = clinical_scorable and (
         severity_credit_match
         and not misses
         and not neg_misses
@@ -1304,6 +1336,7 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         bbox_in_bounds=bbox_in_bounds,
         finding_count=len(result.findings),
         latency_ms=latency_ms,
+        reference_complete=reference_complete,
         clinical_scorable=clinical_scorable,
         severity_scorable=severity_scorable,
         false_positive_scorable=false_positive_scorable,
@@ -1324,6 +1357,17 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         concept_hits=concept.hits,
         concept_misses=concept.misses,
         concept_false_positives=concept.false_positives,
+        expected_concept_count=concept.expected_count,
+        predicted_concept_count=concept.predicted_count,
+        diagnosis_exact_set_match=(
+            clinical_scorable
+            and concept.expected_count > 0
+            and not concept.misses
+            and not concept.false_positives
+        ),
+        diagnosis_complete_recall=(
+            concept.expected_count > 0 and not concept.misses
+        ),
         concept_precision=concept.precision,
         concept_recall=concept.recall,
         concept_f1=concept.f1,
@@ -1332,12 +1376,13 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
 
 
 def _error_score(case: EvalCase, message: str) -> CaseScore:
-    severity_scorable = case.expected_severity is not Severity.INFO
-    clinical_scorable = severity_scorable or bool(
-        case.expected_keywords
-        or case.expected_negatives
-        or case.cant_miss
-        or case.urgent_concerns
+    reference_complete = case.label_status == "asserted"
+    severity_scorable = (
+        reference_complete and case.expected_severity is not Severity.INFO
+    )
+    clinical_scorable = reference_complete and (
+        severity_scorable
+        or bool(case.expected_keywords or case.expected_negatives or case.cant_miss)
     )
     return CaseScore(
         case_label=case.label or case.image_path.name,
@@ -1358,9 +1403,10 @@ def _error_score(case: EvalCase, message: str) -> CaseScore:
         bbox_in_bounds=False,
         finding_count=0,
         latency_ms=0,
+        reference_complete=reference_complete,
         clinical_scorable=clinical_scorable,
         severity_scorable=severity_scorable,
-        false_positive_scorable=case.label_status == "asserted",
+        false_positive_scorable=reference_complete,
         label_status=case.label_status,
         reference_uncertain_concepts=list(case.uncertain_concepts),
         reference_ungradable_reasons=list(case.ungradable_reasons),
@@ -1373,6 +1419,13 @@ def _error_score(case: EvalCase, message: str) -> CaseScore:
         urgent_concern_missed=list(case.urgent_concerns),
         urgent_concern_recall=0.0 if case.urgent_concerns else 1.0,
         concept_misses=sorted(
+            {
+                _canonical_concept(keyword)
+                for keyword in case.expected_keywords
+                if not _is_negative_expectation(keyword)
+            }
+        ),
+        expected_concept_count=len(
             {
                 _canonical_concept(keyword)
                 for keyword in case.expected_keywords
@@ -1442,16 +1495,36 @@ def _target_axis_performance(scores: list[CaseScore]) -> dict[str, Any]:
     performance: dict[str, Any] = {}
     for axis, axis_scores in sorted(by_axis.items()):
         count = len(axis_scores)
-        components, component_counts = _aggregate_partial_breakdown(axis_scores)
+        clinical_scores = [score for score in axis_scores if score.clinical_scorable]
+        clinical_count = len(clinical_scores)
+        components, component_counts = _aggregate_partial_breakdown(clinical_scores)
+        reference_keyword_scores = [
+            score
+            for score in axis_scores
+            if score.keyword_hits or score.keyword_misses
+        ]
         performance[axis] = {
             "case_count": count,
+            "clinical_scorable_count": clinical_count,
             "strict_pass_rate": round(
-                sum(1 for s in axis_scores if s.strict_pass) / count, 3
-            ),
+                sum(1 for s in clinical_scores if s.strict_pass) / clinical_count,
+                3,
+            )
+            if clinical_count
+            else 0.0,
             "mean_partial_credit": round(
-                sum(s.partial_credit for s in axis_scores) / count, 3
-            ),
-            "mean_keyword_recall": components["keyword_recall"],
+                sum(s.partial_credit for s in clinical_scores) / clinical_count,
+                3,
+            )
+            if clinical_count
+            else 0.0,
+            "mean_keyword_recall": round(
+                sum(score.keyword_recall for score in reference_keyword_scores)
+                / len(reference_keyword_scores),
+                3,
+            )
+            if reference_keyword_scores
+            else 1.0,
             "mean_negative_recall": components["negative_recall"],
             "mean_concept_precision": components["concept_precision"],
             "mean_concept_recall": components["concept_recall"],
@@ -1481,6 +1554,7 @@ def _aggregate(
 
     clinical_scored = [s for s in scored if s.clinical_scorable]
     clinical_all = [s for s in scores if s.clinical_scorable]
+    weak_label_scored = [s for s in scored if not s.reference_complete]
     severity_scored = [s for s in scored if s.severity_scorable]
     keyword_scored = [s for s in scored if s.keyword_hits or s.keyword_misses]
     negative_scored = [s for s in scored if s.negative_hits or s.negative_misses]
@@ -1489,6 +1563,28 @@ def _aggregate(
     ]
     concept_recall_scored = [
         s for s in clinical_scored if s.concept_hits or s.concept_misses
+    ]
+    weak_keyword_scored = [
+        s for s in weak_label_scored if s.keyword_hits or s.keyword_misses
+    ]
+    weak_concept_recall_scored = [
+        s for s in weak_label_scored if s.concept_hits or s.concept_misses
+    ]
+    diagnosis_scored = [
+        s
+        for s in clinical_scored
+        if s.expected_concept_count > 0 and s.expected_severity in {"warning", "critical"}
+    ]
+    single_diagnosis_scored = [
+        s for s in diagnosis_scored if s.expected_concept_count == 1
+    ]
+    multi_diagnosis_3_to_5_scored = [
+        s for s in diagnosis_scored if 3 <= s.expected_concept_count <= 5
+    ]
+    normal_controls = [
+        s
+        for s in clinical_scored
+        if s.expected_severity == Severity.NORMAL.value
     ]
 
     severity_acc = _rate(severity_scored, lambda s: s.severity_match)
@@ -1543,6 +1639,59 @@ def _aggregate(
         )
         if false_positive_scored
         else 0.0
+    )
+    mean_weak_keyword_recall = (
+        round(
+            sum(s.keyword_recall for s in weak_keyword_scored)
+            / len(weak_keyword_scored),
+            3,
+        )
+        if weak_keyword_scored
+        else 0.0
+    )
+    mean_weak_concept_recall = (
+        round(
+            sum(s.concept_recall for s in weak_concept_recall_scored)
+            / len(weak_concept_recall_scored),
+            3,
+        )
+        if weak_concept_recall_scored
+        else 0.0
+    )
+    diagnosis_exact_set_accuracy = _rate(
+        diagnosis_scored,
+        lambda score: score.diagnosis_exact_set_match,
+    )
+    diagnosis_complete_recall_rate = _rate(
+        diagnosis_scored,
+        lambda score: score.diagnosis_complete_recall,
+    )
+    diagnosis_mean_concept_f1 = (
+        round(
+            sum(score.concept_f1 for score in diagnosis_scored)
+            / len(diagnosis_scored),
+            3,
+        )
+        if diagnosis_scored
+        else 0.0
+    )
+    single_diagnosis_exact_set_accuracy = _rate(
+        single_diagnosis_scored,
+        lambda score: score.diagnosis_exact_set_match,
+    )
+    multi_diagnosis_3_to_5_exact_set_accuracy = _rate(
+        multi_diagnosis_3_to_5_scored,
+        lambda score: score.diagnosis_exact_set_match,
+    )
+    multi_diagnosis_3_to_5_complete_recall_rate = _rate(
+        multi_diagnosis_3_to_5_scored,
+        lambda score: score.diagnosis_complete_recall,
+    )
+    normal_control_specificity = _rate(
+        normal_controls,
+        lambda score: (
+            score.severity_abnormal_match and not score.concept_false_positives
+        ),
     )
     mean_latency = round(sum(s.latency_ms for s in scored) / n, 1) if n else 0.0
     strict_pass_rate = (
@@ -1625,6 +1774,32 @@ def _aggregate(
         negative_scorable_count=len(negative_scored),
         false_positive_scorable_count=len(false_positive_scored),
         concept_recall_scorable_count=len(concept_recall_scored),
+        weak_label_case_count=len(weak_label_scored),
+        weak_label_keyword_scorable_count=len(weak_keyword_scored),
+        weak_label_concept_recall_scorable_count=(
+            len(weak_concept_recall_scored)
+        ),
+        mean_weak_label_keyword_recall=mean_weak_keyword_recall,
+        mean_weak_label_concept_recall=mean_weak_concept_recall,
+        diagnosis_scorable_count=len(diagnosis_scored),
+        diagnosis_exact_set_accuracy=diagnosis_exact_set_accuracy,
+        diagnosis_complete_recall_rate=diagnosis_complete_recall_rate,
+        diagnosis_mean_concept_f1=diagnosis_mean_concept_f1,
+        single_diagnosis_scorable_count=len(single_diagnosis_scored),
+        single_diagnosis_exact_set_accuracy=(
+            single_diagnosis_exact_set_accuracy
+        ),
+        multi_diagnosis_3_to_5_scorable_count=(
+            len(multi_diagnosis_3_to_5_scored)
+        ),
+        multi_diagnosis_3_to_5_exact_set_accuracy=(
+            multi_diagnosis_3_to_5_exact_set_accuracy
+        ),
+        multi_diagnosis_3_to_5_complete_recall_rate=(
+            multi_diagnosis_3_to_5_complete_recall_rate
+        ),
+        normal_control_count=len(normal_controls),
+        normal_control_specificity=normal_control_specificity,
         urgent_concern_total=urgent_concern_total,
         urgent_concern_caught_count=urgent_concern_caught_count,
         urgent_concern_missed=urgent_concern_missed,

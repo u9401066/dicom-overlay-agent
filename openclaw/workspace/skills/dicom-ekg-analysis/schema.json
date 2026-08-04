@@ -36,7 +36,10 @@
         },
         "rhythm_strip_leads": {
           "type": "array",
-          "items": {"type": "string"},
+          "items": {
+            "type": "string",
+            "enum": ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6", "unknown"]
+          },
           "uniqueItems": true
         },
         "rhythm_strip_bbox": {
@@ -61,7 +64,10 @@
             "type": "object",
             "required": ["name", "label_visible", "bbox"],
             "properties": {
-              "name": {"type": "string"},
+              "name": {
+                "type": "string",
+                "enum": ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6", "unknown"]
+              },
               "label_visible": {"type": "boolean"},
               "bbox": {
                 "type": "array",
@@ -76,7 +82,8 @@
               }
             },
             "additionalProperties": false
-          }
+          },
+          "maxItems": 13
         },
         "notes": {"type": "string"}
       },
@@ -91,7 +98,14 @@
         "required": ["id", "regions", "label", "detail", "severity", "bboxes"],
         "properties": {
           "id": {"type": "string"},
-          "regions": {"type": "array", "items": {"type": "string"}},
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["lead_I", "lead_II", "lead_III", "lead_aVR", "lead_aVL", "lead_aVF", "lead_V1", "lead_V2", "lead_V3", "lead_V4", "lead_V5", "lead_V6", "rhythm_strip", "unknown"]
+            },
+            "uniqueItems": true
+          },
           "label": {"type": "string"},
           "detail": {"type": "string"},
           "severity": {"type": "string", "enum": ["critical", "warning", "normal", "info"]},

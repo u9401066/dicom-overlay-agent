@@ -74,12 +74,7 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
             hash_threshold=monitor_raw.get("hash_threshold", 10),
             debounce_stable_sec=monitor_raw.get("debounce_stable_sec", 1.5),
         ),
-        phi_roi=ROICrop(
-            top=roi_raw.get("top", 60),
-            bottom=roi_raw.get("bottom", 30),
-            left=roi_raw.get("left", 0),
-            right=roi_raw.get("right", 0),
-        ),
+        phi_roi=_parse_roi_crop(roi_raw),
         openclaw=OpenClawConfig(
             gateway_url=oc_raw.get("gateway_url", "ws://127.0.0.1:18789"),
             reconnect_interval_sec=oc_raw.get("reconnect_interval_sec", 5),
@@ -140,8 +135,37 @@ def _parse_trigger_mode(value: object) -> TriggerMode:
     return TriggerMode.HYBRID
 
 
+def _parse_roi_crop(raw: object) -> ROICrop:
+    """Parse only explicitly configured, viewer-relative ROI records.
+
+    Older builds stored workstation-specific full-screen margins without a
+    coordinate-space or reference-size marker. Treating those values as valid
+    on another workstation could capture outside the DICOM viewer, so legacy
+    records intentionally require one fresh ROI confirmation.
+    """
+
+    data = raw if isinstance(raw, dict) else {}
+    return ROICrop(
+        top=int(data.get("top", 0)),
+        bottom=int(data.get("bottom", 0)),
+        left=int(data.get("left", 0)),
+        right=int(data.get("right", 0)),
+        configured=data.get("configured") is True,
+        coordinate_space=str(data.get("coordinate_space", "viewer")),
+        reference_width=int(data.get("reference_width", 0)),
+        reference_height=int(data.get("reference_height", 0)),
+    )
+
+
 def save_roi_config(path: Path, roi: ROICrop) -> None:
     """Update only the phi_roi section in config.yaml."""
+    if (
+        not roi.configured
+        or roi.coordinate_space != "viewer"
+        or roi.reference_width <= 0
+        or roi.reference_height <= 0
+    ):
+        raise ValueError("ROI must be configured relative to a viewer window")
     if path.exists():
         with path.open(encoding="utf-8") as f:
             raw: dict[str, Any] = yaml.safe_load(f) or {}
@@ -153,6 +177,10 @@ def save_roi_config(path: Path, roi: ROICrop) -> None:
         "bottom": roi.bottom,
         "left": roi.left,
         "right": roi.right,
+        "configured": True,
+        "coordinate_space": "viewer",
+        "reference_width": roi.reference_width,
+        "reference_height": roi.reference_height,
     }
 
     with path.open("w", encoding="utf-8") as f:

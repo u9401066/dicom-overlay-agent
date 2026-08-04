@@ -321,7 +321,7 @@ def test_separate_broader_assertion_remains_a_false_positive(tmp_path: Path) -> 
     assert score.strict_pass is False
 
 
-def test_partial_uncertain_reference_does_not_score_unlabeled_extras(
+def test_partial_uncertain_reference_is_exploratory_not_formal_accuracy(
     tmp_path: Path,
 ) -> None:
     case = _ekg_case(
@@ -340,9 +340,13 @@ def test_partial_uncertain_reference_does_not_score_unlabeled_extras(
     score = score_case(case, result, latency_ms=12)
 
     assert score.false_positive_scorable is False
+    assert score.reference_complete is False
+    assert score.clinical_scorable is False
     assert score.concept_false_positives == []
     assert score.false_positive_penalty == 0.0
-    assert score.strict_pass is True
+    assert score.concept_hits == ["atrial fibrillation"]
+    assert score.strict_pass is False
+    assert score.partial_credit == 0.0
 
 
 def test_rather_than_phrase_does_not_assert_rejected_diagnosis(
@@ -851,6 +855,10 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert report.mean_concept_recall == 1.0
     assert report.concept_recall_scorable_count == 1
     assert report.mean_concept_f1 == 1.0
+    assert report.normal_control_count == 1
+    assert report.normal_control_specificity == 1.0
+    assert report.diagnosis_scorable_count == 1
+    assert report.single_diagnosis_exact_set_accuracy == 1.0
     scorecard = json.loads((out / "scorecard.json").read_text(encoding="utf-8"))
     assert scorecard["gateway_mode"] == "mock"
     assert "mean_negative_recall" in scorecard
@@ -874,6 +882,58 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert partial["manifest_total"] == 2
     assert partial["result_count"] == 2
     assert partial["is_partial"] is False
+
+
+async def test_diagnosis_metrics_separate_single_and_three_to_five_sets(
+    tmp_path: Path,
+) -> None:
+    single = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="single_diagnosis",
+        keywords=("atrial fibrillation",),
+    )
+    multi = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="three_diagnoses",
+        keywords=(
+            "atrial fibrillation",
+            "right bundle branch block",
+            "left ventricular hypertrophy",
+        ),
+    )
+    answers = {
+        single.image_path: _result_with_checklist(
+            Severity.WARNING,
+            summary="Atrial fibrillation.",
+            checklist={},
+        ),
+        multi.image_path: _result_with_checklist(
+            Severity.WARNING,
+            summary="Atrial fibrillation with right bundle branch block.",
+            checklist={},
+        ),
+    }
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        return answers[case.image_path]
+
+    report = await run_evaluation(
+        [single, multi],
+        analyze,
+        output_dir=tmp_path / "diagnosis-metrics",
+        gateway_mode="mock",
+    )
+
+    assert report.diagnosis_scorable_count == 2
+    assert report.diagnosis_exact_set_accuracy == 0.5
+    assert report.diagnosis_complete_recall_rate == 0.5
+    assert report.single_diagnosis_scorable_count == 1
+    assert report.single_diagnosis_exact_set_accuracy == 1.0
+    assert report.multi_diagnosis_3_to_5_scorable_count == 1
+    assert report.multi_diagnosis_3_to_5_exact_set_accuracy == 0.0
+    assert report.multi_diagnosis_3_to_5_complete_recall_rate == 0.0
 
 
 async def test_component_aggregates_exclude_unscorable_reference_dimensions(

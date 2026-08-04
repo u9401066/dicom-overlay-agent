@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 from dicom_overlay.infrastructure.eval_artifact_validator import (
+    _bbox_payload_digest,
     _valid_ecg_founder_evidence,
     verify_eval_artifacts,
 )
@@ -529,6 +530,25 @@ def _write_refinement_evidence(
     for index in range(2):
         result_path = eval_dir / "results" / f"case_{index}.json"
         result = json.loads(result_path.read_text(encoding="utf-8"))
+        boxes_digest, _box_count = _bbox_payload_digest(result["findings"])
+        source_sha = result["source_image_sha256"]
+        evidence_nonce = f"{index + 1:032x}"
+        bbox_binding = {
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "receipt_count": 1,
+        }
+        bbox_receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": f"bbox-{index}",
+            "accepted_count": accepted_count,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": boxes_digest,
+            "details_sha256": "d" * 64,
+        }
         result["analysis_trace"] = [
             {
                 "stage": "coarse",
@@ -541,12 +561,8 @@ def _write_refinement_evidence(
                 "tool": "crop_region_base64",
                 "crop_source": crop_source,
                 "tools": ["dicom_bbox_validate"],
-                "tool_audit": [
-                    {
-                        "tool": "dicom_bbox_validate",
-                        "accepted_count": accepted_count,
-                    }
-                ],
+                "bbox_evidence": bbox_binding,
+                "tool_audit": [bbox_receipt],
                 "decisions": [
                     {
                         "action": "confirm",
@@ -560,12 +576,8 @@ def _write_refinement_evidence(
                 "status": "completed",
                 "source": "original_roi",
                 "tools": ["dicom_bbox_validate"],
-                "tool_audit": [
-                    {
-                        "tool": "dicom_bbox_validate",
-                        "accepted_count": accepted_count,
-                    }
-                ],
+                "bbox_evidence": bbox_binding,
+                "tool_audit": [bbox_receipt],
             },
         ]
         result_path.write_text(json.dumps(result), encoding="utf-8")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dicom_overlay.application.rhythm_strip import (
+    RhythmStripRefiningAnalyzer,
     merge_rhythm_strip,
     refine_rhythm_strip,
     resolve_rhythm_strip_region,
@@ -210,6 +211,79 @@ async def test_refine_merges_when_bbox_present() -> None:
     )
     assert out.checklist["av_block"].status is Severity.WARNING
     assert any(f.label == "First Degree AV Block" for f in out.findings)
+    assert out.analysis_trace[-1]["stage"] == "rhythm_strip_refine"
+    assert out.analysis_trace[-1]["crop_source"] == "source_image"
+
+
+async def test_refining_analyzer_uses_original_source_image() -> None:
+    class Inner:
+        async def analyze(self, image, modality, valid_regions):
+            raise AssertionError("source-aware entry point should be used")
+
+        async def analyze_with_source_size(
+            self,
+            image,
+            modality,
+            valid_regions,
+            **kwargs,
+        ):
+            assert image == "coarse"
+            assert kwargs["source_image_base64"] == "original"
+            return _result(
+                layout={"rhythm_strip_bbox": [0.0, 0.8, 1.0, 0.2]},
+                checklist={
+                    "rhythm": ChecklistItem(value="sinus", status=Severity.NORMAL)
+                },
+            )
+
+        async def chat(self, message):
+            return message
+
+        async def connect(self):
+            return None
+
+        async def disconnect(self):
+            return None
+
+        def is_connected(self):
+            return True
+
+    class Refiner(Inner):
+        async def analyze(self, image, modality, valid_regions):
+            assert image == "cropped-original"
+            return _result(
+                severity=Severity.WARNING,
+                checklist={
+                    "rhythm": ChecklistItem(
+                        value="atrial_fibrillation",
+                        status=Severity.WARNING,
+                    )
+                },
+            )
+
+    cropped_from: list[str] = []
+
+    def cropper(image: str, _region: RegionRect) -> str:
+        cropped_from.append(image)
+        return "cropped-original"
+
+    analyzer = RhythmStripRefiningAnalyzer(
+        inner=Inner(),
+        refinement_analyzer=Refiner(),
+        cropper=cropper,
+    )
+
+    out = await analyzer.analyze_with_source_size(
+        "coarse",
+        Modality.EKG,
+        ["rhythm_strip"],
+        source_size_px=(2000, 1200),
+        source_image_base64="original",
+    )
+
+    assert cropped_from == ["original"]
+    assert out.checklist["rhythm"].value == "atrial_fibrillation"
+    assert out.analysis_trace[-1]["stage"] == "rhythm_strip_refine"
 
 
 async def test_refine_returns_coarse_on_analyze_failure() -> None:

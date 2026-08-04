@@ -34,6 +34,7 @@ def _write_required_bundle(root: Path, module) -> None:
                     "multiTurnImageFollowup": True,
                     "bboxCropReanalysis": True,
                     "coordinateDriftCalibration": True,
+                    "imageTurnBoundBboxReceipts": True,
                     "ecgFounderWaveformAssist": True,
                     "noScreenshotToWaveformInference": True,
                 },

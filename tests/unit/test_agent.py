@@ -175,6 +175,27 @@ class MockRegionMapper(RegionMapperService):
 # --- Tests ---
 
 
+def _configured_roi(
+    *,
+    top: int = 60,
+    bottom: int = 30,
+    left: int = 0,
+    right: int = 0,
+    width: int = 1920,
+    height: int = 1080,
+) -> ROICrop:
+    return ROICrop(
+        top=top,
+        bottom=bottom,
+        left=left,
+        right=right,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=width,
+        reference_height=height,
+    )
+
+
 class TestOverlayAgent:
     @pytest.fixture()
     def agent_deps(self):
@@ -189,7 +210,7 @@ class TestOverlayAgent:
     def agent(self, agent_deps):
         from dicom_overlay.application.overlay_agent import OverlayAgent
 
-        config = AppConfig()
+        config = AppConfig(phi_roi=_configured_roi())
         return OverlayAgent(config=config, **agent_deps)
 
     @pytest.mark.asyncio
@@ -576,35 +597,67 @@ class TestOverlayAgent:
                 local_signal_audit={"status": "ok", "low_signal": False},
             )
 
-    def test_roi_rect_includes_screen_origin(self, agent):
-        """Capture rect must be absolute virtual-desktop coords (multi-monitor)."""
-        agent._config.phi_roi = ROICrop(top=10, bottom=20, left=30, right=40)
-        agent._screen_width = 1920
-        agent._screen_height = 1080
-        agent._screen_left = 1920  # primary screen offset to the right
-        agent._screen_top = 0
+    def test_roi_rect_tracks_viewer_origin(self, agent):
+        """Capture remains inside a moved viewer on the virtual desktop."""
+        agent._config.phi_roi = _configured_roi(
+            top=10,
+            bottom=20,
+            left=30,
+            right=40,
+            width=800,
+            height=600,
+        )
+        agent._target_window = WindowRect(left=1920, top=100, width=800, height=600)
         rect = agent._get_roi_rect()
         assert rect.left == 1920 + 30  # screen origin + roi.left
-        assert rect.top == 0 + 10
-        assert rect.width == 1920 - 30 - 40
-        assert rect.height == 1080 - 10 - 20
+        assert rect.top == 100 + 10
+        assert rect.width == 800 - 30 - 40
+        assert rect.height == 600 - 10 - 20
 
-    def test_roi_rect_default_origin_zero(self, agent):
-        """Single-monitor primary-at-origin keeps the original behavior."""
-        agent._config.phi_roi = ROICrop(top=5, bottom=5, left=5, right=5)
-        agent._screen_width = 800
-        agent._screen_height = 600
+    def test_roi_rect_scales_with_resized_viewer(self, agent):
+        agent._config.phi_roi = _configured_roi(
+            top=5,
+            bottom=5,
+            left=5,
+            right=5,
+            width=800,
+            height=600,
+        )
+        agent._target_window = WindowRect(left=-1600, top=50, width=1600, height=1200)
         rect = agent._get_roi_rect()
-        assert rect.left == 5
-        assert rect.top == 5
-        assert rect.width == 790
-        assert rect.height == 590
+        assert rect == WindowRect(left=-1590, top=60, width=1580, height=1180)
+        assert rect.left >= agent._target_window.left
+        assert rect.top >= agent._target_window.top
+        assert rect.right <= agent._target_window.right
+        assert rect.bottom <= agent._target_window.bottom
 
     @pytest.mark.asyncio
     async def test_start_without_roi(self, agent):
-        agent._config.phi_roi = ROICrop(top=0, bottom=0, left=0, right=0)
+        agent._config.phi_roi = ROICrop()
         await agent.start()
         assert agent.state == AgentState.SETUP
+
+    @pytest.mark.asyncio
+    async def test_setup_waits_for_viewer_before_requesting_roi(
+        self, agent, agent_deps
+    ):
+        agent._config.phi_roi = ROICrop()
+        requested: list[bool] = []
+        agent.on_roi_setup_required = lambda: requested.append(True)
+        await agent.start()
+
+        await agent.tick()
+        assert requested == []
+        assert agent.target_window is None
+
+        viewer = WindowRect(left=-1200, top=100, width=1000, height=700)
+        agent_deps["screen_monitor"].window = viewer
+        await agent.tick()
+        await agent.tick()
+
+        assert agent.state is AgentState.SETUP
+        assert agent.target_window == viewer
+        assert requested == [True]
 
     @pytest.mark.asyncio
     async def test_start_with_roi(self, agent):
@@ -659,7 +712,14 @@ class TestOverlayAgent:
 
     @pytest.mark.asyncio
     async def test_has_roi_config(self, agent):
-        assert agent.has_roi_config()  # defaults have top=60
+        assert agent.has_roi_config()
+        agent._config.phi_roi = ROICrop(
+            top=10,
+            configured=True,
+            reference_width=0,
+            reference_height=0,
+        )
+        assert not agent.has_roi_config()
 
     @pytest.mark.asyncio
     async def test_stop(self, agent):
@@ -805,7 +865,10 @@ class TestOverlayAgent:
 
         analyzer = BlockingVisionAnalyzer()
         agent_deps["vision_analyzer"] = analyzer
-        agent = OverlayAgent(config=AppConfig(), **agent_deps)
+        agent = OverlayAgent(
+            config=AppConfig(phi_roi=_configured_roi()),
+            **agent_deps,
+        )
         await agent.start()
         agent_deps["screen_monitor"].window = WindowRect(
             left=0, top=0, width=1920, height=1080
@@ -835,7 +898,7 @@ class TestOverlayAgent:
         analyzer = MockSourceSizeAnalyzer()
         agent_deps["vision_analyzer"] = analyzer
         agent_deps["image_processor"].size = (640, 360)
-        config = AppConfig()
+        config = AppConfig(phi_roi=_configured_roi())
         agent = OverlayAgent(config=config, **agent_deps)
         await agent.start()
         agent_deps["screen_monitor"].window = WindowRect(
@@ -865,13 +928,20 @@ class TestOverlayAgent:
             monitor_index=1,
             is_primary=False,
         )
-        agent._config.phi_roi = ROICrop(top=10, bottom=20, left=30, right=40)
+        agent._config.phi_roi = _configured_roi(
+            top=10,
+            bottom=20,
+            left=30,
+            right=40,
+            width=1600,
+            height=800,
+        )
 
         await agent.start()
         await agent.tick()
         await agent.trigger_manual()
 
-        expected = WindowRect(left=-1890, top=10, width=1850, height=1050)
+        expected = WindowRect(left=-1770, top=110, width=1530, height=770)
         assert agent.display_frame == monitor.display
         assert agent.last_capture_rect == expected
         assert monitor.capture_rects[-1] == expected

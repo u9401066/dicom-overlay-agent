@@ -61,12 +61,24 @@ const ecgFounderParameters = {
 const bboxParameters = {
   type: "object",
   additionalProperties: false,
-  required: ["modality", "boxes"],
+  required: ["modality", "source_image_sha256", "evidence_nonce", "boxes"],
   properties: {
     modality: {
       type: "string",
       enum: ["EKG", "CXR", "CT_BRAIN", "auto"],
       description: "Modality of the attached full image.",
+    },
+    source_image_sha256: {
+      type: "string",
+      pattern: "^[a-f0-9]{64}$",
+      description:
+        "SHA-256 supplied by the trusted app for this exact attached image. Copy it verbatim.",
+    },
+    evidence_nonce: {
+      type: "string",
+      pattern: "^[a-f0-9]{32}$",
+      description:
+        "Per-turn nonce supplied by the trusted app. Copy it exactly; never invent or reuse it.",
     },
     boxes: {
       type: "array",
@@ -155,16 +167,28 @@ async function appendAuditRecord(toolCallId, details) {
     .update(JSON.stringify(details))
     .digest("hex");
   const record = {
-    schema_version: 1,
+    schema_version: 2,
     recorded_at: new Date().toISOString(),
     tool: "dicom_bbox_validate",
     tool_call_id: String(toolCallId ?? ""),
     accepted_count: details.accepted.length,
     rejected_count: details.rejected.length,
+    source_image_sha256: details.source_image_sha256,
+    evidence_nonce: details.evidence_nonce,
+    accepted_boxes_sha256: acceptedBoxesDigest(details.accepted),
     details_sha256: digest,
   };
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(record)}\n`, { encoding: "utf8" });
+}
+
+function acceptedBoxesDigest(accepted) {
+  const canonical = accepted
+    .map((item) => item.box)
+    .filter(Boolean)
+    .map((box) => [box.x, box.y, box.w, box.h].map((value) => Number(value).toFixed(4)))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
 function resolveEcgFounderConfig(env = process.env) {
@@ -557,6 +581,14 @@ function createBboxValidationTool() {
     parameters: bboxParameters,
     async execute(_toolCallId, args) {
       const modality = String(args?.modality ?? "auto");
+      const sourceImageSha256 = String(args?.source_image_sha256 ?? "");
+      const evidenceNonce = String(args?.evidence_nonce ?? "");
+      if (!/^[a-f0-9]{64}$/.test(sourceImageSha256)) {
+        throw new Error("bbox source image SHA-256 does not match the tool contract");
+      }
+      if (!/^[a-f0-9]{32}$/.test(evidenceNonce)) {
+        throw new Error("bbox evidence nonce does not match the tool contract");
+      }
       const boxes = Array.isArray(args?.boxes) ? args.boxes : [];
       const checked = boxes
         .slice(0, MAX_BOXES)
@@ -569,6 +601,8 @@ function createBboxValidationTool() {
         .map(({ id, reason }) => ({ id, reason }));
       const details = {
         modality,
+        source_image_sha256: sourceImageSha256,
+        evidence_nonce: evidenceNonce,
         coordinateSpace: "normalized_full_image",
         accepted,
         rejected,
@@ -612,6 +646,8 @@ export default definePluginEntry({
 });
 
 export {
+  acceptedBoxesDigest,
+  createBboxValidationTool,
   createEcgFounderTool,
   resolveEcgFounderConfig,
   sanitizeEcgFounderResponse,

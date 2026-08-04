@@ -134,10 +134,48 @@ def _write_protocol_identity(*paths: Path, manifest_sha: str = "b" * 64) -> None
             json.dumps(
                 {
                     "protocol": {
+                        "source": {
+                            "available": True,
+                            "commit": "c" * 40,
+                            "dirty": False,
+                            "worktree_status_sha256": "d" * 64,
+                            "tracked_diff_sha256": "e" * 64,
+                        },
+                        "model": {
+                            "id": "openai/gpt-5.4-mini",
+                            "gateway_mode": "real",
+                            "openclaw": {
+                                "version": "2026.7.1-2",
+                                "package_sha256": "f" * 64,
+                                "cli_sha256": "1" * 64,
+                            },
+                        },
+                        "prompts": [
+                            {"path": "prompt.py", "sha256": "2" * 64}
+                        ],
+                        "skills": [
+                            {"path": "SKILL.md", "sha256": "3" * 64}
+                        ],
+                        "clinical_rules": [
+                            {"path": "rules.yaml", "sha256": "4" * 64}
+                        ],
                         "manifest": {
                             "sha256": manifest_sha,
                             "selected_case_count": 1,
-                        }
+                            "cases": [
+                                {
+                                    "case": "case_1",
+                                    "image": "case.png",
+                                    "sha256": "5" * 64,
+                                }
+                            ],
+                        },
+                        "flags": {
+                            "analysis_prompt_profile": "clinical",
+                            "max_image_edge_px": 1568,
+                            "multi_pass": False,
+                            "timeout_sec": 90,
+                        },
                     }
                 }
             ),
@@ -217,6 +255,61 @@ def test_resolve_eval_dir_accepts_experiment_root(tmp_path: Path) -> None:
     )
 
     assert module.resolve_eval_dir(experiment) == eval_dir
+
+
+def test_trace_cost_includes_openclaw_token_and_cost_usage(tmp_path: Path) -> None:
+    module = _load_compare_module()
+    experiment = tmp_path / "experiment"
+    eval_dir = experiment / "eval"
+    sessions = experiment / "openclaw-state" / "agents" / "main" / "sessions"
+    eval_dir.mkdir(parents=True)
+    sessions.mkdir(parents=True)
+    (eval_dir / "multipass-trace.jsonl").write_text(
+        json.dumps(
+            {
+                "case": "case_1",
+                "openclaw_analyze_calls": 2,
+                "zoom_passes": 1,
+                "crop_calls": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (sessions / "turn.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "usage": {
+                        "input": 1200,
+                        "output": 300,
+                        "cacheRead": 400,
+                        "cacheWrite": 0,
+                        "totalTokens": 1900,
+                        "cost": {"total": 0.0125},
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (sessions / "turn.trajectory.jsonl").write_text(
+        (sessions / "turn.jsonl").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    cost = module._trace_cost(eval_dir)
+
+    assert cost["usage_records"] == 1
+    assert cost["total_input_tokens"] == 1200
+    assert cost["total_output_tokens"] == 300
+    assert cost["total_cache_read_tokens"] == 400
+    assert cost["total_tokens"] == 1900
+    assert cost["mean_tokens_per_traced_case"] == 1900.0
+    assert cost["total_cost_usd"] == 0.0125
 
 
 def test_build_comparison_accepts_explicit_scorecard_json_path(
@@ -366,6 +459,66 @@ def test_build_comparison_allows_incompatible_only_when_explicit(
         "different scorer digests" in issue
         for issue in report["protocol_compatibility_issues"]
     )
+
+
+def test_build_comparison_rejects_different_model_runtime(tmp_path: Path) -> None:
+    module = _load_compare_module()
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    baseline.mkdir()
+    candidate.mkdir()
+    (baseline / "scorecard.json").write_text(
+        json.dumps(_scorecard(0.6, strict=False, latency_ms=1))
+    )
+    (candidate / "scorecard.json").write_text(
+        json.dumps(_scorecard(0.8, strict=False, latency_ms=1))
+    )
+    _write_protocol_identity(baseline, candidate)
+    fingerprint_path = candidate / "protocol-fingerprint.json"
+    fingerprint = json.loads(fingerprint_path.read_text(encoding="utf-8"))
+    fingerprint["protocol"]["model"]["id"] = "openai/a-different-model"
+    fingerprint_path.write_text(json.dumps(fingerprint), encoding="utf-8")
+
+    try:
+        module.build_comparison(baseline, candidate)
+    except ValueError as exc:
+        assert "shared protocol invariants differ" in str(exc)
+        assert "model_runtime" in str(exc)
+    else:
+        raise AssertionError("expected model-runtime mismatch rejection")
+
+
+def test_build_comparison_allows_declared_arm_flag_differences(
+    tmp_path: Path,
+) -> None:
+    module = _load_compare_module()
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    baseline.mkdir()
+    candidate.mkdir()
+    (baseline / "scorecard.json").write_text(
+        json.dumps(_scorecard(0.6, strict=False, latency_ms=1))
+    )
+    (candidate / "scorecard.json").write_text(
+        json.dumps(_scorecard(0.8, strict=False, latency_ms=1))
+    )
+    _write_protocol_identity(baseline, candidate)
+    fingerprint_path = candidate / "protocol-fingerprint.json"
+    fingerprint = json.loads(fingerprint_path.read_text(encoding="utf-8"))
+    fingerprint["protocol"]["flags"].update(
+        {
+            "analysis_prompt_profile": "clinical",
+            "multi_pass": True,
+            "multi_pass_max_targets": 3,
+            "rhythm_strip_pass": True,
+        }
+    )
+    fingerprint_path.write_text(json.dumps(fingerprint), encoding="utf-8")
+
+    report = module.build_comparison(baseline, candidate)
+
+    assert report["protocol_compatible"] is True
+    assert report["candidate_shared_invariants"]["arm"]["multi_pass"] is True
 
 
 def test_paired_sign_test_quantifies_improvement_signal() -> None:

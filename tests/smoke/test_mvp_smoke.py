@@ -9,7 +9,7 @@ import websockets
 from tests.unit.test_agent import MockScreenMonitor
 
 from dicom_overlay.application.overlay_agent import OverlayAgent
-from dicom_overlay.domain.entities import AppConfig, TriggerMode, WindowRect
+from dicom_overlay.domain.entities import AppConfig, ROICrop, TriggerMode, WindowRect
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
@@ -100,6 +100,11 @@ async def test_mvp_smoke_pipeline() -> None:
     try:
         port = server.sockets[0].getsockname()[1]
         config = AppConfig()
+        config.phi_roi = ROICrop(
+            configured=True,
+            reference_width=1,
+            reference_height=1,
+        )
         config.analysis.trigger_mode = TriggerMode.AUTO
         config.openclaw.gateway_url = f"ws://127.0.0.1:{port}"
         config.monitor.debounce_stable_sec = 0.0

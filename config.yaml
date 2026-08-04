@@ -40,10 +40,17 @@ overlay:
   region_highlights: true
   summary_panel: true
 phi_roi:
-  bottom: 329
-  left: 1286
-  right: 4
-  top: 435
+  # A clean bundle must never inherit one workstation's screen coordinates.
+  # The desktop prompts after it detects the actual DICOM viewer, then stores
+  # viewer-relative margins and reference dimensions here.
+  configured: false
+  coordinate_space: viewer
+  reference_width: 0
+  reference_height: 0
+  top: 0
+  bottom: 0
+  left: 0
+  right: 0
 region_maps:
   CT_BRAIN:
     layout: axial_standard

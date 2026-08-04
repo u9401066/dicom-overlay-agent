@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from dicom_overlay.domain.entities import RegionRect, WindowRect
+from dicom_overlay.domain.entities import RegionRect, ROICrop, WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
     LogicalRect,
     OverlayCoordinateFrame,
@@ -124,3 +124,34 @@ def test_bbox_projection_uses_target_display_frame_and_local_origin() -> None:
         "secondary display",
     )
     assert projected.calibration.ok is True
+
+
+def test_roi_coordinate_conversion_preserves_viewer_binding() -> None:
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=2000, height=1000),
+        logical_screen=WindowRect(left=0, top=0, width=1000, height=500),
+    )
+    physical = ROICrop(
+        top=100,
+        bottom=40,
+        left=60,
+        right=20,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1600,
+        reference_height=800,
+    )
+
+    logical = frame.physical_roi_to_logical(physical)
+
+    assert logical == ROICrop(
+        top=50,
+        bottom=20,
+        left=30,
+        right=10,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=800,
+        reference_height=400,
+    )
+    assert frame.logical_roi_to_physical(logical) == physical

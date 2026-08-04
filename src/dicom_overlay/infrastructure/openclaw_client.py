@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -67,6 +70,10 @@ _DEFAULT_SCOPES = [
 _WAVEFORM_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
+class BboxEvidenceError(ValueError):
+    """A boxed result lacks a receipt bound to this image and model turn."""
+
+
 @dataclass
 class _WaveformArtifactBinding:
     artifact_id: str
@@ -104,6 +111,7 @@ class OpenClawClient(VisionAnalyzerService):
         registry: ModalityRegistry | None = None,
         base_dir: Path | None = None,
         analysis_prompt_profile: str = "clinical",
+        require_bound_bbox_receipts: bool = True,
     ) -> None:
         if analysis_prompt_profile not in _ANALYSIS_PROMPT_PROFILES:
             raise ValueError(
@@ -118,6 +126,7 @@ class OpenClawClient(VisionAnalyzerService):
         self._registry = registry or get_active_registry()
         self._base_dir = (base_dir or Path.cwd()).resolve()
         self._analysis_prompt_profile = analysis_prompt_profile
+        self._require_bbox_receipts = bool(require_bound_bbox_receipts)
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
@@ -133,6 +142,8 @@ class OpenClawClient(VisionAnalyzerService):
         self._last_session_key = ""
         self._last_run_tools: list[str] = []
         self._last_parse_retry_count = 0
+        self._bbox_evidence_nonce = ""
+        self._bbox_source_image_sha256 = ""
         self._tool_audit_path = _resolve_bbox_tool_audit_path(self._base_dir)
         self._tool_audit_offset = _file_size(self._tool_audit_path)
         self._ecg_founder_tool_audit_path = _resolve_ecg_founder_tool_audit_path(
@@ -361,7 +372,7 @@ class OpenClawClient(VisionAnalyzerService):
         for attempt in range(2):
             try:
                 result = await self._do_analyze(image_base64, modality, valid_regions)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, BboxEvidenceError):
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
@@ -389,7 +400,7 @@ class OpenClawClient(VisionAnalyzerService):
                     hypothesis=hypothesis,
                     crop_region=crop_region,
                 )
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, BboxEvidenceError):
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
@@ -419,7 +430,7 @@ class OpenClawClient(VisionAnalyzerService):
                     draft=draft,
                     refinement_trace=refinement_trace,
                 )
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, BboxEvidenceError):
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
@@ -442,6 +453,8 @@ class OpenClawClient(VisionAnalyzerService):
 
         skill = self._registry.resolve(modality.value).resolved_skill_name()
         waveform_context = self._waveform_artifact_context.get()
+        bbox_evidence_nonce = uuid4().hex
+        source_image_sha256 = _image_sha256(image_base64)
         prompt = _build_analysis_prompt(
             modality,
             valid_regions,
@@ -454,12 +467,18 @@ class OpenClawClient(VisionAnalyzerService):
             waveform_evidence_nonce=(
                 waveform_context.evidence_nonce if waveform_context else ""
             ),
+            bbox_source_image_sha256=source_image_sha256,
+            bbox_evidence_nonce=bbox_evidence_nonce,
             prompt_profile=self._analysis_prompt_profile,
         )
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
         session_key = f"analysis-{idempotency_key}"
-        self._begin_run_trace(session_key)
+        self._begin_run_trace(
+            session_key,
+            bbox_evidence_nonce=bbox_evidence_nonce,
+            source_image_sha256=source_image_sha256,
+        )
 
         message = build_openclaw_chat_frame(
             request_id=request_id,
@@ -481,7 +500,9 @@ class OpenClawClient(VisionAnalyzerService):
 
         response = await self._wait_for_chat_result(request_id)
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        return self._parse_result(response, elapsed_ms, modality)
+        result = self._parse_result(response, elapsed_ms, modality)
+        self._require_bound_bbox_receipt(result)
+        return result
 
     async def _do_refine(
         self,
@@ -501,12 +522,20 @@ class OpenClawClient(VisionAnalyzerService):
         request_id = self._next_request_id("refine")
         idempotency_key = str(uuid4())
         session_key = f"refine-{idempotency_key}"
-        self._begin_run_trace(session_key)
+        bbox_evidence_nonce = uuid4().hex
+        source_image_sha256 = _image_sha256(image_base64)
+        self._begin_run_trace(
+            session_key,
+            bbox_evidence_nonce=bbox_evidence_nonce,
+            source_image_sha256=source_image_sha256,
+        )
         prompt = _build_refinement_prompt(
             modality=modality,
             valid_regions=valid_regions,
             hypothesis=hypothesis,
             crop_region=crop_region,
+            bbox_source_image_sha256=source_image_sha256,
+            bbox_evidence_nonce=bbox_evidence_nonce,
         )
         frame = build_openclaw_chat_frame(
             request_id=request_id,
@@ -517,7 +546,9 @@ class OpenClawClient(VisionAnalyzerService):
         )
         await self._ws.send(json.dumps(frame))
         response = await self._wait_for_chat_result(request_id)
-        return _parse_refinement_result(response)
+        result = _parse_refinement_result(response)
+        self._require_bound_bbox_receipt(result)
+        return result
 
     async def _do_finalize(
         self,
@@ -537,12 +568,20 @@ class OpenClawClient(VisionAnalyzerService):
         request_id = self._next_request_id("finalize")
         idempotency_key = str(uuid4())
         session_key = f"finalize-{idempotency_key}"
-        self._begin_run_trace(session_key)
+        bbox_evidence_nonce = uuid4().hex
+        source_image_sha256 = _image_sha256(image_base64)
+        self._begin_run_trace(
+            session_key,
+            bbox_evidence_nonce=bbox_evidence_nonce,
+            source_image_sha256=source_image_sha256,
+        )
         prompt = _build_finalization_prompt(
             modality=modality,
             valid_regions=valid_regions,
             draft=draft,
             refinement_trace=refinement_trace,
+            bbox_source_image_sha256=source_image_sha256,
+            bbox_evidence_nonce=bbox_evidence_nonce,
         )
         frame = build_openclaw_chat_frame(
             request_id=request_id,
@@ -555,13 +594,23 @@ class OpenClawClient(VisionAnalyzerService):
         await self._ws.send(json.dumps(frame))
         response = await self._wait_for_chat_result(request_id)
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        return self._parse_result(response, elapsed_ms, modality)
+        result = self._parse_result(response, elapsed_ms, modality)
+        self._require_bound_bbox_receipt(result)
+        return result
 
-    def _begin_run_trace(self, session_key: str) -> None:
+    def _begin_run_trace(
+        self,
+        session_key: str,
+        *,
+        bbox_evidence_nonce: str = "",
+        source_image_sha256: str = "",
+    ) -> None:
         self._last_session_key = session_key
         self._last_run_id = ""
         self._last_run_tools = []
         self._last_parse_retry_count = 0
+        self._bbox_evidence_nonce = bbox_evidence_nonce
+        self._bbox_source_image_sha256 = source_image_sha256
         self._tool_audit_offset = _file_size(self._tool_audit_path)
         waveform_context = self._waveform_artifact_context.get()
         if waveform_context is None:
@@ -578,8 +627,46 @@ class OpenClawClient(VisionAnalyzerService):
             "run_id": self._last_run_id,
             "tools": list(self._last_run_tools),
             "tool_audit": list(self._last_tool_audit_records),
+            "bbox_evidence": {
+                "source_image_sha256": self._bbox_source_image_sha256,
+                "evidence_nonce": self._bbox_evidence_nonce,
+                "receipt_count": sum(
+                    1
+                    for record in self._last_tool_audit_records
+                    if record.get("tool") == "dicom_bbox_validate"
+                ),
+            },
             "parse_retry_count": self._last_parse_retry_count,
         }
+
+    def _require_bound_bbox_receipt(
+        self,
+        result: AnalysisResult | RefinementResult,
+    ) -> None:
+        """Fail closed when boxed output is not the tool-accepted box set."""
+
+        if (
+            self._analysis_prompt_profile != "clinical"
+            or not self._require_bbox_receipts
+        ):
+            return
+        boxes = _result_bbox_coordinates(result)
+        if not boxes:
+            return
+        expected_digest = _bbox_coordinates_digest(boxes)
+        self._refresh_tool_audit()
+        matching = [
+            record
+            for record in self._last_tool_audit_records
+            if record.get("tool") == "dicom_bbox_validate"
+            and record.get("accepted_boxes_sha256") == expected_digest
+            and record.get("accepted_count") == len(boxes)
+        ]
+        if not matching:
+            raise BboxEvidenceError(
+                "boxed output lacks a matching image/turn-bound "
+                "dicom_bbox_validate receipt"
+            )
 
     def _refresh_tool_audit(self) -> None:
         """Read native-plugin evidence appended since this model turn began."""
@@ -588,6 +675,13 @@ class OpenClawClient(VisionAnalyzerService):
             self._tool_audit_offset,
             _valid_bbox_tool_audit_record,
         )
+        bbox_records = [
+            record
+            for record in bbox_records
+            if record.get("evidence_nonce") == self._bbox_evidence_nonce
+            and record.get("source_image_sha256")
+            == self._bbox_source_image_sha256
+        ]
         binding = self._waveform_artifact_context.get()
         if binding is not None:
             ecg_records = self._refresh_waveform_binding(binding)
@@ -1159,9 +1253,9 @@ def _coerce_bool(raw: object) -> bool:
 
 def _coerce_string_list(raw: object) -> list[str]:
     if isinstance(raw, str):
-        values = [raw]
+        values: tuple[object, ...] = (raw,)
     elif isinstance(raw, (list, tuple)):
-        values = raw
+        values = tuple(raw)
     else:
         return []
     result: list[str] = []
@@ -1209,6 +1303,8 @@ def _build_analysis_prompt(
     waveform_artifact_id: str = "",
     waveform_lead_mode: str = "",
     waveform_evidence_nonce: str = "",
+    bbox_source_image_sha256: str = "",
+    bbox_evidence_nonce: str = "",
     prompt_profile: str = "clinical",
 ) -> str:
     if prompt_profile == "minimal_control":
@@ -1229,6 +1325,8 @@ def _build_analysis_prompt(
         waveform_artifact_id=waveform_artifact_id,
         waveform_lead_mode=waveform_lead_mode,
         waveform_evidence_nonce=waveform_evidence_nonce,
+        bbox_source_image_sha256=bbox_source_image_sha256,
+        bbox_evidence_nonce=bbox_evidence_nonce,
     )
 
 
@@ -1291,6 +1389,8 @@ def _build_finalization_prompt(
     valid_regions: list[str],
     draft: AnalysisResult,
     refinement_trace: list[dict[str, object]],
+    bbox_source_image_sha256: str = "",
+    bbox_evidence_nonce: str = "",
 ) -> str:
     safe_trace = [
         {
@@ -1330,8 +1430,11 @@ def _build_finalization_prompt(
         "do not convert the differential into a confirmed diagnosis.\n"
         "- Preserve clinically honest incomplete reasons and cautious language. "
         "Do not invent precise measurements from a screenshot.\n"
-        f"- Call dicom_bbox_validate with modality={modality.value} for all retained "
-        "boxes and copy only accepted coordinates. These coordinates are relative "
+        f"- Call dicom_bbox_validate with modality={modality.value}, "
+        f"source_image_sha256='{bbox_source_image_sha256}', and "
+        f"evidence_nonce='{bbox_evidence_nonce}' for all retained boxes and copy "
+        "only accepted coordinates. Copy the binding values exactly. These "
+        "coordinates are relative "
         "to the attached original image, never a crop.\n"
         "- Output concise auditable conclusions only; never output hidden "
         "chain-of-thought or markdown."
@@ -1344,6 +1447,8 @@ def _build_refinement_prompt(
     valid_regions: list[str],
     hypothesis: Finding | None,
     crop_region: RegionRect,
+    bbox_source_image_sha256: str = "",
+    bbox_evidence_nonce: str = "",
 ) -> str:
     hypothesis_payload: dict[str, object] | None = None
     if hypothesis is not None:
@@ -1414,7 +1519,10 @@ def _build_refinement_prompt(
         "finding: retract the hypothesis instead of revising it into a limitation. "
         "All finding "
         "bboxes are normalized to the attached crop, not the original image. "
-        f"Call dicom_bbox_validate with modality={modality.value}. For EKG, each "
+        f"Call dicom_bbox_validate with modality={modality.value}, "
+        f"source_image_sha256='{bbox_source_image_sha256}', and "
+        f"evidence_nonce='{bbox_evidence_nonce}'. Copy both binding values exactly. "
+        "For EKG, each "
         "box must have w<=0.35, h<=0.30, and area<=0.08; use multiple local "
         "boxes instead of an entire lead row. Copy the tool's accepted "
         "attached-image coordinates verbatim. Keep rationale concise and based "
@@ -1436,10 +1544,15 @@ def _parse_refinement_finding(raw: object) -> Finding | None:
                     candidate.get("h"),
                 )
             elif isinstance(candidate, (list, tuple)) and len(candidate) >= 4:
-                values = candidate[:4]
+                values = (candidate[0], candidate[1], candidate[2], candidate[3])
             else:
                 continue
-            x, y, w, h = (float(value) for value in values)
+            coordinates: list[float] = []
+            for value in values:
+                if not isinstance(value, int | float | str):
+                    raise TypeError
+                coordinates.append(float(value))
+            x, y, w, h = coordinates
             if w <= 0.0 or h <= 0.0:
                 continue
             boxes.append(RegionRect(x=x, y=y, w=w, h=h))
@@ -1737,7 +1850,7 @@ def _valid_bbox_tool_audit_record(value: object) -> bool:
     accepted = value.get("accepted_count")
     rejected = value.get("rejected_count")
     return (
-        value.get("schema_version") == 1
+        value.get("schema_version") == 2
         and value.get("tool") == "dicom_bbox_validate"
         and isinstance(value.get("tool_call_id"), str)
         and bool(value["tool_call_id"])
@@ -1747,6 +1860,10 @@ def _valid_bbox_tool_audit_record(value: object) -> bool:
         and isinstance(rejected, int)
         and not isinstance(rejected, bool)
         and rejected >= 0
+        and _is_sha256(value.get("source_image_sha256"))
+        and isinstance(value.get("evidence_nonce"), str)
+        and bool(re.fullmatch(r"[a-f0-9]{32}", value["evidence_nonce"]))
+        and _is_sha256(value.get("accepted_boxes_sha256"))
         and isinstance(digest, str)
         and len(digest) == 64
         and all(char in "0123456789abcdef" for char in digest.lower())
@@ -1783,6 +1900,44 @@ def _is_sha256(value: object) -> bool:
         and len(value) == 64
         and all(char in "0123456789abcdef" for char in value.lower())
     )
+
+
+def _image_sha256(image_base64: str) -> str:
+    try:
+        image = base64.b64decode(image_base64, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("image payload is not valid base64") from exc
+    return hashlib.sha256(image).hexdigest()
+
+
+def _result_bbox_coordinates(
+    result: AnalysisResult | RefinementResult,
+) -> list[RegionRect]:
+    if isinstance(result, AnalysisResult):
+        findings = result.findings
+    else:
+        findings = [
+            delta.finding
+            for delta in result.deltas
+            if delta.finding is not None
+            and delta.action in {RefinementAction.REVISE, RefinementAction.ADD}
+        ]
+    return [box for finding in findings for box in finding.bboxes]
+
+
+def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
+    def js_round(value: float) -> float:
+        return math.floor(value * 10_000 + 0.5) / 10_000
+
+    canonical = sorted(
+        [
+            f"{js_round(value):.4f}"
+            for value in (box.x, box.y, box.w, box.h)
+        ]
+        for box in boxes
+    )
+    encoded = json.dumps(canonical, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _load_gateway_token(base_dir: Path | None = None) -> str | None:

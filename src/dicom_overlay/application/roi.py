@@ -37,4 +37,49 @@ def compute_roi_crop_from_safe_rect(
         bottom=base_rect.height - (y + height),
         left=x,
         right=base_rect.width - (x + width),
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=base_rect.width,
+        reference_height=base_rect.height,
+    )
+
+
+def scaled_roi_crop(roi: ROICrop, width: int, height: int) -> ROICrop:
+    """Scale a configured viewer-relative ROI to current viewer dimensions."""
+
+    if not roi.configured or roi.coordinate_space != "viewer":
+        raise ValueError("ROI is not configured in viewer coordinates")
+    if width <= 0 or height <= 0:
+        raise ValueError("Viewer dimensions must be positive")
+    if roi.reference_width <= 0 or roi.reference_height <= 0:
+        raise ValueError("ROI reference dimensions are missing")
+    if min(roi.top, roi.bottom, roi.left, roi.right) < 0:
+        raise ValueError("ROI crop margins cannot be negative")
+
+    scale_x = width / roi.reference_width
+    scale_y = height / roi.reference_height
+    scaled = ROICrop(
+        top=round(roi.top * scale_y),
+        bottom=round(roi.bottom * scale_y),
+        left=round(roi.left * scale_x),
+        right=round(roi.right * scale_x),
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=width,
+        reference_height=height,
+    )
+    if scaled.left + scaled.right >= width or scaled.top + scaled.bottom >= height:
+        raise ValueError("ROI crop margins exceed the viewer dimensions")
+    return scaled
+
+
+def compute_viewer_roi_rect(target: WindowRect, roi: ROICrop) -> WindowRect:
+    """Return an absolute capture rect that is always inside ``target``."""
+
+    scaled = scaled_roi_crop(roi, target.width, target.height)
+    return WindowRect(
+        left=target.left + scaled.left,
+        top=target.top + scaled.top,
+        width=target.width - scaled.left - scaled.right,
+        height=target.height - scaled.top - scaled.bottom,
     )

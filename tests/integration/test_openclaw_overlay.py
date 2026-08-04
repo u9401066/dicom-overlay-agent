@@ -30,6 +30,7 @@ from dicom_overlay.domain.entities import (
     Finding,
     Modality,
     RegionRect,
+    ROICrop,
     Severity,
     TriggerMode,
     WindowRect,
@@ -1058,6 +1059,11 @@ async def test_e2e_analysis_with_highlights():
     try:
         port = server.sockets[0].getsockname()[1]
         config = AppConfig()
+        config.phi_roi = ROICrop(
+            configured=True,
+            reference_width=1,
+            reference_height=1,
+        )
         config.analysis.trigger_mode = TriggerMode.AUTO
         config.openclaw.gateway_url = f"ws://127.0.0.1:{port}"
         config.monitor.debounce_stable_sec = 0.0
@@ -1216,7 +1222,7 @@ async def test_e2e_hooked_analysis_pipeline():
         hooked = HookedVisionAnalyzer(inner=client, hooks=[counting])
 
         await hooked.connect()
-        result = await hooked.analyze("base64img", Modality.EKG, ["lead_I"])
+        result = await hooked.analyze("aW1n", Modality.EKG, ["lead_I"])
 
         assert counting.pre_count == 1
         assert counting.post_count == 1
@@ -1384,6 +1390,11 @@ async def test_agent_reconnect_on_connection_loss():
     from tests.unit.test_agent import MockImageProcessor
 
     config = AppConfig()
+    config.phi_roi = ROICrop(
+        configured=True,
+        reference_width=1,
+        reference_height=1,
+    )
     config.analysis.trigger_mode = TriggerMode.AUTO
     config.openclaw.reconnect_interval_sec = 0
     config.monitor.debounce_stable_sec = 0.0
@@ -1447,6 +1458,11 @@ async def test_e2e_cxr_modality():
     try:
         port = server.sockets[0].getsockname()[1]
         config = AppConfig()
+        config.phi_roi = ROICrop(
+            configured=True,
+            reference_width=1,
+            reference_height=1,
+        )
         config.analysis.trigger_mode = TriggerMode.AUTO
         config.openclaw.gateway_url = f"ws://127.0.0.1:{port}"
         config.monitor.debounce_stable_sec = 0.0

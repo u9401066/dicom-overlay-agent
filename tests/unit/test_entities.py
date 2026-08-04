@@ -54,10 +54,14 @@ class TestWindowRect:
 class TestROICrop:
     def test_defaults(self):
         roi = ROICrop()
-        assert roi.top == 60
-        assert roi.bottom == 30
+        assert roi.top == 0
+        assert roi.bottom == 0
         assert roi.left == 0
         assert roi.right == 0
+        assert roi.configured is False
+        assert roi.coordinate_space == "viewer"
+        assert roi.reference_width == 0
+        assert roi.reference_height == 0
 
 
 class TestFinding:
@@ -128,7 +132,8 @@ class TestAppConfig:
     def test_defaults(self):
         config = AppConfig()
         assert config.monitor.polling_interval_ms == 500
-        assert config.phi_roi.top == 60
+        assert config.phi_roi.top == 0
+        assert config.phi_roi.configured is False
         assert config.openclaw.gateway_url == "ws://127.0.0.1:18789"
         assert config.overlay.display_duration_sec == 30
         assert config.hotkeys.trigger_manual == "ctrl+shift+a"

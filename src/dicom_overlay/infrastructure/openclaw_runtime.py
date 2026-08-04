@@ -63,7 +63,7 @@ def build_harness_manifest() -> dict[str, Any]:
     """Build a plugin-like manifest for the image interpretation harness."""
     return {
         "name": HARNESS_NAME,
-        "version": "1.1.0",
+        "version": "1.2.0",
         "description": "Medical image co-reading harness for DICOM Overlay Agent.",
         "compatibility": {
             "minimumOpenClaw": MIN_SAFE_OPENCLAW_VERSION,
@@ -84,6 +84,7 @@ def build_harness_manifest() -> dict[str, Any]:
             "multiTurnImageFollowup": True,
             "bboxCropReanalysis": True,
             "coordinateDriftCalibration": True,
+            "imageTurnBoundBboxReceipts": True,
             "ecgFounderWaveformAssist": True,
             "externalWaveformSidecar": True,
             "noScreenshotToWaveformInference": True,

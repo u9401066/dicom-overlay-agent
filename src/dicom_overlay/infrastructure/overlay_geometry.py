@@ -84,6 +84,18 @@ class OverlayCoordinateFrame:
             (rect.left, rect.top, rect.right, rect.bottom)
         )
 
+    def contains_physical_rect(self, rect: WindowRect) -> bool:
+        """Return whether ``rect`` is fully representable on this one display."""
+
+        return (
+            rect.width > 0
+            and rect.height > 0
+            and rect.left >= self.physical_screen.left
+            and rect.top >= self.physical_screen.top
+            and rect.right <= self.physical_screen.right
+            and rect.bottom <= self.physical_screen.bottom
+        )
+
     def physical_rect_to_global_logical(self, rect: WindowRect) -> WindowRect:
         local = self.physical_rect_to_local(rect)
         return WindowRect(
@@ -113,6 +125,14 @@ class OverlayCoordinateFrame:
             bottom=round(roi.bottom * self.logical_per_physical_y),
             left=round(roi.left * self.logical_per_physical_x),
             right=round(roi.right * self.logical_per_physical_x),
+            configured=roi.configured,
+            coordinate_space=roi.coordinate_space,
+            reference_width=round(
+                roi.reference_width * self.logical_per_physical_x
+            ),
+            reference_height=round(
+                roi.reference_height * self.logical_per_physical_y
+            ),
         )
 
     def logical_roi_to_physical(self, roi: ROICrop) -> ROICrop:
@@ -121,6 +141,14 @@ class OverlayCoordinateFrame:
             bottom=round(roi.bottom / self.logical_per_physical_y),
             left=round(roi.left / self.logical_per_physical_x),
             right=round(roi.right / self.logical_per_physical_x),
+            configured=roi.configured,
+            coordinate_space=roi.coordinate_space,
+            reference_width=round(
+                roi.reference_width / self.logical_per_physical_x
+            ),
+            reference_height=round(
+                roi.reference_height / self.logical_per_physical_y
+            ),
         )
 
 
@@ -133,6 +161,7 @@ class BboxProjectionCalibration:
     back_projected_bbox: RegionRect
     max_edge_drift_px: float
     was_clamped: bool
+    within_overlay_bounds: bool
     ok: bool
 
 
@@ -172,11 +201,19 @@ def project_bbox_to_overlay_highlight(
         logical = coordinate_frame.physical_edges_to_local_rect(physical)
         back_physical = coordinate_frame.local_rect_to_physical_edges(logical)
         default_drift_limit = coordinate_frame.max_physical_px_per_logical_px
+        within_overlay_bounds = (
+            coordinate_frame.contains_physical_rect(image_rect)
+            and logical.x >= 0
+            and logical.y >= 0
+            and logical.x + logical.w <= coordinate_frame.logical_screen.width
+            and logical.y + logical.h <= coordinate_frame.logical_screen.height
+        )
     else:
         assert dpr is not None
         logical = _physical_edges_to_logical_rect(physical, dpr)
         back_physical = _logical_rect_to_physical_edges(logical, dpr)
         default_drift_limit = dpr
+        within_overlay_bounds = True
     drift_limit = (
         max_roundtrip_drift_px
         if max_roundtrip_drift_px is not None
@@ -190,7 +227,8 @@ def project_bbox_to_overlay_highlight(
         back_projected_bbox=back_projected,
         max_edge_drift_px=drift,
         was_clamped=_bbox_changed(bbox, clamped),
-        ok=drift <= drift_limit + 1e-9,
+        within_overlay_bounds=within_overlay_bounds,
+        ok=within_overlay_bounds and drift <= drift_limit + 1e-9,
     )
     return ProjectedHighlight(
         logical_rect=logical,

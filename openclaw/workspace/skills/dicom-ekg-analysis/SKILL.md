@@ -163,17 +163,17 @@ Required JSON schema:
 ```
 
 Systematic reading order (follow this sequence):
-1. **heart_rate** — Estimate rate from R-R intervals (bradycardia <60, normal 60-100, tachycardia >100)
+1. **heart_rate** — Classify from R-R intervals (bradycardia <60, normal 60-100, tachycardia >100); a screenshot-only numeric value is an approximate visual estimate
 2. **rhythm** — Identify the dominant rhythm mechanism
 3. **regularity** — Regular vs irregular (regularly or irregularly)
 4. **axis** — Assess from leads I and aVF (normal −30° to +90°)
 5. **p_wave** — Morphology, presence, origin (sinus, ectopic, absent)
-6. **pr_interval** — Duration assessment (short <120ms, normal 120-200ms, prolonged >200ms)
-7. **qrs_duration** — Narrow (<120ms), borderline (100-120ms), wide (>120ms)
+6. **pr_interval** — Visual duration category (short <120ms, normal 120-200ms, prolonged >200ms); do not claim exact milliseconds without calibrated waveform measurements
+7. **qrs_duration** — Visual category: narrow (<120ms), borderline (100-120ms), wide (>120ms); do not claim exact milliseconds from pixels alone
 8. **qrs_morphology** — Pathological Q waves, R wave progression, low voltage, delta waves
 9. **st_segment** — Elevation, depression, patterns (concave, convex, tombstone)
 10. **t_wave** — Inversions, peaking, hyperacute changes, Wellens pattern
-11. **qtc_interval** — Estimate (normal <450ms men / <470ms women)
+11. **qtc_interval** — Categorize only when the screenshot supports it; exact QTc requires a calibrated waveform/measurement source
 12. **chamber_enlargement** — LVH (Sokolow-Lyon, Cornell), RVH, atrial enlargement
 13. **conduction** — Bundle branch blocks, fascicular blocks, pre-excitation
 14. **av_block** — Degree of AV conduction delay/block
@@ -211,8 +211,10 @@ Findings rules:
 Can't-miss diagnoses (read at attending-cardiologist level — escalate severity
 to critical, state the diagnosis explicitly in summary + findings, and set the
 matching checklist axis):
-- **STEMI** — ST elevation ≥1mm in ≥2 contiguous leads (≥2mm in V2-V3 for men
-  <40). Name the territory and culprit vessel:
+- **STEMI** — ST elevation meeting accepted thresholds in ≥2 contiguous leads.
+  On a screenshot, apply millimeter thresholds only when calibration/grid and
+  baseline are legible. Name a supported territory; list a culprit vessel only
+  as a likely anatomic correlate, never as a confirmed angiographic fact:
   - Anterior / anteroseptal (V1-V4) → LAD
   - Inferior (II, III, aVF) → RCA (check V1/V4R for RV involvement; reciprocal
     ST depression in I/aVL)
@@ -229,7 +231,9 @@ matching checklist axis):
 - **Brugada / WPW with AF / bidirectional VT** — note when the morphology fits.
 
 Reading depth (specialist expectations):
-- Quote rate as a number (e.g. "~78 bpm"), not just a band, when R-R is legible.
+- A numeric screenshot rate must use an approximation marker (for example,
+  "visual estimate ~78 bpm") and only when R-R or a complete timed strip is
+  legible. Otherwise report the rate band and `not_assessable` as appropriate.
 - For waveform-only ECG screenshots, estimate rate from the 10-second rhythm strip
   when present. Count QRS complexes across the strip or use R-R large boxes; if
   the rhythm is sinus and the rate is below 60 bpm or borderline around 55-60
@@ -238,8 +242,14 @@ Reading depth (specialist expectations):
   deep S in V1/V2 + R in V5/V6 or aVL can support LVH, especially with lateral
   ST-T repolarization/strain changes. If present, set `chamber_enlargement` to
   `LVH` with warning status and name left ventricular hypertrophy in findings.
-- For ST changes, state magnitude, morphology (concave vs convex/tombstone),
-  and reciprocal changes — these distinguish STEMI from pericarditis/BER.
+- For ST changes, state direction, morphology (concave vs convex/tombstone),
+  lead distribution, and reciprocal changes. State magnitude only as an
+  explicitly approximate visual estimate when grid calibration and baseline are
+  legible; otherwise do not invent millimeters.
+- `local_signal_candidates` and `local_ekg_signal_calibrator` help crop and align
+  ink-containing image regions; they are not ECG interval or voltage measurement
+  tools. ECGFounder supplies uncalibrated waveform-model probabilities, not
+  deterministic rate/PR/QRS/QTc/ST measurements. Never present either as such.
 - If reproducible ST depression, T-wave inversion/flattening, or LVH-strain-like
   repolarization changes are visible in multiple contiguous or anatomically
   related leads, set `st_segment`/`t_wave` accordingly and set `ischemia` to `st_depression` or `t_wave_changes`.

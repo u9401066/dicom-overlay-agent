@@ -40,6 +40,7 @@ from dicom_overlay.application.review_chat import (
     parse_region_review_response,
     summarize_regional_refinement,
 )
+from dicom_overlay.application.rhythm_strip import RhythmStripRefiningAnalyzer
 from dicom_overlay.domain.entities import (
     AgentState,
     AppConfig,
@@ -106,6 +107,7 @@ class _SignalBridge(QObject):
     chat_failed = pyqtSignal(int)
     vision_test_done = pyqtSignal(object)
     runtime_started = pyqtSignal(str)
+    roi_setup_requested = pyqtSignal()
 
 
 def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
@@ -240,10 +242,11 @@ async def _start_desktop_runtime(
     """Start the slow portable runtime off the Qt thread."""
 
     gateway_status = "offline"
+    gateway_started = False
     try:
         gateway.start()
+        gateway_started = True
         agent._gateway = gateway
-        gateway_status = "ready" if await gateway.wait_ready() else "offline"
     except FileNotFoundError as exc:
         logger.warning("Gateway not available: %s", exc)
         agent._gateway = None
@@ -251,8 +254,13 @@ async def _start_desktop_runtime(
         logger.exception("Gateway startup failed; desktop will remain available")
         agent._gateway = None
 
+    # Start viewer discovery and first-run ROI setup while OpenClaw performs
+    # migrations.  This keeps the safety-critical local workflow usable during
+    # a long cold start instead of making the clinician wait on the provider.
     await agent.start()
     await mcp_adapter.start()
+    if gateway_started:
+        gateway_status = "ready" if await gateway.wait_ready() else "offline"
     return gateway_status
 
 
@@ -351,7 +359,12 @@ def main() -> None:
             bbox_calibrator=calibrate_ekg_bboxes,
             max_zoom_targets=max_zoom_targets,
         )
-        analyzer = MultiPassAnalyzer(inner=openclaw_client, interpreter=interpreter)
+        multi_pass = MultiPassAnalyzer(inner=openclaw_client, interpreter=interpreter)
+        analyzer = RhythmStripRefiningAnalyzer(
+            inner=multi_pass,
+            refinement_analyzer=hooked_analyzer,
+            cropper=image_processor.crop_region_base64,
+        )
         return HookedVisionAnalyzer(
             inner=analyzer,
             hooks=build_guardrail_hooks(include_bbox_calibration=False),
@@ -430,6 +443,7 @@ def main() -> None:
         "New image ready. Click Analyze."
     )
     agent.on_error = signals.error_msg.emit
+    agent.on_roi_setup_required = signals.roi_setup_requested.emit
 
     # ─── Qt slots (run on main thread) ───
     modality_index = [0]
@@ -497,7 +511,49 @@ def main() -> None:
             except ValueError:
                 logger.exception("Cannot map result: ROI exceeds target display")
 
-        if coordinate_frame is not None and content_rect is not None:
+        projection_safe = bool(
+            coordinate_frame is not None
+            and content_rect is not None
+            and coordinate_frame.contains_physical_rect(content_rect)
+        )
+        if (
+            coordinate_frame is not None
+            and content_rect is not None
+            and not projection_safe
+        ):
+            reason = (
+                "Viewer image spans more than one display; move the viewer fully "
+                "onto one monitor and analyze again before trusting overlay boxes."
+            )
+            result.incomplete = True
+            result.review_required = True
+            if reason not in result.incomplete_reasons:
+                result.incomplete_reasons.append(reason)
+            if reason not in result.review_reasons:
+                result.review_reasons.append(reason)
+            if not any(
+                entry.get("stage") == "bbox_projection"
+                and entry.get("status") == "rejected_cross_display"
+                for entry in result.analysis_trace
+            ):
+                result.analysis_trace.append(
+                    {
+                        "stage": "bbox_projection",
+                        "status": "rejected_cross_display",
+                        "tool": "single_display_containment_gate",
+                    }
+                )
+            logger.warning(
+                "bbox_projection_rejected_cross_display",
+                capture_rect=content_rect,
+                display_rect=coordinate_frame.physical_screen,
+            )
+
+        if (
+            projection_safe
+            and coordinate_frame is not None
+            and content_rect is not None
+        ):
             local_content = coordinate_frame.physical_rect_to_local(content_rect)
             overlay_content_rect = (
                 local_content.x,
@@ -507,7 +563,8 @@ def main() -> None:
             )
 
         if (
-            coordinate_frame is not None
+            projection_safe
+            and coordinate_frame is not None
             and content_rect is not None
             and config.overlay.region_highlights
         ):
@@ -668,10 +725,13 @@ def main() -> None:
         app.quit()
 
     def open_settings_roi_setup() -> None:
+        if agent.target_window is None:
+            control_bar.set_status("請先開啟 DICOM viewer 再設定安全影像區域")
+            return
         roi = run_roi_setup(
             app,
             agent.target_window,
-            config.phi_roi,
+            config.phi_roi if agent.has_roi_config() else None,
             agent.display_frame,
         )
         if roi is None:
@@ -688,6 +748,8 @@ def main() -> None:
             f"ROI 已更新 top={roi.top} bottom={roi.bottom}"
             f" left={roi.left} right={roi.right}"
         )
+
+    signals.roi_setup_requested.connect(open_settings_roi_setup)
 
     def open_settings_dialog() -> None:
         dialog = SettingsDialog(
@@ -1294,7 +1356,7 @@ def main() -> None:
     def on_runtime_started(status: str) -> None:
         control_bar.set_gateway_status(status)
         if agent.state == AgentState.SETUP:
-            QTimer.singleShot(0, open_settings_roi_setup)
+            control_bar.set_status("請開啟 DICOM viewer 以設定安全影像區域")
         logger.info("Desktop runtime started — gateway=%s state=%s", status, agent.state.name)
 
     signals.runtime_started.connect(on_runtime_started)

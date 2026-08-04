@@ -16,6 +16,7 @@ from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import (
     AppConfig,
     DisplayFrame,
+    ROICrop,
     TriggerMode,
     WindowRect,
 )
@@ -140,7 +141,13 @@ async def run_image_harness_smoke(
             config=config,
             screen_monitor=monitor,
             image_processor=ImageProcessor(),
-            vision_analyzer=OpenClawClient(gateway_url=config.openclaw.gateway_url),
+            vision_analyzer=OpenClawClient(
+                gateway_url=config.openclaw.gateway_url,
+                # This transport smoke uses an in-process Gateway stub rather
+                # than the native OpenClaw plugin. The plugin's bound-receipt
+                # contract is exercised independently by packaging/plugin tests.
+                require_bound_bbox_receipts=False,
+            ),
             region_mapper=RegionMapper(config.region_maps),
             screen_width=900,
             screen_height=600,
@@ -268,6 +275,12 @@ def _build_smoke_config(gateway_url: str) -> AppConfig:
     config.openclaw.gateway_url = gateway_url
     config.monitor.debounce_stable_sec = 0
     config.monitor.window_title_keywords = ["DICOM Harness Viewer"]
+    config.phi_roi = ROICrop(
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=900,
+        reference_height=600,
+    )
     config.region_maps = {
         "EKG": {
             "layout": "standard_4x3",

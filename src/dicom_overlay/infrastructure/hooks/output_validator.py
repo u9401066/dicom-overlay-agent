@@ -52,6 +52,18 @@ class OutputValidator(AnalyzeHook):
             )
             result.modality = request.modality
 
+        ekg_inventory = None
+        ekg_visible_regions: set[str] = set()
+        if request.modality.value == "EKG":
+            ekg_inventory = parse_ekg_lead_inventory(result.layout)
+            ekg_visible_regions = set(ekg_inventory.by_name())
+            if _has_normalized_bbox(
+                result.layout.get("rhythm_strip_bbox")
+                if isinstance(result.layout, dict)
+                else None
+            ):
+                ekg_visible_regions.add("rhythm_strip")
+
         # 3. Validate findings
         seen_finding_ids: set[str] = set()
         for i, finding in enumerate(result.findings):
@@ -69,6 +81,27 @@ class OutputValidator(AnalyzeHook):
                     warnings.append(
                         f"Finding[{i}] region '{region}' "
                         f"not in valid regions"
+                    )
+            if request.modality.value == "EKG" and finding.regions:
+                unavailable = [
+                    region
+                    for region in finding.regions
+                    if region in request.valid_regions
+                    and region not in ekg_visible_regions
+                ]
+                if unavailable:
+                    finding = dataclasses.replace(
+                        finding,
+                        regions=[
+                            region
+                            for region in finding.regions
+                            if region not in unavailable
+                        ],
+                    )
+                    result.findings[i] = finding
+                    warnings.append(
+                        f"Finding[{i}] referenced leads absent from the visible "
+                        f"inventory: {', '.join(unavailable)}; regions removed"
                     )
             if finding.severity is Severity.NORMAL and finding.bboxes:
                 finding = dataclasses.replace(finding, bboxes=[])
@@ -91,6 +124,31 @@ class OutputValidator(AnalyzeHook):
                     warnings.append(
                         f"Finding[{i}] broad EKG lead-strip boxes were removed"
                     )
+            if (
+                finding.severity is Severity.INFO
+                and finding.bboxes
+                and not finding.confidence.strip()
+            ):
+                finding = dataclasses.replace(finding, bboxes=[])
+                result.findings[i] = finding
+                warnings.append(
+                    f"Finding[{i}] unqualified info finding had overlay boxes; "
+                    "boxes removed"
+                )
+            if finding.confidence == "low" and not finding.question.strip():
+                finding_name = finding.label.strip() or finding.id or f"Finding[{i}]"
+                finding = dataclasses.replace(
+                    finding,
+                    question=(
+                        f"Can the reviewer confirm whether {finding_name} is present "
+                        "in the highlighted source-image region?"
+                    ),
+                )
+                result.findings[i] = finding
+                warnings.append(
+                    f"Finding[{i}] low-confidence finding lacked a reviewer "
+                    "question; a bounded confirmation question was added"
+                )
             if (
                 finding.severity is Severity.INFO
                 and finding.bboxes
@@ -147,9 +205,8 @@ class OutputValidator(AnalyzeHook):
         # 5. The layout drives systematic crop/refine passes, so an EKG cannot
         # be represented as complete without a valid visible 12-lead inventory.
         if request.modality.value == "EKG":
-            warnings.extend(
-                parse_ekg_lead_inventory(result.layout).validation_warnings()
-            )
+            assert ekg_inventory is not None
+            warnings.extend(ekg_inventory.validation_warnings())
 
         # 6. Checklist value validation
         for key, item in result.checklist.items():
@@ -198,3 +255,20 @@ class OutputValidator(AnalyzeHook):
 def _append_review_reason(result: AnalysisResult, reason: str) -> None:
     if reason and reason not in result.review_reasons:
         result.review_reasons.append(reason)
+
+
+def _has_normalized_bbox(value: object) -> bool:
+    if not isinstance(value, list | tuple) or len(value) < 4:
+        return False
+    try:
+        x, y, width, height = (float(item) for item in value[:4])
+    except (TypeError, ValueError):
+        return False
+    return (
+        x >= 0.0
+        and y >= 0.0
+        and width > 0.0
+        and height > 0.0
+        and x + width <= 1.0 + 1e-9
+        and y + height <= 1.0 + 1e-9
+    )

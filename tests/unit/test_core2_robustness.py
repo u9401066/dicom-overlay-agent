@@ -30,7 +30,9 @@ from dicom_overlay.domain.entities import (
 from dicom_overlay.domain.hooks import AnalyzeRequest
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import (
+    BboxEvidenceError,
     OpenClawClient,
+    _bbox_coordinates_digest,
     _build_finalization_prompt,
     _build_refinement_prompt,
     _extract_first_json_object,
@@ -603,6 +605,37 @@ class TestIncompleteFlag:
             validated.validation_warnings
         )
 
+    def test_finding_cannot_claim_a_lead_absent_from_visible_inventory(self):
+        validator = OutputValidator()
+        request = AnalyzeRequest(
+            image_base64="image",
+            modality=Modality.EKG,
+            valid_regions=["lead_II", "lead_V2"],
+        )
+        result = _make_result()
+        result.layout["leads"] = [
+            lead for lead in result.layout["leads"] if lead["name"] != "V2"
+        ]
+        result.findings = [
+            Finding(
+                id="missing-lead",
+                regions=["lead_II", "lead_V2"],
+                label="Localized change",
+                detail="Candidate change",
+                severity=Severity.WARNING,
+                bboxes=[RegionRect(x=0.1, y=0.1, w=0.1, h=0.1)],
+            )
+        ]
+
+        validated = validator.post_analyze(request, result)
+
+        assert validated.findings[0].regions == ["lead_II"]
+        assert any(
+            "absent from the visible inventory: lead_V2" in warning
+            for warning in validated.validation_warnings
+        )
+        assert validated.incomplete is True
+
     def test_normal_observation_boxes_are_removed_from_overlay(self):
         validator = OutputValidator(strict=False)
         result = _make_result()
@@ -642,7 +675,33 @@ class TestIncompleteFlag:
         validated = validator.post_analyze(_make_request(), result)
 
         assert validated.incomplete is True
-        assert "reviewer question" in validated.validation_warnings[0]
+        assert validated.findings[0].bboxes == []
+        assert "boxes removed" in validated.validation_warnings[0]
+
+    def test_low_confidence_box_gets_a_bounded_reviewer_question(self):
+        validator = OutputValidator(strict=False)
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="candidate",
+                regions=["lead_II"],
+                label="Possible ectopic beat",
+                detail="Candidate morphology is not resolved.",
+                severity=Severity.INFO,
+                bboxes=[RegionRect(0.1, 0.1, 0.2, 0.2)],
+                confidence="low",
+                question="",
+            )
+        ]
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        finding = validated.findings[0]
+        assert finding.bboxes
+        assert "Possible ectopic beat" in finding.question
+        assert "highlighted source-image region" in finding.question
+        assert validated.incomplete is True
+        assert validated.review_required is True
 
     def test_moderate_confidence_benign_info_box_does_not_require_question(self):
         validator = OutputValidator(strict=False)
@@ -696,19 +755,28 @@ class TestNativeToolAuditTrace:
         monkeypatch,
     ) -> None:
         audit_path = tmp_path / "bbox-audit.jsonl"
+        source_sha = "c" * 64
+        evidence_nonce = "d" * 32
         stale = {
-            "schema_version": 1,
+            "schema_version": 2,
             "tool": "dicom_bbox_validate",
             "tool_call_id": "stale-call",
             "accepted_count": 1,
             "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": "e" * 64,
             "details_sha256": "a" * 64,
         }
         audit_path.write_text(f"{json.dumps(stale)}\n", encoding="utf-8")
         monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
         client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
 
-        client._begin_run_trace("analysis-current")
+        client._begin_run_trace(
+            "analysis-current",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
         current = stale | {
             "tool_call_id": "current-call",
             "details_sha256": "b" * 64,
@@ -721,6 +789,59 @@ class TestNativeToolAuditTrace:
 
         assert trace["tools"] == ["dicom_bbox_validate"]
         assert [row["tool_call_id"] for row in trace["tool_audit"]] == ["current-call"]
+
+    def test_boxed_result_requires_exact_bound_coordinate_receipt(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        box = RegionRect(0.1, 0.2, 0.3, 0.1)
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="f1",
+                regions=["lead_II"],
+                label="Candidate",
+                detail="Visible candidate",
+                severity=Severity.WARNING,
+                bboxes=[box],
+            )
+        ]
+        client._begin_run_trace(
+            "analysis-bound",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "bound-call",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": _bbox_coordinates_digest([box]),
+            "details_sha256": "c" * 64,
+        }
+        audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+
+        client._require_bound_bbox_receipt(result)
+
+        result.findings[0] = Finding(
+            id="f1",
+            regions=["lead_II"],
+            label="Candidate",
+            detail="Visible candidate",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.2, 0.3, 0.1)],
+        )
+        with pytest.raises(BboxEvidenceError):
+            client._require_bound_bbox_receipt(result)
 
     def test_reads_phi_free_ecg_founder_receipt_from_current_turn(
         self,

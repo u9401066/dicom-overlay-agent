@@ -1,6 +1,6 @@
 {
   "name": "dicom-overlay-agent-harness",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Medical image co-reading harness for DICOM Overlay Agent.",
   "compatibility": {
     "minimumOpenClaw": "2026.4.22",
@@ -21,6 +21,7 @@
     "multiTurnImageFollowup": true,
     "bboxCropReanalysis": true,
     "coordinateDriftCalibration": true,
+    "imageTurnBoundBboxReceipts": true,
     "ecgFounderWaveformAssist": true,
     "externalWaveformSidecar": true,
     "noScreenshotToWaveformInference": true,

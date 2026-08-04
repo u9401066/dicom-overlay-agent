@@ -46,6 +46,8 @@ def build_initial_analysis_prompt(
     waveform_artifact_id: str = "",
     waveform_lead_mode: str = "",
     waveform_evidence_nonce: str = "",
+    bbox_source_image_sha256: str = "",
+    bbox_evidence_nonce: str = "",
 ) -> str:
     """Build the initial structured analysis prompt for an attached image."""
     allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
@@ -80,8 +82,11 @@ def build_initial_analysis_prompt(
         "coordinates (x, y, w, h).\n"
         "5. Before finalizing any abnormal or uncertain bbox, call the "
         "dicom_bbox_validate tool with modality set to the requested modality, "
+        f"source_image_sha256='{bbox_source_image_sha256}', and "
+        f"evidence_nonce='{bbox_evidence_nonce}', "
         "and copy only its accepted full-image boxes "
-        "into the corresponding finding. Never substitute crop-local coordinates.\n"
+        "into the corresponding finding. Copy both binding values exactly; never "
+        "invent or reuse them. Never substitute crop-local coordinates.\n"
         "6. Provide next_steps that explain what the user should inspect next.\n"
         "7. A normal or within-normal-limits interpretation is valid; never invent "
         "an abnormality merely to return a finding.\n"

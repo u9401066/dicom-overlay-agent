@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from dicom_overlay.presentation.capture_safety import protect_widget_from_capture
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import (
@@ -94,10 +96,11 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._layout.setContentsMargins(12, 12, 12, 12)
         self._layout.setSpacing(4)
 
-        drag_hint = QLabel("Drag")
+        drag_hint = QLabel("⠿")
         drag_hint.setFont(QFont("Segoe UI", 8))
         drag_hint.setStyleSheet("color: #666; padding: 0;")
         drag_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        drag_hint.setToolTip("拖曳移動")
         self._layout.addWidget(drag_hint)
 
         self._title_label = QLabel("Clinical Review")
@@ -174,6 +177,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._findings_layout = QVBoxLayout()
         self._findings_layout.setSpacing(8)
         self._report_layout.addLayout(self._findings_layout)
+        protect_widget_from_capture(self)
 
     @staticmethod
     def _scroll_page() -> tuple[QScrollArea, QVBoxLayout]:
@@ -182,6 +186,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -584,10 +589,11 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         layout.setSpacing(6)
 
         # Drag handle hint
-        drag_hint = QLabel("⠿ 拖曳移動")
+        drag_hint = QLabel("⠿")
         drag_hint.setFont(QFont("Segoe UI", 8))
         drag_hint.setStyleSheet("color: #666; padding: 0;")
         drag_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        drag_hint.setToolTip("拖曳移動")
         layout.addWidget(drag_hint)
 
         self._title_label = QLabel("💬 AI 對話")
@@ -660,6 +666,7 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         action_layout.addWidget(self._apply_proposal_btn)
         self._proposal_actions.setVisible(False)
         layout.addWidget(self._proposal_actions)
+        protect_widget_from_capture(self)
 
     def show_chat(
         self,
@@ -763,6 +770,7 @@ class OverlayWindow(QWidget):
         self._highlights: list[
             tuple[int, int, int, int, str, str, str]
         ] = []  # x, y, w, h, severity, label
+        protect_widget_from_capture(self)
 
     def set_interaction_mode(self, mode: str) -> None:
         """Switch between click-through, AI-box inspection, and user marking."""
@@ -771,6 +779,7 @@ class OverlayWindow(QWidget):
         self._interaction_mode = mode
         self._selection_start = None
         self._draft_rect = None
+        was_visible = self.isVisible()
         self.setWindowFlag(
             Qt.WindowType.WindowTransparentForInput,
             mode == "passive",
@@ -782,8 +791,9 @@ class OverlayWindow(QWidget):
             if mode == "inspect"
             else Qt.CursorShape.ArrowCursor
         )
-        if self.isVisible():
+        if was_visible:
             self.show()
+        protect_widget_from_capture(self)
         self.update()
 
     @property
@@ -922,7 +932,7 @@ class OverlayWindow(QWidget):
             select_qt_screen,
         )
 
-        app = QApplication.instance()
+        app = cast("QApplication | None", QApplication.instance())
         screen = select_qt_screen(app, display_frame) if app is not None else None
         if screen is None:
             from dicom_overlay.infrastructure.dpi import physical_to_logical
@@ -975,6 +985,7 @@ class OverlayWindow(QWidget):
         """
         self.summary_panel.update_result(result)
         self.summary_panel.setVisible(True)
+        protect_widget_from_capture(self.summary_panel)
         self._current_severity = result.severity.value
         if content_rect is not None:
             self._content_rect = content_rect
@@ -986,6 +997,7 @@ class OverlayWindow(QWidget):
 
         self.setWindowOpacity(1.0)
         self.show()
+        protect_widget_from_capture(self)
         self.update()
 
         # Results persist until dismissed or new image triggers a new analysis.
@@ -1004,8 +1016,10 @@ class OverlayWindow(QWidget):
         """Show chat panel with 'thinking' placeholder."""
         self._chat_timer.stop()
         self.chat_panel.show_waiting(question)
+        protect_widget_from_capture(self.chat_panel)
         self.setWindowOpacity(1.0)
         self.show()
+        protect_widget_from_capture(self)
 
     def show_chat_response(
         self,
@@ -1020,8 +1034,10 @@ class OverlayWindow(QWidget):
             answer,
             proposal_summary=proposal_summary,
         )
+        protect_widget_from_capture(self.chat_panel)
         self.setWindowOpacity(1.0)
         self.show()
+        protect_widget_from_capture(self)
         # A pending report update must stay available for an explicit decision.
         if proposal_summary:
             self._chat_timer.stop()

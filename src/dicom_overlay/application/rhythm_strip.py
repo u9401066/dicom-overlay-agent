@@ -36,6 +36,7 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
+from dicom_overlay.domain.services import VisionAnalyzerService
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -199,4 +200,118 @@ async def refine_rhythm_strip(
     if strip is None or (not strip.summary.strip() and not strip.findings):
         logger.warning("rhythm_strip_analysis_failed")
         return result
-    return merge_rhythm_strip(result, strip, crop_region)
+    merged = merge_rhythm_strip(result, strip, crop_region)
+    event: dict[str, object] = {
+        "stage": "rhythm_strip_refine",
+        "status": "completed" if merged is not result else "completed_no_change",
+        "tool": "crop_region_base64+openclaw_vision_analysis",
+        "crop_source": "source_image",
+        "crop_region": {
+            "x": crop_region.x,
+            "y": crop_region.y,
+            "w": crop_region.w,
+            "h": crop_region.h,
+        },
+        "finding_count_before": len(result.findings),
+        "finding_count_after": len(merged.findings),
+    }
+    return dataclasses.replace(
+        merged,
+        analysis_trace=[*merged.analysis_trace, event],
+    )
+
+
+class RhythmStripRefiningAnalyzer(VisionAnalyzerService):
+    """Apply the shared rhythm-strip pass to a complete analyzer transaction.
+
+    The desktop and evaluator can use the same application-layer implementation:
+    the inner analyzer produces the full-image draft, then a separately injected
+    analyzer re-reads only a model-localized strip from the original ROI.
+    """
+
+    def __init__(
+        self,
+        *,
+        inner: VisionAnalyzerService,
+        refinement_analyzer: VisionAnalyzerService,
+        cropper: Callable[[str, RegionRect], str],
+    ) -> None:
+        self._inner = inner
+        self._refinement_analyzer = refinement_analyzer
+        self._cropper = cropper
+
+    async def analyze(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        result = await self._inner.analyze(image_base64, modality, valid_regions)
+        return await self._refine(
+            result,
+            image_base64,
+            valid_regions=valid_regions,
+        )
+
+    async def analyze_with_source_size(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        source_size_px: tuple[int, int] | None,
+        source_image_base64: str | None = None,
+        local_candidate_regions: list[RegionRect] | None = None,
+    ) -> AnalysisResult:
+        analyze_with_source_size = getattr(
+            self._inner,
+            "analyze_with_source_size",
+            None,
+        )
+        if callable(analyze_with_source_size):
+            result = await analyze_with_source_size(
+                image_base64,
+                modality,
+                valid_regions,
+                source_size_px=source_size_px,
+                source_image_base64=source_image_base64,
+                local_candidate_regions=local_candidate_regions,
+            )
+        else:
+            result = await self._inner.analyze(
+                image_base64,
+                modality,
+                valid_regions,
+            )
+        return await self._refine(
+            result,
+            source_image_base64 or image_base64,
+            valid_regions=valid_regions,
+        )
+
+    async def _refine(
+        self,
+        result: AnalysisResult,
+        source_image_base64: str,
+        *,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        return await refine_rhythm_strip(
+            result,
+            source_image_base64,
+            analyze_fn=self._refinement_analyzer.analyze,
+            cropper=self._cropper,
+            valid_regions=valid_regions,
+        )
+
+    async def chat(self, message: str) -> str:
+        return await self._inner.chat(message)
+
+    async def connect(self) -> None:
+        await self._inner.connect()
+
+    async def disconnect(self) -> None:
+        await self._inner.disconnect()
+
+    def is_connected(self) -> bool:
+        return self._inner.is_connected()

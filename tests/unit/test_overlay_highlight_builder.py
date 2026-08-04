@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dicom_overlay.domain.entities import Finding, RegionRect, Severity, WindowRect
+from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
 from dicom_overlay.infrastructure.overlay_highlight_builder import (
     build_ai_bbox_highlights,
 )
@@ -80,3 +81,30 @@ def test_ai_bbox_highlight_builder_draws_info_box_for_uncertainty_review() -> No
         (200, 240, 200, 80, "info", "Review possible ST change", "uncertain-1")
     ]
     assert result.audit_rows[0].drawn is True
+
+
+def test_ai_bbox_highlight_builder_rejects_cross_display_capture() -> None:
+    finding = Finding(
+        id="cross-display",
+        regions=[],
+        label="Do not draw off-canvas",
+        detail="The capture spans two displays.",
+        severity=Severity.WARNING,
+        bboxes=[RegionRect(x=0.75, y=0.2, w=0.2, h=0.2)],
+    )
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=1920, height=1080),
+        logical_screen=WindowRect(left=0, top=0, width=1920, height=1080),
+    )
+
+    result = build_ai_bbox_highlights(
+        findings=[finding],
+        image_rect=WindowRect(left=1600, top=100, width=800, height=600),
+        coordinate_frame=frame,
+    )
+
+    assert result.highlights == []
+    row = result.audit_rows[0]
+    assert row.drawn is False
+    assert row.calibration.within_overlay_bounds is False
+    assert row.to_dict()["within_overlay_bounds"] is False

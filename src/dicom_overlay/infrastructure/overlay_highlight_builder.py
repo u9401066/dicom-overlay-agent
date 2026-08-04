@@ -42,6 +42,7 @@ class BboxHighlightAuditRow:
             "back_projected_bbox": _bbox_to_dict(self.calibration.back_projected_bbox),
             "max_edge_drift_px": self.calibration.max_edge_drift_px,
             "was_clamped": self.calibration.was_clamped,
+            "within_overlay_bounds": self.calibration.within_overlay_bounds,
             "ok": self.calibration.ok,
         }
 

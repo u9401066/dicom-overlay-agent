@@ -31,8 +31,23 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
+import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _assert_clean_roi_seed(config_path: Path) -> None:
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    roi = config["phi_roi"]
+    assert roi["configured"] is False
+    assert roi["coordinate_space"] == "viewer"
+    assert roi["reference_width"] == 0
+    assert roi["reference_height"] == 0
+    assert all(roi[edge] == 0 for edge in ("top", "bottom", "left", "right"))
+
+
+def test_shipped_config_requires_per_workstation_roi_setup():
+    _assert_clean_roi_seed(_REPO_ROOT / "config.yaml")
 
 
 def test_selfcheck_reports_all_components():
@@ -85,6 +100,7 @@ def test_built_bundle_selfcheck_exits_zero():
     exe = _built_exe()
     assert exe is not None
     bundle = exe.parent
+    _assert_clean_roi_seed(bundle / "config.yaml")
     assert not (bundle / "overlay_agent.log").exists()
     assert not (bundle / "openclaw-home").exists()
     result = subprocess.run(

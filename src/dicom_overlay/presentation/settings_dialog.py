@@ -186,7 +186,8 @@ class SettingsDialog(QDialog):
 
         self._multi_pass_check = QCheckBox("Multi-pass clinical review")
         self._multi_pass_check.setToolTip(
-            "Targeted crop verification plus layout-derived EKG discovery review"
+            "Targeted crop verification, layout-derived EKG discovery, and a "
+            "localized rhythm-strip re-check from the original capture"
         )
         self._multi_pass_check.setChecked(multi_pass_enabled)
         form.addRow("Multi-pass", self._multi_pass_check)

@@ -13,6 +13,7 @@ Both arguments may point either at an eval directory containing
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import statistics
@@ -26,6 +27,29 @@ _PARTIAL_WEIGHTS: dict[str, float] = {
     "keyword_recall": 0.35,
     "negative_recall": 0.15,
 }
+
+# These are the only protocol fields allowed to vary between experimental
+# arms. Everything else in the fingerprint is a shared invariant and must be
+# byte-for-byte equivalent after canonicalization.
+_ARM_VARIANT_FLAGS = frozenset(
+    {
+        "analysis_prompt_profile",
+        "ecgfounder_checkpoint_sha256",
+        "ecgfounder_model_revision",
+        "ecgfounder_paired_case_count",
+        "ecgfounder_preprocessing_revision",
+        "ecgfounder_waveform_evidence",
+        "guardrail_hooks",
+        "multi_pass",
+        "multi_pass_bbox_calibrator",
+        "multi_pass_max_ekg_systematic_probes",
+        "multi_pass_max_targets",
+        "refinement_crop_source",
+        "require_perfect",
+        "rhythm_strip_pass",
+        "single_pass_bbox_calibrator",
+    }
+)
 
 
 def resolve_eval_dir(path: Path) -> Path:
@@ -87,11 +111,15 @@ def build_comparison(
 
     baseline_manifest = _protocol_manifest_identity(baseline_dir)
     candidate_manifest = _protocol_manifest_identity(candidate_dir)
+    baseline_invariants = _protocol_shared_invariants(baseline_dir)
+    candidate_invariants = _protocol_shared_invariants(candidate_dir)
     compatibility_issues = _protocol_compatibility_issues(
         baseline_health=baseline_health,
         candidate_health=candidate_health,
         baseline_manifest=baseline_manifest,
         candidate_manifest=candidate_manifest,
+        baseline_invariants=baseline_invariants,
+        candidate_invariants=candidate_invariants,
     )
     if compatibility_issues and not allow_incompatible:
         raise ValueError(
@@ -139,6 +167,8 @@ def build_comparison(
         "candidate_health": candidate_health,
         "baseline_manifest": baseline_manifest,
         "candidate_manifest": candidate_manifest,
+        "baseline_shared_invariants": baseline_invariants,
+        "candidate_shared_invariants": candidate_invariants,
         "baseline_only_cases": sorted(set(baseline_cases) - set(candidate_cases)),
         "candidate_only_cases": sorted(set(candidate_cases) - set(baseline_cases)),
         "headline": _headline(baseline, candidate, rows),
@@ -199,18 +229,114 @@ def _reference_signature(case: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _protocol_manifest_identity(eval_dir: Path) -> dict[str, Any] | None:
-    path = eval_dir / "protocol-fingerprint.json"
-    if not path.is_file():
+    payload = _load_protocol_fingerprint(eval_dir)
+    if payload is None:
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
     protocol = payload.get("protocol")
     manifest = protocol.get("manifest") if isinstance(protocol, dict) else None
     if not isinstance(manifest, dict):
         return None
+    cases = manifest.get("cases")
+    case_sequence = [
+        {
+            "case": str(item.get("case") or ""),
+            "image": str(item.get("image") or ""),
+            "sha256": str(item.get("sha256") or ""),
+        }
+        for item in cases
+        if isinstance(item, dict)
+    ] if isinstance(cases, list) else []
     return {
         "sha256": str(manifest.get("sha256") or ""),
         "selected_case_count": _int(manifest.get("selected_case_count")),
+        "case_sequence_sha256": _canonical_digest(case_sequence),
     }
+
+
+def _load_protocol_fingerprint(eval_dir: Path) -> dict[str, Any] | None:
+    path = eval_dir / "protocol-fingerprint.json"
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def _file_identity(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    identities = [
+        {
+            "path": str(item.get("path") or ""),
+            "sha256": str(item.get("sha256") or ""),
+        }
+        for item in value
+        if isinstance(item, dict)
+    ]
+    return sorted(identities, key=lambda item: item["path"])
+
+
+def _protocol_shared_invariants(eval_dir: Path) -> dict[str, Any] | None:
+    payload = _load_protocol_fingerprint(eval_dir)
+    protocol = payload.get("protocol") if payload else None
+    if not isinstance(protocol, dict):
+        return None
+
+    source = protocol.get("source")
+    source = source if isinstance(source, dict) else {}
+    model = protocol.get("model")
+    model = model if isinstance(model, dict) else {}
+    openclaw = model.get("openclaw")
+    openclaw = openclaw if isinstance(openclaw, dict) else {}
+    flags = protocol.get("flags")
+    flags = flags if isinstance(flags, dict) else {}
+    manifest = _protocol_manifest_identity(eval_dir)
+    components = {
+        "source": {
+            "available": bool(source.get("available")),
+            "commit": str(source.get("commit") or ""),
+            "dirty": bool(source.get("dirty")),
+            "worktree_status_sha256": str(
+                source.get("worktree_status_sha256") or ""
+            ),
+            "tracked_diff_sha256": str(source.get("tracked_diff_sha256") or ""),
+        },
+        "model_runtime": {
+            "id": str(model.get("id") or ""),
+            "gateway_mode": str(model.get("gateway_mode") or ""),
+            "openclaw_version": str(openclaw.get("version") or ""),
+            "openclaw_package_sha256": str(openclaw.get("package_sha256") or ""),
+            "openclaw_cli_sha256": str(openclaw.get("cli_sha256") or ""),
+        },
+        "prompt_sources": _file_identity(protocol.get("prompts")),
+        "skills": _file_identity(protocol.get("skills")),
+        "clinical_rules": _file_identity(protocol.get("clinical_rules")),
+        "manifest": manifest,
+        "shared_flags": {
+            key: flags[key]
+            for key in sorted(flags)
+            if key not in _ARM_VARIANT_FLAGS
+        },
+    }
+    arm = {
+        key: flags[key]
+        for key in sorted(flags)
+        if key in _ARM_VARIANT_FLAGS
+    }
+    return {
+        "digest": _canonical_digest(components),
+        "components": components,
+        "arm": arm,
+    }
+
+
+def _canonical_digest(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _scorecard_health(
@@ -283,12 +409,35 @@ def _protocol_compatibility_issues(
     candidate_health: dict[str, Any],
     baseline_manifest: dict[str, Any] | None,
     candidate_manifest: dict[str, Any] | None,
+    baseline_invariants: dict[str, Any] | None,
+    candidate_invariants: dict[str, Any] | None,
 ) -> list[str]:
     issues: list[str] = []
     if baseline_manifest is None or candidate_manifest is None:
         issues.append("one or both protocol fingerprints lack manifest identity")
     elif baseline_manifest != candidate_manifest:
         issues.append("protocol fingerprints use different manifests")
+
+    if baseline_invariants is None or candidate_invariants is None:
+        issues.append("one or both protocol fingerprints lack shared invariants")
+    elif baseline_invariants.get("digest") != candidate_invariants.get("digest"):
+        baseline_components = baseline_invariants.get("components")
+        candidate_components = candidate_invariants.get("components")
+        baseline_components = (
+            baseline_components if isinstance(baseline_components, dict) else {}
+        )
+        candidate_components = (
+            candidate_components if isinstance(candidate_components, dict) else {}
+        )
+        mismatches = sorted(
+            key
+            for key in set(baseline_components) | set(candidate_components)
+            if baseline_components.get(key) != candidate_components.get(key)
+        )
+        issues.append(
+            "shared protocol invariants differ"
+            + (f" ({', '.join(mismatches)})" if mismatches else "")
+        )
 
     baseline_scorer = str(baseline_health.get("scorer_digest") or "")
     candidate_scorer = str(candidate_health.get("scorer_digest") or "")
@@ -353,6 +502,13 @@ def _compare_case(
         "case": label,
         "image": candidate.get("image") or baseline.get("image"),
         "modality": candidate.get("modality") or baseline.get("modality"),
+        "reference_complete": bool(
+            baseline.get(
+                "reference_complete",
+                baseline.get("label_status", "asserted") == "asserted",
+            )
+        ),
+        "clinical_scorable": bool(baseline.get("clinical_scorable", True)),
         "status": status,
         "partial_credit_delta": delta,
         "baseline_partial_credit": base_partial,
@@ -433,7 +589,7 @@ def _case_safety_observations(
     expected = row["baseline_expected_severity"]
     abnormal_match = bool(row[f"{prefix}_severity_abnormal_match"])
     observations: list[bool] = []
-    if expected in {"normal", "info"}:
+    if row["reference_complete"] and expected in {"normal", "info"}:
         observations.extend(
             (
                 abnormal_match,
@@ -441,9 +597,9 @@ def _case_safety_observations(
                 and not bool(row[f"{prefix}_concept_false_positives"]),
             )
         )
-    elif expected in {"warning", "critical"}:
+    elif row["reference_complete"] and expected in {"warning", "critical"}:
         observations.append(abnormal_match)
-    if expected == "critical":
+    if row["reference_complete"] and expected == "critical":
         observations.append(bool(row[f"{prefix}_severity_match"]))
     urgent_hits = set(row[f"{prefix}_urgent_concern_hits"])
     observations.extend(
@@ -486,15 +642,20 @@ def _clinical_safety(rows: list[dict[str, Any]]) -> dict[str, Any]:
     normal_rows = [
         row
         for row in rows
+        if row["reference_complete"]
         if row["baseline_expected_severity"] in {"normal", "info"}
     ]
     abnormal_rows = [
         row
         for row in rows
+        if row["reference_complete"]
         if row["baseline_expected_severity"] in {"warning", "critical"}
     ]
     critical_rows = [
-        row for row in rows if row["baseline_expected_severity"] == "critical"
+        row
+        for row in rows
+        if row["reference_complete"]
+        and row["baseline_expected_severity"] == "critical"
     ]
 
     normal_severity_pairs = [
@@ -569,7 +730,7 @@ def _headline(
         if rows
         else 0.0
     )
-    return {
+    headline = {
         "baseline_strict_pass_rate": _scorecard_strict_rate(baseline),
         "candidate_strict_pass_rate": _scorecard_strict_rate(candidate),
         "strict_pass_rate_delta": round(
@@ -600,6 +761,20 @@ def _headline(
             candidate.get("urgent_concern_missed", [])
         ),
     }
+    for field in (
+        "diagnosis_exact_set_accuracy",
+        "diagnosis_complete_recall_rate",
+        "single_diagnosis_exact_set_accuracy",
+        "multi_diagnosis_3_to_5_exact_set_accuracy",
+        "multi_diagnosis_3_to_5_complete_recall_rate",
+        "normal_control_specificity",
+    ):
+        baseline_value = _float(baseline.get(field))
+        candidate_value = _float(candidate.get(field))
+        headline[f"baseline_{field}"] = baseline_value
+        headline[f"candidate_{field}"] = candidate_value
+        headline[f"{field}_delta"] = round(candidate_value - baseline_value, 3)
+    return headline
 
 
 def _paired_sign_test(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -675,23 +850,94 @@ def _case_strict_pass(case: dict[str, Any]) -> bool:
 
 def _trace_cost(eval_dir: Path) -> dict[str, Any]:
     path = eval_dir / "multipass-trace.jsonl"
+    usage = _session_usage(eval_dir)
     if not path.exists():
         return {
             "traced_cases": 0,
             "mean_openclaw_analyze_calls": None,
             "mean_zoom_passes": None,
             "mean_crop_calls": None,
+            "mean_tokens_per_traced_case": None,
+            **usage,
         }
     rows = [
         json.loads(line)
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    total_tokens = usage.get("total_tokens")
     return {
         "traced_cases": len(rows),
         "mean_openclaw_analyze_calls": _mean_field(rows, "openclaw_analyze_calls"),
         "mean_zoom_passes": _mean_field(rows, "zoom_passes"),
         "mean_crop_calls": _mean_field(rows, "crop_calls"),
+        "mean_tokens_per_traced_case": (
+            round(float(total_tokens) / len(rows), 3)
+            if rows and isinstance(total_tokens, (int, float))
+            else None
+        ),
+        **usage,
+    }
+
+
+def _session_usage(eval_dir: Path) -> dict[str, Any]:
+    """Aggregate provider-reported usage from OpenClaw session messages."""
+
+    sessions_dir = (
+        eval_dir.parent / "openclaw-state" / "agents" / "main" / "sessions"
+    )
+    empty = {
+        "usage_records": 0,
+        "total_input_tokens": None,
+        "total_output_tokens": None,
+        "total_cache_read_tokens": None,
+        "total_cache_write_tokens": None,
+        "total_tokens": None,
+        "total_cost_usd": None,
+    }
+    if not sessions_dir.is_dir():
+        return empty
+
+    totals = {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+    }
+    total_cost = 0.0
+    records = 0
+    for path in sessions_dir.glob("*.jsonl"):
+        if path.name.endswith(".trajectory.jsonl"):
+            continue
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            message = row.get("message")
+            usage = message.get("usage") if isinstance(message, dict) else None
+            if not isinstance(usage, dict):
+                continue
+            records += 1
+            for key in totals:
+                totals[key] += _int(usage.get(key))
+            cost = usage.get("cost")
+            if isinstance(cost, dict):
+                total_cost += _float(cost.get("total"))
+
+    if not records:
+        return empty
+    return {
+        "usage_records": records,
+        "total_input_tokens": totals["input"],
+        "total_output_tokens": totals["output"],
+        "total_cache_read_tokens": totals["cacheRead"],
+        "total_cache_write_tokens": totals["cacheWrite"],
+        "total_tokens": totals["totalTokens"],
+        "total_cost_usd": round(total_cost, 8),
     }
 
 
@@ -723,6 +969,8 @@ def _markdown_report(report: dict[str, Any]) -> str:
     safety_counts = report["safety_case_status_counts"]
     sign_test = report["paired_sign_test"]
     safety = report["clinical_safety"]
+    baseline_cost = report["baseline_cost"]
+    candidate_cost = report["candidate_cost"]
     lines = [
         "# Eval Run Comparison",
         "",
@@ -748,7 +996,21 @@ def _markdown_report(report: dict[str, Any]) -> str:
         f"- Paired mean partial-credit delta: "
         f"{headline['paired_mean_partial_credit_delta']:.1%}",
         f"- Keyword recall delta: {headline['keyword_recall_delta']:.1%}",
+        f"- Diagnosis exact-set delta: "
+        f"{headline['diagnosis_exact_set_accuracy_delta']:.1%}",
+        f"- Diagnosis complete-recall delta: "
+        f"{headline['diagnosis_complete_recall_rate_delta']:.1%}",
+        f"- 3-5 diagnosis exact-set / complete-recall delta: "
+        f"{headline['multi_diagnosis_3_to_5_exact_set_accuracy_delta']:.1%} / "
+        f"{headline['multi_diagnosis_3_to_5_complete_recall_rate_delta']:.1%}",
+        f"- Normal-control specificity delta: "
+        f"{headline['normal_control_specificity_delta']:.1%}",
         f"- Paired sign-test p-value: {sign_test['two_sided_p']}",
+        "",
+        "## Runtime And Provider Usage",
+        "",
+        _format_usage("Baseline", baseline_cost),
+        _format_usage("Candidate", candidate_cost),
         "",
         "## Safety And Clinical Detection",
         "",
@@ -794,6 +1056,18 @@ def _format_binary_metric(label: str, metric: dict[str, Any]) -> str:
         f"({metric['baseline_rate']:.1%}) -> {metric['candidate_hits']}/{total} "
         f"({metric['candidate_rate']:.1%}); delta {metric['rate_delta']:+.1%}; "
         f"paired p={metric['paired_exact_test']['two_sided_p']}"
+    )
+
+
+def _format_usage(label: str, cost: dict[str, Any]) -> str:
+    if not cost.get("usage_records"):
+        return f"- {label}: provider usage not recorded"
+    return (
+        f"- {label}: {cost['total_tokens']} tokens "
+        f"(input={cost['total_input_tokens']}, output={cost['total_output_tokens']}, "
+        f"cache-read={cost['total_cache_read_tokens']}); "
+        f"cost={cost['total_cost_usd']} USD; "
+        f"mean/case={cost['mean_tokens_per_traced_case']}"
     )
 
 

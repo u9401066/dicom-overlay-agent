@@ -166,6 +166,56 @@ console.log(JSON.stringify({{ rejected }}));
     assert _run_node_module(source)["rejected"] is True
 
 
+def test_bbox_tool_binds_receipt_to_image_turn_and_exact_boxes(
+    tmp_path: Path,
+) -> None:
+    module_uri = (_PLUGIN_ROOT / "index.js").as_uri()
+    audit_path = tmp_path / "bbox-audit.jsonl"
+    source_sha = "a" * 64
+    evidence_nonce = "b" * 32
+    source = f"""
+process.env.DICOM_BBOX_AUDIT_PATH = {json.dumps(str(audit_path))};
+const module = await import({json.dumps(module_uri)});
+const tool = module.createBboxValidationTool();
+const response = await tool.execute("bbox-call", {{
+  modality: "EKG",
+  source_image_sha256: {json.dumps(source_sha)},
+  evidence_nonce: {json.dumps(evidence_nonce)},
+  boxes: [{{ id: "f1", x: 0.1, y: 0.2, w: 0.2, h: 0.1 }}]
+}});
+let badNonceRejected = false;
+try {{
+  await tool.execute("bad-call", {{
+    modality: "EKG",
+    source_image_sha256: {json.dumps(source_sha)},
+    evidence_nonce: "wrong",
+    boxes: []
+  }});
+}} catch {{
+  badNonceRejected = true;
+}}
+console.log(JSON.stringify({{
+  badNonceRejected,
+  details: response.details,
+  digest: module.acceptedBoxesDigest(response.details.accepted)
+}}));
+"""
+
+    result = _run_node_module(source)
+    records = [
+        json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result["badNonceRejected"] is True
+    assert result["details"]["source_image_sha256"] == source_sha  # type: ignore[index]
+    assert result["details"]["evidence_nonce"] == evidence_nonce  # type: ignore[index]
+    assert len(records) == 1
+    assert records[0]["schema_version"] == 2
+    assert records[0]["source_image_sha256"] == source_sha
+    assert records[0]["evidence_nonce"] == evidence_nonce
+    assert records[0]["accepted_boxes_sha256"] == result["digest"]
+
+
 def test_ecg_founder_tool_persists_bounded_success_and_failure_receipts(
     tmp_path: Path,
 ) -> None:

@@ -133,6 +133,7 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     panel = SummaryPanel()
     panel.update_result(_result())
 
+    assert panel._report_layout.alignment() & Qt.AlignmentFlag.AlignTop
     assert panel._tabs.count() == 3
     assert panel._findings_layout.count() == 3
     finding = panel._findings_layout.itemAt(0).widget()
@@ -158,6 +159,49 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     assert "predictions=10" in refined.text()
     assert "calibration=uncalibrated" in refined.text()
     panel.close()
+
+
+def test_visible_overlay_stays_visible_while_switching_interaction_modes(
+    qt_app: QApplication,
+) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(800, 400)
+    selected: list[tuple[object, ...]] = []
+    overlay.highlight_selected.connect(lambda *values: selected.append(values))
+    overlay.show_result(
+        _result(),
+        [(100, 80, 160, 100, "warning", "ST-T change", "f1")],
+        content_rect=(0, 0, 800, 400),
+    )
+    qt_app.processEvents()
+
+    assert overlay.isVisible()
+    overlay.set_interaction_mode("inspect")
+    qt_app.processEvents()
+    assert overlay.isVisible()
+    QTest.mouseClick(
+        overlay,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(150, 120),
+    )
+    assert selected
+
+    overlay.set_interaction_mode("annotate")
+    qt_app.processEvents()
+    assert overlay.isVisible()
+    QTest.mousePress(
+        overlay,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(400, 200),
+    )
+    QTest.mouseMove(overlay, QPoint(520, 280))
+    QTest.mouseRelease(
+        overlay,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(520, 280),
+    )
+    assert overlay.user_regions
+    overlay.dismiss()
 
 
 def test_report_panel_marks_retained_checklist_after_review_writeback(

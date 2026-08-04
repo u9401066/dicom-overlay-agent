@@ -220,12 +220,21 @@ class DisplayFrame:
 
 @dataclass(frozen=True)
 class ROICrop:
-    """PHI ROI crop settings in pixels (spec §3.2)."""
+    """PHI-safe crop margins relative to the detected viewer window.
 
-    top: int = 60
-    bottom: int = 30
+    A clean install is deliberately unconfigured.  The reference dimensions
+    let the app scale a reviewer-selected safe area when the viewer is resized
+    while keeping every capture inside that viewer's current bounds.
+    """
+
+    top: int = 0
+    bottom: int = 0
     left: int = 0
     right: int = 0
+    configured: bool = False
+    coordinate_space: str = "viewer"
+    reference_width: int = 0
+    reference_height: int = 0
 
 
 @dataclass

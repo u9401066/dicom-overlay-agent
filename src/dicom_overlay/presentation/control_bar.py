@@ -8,6 +8,7 @@ from PyQt6.QtGui import QFont, QMouseEvent
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from dicom_overlay.domain.entities import AgentState, TriggerMode
+from dicom_overlay.presentation.capture_safety import protect_widget_from_capture
 
 logger = structlog.get_logger(__name__)
 
@@ -131,6 +132,7 @@ class ControlBarWindow(QWidget):
         self._dismiss_btn = self._button("Quit")
         self._dismiss_btn.clicked.connect(self.dismiss_clicked.emit)
         layout.addWidget(self._dismiss_btn)
+        protect_widget_from_capture(self)
 
     @property
     def current_trigger_mode(self) -> TriggerMode:
