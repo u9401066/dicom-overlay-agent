@@ -350,7 +350,9 @@ class OpenClawClient(VisionAnalyzerService):
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
-                logger.warning("Malformed refinement JSON; retrying once with a new turn")
+                logger.warning(
+                    "Malformed refinement JSON; retrying once with a new turn"
+                )
                 continue
             self._last_parse_retry_count = attempt
             return result
@@ -535,12 +537,10 @@ class OpenClawClient(VisionAnalyzerService):
             self._tool_audit_offset,
             _valid_bbox_tool_audit_record,
         )
-        self._ecg_founder_tool_audit_offset, ecg_records = (
-            _read_new_tool_audit_records(
-                self._ecg_founder_tool_audit_path,
-                self._ecg_founder_tool_audit_offset,
-                _valid_ecg_founder_tool_audit_record,
-            )
+        self._ecg_founder_tool_audit_offset, ecg_records = _read_new_tool_audit_records(
+            self._ecg_founder_tool_audit_path,
+            self._ecg_founder_tool_audit_offset,
+            _valid_ecg_founder_tool_audit_record,
         )
         for record in [*bbox_records, *ecg_records]:
             self._last_tool_audit_records.append(record)
@@ -581,12 +581,43 @@ class OpenClawClient(VisionAnalyzerService):
         context: str = "",
     ) -> str:
         """Ask a follow-up question about the same image with context attached."""
+        prompt = _build_image_followup_prompt(message=message, context=context)
+        return await self._chat_about_image_prompt(
+            prompt,
+            image_base64=image_base64,
+        )
+
+    async def review_region_about_image(
+        self,
+        prompt: str,
+        *,
+        image_base64: str,
+    ) -> str:
+        """Run a complete structured regional-review prompt against a crop.
+
+        Unlike :meth:`chat_about_image`, ``prompt`` already contains its output
+        contract. Keeping this as an explicit API prevents the generic prose
+        wrapper from contradicting the JSON-only review-writeback schema.
+        """
+
+        if not prompt.strip():
+            raise ValueError("prompt is required for regional review")
+        return await self._chat_about_image_prompt(
+            prompt,
+            image_base64=image_base64,
+        )
+
+    async def _chat_about_image_prompt(
+        self,
+        prompt: str,
+        *,
+        image_base64: str,
+    ) -> str:
         async with self._ws_lock:
             try:
-                return await self._do_chat_about_image(
-                    message,
+                return await self._do_image_chat_prompt(
+                    prompt,
                     image_base64=image_base64,
-                    context=context,
                 )
             except (
                 websockets.ConnectionClosed,
@@ -596,10 +627,9 @@ class OpenClawClient(VisionAnalyzerService):
                 self._connected = False
                 try:
                     await self.connect()
-                    return await self._do_chat_about_image(
-                        message,
+                    return await self._do_image_chat_prompt(
+                        prompt,
                         image_base64=image_base64,
-                        context=context,
                     )
                 except websockets.ConnectionClosed:
                     self._connected = False
@@ -631,12 +661,11 @@ class OpenClawClient(VisionAnalyzerService):
         await self._ws.send(json.dumps(frame))
         return await self._wait_for_chat_text(request_id)
 
-    async def _do_chat_about_image(
+    async def _do_image_chat_prompt(
         self,
-        message: str,
+        prompt: str,
         *,
         image_base64: str,
-        context: str,
     ) -> str:
         if not self.is_connected():
             raise ConnectionError("Not connected to OpenClaw Gateway")
@@ -647,7 +676,6 @@ class OpenClawClient(VisionAnalyzerService):
 
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
-        prompt = _build_image_followup_prompt(message=message, context=context)
 
         frame = build_openclaw_chat_frame(
             request_id=request_id,
@@ -961,9 +989,7 @@ class OpenClawClient(VisionAnalyzerService):
                 parse_warnings.append("Dropped malformed image_quality metadata")
 
         parse_warnings = list(dict.fromkeys(parse_warnings))
-        incomplete_reasons = _coerce_string_list(
-            payload.get("incomplete_reasons", [])
-        )
+        incomplete_reasons = _coerce_string_list(payload.get("incomplete_reasons", []))
         for warning in parse_warnings:
             if warning not in incomplete_reasons:
                 incomplete_reasons.append(warning)
@@ -1107,6 +1133,7 @@ def _analysis_result_prompt_payload(result: AnalysisResult) -> dict[str, object]
                 "severity": finding.severity.value,
                 "confidence": finding.confidence,
                 "question": finding.question,
+                "source": finding.source,
                 "regions": list(finding.regions),
                 "bboxes": [
                     {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
@@ -1293,9 +1320,7 @@ def _parse_refinement_finding(raw: object) -> Finding | None:
             continue
     raw_regions = raw.get("regions", [])
     regions = (
-        [str(value) for value in raw_regions]
-        if isinstance(raw_regions, list)
-        else []
+        [str(value) for value in raw_regions] if isinstance(raw_regions, list) else []
     )
     return Finding(
         id=str(raw.get("id", "")).strip(),
@@ -1508,9 +1533,7 @@ def _extract_tool_names(value: object) -> list[str]:
                 "toolstart",
                 "toolend",
             }:
-                name = item.get("name") or item.get("toolName") or item.get(
-                    "tool_name"
-                )
+                name = item.get("name") or item.get("toolName") or item.get("tool_name")
                 if isinstance(name, str) and name.strip():
                     found.append(name.strip())
             for key in ("toolName", "tool_name"):

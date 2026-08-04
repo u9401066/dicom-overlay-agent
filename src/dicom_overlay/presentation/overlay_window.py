@@ -9,7 +9,9 @@ import structlog
 from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QTabWidget,
     QVBoxLayout,
@@ -21,6 +23,7 @@ if TYPE_CHECKING:
         AnalysisResult,
         ChecklistItem,
         DisplayFrame,
+        RegionRect,
         WindowRect,
     )
     from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
@@ -29,10 +32,10 @@ logger = structlog.get_logger(__name__)
 
 # Severity color map (spec §3.4)
 SEVERITY_COLORS: dict[str, QColor] = {
-    "critical": QColor(220, 53, 69, 200),   # red
-    "warning": QColor(255, 193, 7, 200),     # yellow
-    "normal": QColor(40, 167, 69, 180),      # green
-    "info": QColor(108, 117, 125, 150),      # gray
+    "critical": QColor(220, 53, 69, 200),  # red
+    "warning": QColor(255, 193, 7, 200),  # yellow
+    "normal": QColor(40, 167, 69, 180),  # green
+    "info": QColor(108, 117, 125, 150),  # gray
 }
 
 
@@ -56,8 +59,7 @@ class _DraggableWindowMixin:
             return
         if a0.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = (
-                a0.globalPosition().toPoint()
-                - self.frameGeometry().topLeft()  # type: ignore[attr-defined]
+                a0.globalPosition().toPoint() - self.frameGeometry().topLeft()  # type: ignore[attr-defined]
             )
             a0.accept()
 
@@ -83,9 +85,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._init_draggable_window()
         self.setFixedWidth(430)
         self.setStyleSheet(
-            "background-color: rgba(20, 20, 30, 220); "
-            "border-radius: 8px; "
-            "padding: 8px;"
+            "background-color: rgba(20, 20, 30, 220); border-radius: 8px; padding: 8px;"
         )
 
         self._layout = QVBoxLayout(self)
@@ -99,6 +99,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._layout.addWidget(drag_hint)
 
         self._title_label = QLabel("Clinical Review")
+        self._title_label.setTextFormat(Qt.TextFormat.PlainText)
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self._title_label.setStyleSheet("color: white; padding-bottom: 4px;")
         self._layout.addWidget(self._title_label)
@@ -121,6 +122,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
 
         self._summary_label = QLabel("")
         self._summary_label.setWordWrap(True)
+        self._summary_label.setTextFormat(Qt.TextFormat.PlainText)
         self._summary_label.setFont(QFont("Segoe UI", 10))
         self._summary_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -133,10 +135,9 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         # a degraded result as a clean "all normal".
         self._incomplete_label = QLabel("")
         self._incomplete_label.setWordWrap(True)
+        self._incomplete_label.setTextFormat(Qt.TextFormat.PlainText)
         self._incomplete_label.setFont(QFont("Segoe UI", 9))
-        self._incomplete_label.setStyleSheet(
-            "color: #ffb000; padding-top: 6px;"
-        )
+        self._incomplete_label.setStyleSheet("color: #ffb000; padding-top: 6px;")
         self._incomplete_label.setVisible(False)
         self._report_layout.addWidget(self._incomplete_label)
 
@@ -145,10 +146,9 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         # zoom in their DICOM viewer and re-capture.
         self._zoom_hint_label = QLabel("")
         self._zoom_hint_label.setWordWrap(True)
+        self._zoom_hint_label.setTextFormat(Qt.TextFormat.PlainText)
         self._zoom_hint_label.setFont(QFont("Segoe UI", 9))
-        self._zoom_hint_label.setStyleSheet(
-            "color: #4ea1ff; padding-top: 6px;"
-        )
+        self._zoom_hint_label.setStyleSheet("color: #4ea1ff; padding-top: 6px;")
         self._zoom_hint_label.setVisible(False)
         self._report_layout.addWidget(self._zoom_hint_label)
 
@@ -159,10 +159,9 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         # note. Carries the guideline citation behind the flag.
         self._review_label = QLabel("")
         self._review_label.setWordWrap(True)
+        self._review_label.setTextFormat(Qt.TextFormat.PlainText)
         self._review_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        self._review_label.setStyleSheet(
-            "color: #ff5252; padding-top: 6px;"
-        )
+        self._review_label.setStyleSheet("color: #ff5252; padding-top: 6px;")
         self._review_label.setVisible(False)
         self._report_layout.addWidget(self._review_label)
 
@@ -230,10 +229,10 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             display_key = _humanize_checklist_key(key)
             display_val = _humanize_checklist_value(checklist_item.value)
             label = QLabel(
-                f"{checklist_item.status.value.upper()}  "
-                f"{display_key}: {display_val}"
+                f"{checklist_item.status.value.upper()}  {display_key}: {display_val}"
             )
             label.setWordWrap(True)
+            label.setTextFormat(Qt.TextFormat.PlainText)
             label.setFont(QFont("Segoe UI", 9))
             color = SEVERITY_COLORS.get(
                 checklist_item.status.value, SEVERITY_COLORS["info"]
@@ -269,9 +268,14 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     lines.append(f"Confidence: {finding.confidence}")
                 if finding.question:
                     lines.append(f"Question for review: {finding.question}")
+                if finding.source and finding.source != "ai":
+                    lines.append(
+                        f"Source: {finding.source.replace('_', ' ').replace('+', ' + ')}"
+                    )
                 lines.extend(f"Note: {note}" for note in finding.notes)
                 finding_label = QLabel("\n".join(lines))
                 finding_label.setWordWrap(True)
+                finding_label.setTextFormat(Qt.TextFormat.PlainText)
                 finding_label.setTextInteractionFlags(
                     Qt.TextInteractionFlag.TextSelectableByMouse
                 )
@@ -298,6 +302,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             )
             quality_label = QLabel(f"Image quality: {quality}")
             quality_label.setWordWrap(True)
+            quality_label.setTextFormat(Qt.TextFormat.PlainText)
             quality_label.setStyleSheet("color: #c8ced9; padding: 4px 0;")
             self._findings_layout.addWidget(quality_label)
         if result.next_steps:
@@ -309,6 +314,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 )
             )
             next_label.setWordWrap(True)
+            next_label.setTextFormat(Qt.TextFormat.PlainText)
             next_label.setStyleSheet("color: #c8ced9; padding: 4px 0;")
             self._findings_layout.addWidget(next_label)
 
@@ -324,6 +330,33 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 details.append(f"OpenClaw tools: {', '.join(map(str, tools))}")
             if entry.get("target_id"):
                 details.append(f"Target: {entry['target_id']}")
+            if entry.get("operation"):
+                details.append(f"Operation: {entry['operation']}")
+            if entry.get("bbox_source"):
+                details.append(f"Box source: {entry['bbox_source']}")
+            if entry.get("user_confirmed") is True:
+                details.append("Reviewer confirmation: recorded")
+            signal_audit = entry.get("local_signal_audit")
+            if isinstance(signal_audit, dict):
+                signal_bits = []
+                if signal_audit.get("status"):
+                    signal_bits.append(f"status={signal_audit['status']}")
+                if isinstance(signal_audit.get("ink_pixel_ratio"), (int, float)):
+                    signal_bits.append(
+                        f"ink={float(signal_audit['ink_pixel_ratio']):.3%}"
+                    )
+                if isinstance(signal_audit.get("edge_pixel_ratio"), (int, float)):
+                    signal_bits.append(
+                        f"edges={float(signal_audit['edge_pixel_ratio']):.3%}"
+                    )
+                if isinstance(signal_audit.get("robust_dynamic_range"), (int, float)):
+                    signal_bits.append(
+                        f"range={float(signal_audit['robust_dynamic_range']):.0f}"
+                    )
+                if isinstance(signal_audit.get("low_signal"), bool):
+                    signal_bits.append(f"low_signal={signal_audit['low_signal']}")
+                if signal_bits:
+                    details.append(f"Local signal audit: {', '.join(signal_bits)}")
             if entry.get("hypothesis"):
                 details.append(f"Hypothesis: {entry['hypothesis']}")
             crop_source = str(entry.get("crop_source") or entry.get("source") or "")
@@ -347,10 +380,14 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     probe_crop = probe.get("crop_region")
                     probe_text = f"Probe: {probe_id}"
                     if isinstance(probe_crop, dict):
-                        probe_text += " (" + ", ".join(
-                            f"{key}={float(probe_crop.get(key, 0.0)):.4f}"
-                            for key in ("x", "y", "w", "h")
-                        ) + ")"
+                        probe_text += (
+                            " ("
+                            + ", ".join(
+                                f"{key}={float(probe_crop.get(key, 0.0)):.4f}"
+                                for key in ("x", "y", "w", "h")
+                            )
+                            + ")"
+                        )
                     details.append(probe_text)
             tool_audit = entry.get("tool_audit")
             if isinstance(tool_audit, list):
@@ -391,6 +428,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 + ("\n" + "\n".join(details) if details else "")
             )
             process_label.setWordWrap(True)
+            process_label.setTextFormat(Qt.TextFormat.PlainText)
             process_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
@@ -441,17 +479,19 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._summary_label.setText("")
         self._title_label.setText("Waiting")
 
+
 class ChatPanel(_DraggableWindowMixin, QWidget):
     """Draggable panel for displaying chat Q&A."""
+
+    proposal_accepted = pyqtSignal()
+    proposal_dismissed = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._init_draggable_window()
         self.setFixedWidth(400)
         self.setStyleSheet(
-            "background-color: rgba(20, 20, 30, 230); "
-            "border-radius: 8px; "
-            "padding: 8px;"
+            "background-color: rgba(20, 20, 30, 230); border-radius: 8px; padding: 8px;"
         )
 
         layout = QVBoxLayout(self)
@@ -477,6 +517,7 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         # Question
         self._question_label = QLabel("")
         self._question_label.setWordWrap(True)
+        self._question_label.setTextFormat(Qt.TextFormat.PlainText)
         self._question_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         self._question_label.setStyleSheet("color: #8cb4ff; padding: 4px 0;")
         layout.addWidget(self._question_label)
@@ -484,8 +525,12 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         # Answer (scrollable)
         self._answer_label = QLabel("")
         self._answer_label.setWordWrap(True)
+        self._answer_label.setTextFormat(Qt.TextFormat.PlainText)
         self._answer_label.setFont(QFont("Segoe UI", 10))
         self._answer_label.setStyleSheet("color: #ddd;")
+        self._answer_label.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
         self._answer_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
@@ -500,19 +545,78 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         )
         layout.addWidget(scroll, stretch=1)
 
-    def show_chat(self, question: str, answer: str) -> None:
+        self._proposal_label = QLabel("")
+        self._proposal_label.setWordWrap(True)
+        self._proposal_label.setTextFormat(Qt.TextFormat.PlainText)
+        self._proposal_label.setStyleSheet(
+            "color: #f2d27a; border-top: 1px solid #555; padding: 8px 0 4px 0;"
+        )
+        self._proposal_label.setVisible(False)
+        layout.addWidget(self._proposal_label)
+
+        self._proposal_actions = QWidget()
+        action_layout = QHBoxLayout(self._proposal_actions)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(8)
+        self._dismiss_proposal_btn = QPushButton("Dismiss")
+        self._dismiss_proposal_btn.setToolTip("Keep the current report unchanged")
+        self._dismiss_proposal_btn.clicked.connect(self._dismiss_proposal)
+        action_layout.addWidget(self._dismiss_proposal_btn)
+        self._apply_proposal_btn = QPushButton("Apply to report")
+        self._apply_proposal_btn.setToolTip(
+            "Apply this AI suggestion to the current report and audit trail"
+        )
+        self._apply_proposal_btn.setStyleSheet(
+            "QPushButton { background: #2563a6; color: white; padding: 6px 10px; "
+            "border: 1px solid #4f88c6; border-radius: 4px; }"
+            "QPushButton:hover { background: #2f74bd; }"
+        )
+        self._apply_proposal_btn.clicked.connect(self._accept_proposal)
+        action_layout.addWidget(self._apply_proposal_btn)
+        self._proposal_actions.setVisible(False)
+        layout.addWidget(self._proposal_actions)
+
+    def show_chat(
+        self,
+        question: str,
+        answer: str,
+        *,
+        proposal_summary: str = "",
+    ) -> None:
         self._question_label.setText(f"Q: {question}")
         self._answer_label.setText(answer)
+        self._set_proposal(proposal_summary)
         self.setVisible(True)
 
     def show_waiting(self, question: str) -> None:
         self._question_label.setText(f"Q: {question}")
         self._answer_label.setText("思考中…")
+        self._set_proposal("")
         self.setVisible(True)
+
+    def _set_proposal(self, summary: str) -> None:
+        summary = summary.strip()
+        self._proposal_label.setText(
+            f"AI-suggested report update\n{summary}" if summary else ""
+        )
+        self._proposal_label.setVisible(bool(summary))
+        self._proposal_actions.setVisible(bool(summary))
+
+    def clear_proposal(self) -> None:
+        self._set_proposal("")
+
+    def _accept_proposal(self) -> None:
+        self._set_proposal("")
+        self.proposal_accepted.emit()
+
+    def _dismiss_proposal(self) -> None:
+        self._set_proposal("")
+        self.proposal_dismissed.emit()
 
     def clear(self) -> None:
         self._question_label.setText("")
         self._answer_label.setText("")
+        self._set_proposal("")
         self.setVisible(False)
 
 
@@ -525,6 +629,8 @@ class OverlayWindow(QWidget):
     display_expired = pyqtSignal()
     highlight_selected = pyqtSignal(str, float, float, float, float)
     user_region_created = pyqtSignal(float, float, float, float)
+    chat_proposal_accepted = pyqtSignal()
+    chat_proposal_dismissed = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -546,11 +652,13 @@ class OverlayWindow(QWidget):
         # Chat panel — independent draggable window (left side)
         self.chat_panel = ChatPanel()
         self.chat_panel.setVisible(False)
+        self.chat_panel.proposal_accepted.connect(self.chat_proposal_accepted.emit)
+        self.chat_panel.proposal_dismissed.connect(self.chat_proposal_dismissed.emit)
 
-        # Fade timer
-        self._display_timer = QTimer(self)
-        self._display_timer.setSingleShot(True)
-        self._display_timer.timeout.connect(self._fade_out)
+        # Chat answers expire independently; the report and image markers persist.
+        self._chat_timer = QTimer(self)
+        self._chat_timer.setSingleShot(True)
+        self._chat_timer.timeout.connect(self.chat_panel.clear)
 
         self._display_duration_sec = 30
         self._critical_persist = True
@@ -563,7 +671,9 @@ class OverlayWindow(QWidget):
         self._user_regions: list[tuple[float, float, float, float]] = []
 
         # Region highlights to draw
-        self._highlights: list[tuple[int, int, int, int, str, str]] = []  # x, y, w, h, severity, label
+        self._highlights: list[
+            tuple[int, int, int, int, str, str]
+        ] = []  # x, y, w, h, severity, label
 
     def set_interaction_mode(self, mode: str) -> None:
         """Switch between click-through, AI-box inspection, and user marking."""
@@ -590,6 +700,29 @@ class OverlayWindow(QWidget):
     @property
     def user_regions(self) -> list[tuple[float, float, float, float]]:
         return list(self._user_regions)
+
+    def clear_user_regions(self) -> None:
+        """Clear reviewer-drawn regions at a new-image boundary."""
+
+        self._user_regions.clear()
+
+    def consume_user_region(
+        self,
+        region: RegionRect,
+        *,
+        tolerance: float = 1e-6,
+    ) -> bool:
+        """Remove a manual region promoted to a reviewer-confirmed finding."""
+
+        target = (region.x, region.y, region.w, region.h)
+        for index, values in enumerate(self._user_regions):
+            if all(
+                abs(actual - expected) <= tolerance
+                for actual, expected in zip(values, target, strict=True)
+            ):
+                self._user_regions.pop(index)
+                return True
+        return False
 
     def configure(
         self,
@@ -698,23 +831,52 @@ class OverlayWindow(QWidget):
         self._highlights.clear()
         self._user_regions.clear()
         self._content_rect = None
+        self.clear_chat()
         self.update()
 
     def show_chat_waiting(self, question: str) -> None:
         """Show chat panel with 'thinking' placeholder."""
+        self._chat_timer.stop()
         self.chat_panel.show_waiting(question)
         self.setWindowOpacity(1.0)
         self.show()
 
-    def show_chat_response(self, question: str, answer: str) -> None:
+    def show_chat_response(
+        self,
+        question: str,
+        answer: str,
+        *,
+        proposal_summary: str = "",
+    ) -> None:
         """Show chat Q&A on overlay."""
-        self.chat_panel.show_chat(question, answer)
+        self.chat_panel.show_chat(
+            question,
+            answer,
+            proposal_summary=proposal_summary,
+        )
         self.setWindowOpacity(1.0)
         self.show()
-        # Auto-hide after display duration
-        self._display_timer.start(self._display_duration_sec * 1000)
+        # A pending report update must stay available for an explicit decision.
+        if proposal_summary:
+            self._chat_timer.stop()
+        else:
+            self._chat_timer.start(self._display_duration_sec * 1000)
+
+    def clear_chat_proposal(self, *, restart_timeout: bool = False) -> None:
+        """Remove pending proposal controls after apply, dismiss, or image change."""
+
+        self.chat_panel.clear_proposal()
+        if restart_timeout and self.chat_panel.isVisible():
+            self._chat_timer.start(self._display_duration_sec * 1000)
+
+    def clear_chat(self) -> None:
+        """Dismiss only chat state, preserving the current report and boxes."""
+
+        self._chat_timer.stop()
+        self.chat_panel.clear()
 
     def _fade_out(self) -> None:
+        self._chat_timer.stop()
         self.setWindowOpacity(0.0)
         self.summary_panel.setVisible(False)
         self.chat_panel.clear()
@@ -726,7 +888,7 @@ class OverlayWindow(QWidget):
         self.display_expired.emit()
 
     def dismiss(self) -> None:
-        self._display_timer.stop()
+        self._chat_timer.stop()
         self._fade_out()
 
     def _point_in_content(self, point: QPoint) -> bool:
@@ -853,8 +1015,10 @@ class OverlayWindow(QWidget):
                 text_x = max(2, min(x + 4, self.width() - text_rect.width() - 6))
                 text_y = max(text_rect.height() + 2, y - 2)
                 painter.fillRect(
-                    text_x - 2, text_y - text_rect.height(),
-                    text_rect.width() + 6, text_rect.height() + 4,
+                    text_x - 2,
+                    text_y - text_rect.height(),
+                    text_rect.width() + 6,
+                    text_rect.height() + 4,
                     bg,
                 )
                 painter.setPen(QPen(color, 1))

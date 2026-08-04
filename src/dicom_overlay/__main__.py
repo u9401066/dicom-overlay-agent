@@ -11,15 +11,18 @@ Threading model:
 
 from __future__ import annotations
 
+import base64
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import structlog
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QInputDialog
 
+from dicom_overlay.application.annotation_accumulator import AnnotationAccumulator
 from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
 from dicom_overlay.application.interpretation_harness import (
     summarize_result_for_followup,
@@ -29,7 +32,21 @@ from dicom_overlay.application.multi_pass import (
     MultiPassInterpreter,
 )
 from dicom_overlay.application.overlay_agent import OverlayAgent
-from dicom_overlay.domain.entities import AgentState, Modality, RegionRect, WindowRect
+from dicom_overlay.application.review_chat import (
+    ReviewChatResponse,
+    build_region_review_prompt,
+    match_selected_finding,
+    parse_region_review_response,
+)
+from dicom_overlay.domain.entities import (
+    AgentState,
+    Finding,
+    FindingDelta,
+    FindingOp,
+    Modality,
+    RegionRect,
+    WindowRect,
+)
 from dicom_overlay.domain.modality_profile import (
     build_registry,
     set_active_registry,
@@ -77,8 +94,9 @@ class _SignalBridge(QObject):
     analysis_result = pyqtSignal(object)
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
-    chat_done = pyqtSignal(str, str)
-    chat_failed = pyqtSignal()
+    chat_done = pyqtSignal(str, str, int, int)
+    review_chat_done = pyqtSignal(str, object, int, object, int)
+    chat_failed = pyqtSignal(int)
     vision_test_done = pyqtSignal(object)
 
 
@@ -278,6 +296,7 @@ def main() -> None:
         image_processor=image_processor,
         vision_analyzer=vision_analyzer,
         region_mapper=region_mapper,
+        annotation_accumulator=AnnotationAccumulator(),
     )
 
     # --- Build presentation layer ---
@@ -312,6 +331,8 @@ def main() -> None:
     bridge.start()
 
     signals = _SignalBridge()
+    _pending_review: list[tuple[FindingDelta, int, dict[str, object]] | None] = [None]
+    _chat_request_id = [0]
 
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
     agent.on_state_change = signals.state_changed.emit
@@ -343,7 +364,18 @@ def main() -> None:
         elif new == AgentState.MONITORING:
             control_bar.set_paused(False)
 
-    def on_analysis_result(result):
+    def on_analysis_result(
+        result,
+        *,
+        announce: bool = True,
+        preserve_user_regions: bool = False,
+    ):
+        # Invalidate every in-flight follow-up before replacing the visible image.
+        _chat_request_id[0] += 1
+        _pending_review[0] = None
+        overlay.clear_chat()
+        if not preserve_user_regions:
+            overlay.clear_user_regions()
         logger.info(
             "Result: %s severity=%s findings=%d",
             result.modality.value,
@@ -434,7 +466,7 @@ def main() -> None:
             content_rect=overlay_content_rect,
         )
         control_bar.set_pending_analysis(False)
-        if config.overlay.tts_enabled:
+        if announce and config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
 
     def on_error(msg: str):
@@ -639,12 +671,20 @@ def main() -> None:
     control_bar.export_clicked.connect(on_export_review)
 
     # ─── Chat handler (non-blocking) ───
+    def _begin_chat_request() -> int:
+        _chat_request_id[0] += 1
+        _pending_review[0] = None
+        overlay.clear_chat_proposal()
+        return _chat_request_id[0]
+
     def _submit_image_chat(
         *,
         question: str,
         image_base64: str,
         context: str,
     ) -> None:
+        revision = agent.result_revision
+        request_id = _begin_chat_request()
         if agent.target_window:
             overlay.position_over_window(agent.target_window, agent.display_frame)
         overlay.show_chat_waiting(question)
@@ -659,12 +699,78 @@ def main() -> None:
         def _chat_done(f):
             try:
                 answer = f.result()
-                signals.chat_done.emit(question, answer)
+                signals.chat_done.emit(question, answer, revision, request_id)
             except Exception:
                 logger.exception("Chat request failed")
-                signals.chat_failed.emit()
+                signals.chat_failed.emit(request_id)
 
         future.add_done_callback(_chat_done)
+
+    def _submit_region_review(
+        *,
+        question: str,
+        crop_base64: str,
+        selected_region: RegionRect,
+        selected_finding: Finding | None,
+        allow_add: bool,
+    ) -> None:
+        current_result = agent.last_result
+        if current_result is None:
+            control_bar.set_status("Analysis result is no longer available")
+            return
+        revision = agent.result_revision
+        request_id = _begin_chat_request()
+        try:
+            crop_bytes = base64.b64decode(crop_base64, validate=True)
+            signal_audit = {
+                "status": "ok",
+                **image_processor.image_quality_profile(crop_bytes),
+            }
+        except Exception:
+            logger.exception("Interactive crop signal audit failed")
+            signal_audit = {"status": "error", "low_signal": True}
+        prompt = build_region_review_prompt(
+            user_question=question,
+            prior_context=summarize_result_for_followup(current_result),
+            selected_region=selected_region,
+            selected_finding=selected_finding,
+            local_signal_audit=signal_audit,
+            allow_add=allow_add,
+        )
+        new_finding_id = f"review-{uuid4().hex[:12]}"
+        if agent.target_window:
+            overlay.position_over_window(agent.target_window, agent.display_frame)
+        overlay.show_chat_waiting(question)
+        future = bridge.submit(
+            openclaw_client.review_region_about_image(
+                prompt,
+                image_base64=crop_base64,
+            )
+        )
+
+        def _review_done(f):
+            try:
+                raw_response = f.result()
+                response = parse_region_review_response(
+                    raw_response,
+                    selected_region=selected_region,
+                    selected_finding=selected_finding,
+                    new_finding_id=new_finding_id,
+                    local_signal_audit=signal_audit,
+                    allow_add=allow_add,
+                )
+                signals.review_chat_done.emit(
+                    question,
+                    response,
+                    revision,
+                    signal_audit,
+                    request_id,
+                )
+            except Exception:
+                logger.exception("Regional review request failed")
+                signals.chat_failed.emit(request_id)
+
+        future.add_done_callback(_review_done)
 
     def on_chat() -> None:
         text, ok = QInputDialog.getText(
@@ -689,16 +795,17 @@ def main() -> None:
 
         if agent.target_window:
             overlay.position_over_window(agent.target_window, agent.display_frame)
+        request_id = _begin_chat_request()
         overlay.show_chat_waiting(question)
         future = bridge.submit(openclaw_client.chat(question))
 
         def _chat_done(f):
             try:
                 answer = f.result()
-                signals.chat_done.emit(question, answer)
+                signals.chat_done.emit(question, answer, -1, request_id)
             except Exception:
                 logger.exception("Chat request failed")
-                signals.chat_failed.emit()
+                signals.chat_failed.emit(request_id)
 
         future.add_done_callback(_chat_done)
 
@@ -724,21 +831,21 @@ def main() -> None:
             control_bar.set_status("Regional QA cancelled")
             return
         region = RegionRect(x=x, y=y, w=width, h=height)
+        selected_finding = match_selected_finding(
+            agent.last_result.findings,
+            label=title,
+            selected_region=region,
+        )
         crop_base64 = image_processor.crop_region_base64(
             agent.last_image_base64,
             region,
         )
-        context = (
-            summarize_result_for_followup(agent.last_result)
-            + "\nSelected original-image region: "
-            + f"label={title}; x={x:.4f}, y={y:.4f}, "
-            + f"w={width:.4f}, h={height:.4f}. "
-            + "The attached image is the exact crop of that region."
-        )
-        _submit_image_chat(
+        _submit_region_review(
             question=question.strip(),
-            image_base64=crop_base64,
-            context=context,
+            crop_base64=crop_base64,
+            selected_region=region,
+            selected_finding=selected_finding,
+            allow_add=False,
         )
 
     def _ask_about_user_region(
@@ -747,21 +854,125 @@ def main() -> None:
         width: float,
         height: float,
     ) -> None:
-        _ask_about_region("User region", x, y, width, height)
+        control_bar.set_interaction_mode("passive")
+        overlay.set_interaction_mode("passive")
+        if not agent.last_image_base64 or not agent.last_result:
+            control_bar.set_status("Analyze an image before regional QA")
+            return
+        question, ok = QInputDialog.getText(
+            control_bar,
+            "Reviewer annotation",
+            "Question or observation for this region:",
+        )
+        if not ok or not question.strip():
+            control_bar.set_status("Region retained for export")
+            return
+        region = RegionRect(x=x, y=y, w=width, h=height)
+        crop_base64 = image_processor.crop_region_base64(
+            agent.last_image_base64,
+            region,
+        )
+        _submit_region_review(
+            question=question.strip(),
+            crop_base64=crop_base64,
+            selected_region=region,
+            selected_finding=None,
+            allow_add=True,
+        )
 
     overlay.highlight_selected.connect(_ask_about_region)
     overlay.user_region_created.connect(_ask_about_user_region)
 
-    def _show_chat_response(question: str, answer: str) -> None:
+    def _show_chat_response(
+        question: str,
+        answer: str,
+        revision: int,
+        request_id: int,
+    ) -> None:
+        if request_id != _chat_request_id[0]:
+            return
+        if revision >= 0 and revision != agent.result_revision:
+            return
         overlay.show_chat_response(question, answer)
         control_bar.set_status("💬 回覆已顯示")
 
-    def _on_chat_error() -> None:
+    def _show_review_chat_response(
+        question: str,
+        response: ReviewChatResponse,
+        revision: int,
+        signal_audit: dict[str, object],
+        request_id: int,
+    ) -> None:
+        if request_id != _chat_request_id[0]:
+            return
+        _pending_review[0] = None
+        if revision != agent.result_revision:
+            return
+        answer = response.answer
+        if response.warning:
+            answer = f"{answer}\n\nReport update not available: {response.warning}"
+
+        proposal_summary = ""
+        if response.delta is not None:
+            _pending_review[0] = (response.delta, revision, signal_audit)
+            proposal_summary = response.proposal_summary
+        overlay.show_chat_response(
+            question,
+            answer,
+            proposal_summary=proposal_summary,
+        )
+        control_bar.set_status(
+            "Review report update" if proposal_summary else "Regional QA displayed"
+        )
+
+    def _apply_review_proposal() -> None:
+        pending = _pending_review[0]
+        _pending_review[0] = None
+        if pending is None:
+            overlay.clear_chat_proposal(restart_timeout=True)
+            control_bar.set_status("No current report update")
+            return
+        delta, revision, signal_audit = pending
+        try:
+            updated = agent.apply_finding_delta(
+                delta,
+                expected_revision=revision,
+                local_signal_audit=signal_audit,
+            )
+        except (RuntimeError, ValueError) as exc:
+            logger.warning("Interactive review writeback rejected", reason=str(exc))
+            overlay.clear_chat_proposal(restart_timeout=True)
+            control_bar.set_status("Report changed; suggestion was not applied")
+            return
+        if delta.op is FindingOp.ADD:
+            for box in delta.finding.bboxes:
+                overlay.consume_user_region(box)
+        on_analysis_result(
+            updated,
+            announce=False,
+            preserve_user_regions=True,
+        )
+        overlay.clear_chat_proposal(restart_timeout=True)
+        control_bar.set_status("Report update applied and recorded")
+
+    def _dismiss_review_proposal() -> None:
+        _pending_review[0] = None
+        overlay.clear_chat_proposal(restart_timeout=True)
+        control_bar.set_status("Report unchanged")
+
+    def _on_chat_error(request_id: int) -> None:
+        if request_id != _chat_request_id[0]:
+            return
         control_bar.set_status("⚠ 聊天請求失敗")
-        overlay.dismiss()
+        _pending_review[0] = None
+        overlay.clear_chat_proposal()
+        overlay.clear_chat()
 
     signals.chat_done.connect(_show_chat_response)
+    signals.review_chat_done.connect(_show_review_chat_response)
     signals.chat_failed.connect(_on_chat_error)
+    overlay.chat_proposal_accepted.connect(_apply_review_proposal)
+    overlay.chat_proposal_dismissed.connect(_dismiss_review_proposal)
     control_bar.chat_clicked.connect(on_chat)
 
     # ─── Hotkeys (application-wide shortcuts) ───

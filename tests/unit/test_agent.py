@@ -12,6 +12,9 @@ from dicom_overlay.domain.entities import (
     AppConfig,
     ChecklistItem,
     DisplayFrame,
+    Finding,
+    FindingDelta,
+    FindingOp,
     Modality,
     RegionRect,
     ROICrop,
@@ -172,6 +175,151 @@ class TestOverlayAgent:
     @pytest.mark.asyncio
     async def test_init_state(self, agent):
         assert agent.state == AgentState.INIT
+
+    def test_reviewer_confirmed_delta_updates_result_and_trace(self, agent):
+        original = Finding(
+            id="f1",
+            regions=["lead_V2"],
+            label="ST-T change",
+            detail="Subtle morphology.",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.2, 0.2, 0.2)],
+        )
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Abnormal ECG",
+            severity=Severity.CRITICAL,
+            findings=[original],
+            checklist={},
+        )
+        agent._annotation_accumulator.reset([original])
+        agent._result_revision = 4
+        revised = Finding(
+            id="f1",
+            regions=["lead_V2"],
+            label="Nonspecific ST-T change",
+            detail="Less specific on crop review.",
+            severity=Severity.INFO,
+            bboxes=original.bboxes,
+            source="interactive_ai_review",
+        )
+
+        updated = agent.apply_finding_delta(
+            FindingDelta(
+                op=FindingOp.REVISE,
+                finding=revised,
+                note="Reviewer accepted regional re-check",
+            ),
+            expected_revision=4,
+            local_signal_audit={
+                "status": "ok",
+                "ink_pixel_ratio": 0.12,
+                "low_signal": False,
+            },
+        )
+
+        assert updated.findings[0].severity is Severity.INFO
+        assert updated.findings[0].source == "interactive_ai_review"
+        assert updated.severity is Severity.CRITICAL
+        assert updated.review_required is True
+        assert updated.analysis_trace[-1]["stage"] == "interactive_review"
+        assert updated.analysis_trace[-1]["user_confirmed"] is True
+        assert updated.analysis_trace[-1]["bbox_source"] == (
+            "app_selected_original_roi"
+        )
+        assert updated.analysis_trace[-1]["local_signal_audit"] == {
+            "status": "ok",
+            "ink_pixel_ratio": 0.12,
+            "low_signal": False,
+        }
+        assert agent.result_revision == 5
+
+    def test_reviewer_delta_rejects_stale_result_revision(self, agent):
+        finding = Finding(
+            id="f1",
+            regions=[],
+            label="Candidate",
+            detail="Candidate detail",
+            severity=Severity.INFO,
+        )
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Review",
+            severity=Severity.INFO,
+            findings=[finding],
+            checklist={},
+        )
+        agent._annotation_accumulator.reset([finding])
+        agent._result_revision = 7
+
+        with pytest.raises(RuntimeError, match="changed"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.RETRACT, finding=finding),
+                expected_revision=6,
+            )
+
+    def test_reviewer_add_fails_closed_without_local_signal_receipt(self, agent):
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Normal",
+            severity=Severity.NORMAL,
+            findings=[],
+            checklist={},
+        )
+        agent._annotation_accumulator.reset([])
+        agent._result_revision = 2
+        candidate = Finding(
+            id="review-blank",
+            regions=[],
+            label="Candidate",
+            detail="Candidate detail",
+            severity=Severity.INFO,
+            bboxes=[RegionRect(0.2, 0.2, 0.2, 0.2)],
+        )
+
+        with pytest.raises(ValueError, match="local-signal"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.ADD, finding=candidate),
+                expected_revision=2,
+                local_signal_audit={"status": "ok", "low_signal": True},
+            )
+
+    @pytest.mark.parametrize(
+        "bbox",
+        [
+            RegionRect(0.9, 0.2, 0.2, 0.2),
+            RegionRect(0.2, 0.9, 0.2, 0.2),
+        ],
+    )
+    def test_reviewer_add_rejects_original_roi_extent_overflow(
+        self,
+        agent,
+        bbox,
+    ):
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Normal",
+            severity=Severity.NORMAL,
+            findings=[],
+            checklist={},
+        )
+        agent._annotation_accumulator.reset([])
+        agent._result_revision = 2
+        candidate = Finding(
+            id="review-outside",
+            regions=[],
+            label="Candidate",
+            detail="Candidate detail",
+            severity=Severity.INFO,
+            bboxes=[bbox],
+        )
+
+        with pytest.raises(ValueError, match="outside"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.ADD, finding=candidate),
+                expected_revision=2,
+                local_signal_audit={"status": "ok", "low_signal": False},
+            )
 
     def test_roi_rect_includes_screen_origin(self, agent):
         """Capture rect must be absolute virtual-desktop coords (multi-monitor)."""

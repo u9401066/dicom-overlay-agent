@@ -1,5 +1,29 @@
 # Active Context
 
+## Session Update (2026-08-04, reviewer-confirmed regional writeback)
+
+- AI boxes and reviewer-drawn regions now send the exact app-owned crop through
+  a separate JSON-only OpenClaw follow-up. The model can propose `ADD`, `REVISE`,
+  or `RETRACT`, but cannot supply coordinates or mutate the report; an explicit
+  Apply click is required.
+- `AnnotationAccumulator` is now wired into `OverlayAgent`. Accepted changes
+  retain `interactive_ai_review` provenance in the report, Process trace, JSON,
+  and annotated PNG. Same-label plus IoU is required for geometric dedup, so
+  distinct diagnoses sharing one region are no longer merged.
+- Writeback fails closed on stale result revisions, late same-image chat request
+  ids, missing targets, id collisions, malformed/out-of-ROI boxes, normal
+  add/revise proposals, and missing/error/low-signal crop receipts. The local
+  signal gate checks blank fields, ink/bright pixels, edge density, entropy, and
+  robust dynamic range; QA/manual export and reviewer-controlled retract remain
+  available when signal is low.
+- Chat expiry is independent from the report/markers, model/user text renders as
+  plain text, and promoting a manual region consumes that region to avoid a
+  duplicate export marker. Native Qt and annotated-PNG visual probes were
+  inspected at production dimensions.
+- Current source verification: full Ruff passed; OOM-safe unit+smoke is 706
+  passed plus one release-only skip; OpenClaw integration is 55/55. A fresh
+  Windows bundle rebuild and its final hash are still pending in this session.
+
 ## Session Update (2026-08-04, Luna default + ECGFounder held-out audit)
 
 - Desktop, fresh Gateway config, and both experiment runners now default to

@@ -98,5 +98,20 @@ desktop 的實體像素，Qt widget 使用每一個 `QScreen` 的邏輯像素。
 6. 點框 QA、人工框選與 desktop review export 都以同一個 `content_rect` 正規化
    回原始 ROI，避免畫面與匯出結果使用不同座標基準。
 
+區域追問走第二條受限寫回路徑：app 先依上述 frame 裁出精確 crop，再執行
+`ImageProcessor.image_quality_profile()` 的本地 signal audit（暗像素、邊緣密度、
+robust dynamic range、entropy 與空白場檢查），最後才送入
+JSON-only OpenClaw follow-up。模型沒有 bbox 欄位可填；`ADD` 使用人工框、
+`REVISE`／`RETRACT` 綁定既有 finding id 與既有 bbox。低訊號或 audit error
+會機械式阻擋 `ADD`／`REVISE`，但保留文字 QA、人工框與 `RETRACT` 建議。
+通過後仍須使用者按下 Apply，`OverlayAgent` 才以 `FindingDelta` 寫回
+`AnnotationAccumulator`。result revision 防止舊回覆套到新影像，單調 chat
+request id 防止同一張影像內較慢的舊 QA 蓋掉較新的回覆；整體 triage
+只可升級不可降級；Process trace、JSON 與 PNG 都記錄
+`interactive_ai_review`、local signal audit 與 reviewer confirmation。
+
+Accumulator 不再把 IoU 當作臨床同一性：不同 normalized label 即使框完全
+重疊仍保留為不同診斷；只有相同 id，或相同 label 加高 IoU，才做結構性去重。
+
 ECGFounder 只提供波形分類證據，沒有影像定位能力，因此不會進入這條 bbox
 投影路徑。

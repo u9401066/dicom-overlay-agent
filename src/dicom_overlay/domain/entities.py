@@ -84,6 +84,9 @@ class Finding:
     # finding can carry a short question that the UI surfaces for human review.
     confidence: str = ""
     question: str = ""
+    # Audit provenance for exports and interactive review. Primary model output
+    # defaults to ``ai``; reviewer-confirmed crop follow-ups use a distinct tag.
+    source: str = "ai"
 
 
 class FindingOp(Enum):

@@ -47,6 +47,8 @@
 | 2026-08-04 | Luna 成為預設但保留多 provider profile | 使用者指定 `openai/gpt-5.6-luna` 作為實戰多模態主路徑；桌面、Gateway seed、Python/PowerShell runner 統一預設，GPT-5.4 Mini/OpenRouter/Anthropic/Azure/compatible 仍可顯式選擇。catalog 能證明 image capability，額度 canary 失敗仍只能算 blocked。 |
 | 2026-08-04 | ECGFounder threshold 只做 out-of-fold 研究評估 | MEETI 是弱報告標籤且沒有 patient id；只用 affirmative concepts，uncertain 不當正/負，abnormal 只對明確正常 control，五折門檻永不寫回 sidecar。避免同資料調參後宣稱 deployment accuracy。 |
 | 2026-08-04 | Windows PID 存活檢查走 Win32 API | 本機證實 `os.kill(pid, 0)` 對已結束 PID 仍可能成功，造成 Gateway stale lock 永遠卡住。桌面與 runner 共用 `OpenProcess/GetExitCodeProcess`，access denied 保守視為存活。 |
+| 2026-08-04 | 區域 AI 追問只能提案，人工 Apply 才能寫回 | 自由文字不能安全地改寫醫療 overlay。JSON-only contract 不接受模型座標，`ADD` 綁人工框、`REVISE/RETRACT` 綁既有 id/bbox；result revision 防舊回覆套錯影像，report triage 不因追問降級，所有套用保留 provenance 與 confirmation receipt。 |
+| 2026-08-04 | 互動 finding 寫回採 deterministic local-signal gate | 座標正確不代表框內有影像證據。crop dark-pixel ratio <1% 或 audit error 時仍允許 QA/人工匯出與撤回建議，但禁止 `ADD/REVISE`；不同診斷也不能只因 IoU 重疊就合併。 |
 
 ---
 

@@ -48,7 +48,8 @@
 - [x] 多趟放大判讀正式接線：`MultiPassAnalyzer` 作為 `VisionAnalyzerService` drop-in 包進 `OverlayAgent`，由 `analysis.multi_pass_enabled` 旗標啟用（預設關閉，零狀態機改動）；新增 `ImageProcessor.crop_region_base64`（PIL，PHI-safe 子集裁剪）
 - [x] 臨床一致性引擎（`ClinicalConsistencyEngine`）：以資料驅動、有醫學指引根據的規則檢查 AI 自身結構化輸出的「自我矛盾」與「不可漏診的低估」，僅升級嚴重度（永不降級）並標記人工複核；內建規則附指引引用（STEMI 未標記、高鉀尖 T 波、氣胸/縱膈擴大低估），可由 `clinical_rules/*.rules.yaml` 規則包依 id 覆寫或新增（指引更新時模組化抽換，免改程式碼）；接成 `ClinicalConsistencyHook` post-analyze 階段，overlay 以「🚨 需人工複核」紅字面板呈現
 - [x] 臨床規則可審核性：`--explain-rules` CLI 輸出規則對照表（白話條件＋醫學依據＋命中行為，供臨床人員審核，不啟動 GUI）；命中時記錄實際比中的關鍵字證據（`audit_line` / hook log）；YAML 規則包強制 `description`（沒寫說明的規則不載入，把可審核性變成上線門檻）
-- [ ] **DEFERRED**：`AnnotationAccumulator` 接線 — 待 chat 對話產生結構化 `FindingDelta` 回寫 overlay 標記（目前 chat 僅回傳文字）
+- [x] `AnnotationAccumulator` 接線：區域 chat 產生受限 `FindingDelta`，經人工
+  Apply、result-revision 與 local-signal gate 後才寫回 overlay/report/export。
 
 ### v0.4.2 MEETI 1000+ harness / OpenRouter refresh (2026-07-02)
 
@@ -96,6 +97,23 @@
 - [ ] Perform clean-machine Windows 10 verification. The modern runtime remains
   unsupported on Windows 7; any Win7 target needs a separately maintained
   legacy bundle and security policy.
+
+### v0.4.4 Interactive regional review writeback (2026-08-04)
+
+- [x] AI-box click and reviewer-drawn regions use an exact-crop, JSON-only
+  OpenClaw follow-up contract. The model cannot emit coordinates.
+- [x] `ADD` / `REVISE` / `RETRACT` stay advisory until an explicit reviewer
+  Apply; stale result revisions are rejected and report triage never silently
+  downgrades.
+- [x] Deterministic crop signal audit (blank field, edge density, robust dynamic
+  range, and pixel-density checks) blocks low-signal `ADD`/`REVISE`
+  while preserving QA, manual regions, export, and reviewer-controlled retract.
+- [x] Report, Process trace, JSON, and annotated PNG retain
+  `interactive_ai_review` provenance and confirmation receipts.
+- [x] Geometric dedup requires matching labels as well as IoU, preserving
+  multiple diagnoses that legitimately share one image region.
+- [x] Monotonic chat request ids discard late same-image answers and errors, in
+  addition to result-revision protection across image changes.
 
 ## 進行中 🚧
 

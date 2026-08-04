@@ -8,6 +8,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from dicom_overlay.domain.entities import (
@@ -15,10 +16,15 @@ from dicom_overlay.domain.entities import (
     ChecklistItem,
     Finding,
     Modality,
+    RegionRect,
     Severity,
 )
 from dicom_overlay.presentation.control_bar import ControlBarWindow
-from dicom_overlay.presentation.overlay_window import OverlayWindow, SummaryPanel
+from dicom_overlay.presentation.overlay_window import (
+    ChatPanel,
+    OverlayWindow,
+    SummaryPanel,
+)
 
 
 @pytest.fixture(scope="module")
@@ -42,6 +48,7 @@ def _result() -> AnalysisResult:
                 severity=Severity.INFO,
                 confidence="low",
                 question="Can the reviewer confirm this in the source viewer?",
+                source="interactive_ai_review",
             )
         ],
         checklist={
@@ -86,7 +93,7 @@ def _result() -> AnalysisResult:
                         "status": "ok",
                         "prediction_count": 10,
                         "calibration_status": "uncalibrated",
-                    }
+                    },
                 ],
             },
         ],
@@ -105,6 +112,7 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     assert finding is not None
     assert "Confidence: low" in finding.text()
     assert "Question for review" in finding.text()
+    assert "Source: interactive ai review" in finding.text()
     assert panel._checklist_layout.count() == 2
     process = panel._process_layout.itemAt(0).widget()
     assert process is not None
@@ -132,6 +140,22 @@ def test_overlay_maps_drawn_region_back_to_original_roi(qt_app: QApplication) ->
     overlay.close()
 
 
+def test_promoted_manual_region_is_consumed_without_removing_other_regions(
+    qt_app: QApplication,
+) -> None:
+    overlay = OverlayWindow()
+    promoted = (0.1, 0.2, 0.3, 0.2)
+    retained = (0.6, 0.5, 0.2, 0.2)
+    overlay._user_regions = [promoted, retained]
+
+    assert overlay.consume_user_region(RegionRect(*promoted)) is True
+    assert overlay.user_regions == [retained]
+    assert overlay.consume_user_region(RegionRect(*promoted)) is False
+    overlay.clear_user_regions()
+    assert overlay.user_regions == []
+    overlay.close()
+
+
 def test_control_bar_modes_are_mutually_exclusive(qt_app: QApplication) -> None:
     bar = ControlBarWindow()
     modes: list[str] = []
@@ -144,3 +168,85 @@ def test_control_bar_modes_are_mutually_exclusive(qt_app: QApplication) -> None:
     assert bar._annotate_btn.isChecked()
     assert modes[-1] == "annotate"
     bar.close()
+
+
+def test_chat_proposal_requires_explicit_apply_click(qt_app: QApplication) -> None:
+    panel = ChatPanel()
+    accepted: list[bool] = []
+    panel.proposal_accepted.connect(lambda: accepted.append(True))
+
+    panel.show_chat(
+        "Is this still concerning?",
+        "The selected crop supports a revised description.",
+        proposal_summary="Revise: ST-T change [warning]",
+    )
+    qt_app.processEvents()
+
+    assert not panel._proposal_actions.isHidden()
+    assert "Revise" in panel._proposal_label.text()
+    assert panel._question_label.textFormat() is Qt.TextFormat.PlainText
+    assert panel._answer_label.textFormat() is Qt.TextFormat.PlainText
+    panel._apply_proposal_btn.click()
+    qt_app.processEvents()
+    assert accepted == [True]
+    assert panel._proposal_actions.isHidden()
+    panel.close()
+
+
+def test_chat_timeout_hides_only_chat_and_preserves_report(
+    qt_app: QApplication,
+) -> None:
+    overlay = OverlayWindow()
+    highlights = [(10, 20, 30, 40, "warning", "ST-T change")]
+    overlay.show_result(
+        _result(),
+        highlights,
+        content_rect=(0, 0, 800, 400),
+    )
+    overlay.show_chat_response("Question", "Answer")
+    assert overlay._chat_timer.isActive()
+
+    overlay._chat_timer.stop()
+    overlay._chat_timer.timeout.emit()
+    qt_app.processEvents()
+
+    assert not overlay.chat_panel.isVisible()
+    assert overlay.summary_panel.isVisible()
+    assert overlay._highlights == highlights
+    assert overlay._content_rect == (0, 0, 800, 400)
+    overlay.dismiss()
+
+
+def test_process_tab_exposes_interactive_writeback_receipt(
+    qt_app: QApplication,
+) -> None:
+    result = _result()
+    result.analysis_trace.append(
+        {
+            "stage": "interactive_review",
+            "status": "applied",
+            "tool": "openclaw_region_followup",
+            "operation": "revise",
+            "target_id": "f1",
+            "bbox_source": "app_selected_original_roi",
+            "user_confirmed": True,
+            "local_signal_audit": {
+                "status": "ok",
+                "ink_pixel_ratio": 0.125,
+                "low_signal": False,
+            },
+        }
+    )
+    panel = SummaryPanel()
+
+    panel.update_result(result)
+
+    receipt = panel._process_layout.itemAt(3).widget()
+    assert receipt is not None
+    assert "Operation: revise" in receipt.text()
+    assert "Box source: app_selected_original_roi" in receipt.text()
+    assert "Reviewer confirmation: recorded" in receipt.text()
+    assert "Local signal audit: status=ok, ink=12.500%, low_signal=False" in (
+        receipt.text()
+    )
+    panel.close()

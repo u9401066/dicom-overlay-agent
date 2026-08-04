@@ -2,6 +2,20 @@
 
 ## Done
 
+- **Reviewer-confirmed regional writeback and export provenance** (2026-08-04):
+  - Wired `AnnotationAccumulator` into the desktop agent and added exact-crop,
+    JSON-only regional follow-ups with explicit Apply/Dismiss controls.
+  - Bound every proposal to app-owned original-ROI coordinates and current
+    finding/result identity; added result-revision and same-image request-id
+    race guards plus deterministic low-signal writeback rejection.
+  - Preserved `interactive_ai_review` source and reviewer confirmation through
+    the report, Process trace, JSON, and annotated PNG; manual regions are
+    consumed after promotion so exports do not duplicate them.
+  - Corrected geometry dedup to require a matching normalized diagnosis label
+    in addition to IoU, retaining multiple diagnoses over the same waveform.
+  - Full Ruff passed. OOM-safe unit+smoke: 706 passed plus one release-only
+    skip. OpenClaw integration: 55/55. Fresh bundle rebuild is pending.
+
 - **Luna default, recoverable Gateway, and ECGFounder held-out evaluation**
   (2026-08-04):
   - Made `openai/gpt-5.6-luna` the desktop/runner default and verified the real

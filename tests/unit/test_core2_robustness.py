@@ -296,9 +296,7 @@ class TestHypothesisAwareRefinement:
                             "label": "PVC",
                             "detail": "wide premature complex",
                             "severity": "warning",
-                            "bboxes": [
-                                {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2}
-                            ],
+                            "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2}],
                         },
                     },
                 ]
@@ -310,9 +308,7 @@ class TestHypothesisAwareRefinement:
             "add",
         ]
         assert parsed.deltas[1].finding is not None
-        assert parsed.deltas[1].finding.bboxes == [
-            RegionRect(0.1, 0.2, 0.3, 0.2)
-        ]
+        assert parsed.deltas[1].finding.bboxes == [RegionRect(0.1, 0.2, 0.3, 0.2)]
 
     def test_refinement_parser_retracts_boxed_nonfinding_limitation(self):
         parsed = _parse_refinement_result(
@@ -328,9 +324,7 @@ class TestHypothesisAwareRefinement:
                             "label": "R-wave progression cannot be assessed",
                             "detail": "Required leads are unavailable.",
                             "severity": "info",
-                            "bboxes": [
-                                {"x": 0.1, "y": 0.2, "w": 0.2, "h": 0.1}
-                            ],
+                            "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.2, "h": 0.1}],
                         },
                     }
                 ]
@@ -570,7 +564,9 @@ class TestIncompleteFlag:
 
         assert validated.findings[0].bboxes == []
         assert any("lead-strip" in item for item in validated.validation_warnings)
-        assert any("no accepted tight bbox" in item for item in validated.validation_warnings)
+        assert any(
+            "no accepted tight bbox" in item for item in validated.validation_warnings
+        )
 
 
 class TestNativeToolAuditTrace:
@@ -604,9 +600,7 @@ class TestNativeToolAuditTrace:
         trace = client.last_run_trace()
 
         assert trace["tools"] == ["dicom_bbox_validate"]
-        assert [row["tool_call_id"] for row in trace["tool_audit"]] == [
-            "current-call"
-        ]
+        assert [row["tool_call_id"] for row in trace["tool_audit"]] == ["current-call"]
 
     def test_reads_phi_free_ecg_founder_receipt_from_current_turn(
         self,
@@ -681,6 +675,34 @@ class TestImageDownscale:
         profile = ImageProcessor().image_quality_profile(buf.getvalue())
 
         assert profile["ink_pixel_ratio"] > 0.01
+        assert profile["edge_pixel_ratio"] > 0.001
+        assert profile["low_signal"] is False
+
+    @pytest.mark.parametrize("fill", ["black", "gray"])
+    def test_image_quality_profile_flags_uniform_dark_or_gray_crop(self, fill):
+        buffer = io.BytesIO()
+        Image.new("RGB", (200, 100), fill).save(buffer, format="PNG")
+
+        profile = ImageProcessor().image_quality_profile(buffer.getvalue())
+
+        assert profile["robust_dynamic_range"] == 0
+        assert profile["edge_pixel_ratio"] == 0.0
+        assert profile["low_signal"] is True
+
+    def test_image_quality_profile_accepts_structured_dark_modality_crop(self):
+        import PIL.ImageDraw
+
+        buffer = io.BytesIO()
+        image = Image.new("RGB", (240, 160), "black")
+        draw = PIL.ImageDraw.Draw(image)
+        draw.ellipse((35, 20, 205, 145), fill=(105, 105, 105))
+        draw.ellipse((80, 55, 160, 120), fill=(205, 205, 205))
+        image.save(buffer, format="PNG")
+
+        profile = ImageProcessor().image_quality_profile(buffer.getvalue())
+
+        assert profile["robust_dynamic_range"] > 8
+        assert profile["edge_pixel_ratio"] > 0.001
         assert profile["low_signal"] is False
 
     def test_local_signal_candidates_detect_waveform_bbox(self):

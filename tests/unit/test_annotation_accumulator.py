@@ -35,6 +35,7 @@ def _finding(
     label: str = "lesion",
     regions: list[str] | None = None,
     notes: list[str] | None = None,
+    source: str = "ai",
 ) -> Finding:
     return Finding(
         id=fid,
@@ -44,6 +45,7 @@ def _finding(
         severity=severity,
         bboxes=[bbox] if bbox is not None else [],
         notes=notes or [],
+        source=source,
     )
 
 
@@ -91,6 +93,16 @@ def test_dedupe_overlapping_boxes_merge_into_one() -> None:
     merged = dedupe_findings([a], [b], iou_threshold=0.5)
     assert len(merged) == 1
     assert merged[0].id == "a"  # existing identity preserved
+
+
+def test_dedupe_overlapping_different_diagnoses_stay_separate() -> None:
+    box = RegionRect(x=0.1, y=0.1, w=0.2, h=0.2)
+    elevation = _finding("st", label="ST elevation", bbox=box)
+    q_wave = _finding("q", label="Pathologic Q wave", bbox=box)
+
+    merged = dedupe_findings([elevation], [q_wave], iou_threshold=0.5)
+
+    assert [finding.id for finding in merged] == ["st", "q"]
 
 
 def test_dedupe_distinct_boxes_are_kept_separate() -> None:
@@ -165,11 +177,13 @@ def test_merge_unions_boxes_and_notes() -> None:
         bbox=RegionRect(0.6, 0.6, 0.1, 0.1),
         notes=["n2"],
         regions=["v6"],
+        source="interactive_ai_review",
     )
     merged = merge_findings(existing, incoming)
     assert len(merged.bboxes) == 2
     assert merged.notes == ["n1", "n2"]
     assert merged.regions == ["v5", "v6"]
+    assert merged.source == "ai+interactive_ai_review"
 
 
 # --- deltas: add / revise / retract ---------------------------------------
@@ -239,6 +253,19 @@ def test_accumulator_clear_resets() -> None:
     acc.add([_finding("a")])
     acc.clear()
     assert acc.findings == []
+
+
+def test_accumulator_reset_preserves_primary_result_exactly() -> None:
+    findings = [
+        _finding("a", label="same", bbox=RegionRect(0.1, 0.1, 0.2, 0.2)),
+        _finding("b", label="same", bbox=RegionRect(0.11, 0.11, 0.2, 0.2)),
+    ]
+    acc = AnnotationAccumulator()
+
+    snapshot = acc.reset(findings)
+
+    assert snapshot == findings
+    assert [finding.id for finding in acc.findings] == ["a", "b"]
 
 
 def test_accumulator_findings_returns_copy() -> None:

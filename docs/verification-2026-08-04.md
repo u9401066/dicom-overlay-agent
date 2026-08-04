@@ -9,11 +9,12 @@ or a schema-valid response is never mistaken for clinical accuracy evidence.
 | Surface | Status | Evidence |
 | --- | --- | --- |
 | Source self-check | passed | Node, OpenClaw, 51 bundled skills, native plugin, rules, writable base |
-| Unit + smoke suite | 680 passed, 1 release-only skip | `scripts/run-tests-safe.cmd -q` |
+| Unit + smoke suite | 706 passed, 1 release-only skip | `scripts/run-tests-safe.cmd -q` |
 | Full repository Ruff | passed | `scripts/run-ruff-safe.cmd check .` |
 | OpenClaw overlay integration | 55 passed | `tests/integration/test_openclaw_overlay.py` |
 | Fresh bundle smoke | 2 passed | `RUN_BUNDLE_SMOKE=1`, real frozen EXE self-check |
 | Packaged native plugin | loaded | `dicom_bbox_validate` and `ecg_founder_analyze_waveform`, zero diagnostics |
+| Interactive review writeback | passed | JSON proposal -> reviewer Apply -> report/trace -> JSON/PNG smoke; low-signal writeback rejected |
 | Real Win32/Qt coordinate probe | passed | Win32 window `1222x836`; mss capture `1222x836`; physical display `2560x1600`; Qt frame `1707x1067` |
 | ECGFounder paired waveform arm | 1,000/1,000 completed | `data/eval-runs/ecgfounder-meeti-1000-fullscores-20260804` |
 | ECGFounder full-score research audit | 23 supported concepts | CV macro BA 0.865; 3-5 diagnosis complete recall 0.479 |
@@ -44,6 +45,9 @@ The auditable MultiPass flow is:
 8. Keep a reviewer-safe `analysis_trace` with stages, registered tools, crop
    coordinates, decisions, and provenance. Hidden chain-of-thought is neither
    requested nor stored.
+9. A clicked AI box or reviewer-drawn region may start a separate structured
+   crop follow-up. The model cannot return coordinates; a deterministic local
+   signal audit and explicit reviewer Apply gate any report writeback.
 
 OpenClaw's native plugin always exposes `dicom_bbox_validate`. The conditional
 `ecg_founder_analyze_waveform` tool is usable only with an authenticated
@@ -178,6 +182,21 @@ rows. All 11 passed normalized-to-pixel-to-normalized projection round trips,
 none were clamped or low-signal, and the maximum measured edge drift was
 0.373 px. Visual inspection of `meeti_47511997.review.png` confirms the three
 markers land on the V2, V3, and V4 waveforms rather than blank space.
+
+Interactive regional review now keeps the same coordinate boundary. `ADD`
+uses the reviewer-selected original-ROI rectangle; `REVISE` and `RETRACT` bind
+to the selected finding id and its existing accepted boxes. A deterministic
+gate combines bright-blank detection, edge density, robust dynamic range, and
+pixel density; a crop it marks low-signal (or a failed audit) may still be
+discussed and exported as a manual region, but cannot become an
+`ADD`/`REVISE` AI finding. A monotonic chat request id also rejects late
+same-image responses, while result revision rejects responses from older images.
+The deterministic end-to-end smoke verifies proposal parsing, explicit Apply,
+result-revision protection, report provenance, JSON coordinates, and a nonblank
+box-border pixel in the annotated PNG. A native Qt snapshot also verified the
+Apply/Dismiss controls fit at the production panel width. The inspected
+signal-bearing sample placed the box over lead V2 and measured 3.7% ink; its
+side panel recorded `Source: interactive_ai_review`.
 
 ## Portable Bundle
 

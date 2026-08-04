@@ -30,14 +30,7 @@ import dicom_overlay.application as application_pkg
 # Orchestrators that are intentionally NOT wired yet. Each MUST carry a reason
 # explaining why and what unblocks it. Keep this list short and honest — it is
 # the project's ledger of known gaps, not a place to silence the guard.
-DEFERRED_WIRING: dict[str, str] = {
-    "AnnotationAccumulator": (
-        "Deterministic cross-turn finding dedup is complete and unit-tested, "
-        "but wiring it requires the chat dialog to emit structured FindingDelta "
-        "writeback into the overlay markers. That chat structured-delta path is "
-        "not built yet (chat currently returns text only). Tracked in ROADMAP."
-    ),
-}
+DEFERRED_WIRING: dict[str, str] = {}
 
 
 def _main_source() -> str:

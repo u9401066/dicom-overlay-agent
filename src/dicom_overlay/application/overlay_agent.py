@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import inspect
 import time
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from dicom_overlay.application.annotation_accumulator import (
+    AnnotationAccumulator,
+    max_severity,
+)
 from dicom_overlay.domain.entities import (
     AgentState,
     AnalysisResult,
     DisplayFrame,
+    FindingDelta,
+    FindingOp,
     Modality,
     RegionRect,
+    Severity,
     TriggerMode,
     WindowRect,
 )
@@ -61,6 +69,7 @@ class OverlayAgent:
         dpr: float = 1.0,
         screen_left: int = 0,
         screen_top: int = 0,
+        annotation_accumulator: AnnotationAccumulator | None = None,
     ) -> None:
         self._config = config
         self._monitor = screen_monitor
@@ -90,6 +99,8 @@ class OverlayAgent:
         self._display_enter_time: float = 0.0
         self._target_window: WindowRect | None = None
         self._last_result: AnalysisResult | None = None
+        self._result_revision = 0
+        self._annotation_accumulator = annotation_accumulator or AnnotationAccumulator()
         self._last_image_base64 = ""
         self._running = False
 
@@ -118,6 +129,12 @@ class OverlayAgent:
     @property
     def last_result(self) -> AnalysisResult | None:
         return self._last_result
+
+    @property
+    def result_revision(self) -> int:
+        """Monotonic guard against applying a follow-up to a newer image."""
+
+        return self._result_revision
 
     @property
     def last_image_base64(self) -> str:
@@ -150,6 +167,127 @@ class OverlayAgent:
         """Use ``analyzer`` for subsequent reads without resetting app state."""
         self._analyzer = analyzer
         logger.info("Vision analyzer set to %s", type(analyzer).__name__)
+
+    def apply_finding_delta(
+        self,
+        delta: FindingDelta,
+        *,
+        expected_revision: int,
+        local_signal_audit: dict[str, object] | None = None,
+    ) -> AnalysisResult:
+        """Apply a reviewer-confirmed regional proposal to the displayed result.
+
+        The model never calls this method. The Qt layer invokes it only after an
+        explicit user action. Overall triage severity is allowed to rise but is
+        never lowered by a follow-up, and every accepted operation is appended
+        to the reviewer-visible process trace.
+        """
+
+        if self._last_result is None:
+            raise RuntimeError("No analysis result is available for review writeback")
+        if expected_revision != self._result_revision:
+            raise RuntimeError(
+                "The image result changed before this proposal was applied"
+            )
+
+        current_ids = {finding.id for finding in self._last_result.findings}
+        if delta.op is FindingOp.ADD and delta.finding.id in current_ids:
+            raise ValueError("Review proposal add id already exists in current result")
+        if delta.op in {FindingOp.REVISE, FindingOp.RETRACT} and (
+            not delta.finding.id or delta.finding.id not in current_ids
+        ):
+            raise ValueError("Review proposal target is not in the current result")
+        if delta.op in {FindingOp.ADD, FindingOp.REVISE}:
+            if (
+                not delta.finding.id.strip()
+                or not delta.finding.label.strip()
+                or not delta.finding.detail.strip()
+            ):
+                raise ValueError("Review proposal finding payload is incomplete")
+            if delta.finding.severity is Severity.NORMAL:
+                raise ValueError("Use retract instead of a normal overlay finding")
+            signal_is_accepted = (
+                isinstance(local_signal_audit, dict)
+                and local_signal_audit.get("status") == "ok"
+                and local_signal_audit.get("low_signal") is False
+            )
+            if not signal_is_accepted:
+                raise ValueError(
+                    "Review proposal failed the local-signal writeback gate"
+                )
+            if not delta.finding.bboxes:
+                raise ValueError("Review proposal has no app-owned bbox")
+            if any(
+                box.w <= 0.0
+                or box.h <= 0.0
+                or box.x < 0.0
+                or box.y < 0.0
+                or box.x + box.w > 1.0 + 1e-9
+                or box.y + box.h > 1.0 + 1e-9
+                for box in delta.finding.bboxes
+            ):
+                raise ValueError("Review proposal bbox is outside the original ROI")
+
+        findings = self._annotation_accumulator.apply(delta)
+        severity = self._last_result.severity
+        for finding in findings:
+            severity = max_severity(severity, finding.severity)
+
+        reason = (
+            "Interactive regional AI proposal was applied by the local reviewer; "
+            "confirm it in the source viewer before clinical use."
+        )
+        review_reasons = list(self._last_result.review_reasons)
+        if reason not in review_reasons:
+            review_reasons.append(reason)
+        trace_entry: dict[str, object] = {
+            "stage": "interactive_review",
+            "status": "applied",
+            "tool": "openclaw_region_followup",
+            "operation": delta.op.value,
+            "target_id": delta.finding.id,
+            "bbox_source": "app_selected_original_roi",
+            "user_confirmed": True,
+            "bboxes": [
+                {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
+                for box in delta.finding.bboxes
+            ],
+        }
+        if isinstance(local_signal_audit, dict):
+            allowed_audit_keys = {
+                "status",
+                "width_px",
+                "height_px",
+                "ink_pixel_ratio",
+                "bright_pixel_ratio",
+                "entropy_bits",
+                "robust_dynamic_range",
+                "edge_pixel_ratio",
+                "low_signal",
+            }
+            trace_entry["local_signal_audit"] = {
+                key: value
+                for key, value in local_signal_audit.items()
+                if key in allowed_audit_keys
+            }
+        trace = [*self._last_result.analysis_trace, trace_entry]
+        updated = dataclasses.replace(
+            self._last_result,
+            findings=findings,
+            severity=severity,
+            review_required=True,
+            review_reasons=review_reasons,
+            analysis_trace=trace,
+        )
+        self._last_result = updated
+        self._result_revision += 1
+        logger.info(
+            "interactive_review_applied",
+            operation=delta.op.value,
+            target_id=delta.finding.id,
+            result_revision=self._result_revision,
+        )
+        return updated
 
     def _transition(self, new_state: AgentState) -> None:
         old = self._state
@@ -245,9 +383,7 @@ class OverlayAgent:
         width = self._screen_width - roi.left - roi.right
         height = self._screen_height - roi.top - roi.bottom
         if width <= 0 or height <= 0:
-            raise ValueError(
-                "ROI crop margins exceed the target display dimensions"
-            )
+            raise ValueError("ROI crop margins exceed the target display dimensions")
         return WindowRect(
             left=self._screen_left + roi.left,
             top=self._screen_top + roi.top,
@@ -492,7 +628,9 @@ class OverlayAgent:
                     "Analysis result discarded (state changed to %s)", self._state.name
                 )
                 return
+            self._annotation_accumulator.reset(result.findings)
             self._last_result = result
+            self._result_revision += 1
             self._transition(AgentState.DISPLAYING)
             if self.on_analysis_result:
                 self.on_analysis_result(result)
@@ -582,7 +720,9 @@ class OverlayAgent:
         except Exception:
             logger.warning("Local image-assist candidate extraction failed")
             return []
-        raw_candidates = payload.get("candidates", []) if isinstance(payload, dict) else []
+        raw_candidates = (
+            payload.get("candidates", []) if isinstance(payload, dict) else []
+        )
         regions: list[RegionRect] = []
         for raw in raw_candidates:
             if not isinstance(raw, dict):

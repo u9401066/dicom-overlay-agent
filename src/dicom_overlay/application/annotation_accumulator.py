@@ -85,15 +85,23 @@ def _boxes_overlap(a: Finding, b: Finding, iou_threshold: float) -> bool:
     return False
 
 
-def _same_finding(a: Finding, b: Finding, iou_threshold: float) -> bool:
-    """Two findings are "the same" if they share an id or overlap geometrically.
+def _normalized_label(finding: Finding) -> str:
+    return " ".join(finding.label.casefold().split())
 
-    Findings without any bbox can only be matched by id (there is no geometry to
-    compare), so two distinct bbox-less findings are kept separate.
+
+def _same_finding(a: Finding, b: Finding, iou_threshold: float) -> bool:
+    """Two findings are the same by id or by same-label geometry.
+
+    Geometry alone is not clinical identity: two diagnoses may legitimately
+    point at the same waveform or lesion. Therefore high IoU is a dedup signal
+    only when the normalized visible labels also agree. Findings without any
+    bbox can only be matched by id.
     """
     if a.id and b.id and a.id == b.id:
         return True
     if not a.bboxes or not b.bboxes:
+        return False
+    if not _normalized_label(a) or _normalized_label(a) != _normalized_label(b):
         return False
     return _boxes_overlap(a, b, iou_threshold)
 
@@ -128,12 +136,22 @@ def merge_findings(existing: Finding, incoming: Finding) -> Finding:
         if region not in regions:
             regions.append(region)
 
+    sources = list(
+        dict.fromkeys(
+            source
+            for value in (existing.source, incoming.source)
+            for source in value.split("+")
+            if source
+        )
+    )
+
     return dataclasses.replace(
         existing,
         regions=regions,
         severity=max_severity(existing.severity, incoming.severity),
         bboxes=boxes,
         notes=notes,
+        source="+".join(sources) or "ai",
     )
 
 
@@ -147,9 +165,10 @@ def dedupe_findings(
 
     Pure function: neither input list is mutated; a fresh list is returned.
     Each new finding either merges into the first existing finding it matches
-    (same id or bbox IoU ≥ ``iou_threshold``) or is appended. Severity is taken
-    as the maximum on merge, so a duplicate never downgrades a marker. Order of
-    existing findings is preserved; genuinely new findings keep their order.
+    (same id, or same normalized label plus bbox IoU >= ``iou_threshold``) or is
+    appended. Severity is taken as the maximum on merge, so a duplicate never
+    downgrades a marker. Order of existing findings is preserved; genuinely new
+    findings keep their order.
     """
     if not 0.0 <= iou_threshold <= 1.0:
         raise ValueError(f"iou_threshold must be in [0, 1], got {iou_threshold}")
@@ -212,6 +231,7 @@ def apply_delta(
                     bboxes=payload.bboxes or current.bboxes,
                     regions=payload.regions or current.regions,
                     notes=notes,
+                    source=payload.source or current.source,
                 )
             )
             replaced = True
@@ -248,9 +268,7 @@ def _append_note_to_match(
             and _same_finding(current, payload, iou_threshold)
             and note not in current.notes
         ):
-            result.append(
-                dataclasses.replace(current, notes=[*current.notes, note])
-            )
+            result.append(dataclasses.replace(current, notes=[*current.notes, note]))
             attached = True
         else:
             result.append(current)
@@ -271,9 +289,7 @@ class AnnotationAccumulator:
 
     def __init__(self, *, iou_threshold: float = DEFAULT_IOU_THRESHOLD) -> None:
         if not 0.0 <= iou_threshold <= 1.0:
-            raise ValueError(
-                f"iou_threshold must be in [0, 1], got {iou_threshold}"
-            )
+            raise ValueError(f"iou_threshold must be in [0, 1], got {iou_threshold}")
         self._iou_threshold = iou_threshold
         self._findings: list[Finding] = []
 
@@ -287,6 +303,16 @@ class AnnotationAccumulator:
         self._findings = dedupe_findings(
             self._findings, new, iou_threshold=self._iou_threshold
         )
+        return self.findings
+
+    def reset(self, findings: list[Finding]) -> list[Finding]:
+        """Start a new image with an exact copy of its primary result.
+
+        Initial model output has already passed its analysis reconciliation.
+        Preserve it byte-for-byte here; deduplication is only for later turns.
+        """
+
+        self._findings = list(findings)
         return self.findings
 
     def apply(self, delta: FindingDelta) -> list[Finding]:

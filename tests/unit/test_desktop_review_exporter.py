@@ -43,6 +43,7 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
                 bboxes=[RegionRect(0.25, 0.25, 0.25, 0.25)],
                 confidence="low",
                 question="Is this reproducible in the source viewer?",
+                source="interactive_ai_review",
             )
         ],
         checklist={},
@@ -76,6 +77,7 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
     assert payload["findings"][1]["source"] == "user"
     assert payload["findings"][0]["confidence"] == "low"
     assert payload["findings"][0]["question"].startswith("Is this")
+    assert payload["findings"][0]["source"] == "interactive_ai_review"
     assert payload["image_quality"]["adequacy"] == "limited"
     assert payload["next_steps"] == ["Review the original study."]
     with Image.open(review_path) as review:

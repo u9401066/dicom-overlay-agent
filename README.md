@@ -24,7 +24,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.90 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.91 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -103,6 +103,16 @@ The physician reads the original image; the agent annotates *on top* of it.
   abnormal items surface first, normal ones collapse. A
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py)
   lets the physician ask follow-up questions about the same image.
+- **Reviewer-confirmed regional writeback** — clicking an AI box or drawing a
+  reviewer region sends the exact crop through a separate structured OpenClaw
+  follow-up contract. The model may propose `ADD`, `REVISE`, or `RETRACT`, but
+  it cannot return or move coordinates and nothing changes until the reviewer
+  clicks **Apply to report**. A deterministic local signal gate combines dark
+  pixels, edge density, robust dynamic range, and blank-field checks to block
+  low-signal `ADD`/`REVISE` proposals; accepted changes retain
+  `interactive_ai_review` provenance in the report, Process trace, JSON, and
+  annotated PNG export. Overlapping boxes with different diagnostic labels are
+  preserved as separate findings.
 - **Multi-pass review** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
   re-reads abnormal regions at full ROI resolution and reserves part of the
   bounded crop budget for layout-derived EKG limb/precordial discovery probes,
@@ -209,8 +219,8 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   concurrent `uv.exe` launches.
 - Each raw eval result includes deterministic `local_image_quality` metadata
   from [`screen_monitor.py`](src/dicom_overlay/infrastructure/screen_monitor.py):
-  image size, aspect ratio, ink density, bright-pixel ratio, and low-signal
-  flag. This cheap local preflight is the first model-assist layer, so the
+  image size, aspect ratio, ink/bright-pixel density, entropy, edge density,
+  robust dynamic range, and low-signal flag. This cheap local preflight is the
   harness can detect unreadable/blank/low-signal inputs without spending every
   decision on an MLLM.
 - Each raw eval result also includes deterministic `local_signal_candidates`:

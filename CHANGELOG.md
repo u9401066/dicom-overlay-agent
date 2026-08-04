@@ -9,6 +9,7 @@
 
 ### Added
 
+- **人工確認的區域問答寫回**：AI 框與人工框可送出 exact crop 結構化追問；OpenClaw 只能建議 `ADD`／`REVISE`／`RETRACT`，不能控制座標，須按 Apply 才寫回 report/overlay/export，並保留 `interactive_ai_review`、result revision、chat request id、local signal 與 reviewer confirmation audit
 - **ECGFounder 全分數研究評估**：offline runner 可保留完整 150 statement scores，新增 exact ontology mapping、protocol/hash 完整性檢查、deterministic five-fold out-of-fold evaluator 與 JSON/Markdown evidence；live OpenClaw tool 仍限制最多 20 筆 supporting predictions
 - **工具證據 UI**：Settings 顯示 secret-free waveform assist 配置狀態，Report 的 Process tab 顯示 ECGFounder status、prediction count 與 calibration state
 - **多趟放大判讀（resolution-aware）**：`application/multi_pass.py`（`MultiPassInterpreter`）以完整 ROI 解析度重讀異常區域精修 bbox；當區域在截到的像素中太小（≤4K 截圖無法有意義數位放大）時，改以 `domain/entities.py` 新增的 `AnalysisResult.zoom_hints` 提示醫師在 viewer 內放大重截，`presentation/overlay_window.py` 以藍色 hint 標籤呈現
@@ -34,6 +35,7 @@
 
 ### Fixed
 
+- **空白區互動標註與多診斷誤合併**：低訊號 crop 不再能透過模型 `ADD`／`REVISE` 變成 finding；不同診斷標籤即使 bbox IoU 高也保持分離，不再只憑幾何位置合併
 - **Windows stale Gateway lock**：改以 Win32 `OpenProcess/GetExitCodeProcess` 判斷 PID 存活，桌面程式與 MEETI runner 共用同一實作，修正異常中止後永遠誤判舊 PID 存活
 - **多螢幕座標錯位（潛在 PHI 風險）**：主螢幕不在原點時 mss 截圖會擷取錯誤螢幕；新增螢幕原點 offset 貫穿 capture 與 control bar
 - **modality 解析 fallback**：未知/缺漏 modality 改回退「請求時的 modality」並 log warning（不再靜默寫死 EKG）

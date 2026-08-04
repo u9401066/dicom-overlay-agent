@@ -577,6 +577,7 @@ def _draw_panel(
         sev = str(finding.get("severity") or severity)
         regions = ", ".join(str(r) for r in finding.get("regions") or [])
         detail = str(finding.get("detail") or "")
+        source_name = str(finding.get("source") or "")
         color = _color_for(sev)
         _draw_badge(draw, x + _MARGIN, cursor + 1, str(idx), color, small)
         text_x = x + _MARGIN + 28
@@ -593,6 +594,15 @@ def _draw_panel(
                 draw,
                 (text_x, cursor),
                 f"Regions: {regions}",
+                small,
+                _MUTED,
+                54,
+            )
+        if source_name:
+            cursor = _draw_wrapped(
+                draw,
+                (text_x, cursor),
+                f"Source: {source_name}",
                 small,
                 _MUTED,
                 54,

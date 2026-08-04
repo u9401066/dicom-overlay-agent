@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 import mss
 import structlog
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from dicom_overlay.domain.entities import DisplayFrame, WindowRect
 from dicom_overlay.domain.services import ImageProcessorService, ScreenMonitorService
@@ -113,9 +113,7 @@ class ScreenMonitor(ScreenMonitorService):
                     w = right - left
                     h = bottom - top
                     if w > 100 and h > 100:
-                        result = WindowRect(
-                            left=left, top=top, width=w, height=h
-                        )
+                        result = WindowRect(left=left, top=top, width=w, height=h)
                     return
 
         try:
@@ -169,7 +167,9 @@ class ScreenMonitor(ScreenMonitorService):
         }
         with mss.mss() as sct:
             screenshot = sct.grab(monitor)
-            img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+            img = Image.frombytes(
+                "RGB", screenshot.size, screenshot.bgra, "raw", "BGRX"
+            )
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             return buf.getvalue()
@@ -292,13 +292,39 @@ class ImageProcessor(ImageProcessorService):
         bright_pixels = sum(histogram[240:])
         ink_ratio = dark_pixels / total
         bright_ratio = bright_pixels / total
+        entropy_bits = img.entropy()
+
+        def percentile_gray(fraction: float) -> int:
+            target = max(1, round(total * fraction))
+            cumulative = 0
+            for value, count in enumerate(histogram):
+                cumulative += count
+                if cumulative >= target:
+                    return value
+            return 255
+
+        robust_dynamic_range = percentile_gray(0.99) - percentile_gray(0.01)
+        edges = img.filter(ImageFilter.FIND_EDGES)
+        if edges.width > 2 and edges.height > 2:
+            edges = edges.crop((1, 1, edges.width - 1, edges.height - 1))
+        edge_histogram = edges.histogram()
+        edge_total = max(1, edges.width * edges.height)
+        edge_pixel_ratio = sum(edge_histogram[24:]) / edge_total
+
+        bright_blank = bright_ratio > 0.75 and ink_ratio < 0.01
+        structure_blank = edge_pixel_ratio < 0.001
+        near_uniform = robust_dynamic_range < 8 and edge_pixel_ratio < 0.002
+        low_signal = bright_blank or structure_blank or near_uniform
         return {
             "width_px": img.width,
             "height_px": img.height,
             "aspect_ratio": round(img.width / max(1, img.height), 6),
             "ink_pixel_ratio": round(ink_ratio, 6),
             "bright_pixel_ratio": round(bright_ratio, 6),
-            "low_signal": ink_ratio < 0.01,
+            "entropy_bits": round(entropy_bits, 6),
+            "robust_dynamic_range": robust_dynamic_range,
+            "edge_pixel_ratio": round(edge_pixel_ratio, 6),
+            "low_signal": low_signal,
         }
 
     def local_signal_candidates(self, image_data: bytes) -> dict[str, object]:
@@ -361,9 +387,7 @@ class ImageProcessor(ImageProcessorService):
             }
 
         left, top, right, bottom = bbox
-        overall_area_ratio = (
-            max(1, (right - left) * (bottom - top)) / total
-        )
+        overall_area_ratio = max(1, (right - left) * (bottom - top)) / total
         if overall_area_ratio <= 0.55:
             candidates = [
                 build_candidate(
@@ -388,9 +412,7 @@ class ImageProcessor(ImageProcessorService):
                 for column in range(columns):
                     tile_left = round(column * width / columns)
                     tile_right = round((column + 1) * width / columns)
-                    tile = mask.crop(
-                        (tile_left, tile_top, tile_right, tile_bottom)
-                    )
+                    tile = mask.crop((tile_left, tile_top, tile_right, tile_bottom))
                     local_bbox = tile.getbbox()
                     if local_bbox is None:
                         continue
@@ -424,14 +446,12 @@ class ImageProcessor(ImageProcessorService):
                     for candidate in ranked_candidates
                 )
                 median_confidence = statistics.median(
-                    float(candidate["confidence"])
-                    for candidate in ranked_candidates
+                    float(candidate["confidence"]) for candidate in ranked_candidates
                 )
                 candidates = [
                     candidate
                     for candidate in ranked_candidates
-                    if float(candidate["bbox_ink_density"])
-                    >= median_density * 1.35
+                    if float(candidate["bbox_ink_density"]) >= median_density * 1.35
                     and float(candidate["confidence"]) >= median_confidence + 0.02
                 ][:6]
             else:

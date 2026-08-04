@@ -34,7 +34,7 @@ def _finding_payload(result: AnalysisResult) -> list[dict[str, object]]:
                 "notes": list(finding.notes),
                 "confidence": finding.confidence,
                 "question": finding.question,
-                "source": "ai",
+                "source": finding.source,
             }
         )
     return findings

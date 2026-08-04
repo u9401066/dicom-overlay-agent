@@ -12,7 +12,7 @@
 
 - Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
   負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
-- OOM-safe unit + smoke suite 為 680 passed（另 1 個 release-only skip）；
+- OOM-safe unit + smoke suite 為 706 passed（另 1 個 release-only skip）；
   OpenClaw overlay integration 為 55 passed；重建後真實 EXE bundle smoke
   為 2 passed，整個 repo 的 Ruff 也已全數通過。
 - 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
@@ -135,7 +135,8 @@
   `verify-eval-artifacts.py` 驗證 scorecard、raw result、review PNG、
   bbox audit/crops 與 local image preflight。
 - `local_image_quality` 是第一層非 MLLM 輔助：在送模型前/評估時記錄影像尺寸、
-  aspect ratio、ink density、bright-pixel ratio 與 low-signal flag，避免
+  aspect ratio、ink/bright-pixel density、entropy、edge density、robust dynamic
+  range 與 low-signal flag，避免
   所有品質判斷都拖到多模態語言模型。
 - `local_signal_candidates` 是第二層本機輔助：用低成本像素 threshold 先產生
   ECG-like waveform / signal bbox 候選，供 harness 與人工 review 對照；它不做
@@ -233,6 +234,14 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
 - **內容** — 可拖曳的 [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
   顯示系統性 checklist（EKG 共 16 鍵、CXR 為 10 軸判讀），異常項優先、正常項摺疊；
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py) 讓醫師針對同一張影像追問。
+- **區域問答寫回** — 點選 AI 框或自行框選時，桌面程式會把該精確 crop 交給
+  獨立的結構化 OpenClaw follow-up contract。模型只能提出 `ADD`、`REVISE`、
+  `RETRACT`，不能回傳或移動座標，而且醫師按下 **Apply to report** 前不會修改
+  報告。框內 deterministic signal gate 會合併暗像素、邊緣密度、robust dynamic
+  range 與空白場檢查；若判為低訊號，仍可保留 QA 與人工匯出，
+  但不允許 `ADD`／`REVISE` 成為 AI finding；成功套用會在報告、Process trace、
+  JSON 與標框 PNG 保留 `interactive_ai_review` provenance。不同診斷即使框重疊，
+  也不會再只因 IoU 高就被誤合併。
 - **多趟放大** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
   以完整 ROI 解析度重讀異常區域以精修 bbox。由於唯一輸入是螢幕截圖（≤4K），
   若某區域在截到的像素中太小，數位放大無意義；此時改以 `zoom_hints` 提示，
