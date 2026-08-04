@@ -12,12 +12,17 @@
 
 - Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
   負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
-- OOM-safe unit + smoke suite 為 666 passed（另 1 個 release-only skip）；
+- OOM-safe unit + smoke suite 為 680 passed（另 1 個 release-only skip）；
   OpenClaw overlay integration 為 55 passed；重建後真實 EXE bundle smoke
   為 2 passed，整個 repo 的 Ruff 也已全數通過。
 - 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
   全部仍標記為 uncalibrated supporting evidence，不會產生影像 bbox。
-- `openai/gpt-5.4-mini` 已在 OpenClaw catalog 登記為 `text+image`；真實
+- 完整 150 分數的五折 out-of-fold 研究評估在 23 個支撐足夠的概念得到
+  macro balanced accuracy 0.865、sensitivity 0.848、明確正常對照 specificity
+  0.883；holdout top-20 概念 recall 為 0.837，但 3-5 診斷完整 recall 只有
+  0.479，尚未達 0.75 產品目標。這是波形弱標籤研究，不是影像 agent 準確率。
+- `openai/gpt-5.6-luna` 已設為桌面與 runner 預設，OpenClaw catalog 實際登記
+  為 `text+image`、1.05M context；真實 MultiPass
   canary 成功啟動 Gateway、附上一張 MEETI 圖（`promptImages=1`）並抵達
   OpenAI Responses API，之後才被 provider 的
   `credit_balance_exhausted` / `insufficient_quota` 阻擋。在真正完成前不宣稱
@@ -65,8 +70,8 @@
   ＋ `openai-vision` provider profile 跑 MEETI 單題真實批次，走到 Gateway
   `connect` + `chat.send`、回傳 schema-valid 判讀，strict/schema/bbox 皆
   1.0（`gateway_mode: real`）。該次使用當時的模型設定；目前 runner 與
-  Settings 的 `openai-vision` 預設已改為 image-capable
-  `openai/gpt-5.4-mini`，另保留 `openai-luna` 作為明確選項。Copilot 訂閱模型
+  Settings 與 runner 預設已改為 image-capable
+  `openai/gpt-5.6-luna`，另保留 GPT-5.4 Mini 與其他 API profile。Copilot 訂閱模型
   （如 MAI Flash）走 OAuth device-token，不是 API key，無法當 API provider。
 - 2026-07-05 臨床準確度強化：EKG skill 新增 **Step 0 導極定位**（保持通用，
   「宣告不假設」：讀印在圖上的導極標籤、只登記實際可見的導極、無標籤標

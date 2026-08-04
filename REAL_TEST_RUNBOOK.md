@@ -335,11 +335,11 @@ powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.p
   -RequirePerfect
 ```
 
-For the current `openai/gpt-5.4-mini` multi-pass MEETI benchmark:
+For the current `openai/gpt-5.6-luna` multi-pass MEETI benchmark:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.4-mini `
+  -ModelId openai/gpt-5.6-luna `
   -ManifestPath data\eval-datasets\meeti-1000-all\manifest.json `
   -TimeoutSec 90 `
   -MultiPass `

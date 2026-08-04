@@ -248,7 +248,8 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   Gateway-backed MEETI experiments. It calls the existing uv-managed
   `.venv\Scripts\python.exe`, takes `data/tmp/meeti-run.lock`, then calls
   [`scripts/run-meeti-openclaw-experiment.py`](scripts/run-meeti-openclaw-experiment.py).
-  The Python runner supports `--provider-profile openrouter` / `openai-vision`,
+  The Python runner supports `--provider-profile openai-luna` /
+  `openai-vision` / `openrouter`,
   generates an experiment-local OpenClaw config before model-catalog checks,
   takes `data/tmp/openclaw-gateway.lock` before spawning the Gateway, retries
   the eval if the Gateway is still starting, exports review artifacts, and marks
@@ -298,14 +299,23 @@ portable across OpenClaw releases.
   [the external tool contract](docs/ecgfounder-tool.md).
   The paired MEETI build now includes 1,000 matched raw 12-lead waveforms; a
   real pinned-checkpoint batch completed all 1,000 and records each result as
-  uncalibrated supporting evidence.
+  uncalibrated supporting evidence. A separate full-150-score evaluator uses
+  deterministic five-fold out-of-fold threshold selection and never treats
+  report silence as a negative label. Across 23 sufficiently supported mapped
+  concepts it measured macro balanced accuracy 0.865, sensitivity 0.848, and
+  specificity 0.883 against explicit-normal controls. Holdout top-20 mapped
+  concept recall was 0.837, but complete recall for cases with 3-5 mapped
+  diagnoses was only 0.479, below the 0.75 product target. These are
+  waveform-only weak-label research metrics, not screenshot-agent accuracy or
+  deployment calibration.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
-- The desktop Settings dialog exposes AI Provider profiles. The primary
-  `openai-vision` profile registers `openai/gpt-5.4-mini` as `text+image` over
-  the Responses API with its 400,000-token context; `openai-luna` remains an
-  explicit alternate profile. OpenRouter is also available through
+- The desktop Settings dialog exposes AI Provider profiles and selects the
+  model currently active in OpenClaw. The default `openai-luna` profile
+  registers `openai/gpt-5.6-luna` as `text+image` over the Responses API with
+  its 1,050,000-token context; GPT-5.4 Mini remains an explicit lower-cost
+  profile. OpenRouter is also available through
   `OPENROUTER_API_KEY` and `https://openrouter.ai/api/v1`. Saving a profile
   writes only app-managed OpenClaw provider/model sections and keeps secrets in
   environment variables or `.env`, not in git or experiment logs.
@@ -340,13 +350,13 @@ portable across OpenClaw releases.
   `openai-vision` provider profile reached Gateway `connect` + `chat.send`,
   returned a schema-valid read, and passed strict/schema/bbox at 1.0
   (`gateway_mode: real`). That dated run used the then-current model profile;
-  the runner and Settings default are now `openai/gpt-5.4-mini`. Copilot
+  the runner and Settings default are now `openai/gpt-5.6-luna`. Copilot
   subscription models (e.g. MAI Flash) remain unusable as an API provider
   because they use an OAuth device-token flow, not an API key.
-- Current experiment status (2026-08-04): the new paired
-  `openai/gpt-5.4-mini` canary parsed an image-capable OpenClaw catalog row,
-  started the Gateway, attached one MEETI image (`promptImages=1`), and reached
-  OpenAI's `/v1/responses` endpoint. The provider then returned
+- Current experiment status (2026-08-04): the current Luna MultiPass canary
+  parsed `openai/gpt-5.6-luna` as `text+image` with a 1,050,000-token context,
+  started the Gateway, attached one MEETI image, and reached OpenAI's
+  `/v1/responses` endpoint. The provider then returned
   `credit_balance_exhausted` / `insufficient_quota`, so no answer was scored.
   No full single-pass versus MultiPass versus MultiPass+ECGFounder accuracy
   claim is made until that paired run completes. The independently

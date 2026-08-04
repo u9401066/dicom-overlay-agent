@@ -2,6 +2,24 @@
 
 ## Done
 
+- **Luna default, recoverable Gateway, and ECGFounder held-out evaluation**
+  (2026-08-04):
+  - Made `openai/gpt-5.6-luna` the desktop/runner default and verified the real
+    bundled-OpenClaw catalog row (`text+image`, 1.05M context). A paid one-image
+    transaction reached Responses but remains blocked by exhausted credits.
+  - Fixed a Windows stale-lock defect in both desktop and experiment runner by
+    replacing `os.kill(pid, 0)` with Win32 process exit-state inspection.
+  - Added full 150-score offline ECGFounder output, protocol integrity checks,
+    exact semantic mapping, deterministic five-fold evaluation, and 7 focused
+    evaluator tests. The live agent payload remains capped at 20 predictions.
+  - Real 1,000-row research result: 23 supported concepts, macro CV BA 0.865,
+    sensitivity 0.848, explicit-normal specificity 0.883, top-20 concept recall
+    0.837, and 3-5 diagnosis complete recall 0.479. No deployment threshold or
+    screenshot-agent accuracy claim is made.
+  - Settings/Process UI exposes actual model and secret-free external waveform
+    evidence provenance. OOM-safe unit+smoke now passes 680 tests plus one
+    release-only skip; OpenClaw integration remains 55/55.
+
 - **Systematic MultiPass harness, GPT-5.4 Mini canary, and final bundle**
   (2026-08-04):
   - Added mandatory, bounded original-ROI EKG limb/precordial discovery probes,

@@ -1,5 +1,33 @@
 # Active Context
 
+## Session Update (2026-08-04, Luna default + ECGFounder held-out audit)
+
+- Desktop, fresh Gateway config, and both experiment runners now default to
+  `openai/gpt-5.6-luna`; the bundled Node `v24.18.0` validated the config and
+  exposed Luna as `text+image` with a 1.05M context. GPT-5.4 Mini and other API
+  profiles remain selectable. Settings now reads the active model instead of
+  showing an unrelated first preset.
+- A true one-image Luna MultiPass canary reached OpenAI Responses and was
+  retained as `blocked` after `credit_balance_exhausted`. No model answer or
+  accuracy score was manufactured. The full three-arm image experiment remains
+  externally blocked.
+- Found and fixed Windows stale Gateway-lock recovery: `os.kill(pid, 0)` could
+  report a terminated PID as live. Shared Win32 `OpenProcess/GetExitCodeProcess`
+  logic now protects both desktop and Python experiment runner, with a reaped
+  child-process regression test.
+- ECGFounder offline batching can retain all 150 class scores while the live
+  OpenClaw tool stays capped at 20. Batch v3 records runner hash plus affirmative,
+  uncertain, and ungradable label metadata; evaluator accepts the completed v2
+  run with verified protocol fingerprint.
+- Full 150-score inference completed 1,000/1,000 in 605.847 s. The leakage-aware
+  five-fold audit (`0384ed02...d40a`) maps 33/38 observed concepts and 99.157%
+  of asserted instances. For 23 supported concepts: macro BA 0.865, sensitivity
+  0.848, explicit-normal-control specificity 0.883. Holdout top-20 recall is
+  0.837; 3-5 diagnosis complete recall is only 0.479, below the 0.75 target.
+- UI now shows secret-free waveform-assist configuration and records ECGFounder
+  status, prediction count, and calibration state in the Process tab. OOM-safe
+  unit+smoke is 680 passed plus one release-only skip; integration is 55/55.
+
 ## Session Update (2026-08-04, systematic harness + GPT-5.4 Mini + final bundle)
 
 - MultiPass now reserves bounded original-ROI EKG discovery turns for limb and

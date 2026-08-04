@@ -9,13 +9,14 @@ or a schema-valid response is never mistaken for clinical accuracy evidence.
 | Surface | Status | Evidence |
 | --- | --- | --- |
 | Source self-check | passed | Node, OpenClaw, 51 bundled skills, native plugin, rules, writable base |
-| Unit + smoke suite | 666 passed, 1 release-only skip | `scripts/run-tests-safe.cmd -q` |
+| Unit + smoke suite | 680 passed, 1 release-only skip | `scripts/run-tests-safe.cmd -q` |
 | Full repository Ruff | passed | `scripts/run-ruff-safe.cmd check .` |
 | OpenClaw overlay integration | 55 passed | `tests/integration/test_openclaw_overlay.py` |
 | Fresh bundle smoke | 2 passed | `RUN_BUNDLE_SMOKE=1`, real frozen EXE self-check |
 | Packaged native plugin | loaded | `dicom_bbox_validate` and `ecg_founder_analyze_waveform`, zero diagnostics |
 | Real Win32/Qt coordinate probe | passed | Win32 window `1222x836`; mss capture `1222x836`; physical display `2560x1600`; Qt frame `1707x1067` |
-| ECGFounder paired waveform arm | 1,000/1,000 completed | `data/eval-runs/ecgfounder-meeti-1000-20260804` |
+| ECGFounder paired waveform arm | 1,000/1,000 completed | `data/eval-runs/ecgfounder-meeti-1000-fullscores-20260804` |
+| ECGFounder full-score research audit | 23 supported concepts | CV macro BA 0.865; 3-5 diagnosis complete recall 0.479 |
 | Existing real MLLM paired pilot | 6/6 per arm, exploratory | Single-pass vs recorded MultiPass Luna run; paired p=1.0 |
 | Current guardrail replay | 6/6 derived, no raw mutation | Partial credit 0.596 -> 0.678; safety improved/regressed/unchanged 1/0/5 |
 | Current systematic-probe pipeline | passed mock execution gate | 1 EKG, 2/2 original-ROI discovery probes completed and trace-verified; protocol `3083822c...87a0` |
@@ -55,13 +56,22 @@ boxes. See [the ECGFounder tool contract](ecgfounder-tool.md).
 - Dataset build: 1,000 MEETI images paired to their raw 12-lead waveforms.
 - Checkpoint: official `12_lead_ECGFounder.pth`, kept outside git and the app.
 - Protocol fingerprint:
-  `2b79fb8caffed0eabe1467fa3aba4c5a8287e753d7dcdcae1fa308fc7ca2d933`.
+  `a7a55cca53031e799b678b43f9a6e4499c54342326e6f9d51facd95bffd7742b`.
 - Completed: 1,000 successful results, 0 failed results.
-- Observed wall time: 691.182 seconds.
-- Recorded inference time: 690,996.751 ms total, 756.491 ms median,
-  794.734 ms p95.
+- Observed wall time: 605.847 seconds.
+- Recorded inference time: 605,563.211 ms total, 547.202 ms median,
+  783.532 ms p95.
 - Interpretation boundary: all class scores are explicitly uncalibrated
   supporting evidence. No fixed diagnostic threshold or image bbox is inferred.
+
+The complete 150-score audit has evaluation protocol
+`0384ed02442200be8132943cf87210f8b52ac4ca8c9730de3a2237118c5dd40a`.
+It maps 33/38 observed concepts and 99.157% of asserted concept instances. The
+primary deterministic five-fold estimate covers 23 concepts: macro balanced
+accuracy 0.865, sensitivity 0.848, and specificity 0.883 against explicit
+normal controls. Holdout top-20 concept recall is 0.837, while complete recall
+for 3-5 diagnosis cases is 0.479. This does not meet the 0.75 multi-diagnosis
+target and is not comparable to screenshot-agent accuracy.
 
 The run artifacts and checkpoint are intentionally ignored because they are
 large external data. Reproduction commands and hashes are in
@@ -118,15 +128,16 @@ The planned adequately sized paired comparison remains:
 2. MultiPass image analysis.
 3. MultiPass plus ECGFounder waveform evidence.
 
-The transactional canary is retained under
-`data/experiments/provider-canary-gpt54mini-20260804c`. It proves the following
+The current transactional canary is retained under
+`data/experiments/luna-multipass-canary-20260804-default-migration-final2`.
+It proves the following
 without exposing the API key:
 
-- the Settings/runner `openai-vision` profile selects
-  `openai/gpt-5.4-mini` over the Responses API;
-- OpenClaw's parsed model row declares `text+image` with a 400k context;
-- the Gateway became ready in 16.078 seconds and sent one image
-  (`promptImages=1`) to `/v1/responses`;
+- the Settings/runner default selects `openai/gpt-5.6-luna` over the Responses
+  API, while other provider profiles remain selectable;
+- OpenClaw's parsed model row declares `text+image` with a 1.05M context;
+- the Gateway became ready in 26.136 seconds and sent one MEETI image to
+  `/v1/responses`;
 - the provider transaction then failed with `credit_balance_exhausted` /
   `insufficient_quota`, so the case has an error artifact and no model answer.
 

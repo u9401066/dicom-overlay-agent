@@ -153,8 +153,8 @@ does not match.
 ```powershell
 data\external\ecgfounder-runtime\.venv\Scripts\python.exe `
   scripts\run-ecgfounder-meeti-batch.py `
-  --output-dir data\eval-runs\ecgfounder-meeti-1000-20260804 `
-  --max-predictions 20
+  --output-dir data\eval-runs\ecgfounder-meeti-1000-fullscores-20260804 `
+  --max-predictions 150
 ```
 
 It writes `protocol.json`, one line per case in `results.jsonl`, and an atomic
@@ -162,11 +162,42 @@ It writes `protocol.json`, one line per case in `results.jsonl`, and an atomic
 hash/reference metadata, provenance, latency, and sanitized predictions; no
 waveform path is emitted.
 
-The real 2026-08-04 run completed 1,000/1,000 unique paired artifacts with no
-failures in 691.182 seconds. Median inference latency was 756.491 ms and p95 was
-794.734 ms. Its protocol fingerprint is
-`2b79fb8caffed0eabe1467fa3aba4c5a8287e753d7dcdcae1fa308fc7ca2d933`.
+The full-score 2026-08-04 run completed 1,000/1,000 unique paired artifacts
+with no failures in 605.847 seconds. Median inference latency was 547.202 ms
+and p95 was 783.532 ms. Every row contains the complete 150-statement score
+vector. Its protocol fingerprint is
+`a7a55cca53031e799b678b43f9a6e4499c54342326e6f9d51facd95bffd7742b`.
 All 1,000 rows are explicitly `uncalibrated`.
+
+## Leakage-aware Research Evaluation
+
+Run the hash-pinned evaluator after a complete 150-score batch:
+
+```powershell
+.venv\Scripts\python.exe scripts\evaluate-ecgfounder-meeti.py `
+  --run-dir data\eval-runs\ecgfounder-meeti-1000-fullscores-20260804
+```
+
+The evaluator maps only exact ECGFounder statements, keeps uncertain concepts
+out of both positive and negative classes, and never treats report silence as
+a negative label. Abnormal concepts are compared only against explicit-normal
+reports. Thresholds are selected independently inside deterministic five-fold
+out-of-fold evaluation using ECGFounder's official 0.01-0.99 balanced-accuracy
+grid; no learned threshold is installable in the sidecar.
+
+The current research result (`0384ed02442200be8132943cf87210f8b52ac4ca8c9730de3a2237118c5dd40a`)
+covers 33 of 38 observed reference concepts and 99.157% of asserted concept
+instances. Across 23 concepts with enough fold support, macro balanced accuracy
+is 0.865, sensitivity is 0.848, and explicit-normal-control specificity is
+0.883; 15/23 concepts have point-estimate balanced accuracy at least 0.85.
+Holdout top-20 mapped-concept recall is 0.837. For the 188 holdout cases with
+3-5 mapped diagnoses, complete top-20 recall is only 0.479, so the requested
+0.75 multi-diagnosis product target is not met by this waveform arm.
+
+These numbers use weak report labels, lack patient identifiers for patient-level
+splitting, and do not measure screenshot localization, report synthesis, or the
+complete OpenClaw agent. Precision is intentionally not estimated because the
+reports do not enumerate every absent diagnosis.
 
 Two urgent canaries also show why this remains supporting evidence. One image
 reference raised uncertain acute ST/STEMI concern while ECGFounder ranked
@@ -188,7 +219,7 @@ Start the third arm only after the sidecar endpoint and token are exported:
 
 ```powershell
 scripts\run-meeti-openclaw-experiment.cmd `
-  --model-id openai/gpt-5.4-mini `
+  --model-id openai/gpt-5.6-luna `
   --manifest data\eval-datasets\meeti-1000-all\manifest.json `
   --multi-pass `
   --ecgfounder-waveform-evidence

@@ -74,6 +74,29 @@
   the same 1000-case manifest and use expert review to refine prompt/rules for
   recurrent misses.
 
+### v0.4.3 Luna + waveform evidence audit (2026-08-04)
+
+- [x] `openai/gpt-5.6-luna` is the desktop and experiment-runner default;
+  GPT-5.4 Mini, OpenRouter, Anthropic, Azure, and compatible endpoints remain
+  explicit profiles.
+- [x] Settings reads the actually active model and exposes a secret-free
+  ECGFounder configuration status; the report Process tab records crop/refine,
+  OpenClaw tools, waveform status, prediction count, and calibration state.
+- [x] Windows stale Gateway locks recover using Win32 process-state checks
+  instead of unreliable `os.kill(pid, 0)` behavior.
+- [x] ECGFounder offline runs can retain all 150 scores while the live agent
+  tool remains capped at 20; protocol/source hashes and label metadata are
+  preserved for audit.
+- [x] Leakage-aware five-fold MEETI research evaluation completed: 23 supported
+  concepts, macro BA 0.865, top-20 concept recall 0.837, and 3-5 diagnosis
+  complete recall 0.479. Thresholds remain research-only.
+- [ ] Run the current-protocol 1,000-case single-pass, MultiPass, and
+  MultiPass+ECGFounder Luna arms after provider credits are available; the
+  latest real canary is correctly blocked by `credit_balance_exhausted`.
+- [ ] Perform clean-machine Windows 10 verification. The modern runtime remains
+  unsupported on Windows 7; any Win7 target needs a separately maintained
+  legacy bundle and security policy.
+
 ## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制

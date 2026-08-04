@@ -44,6 +44,9 @@
 | 2026-08-04 | MultiPass EKG 必須保留系統化 discovery turns | 只 crop coarse pass 已找到的 bbox 無法改善漏診；在 bounded budget 內固定從 original ROI 探查 limb/precordial 區，並以 trace/artifact gate 證明實際有跑，才符合 repo 的多輪核心。 |
 | 2026-08-04 | GPT-5.4 Mini readiness 與 provider transaction 分開記錄 | model metadata/key/manifest 可證明可設定，但不能證明付費 API 真能回答。`openai-vision` 明確宣告 `text+image`；只有送出真圖並取得 provider response 才算 canary，額度失敗必須標 blocked。 |
 | 2026-08-04 | Portable build 剔除並禁止所有 `.env*` | npm 相依可能夾帶開發用環境檔；即使內容無 secret 也不應出貨。staging 主動移除，packaged verifier 再 fail-closed，避免使用人工清單判斷。 |
+| 2026-08-04 | Luna 成為預設但保留多 provider profile | 使用者指定 `openai/gpt-5.6-luna` 作為實戰多模態主路徑；桌面、Gateway seed、Python/PowerShell runner 統一預設，GPT-5.4 Mini/OpenRouter/Anthropic/Azure/compatible 仍可顯式選擇。catalog 能證明 image capability，額度 canary 失敗仍只能算 blocked。 |
+| 2026-08-04 | ECGFounder threshold 只做 out-of-fold 研究評估 | MEETI 是弱報告標籤且沒有 patient id；只用 affirmative concepts，uncertain 不當正/負，abnormal 只對明確正常 control，五折門檻永不寫回 sidecar。避免同資料調參後宣稱 deployment accuracy。 |
+| 2026-08-04 | Windows PID 存活檢查走 Win32 API | 本機證實 `os.kill(pid, 0)` 對已結束 PID 仍可能成功，造成 Gateway stale lock 永遠卡住。桌面與 runner 共用 `OpenProcess/GetExitCodeProcess`，access denied 保守視為存活。 |
 
 ---
 
