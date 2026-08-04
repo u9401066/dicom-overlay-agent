@@ -22,8 +22,11 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
+import socket
 import subprocess
 import sys
+import time
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -100,3 +103,56 @@ def test_built_bundle_selfcheck_exits_zero():
     )
     assert not (bundle / "overlay_agent.log").exists()
     assert not (bundle / "openclaw-home").exists()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_GATEWAY_BUNDLE_SMOKE") != "1" or _built_exe() is None,
+    reason=(
+        "Opt-in: set RUN_GATEWAY_BUNDLE_SMOKE=1 after scripts/build-exe.bat "
+        "to start and authenticate to the packaged Gateway"
+    ),
+)
+def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
+    exe = _built_exe()
+    assert exe is not None
+    assert not _port_open(18789)
+    isolated = shutil.copytree(exe.parent, tmp_path / "DICOMOverlayAgent")
+    isolated_exe = isolated / exe.name
+    env = os.environ.copy()
+    env.pop("OPENCLAW_GATEWAY_TOKEN", None)
+    env["OPENAI_API_KEY"] = "packaged-runtime-smoke-invalid-key"
+
+    result = subprocess.run(
+        [str(isolated_exe), "--gateway-smoke"],
+        cwd=isolated,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+    )
+
+    gateway_log = (isolated / "gateway.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert result.returncode == 0, (
+        f"packaged Gateway smoke failed (exit {result.returncode}):\n"
+        f"{result.stdout}\n{result.stderr}\n{gateway_log}"
+    )
+    assert "OPENCLAW_GATEWAY_TOKEN=" in (isolated / ".env").read_text(
+        encoding="utf-8"
+    )
+    assert "[gateway] ready" in gateway_log
+    deadline = time.monotonic() + 15
+    while _port_open(18789) and time.monotonic() < deadline:
+        time.sleep(0.25)
+    assert not _port_open(18789), "packaged Gateway process remained after smoke exit"
+
+
+def _port_open(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.25):
+            return True
+    except OSError:
+        return False

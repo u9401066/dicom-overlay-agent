@@ -248,6 +248,9 @@ class OpenClawConfig:
     gateway_url: str = "ws://127.0.0.1:18789"
     reconnect_interval_sec: int = 5
     timeout_sec: int = 15
+    # Portable OpenClaw can spend over a minute on first-run migrations and
+    # antivirus scanning. This is separate from the WebSocket handshake timeout.
+    gateway_start_timeout_sec: int = 180
     # Split timeouts: handshake is fast, inference can be slow on big images.
     # ``None`` means "fall back to timeout_sec" for backward compatibility.
     connect_timeout_sec: int | None = None

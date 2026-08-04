@@ -11,6 +11,8 @@ Threading model:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,6 +42,7 @@ from dicom_overlay.application.review_chat import (
 )
 from dicom_overlay.domain.entities import (
     AgentState,
+    AppConfig,
     Finding,
     FindingDelta,
     FindingOp,
@@ -102,6 +105,7 @@ class _SignalBridge(QObject):
     review_outcome_failed = pyqtSignal(str)
     chat_failed = pyqtSignal(int)
     vision_test_done = pyqtSignal(object)
+    runtime_started = pyqtSignal(str)
 
 
 def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
@@ -185,6 +189,73 @@ def _run_explain_rules(base_dir: Path) -> int:
     return 0
 
 
+def _run_gateway_smoke(
+    base_dir: Path,
+    config_path: Path,
+    config: AppConfig,
+) -> int:
+    """Start, authenticate to, and stop the bundled Gateway without inference."""
+
+    settings = DesktopSettingsStore(repo_root=base_dir, config_path=config_path)
+    gateway_token = settings.ensure_gateway_token()
+    gateway = GatewayManager(
+        repo_root=base_dir,
+        ready_timeout_sec=config.openclaw.gateway_start_timeout_sec,
+    )
+    client = OpenClawClient(
+        gateway_url=config.openclaw.gateway_url,
+        timeout_sec=config.openclaw.timeout_sec,
+        reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
+        connect_timeout_sec=config.openclaw.connect_timeout_sec,
+        inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        gateway_token=gateway_token,
+        base_dir=base_dir,
+    )
+
+    async def _smoke() -> int:
+        try:
+            gateway.start()
+            if not await gateway.wait_ready():
+                logger.error("Gateway runtime smoke did not become ready")
+                return 1
+            await client.connect()
+            logger.info("Gateway runtime smoke authenticated successfully")
+            return 0
+        except Exception:
+            logger.exception("Gateway runtime smoke failed")
+            return 1
+        finally:
+            with contextlib.suppress(Exception):
+                await client.disconnect()
+            gateway.stop()
+
+    return asyncio.run(_smoke())
+
+
+async def _start_desktop_runtime(
+    gateway: GatewayManager,
+    agent: OverlayAgent,
+    mcp_adapter: McpAdapter,
+) -> str:
+    """Start the slow portable runtime off the Qt thread."""
+
+    gateway_status = "offline"
+    try:
+        gateway.start()
+        agent._gateway = gateway
+        gateway_status = "ready" if await gateway.wait_ready() else "offline"
+    except FileNotFoundError as exc:
+        logger.warning("Gateway not available: %s", exc)
+        agent._gateway = None
+    except Exception:
+        logger.exception("Gateway startup failed; desktop will remain available")
+        agent._gateway = None
+
+    await agent.start()
+    await mcp_adapter.start()
+    return gateway_status
+
+
 def main() -> None:
     # --- Resolve portable base dir (USB plug-and-play) ---
     # When frozen, anchor all runtime paths to the executable's folder, not the
@@ -220,6 +291,15 @@ def main() -> None:
     setup_logging(log_level=config.log_level, log_file=config.log_file)
     logger.info("DICOM Overlay Agent starting...")
 
+    if "--gateway-smoke" in sys.argv:
+        sys.exit(_run_gateway_smoke(base_dir, config_path, config))
+
+    settings_store = DesktopSettingsStore(
+        repo_root=base_dir,
+        config_path=config_path,
+    )
+    gateway_token = settings_store.ensure_gateway_token()
+
     # --- Build modality registry (single source of truth, config-extensible) ---
     registry = build_registry(config.modalities)
     set_active_registry(registry)
@@ -234,6 +314,7 @@ def main() -> None:
         reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
         connect_timeout_sec=config.openclaw.connect_timeout_sec,
         inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        gateway_token=gateway_token,
         registry=registry,
         base_dir=base_dir,
     )
@@ -549,8 +630,6 @@ def main() -> None:
     def on_retrigger():
         control_bar.set_pending_analysis(False)
         bridge.submit(agent.trigger_manual())
-
-    settings_store = DesktopSettingsStore(repo_root=base_dir, config_path=config_path)
 
     def on_trigger_mode_changed(mode) -> None:
         agent.set_trigger_mode(mode)
@@ -1203,36 +1282,52 @@ def main() -> None:
     shortcut_toggle.setContext(Qt.ShortcutContext.ApplicationShortcut)
     shortcut_toggle.activated.connect(_toggle_enable)
 
-    # ─── Start Gateway + agent + MCP adapter ───
-    gateway = GatewayManager(repo_root=base_dir)
-    try:
-        gateway.start()
-        ready = bridge.submit(gateway.wait_ready(timeout_sec=15)).result(timeout=20)
-        if not ready:
-            logger.error("Gateway failed to start — continuing without it")
-        # Let the agent auto-restart Gateway if it crashes during runtime
-        agent._gateway = gateway
-    except FileNotFoundError as exc:
-        logger.warning("Gateway not available: %s", exc)
-        gateway = None  # type: ignore[assignment]
-
-    bridge.submit(agent.start()).result(timeout=30)
-    bridge.submit(mcp_adapter.start()).result(timeout=10)
-
-    # --- Show UI ---
+    # --- Show UI immediately; portable Gateway migration continues off-thread. ---
+    gateway = GatewayManager(
+        repo_root=base_dir,
+        ready_timeout_sec=config.openclaw.gateway_start_timeout_sec,
+    )
+    control_bar.set_gateway_status("starting")
     control_bar.show()
     control_bar.set_modality(agent.current_modality.value)
 
-    if agent.state == AgentState.SETUP:
-        QTimer.singleShot(0, open_settings_roi_setup)
+    def on_runtime_started(status: str) -> None:
+        control_bar.set_gateway_status(status)
+        if agent.state == AgentState.SETUP:
+            QTimer.singleShot(0, open_settings_roi_setup)
+        logger.info("Desktop runtime started — gateway=%s state=%s", status, agent.state.name)
 
-    logger.info("Agent started — state: %s", agent.state.name)
+    signals.runtime_started.connect(on_runtime_started)
+
+    runtime_start_future = bridge.submit(
+        _start_desktop_runtime(gateway, agent, mcp_adapter)
+    )
+
+    def _runtime_done(future) -> None:
+        if future.cancelled():
+            return
+        try:
+            status = future.result()
+        except Exception:
+            logger.exception("Desktop runtime startup failed")
+            signals.error_msg.emit("AI startup failed; see log")
+            status = "offline"
+        signals.runtime_started.emit(status)
+
+    runtime_start_future.add_done_callback(_runtime_done)
+
+    logger.info("Desktop UI started; OpenClaw startup is running in background")
 
     # --- Run Qt event loop ---
     exit_code = app.exec()
 
     # --- Cleanup ---
     tick_timer.stop()
+
+    if not runtime_start_future.done():
+        runtime_start_future.cancel()
+        with contextlib.suppress(Exception):
+            runtime_start_future.result(timeout=5)
 
     try:
         bridge.submit(mcp_adapter.stop()).result(timeout=5)

@@ -40,3 +40,14 @@ def test_control_bar_positions_inside_offset_screen(qtbot):
 
     assert bar.x() == -20 - bar.width()
     assert bar.y() == 40 + 1080 - bar.height() - 60
+
+
+def test_control_bar_exposes_separate_gateway_status(qtbot):
+    bar = ControlBarWindow()
+    qtbot.addWidget(bar)
+
+    bar.set_gateway_status("ready")
+    assert bar._gateway_status_label.text() == "AI ready"
+
+    bar.set_gateway_status("offline")
+    assert bar._gateway_status_label.text() == "AI offline"

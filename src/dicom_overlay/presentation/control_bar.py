@@ -116,6 +116,12 @@ class ControlBarWindow(QWidget):
         self._status_label.setStyleSheet("color: #bbb; padding: 0 8px;")
         layout.addWidget(self._status_label)
 
+        self._gateway_status_label = QLabel("AI starting")
+        self._gateway_status_label.setMinimumWidth(72)
+        self._gateway_status_label.setToolTip("OpenClaw Gateway status")
+        layout.addWidget(self._gateway_status_label)
+        self.set_gateway_status("starting")
+
         layout.addStretch()
 
         self._settings_btn = self._button("Settings")
@@ -163,6 +169,20 @@ class ControlBarWindow(QWidget):
 
     def set_status(self, text: str) -> None:
         self._status_label.setText(text)
+
+    def set_gateway_status(self, status: str) -> None:
+        states = {
+            "starting": ("AI starting", "#e5b567"),
+            "ready": ("AI ready", "#71c99a"),
+            "offline": ("AI offline", "#ef8d8d"),
+        }
+        if status not in states:
+            raise ValueError(f"Unsupported Gateway status: {status}")
+        text, color = states[status]
+        self._gateway_status_label.setText(text)
+        self._gateway_status_label.setStyleSheet(
+            f"color: {color}; padding: 0 6px; font-weight: 600;"
+        )
 
     def update_state(self, state: AgentState) -> None:
         status_map = {

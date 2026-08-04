@@ -66,6 +66,7 @@ class TestConfigLoader:
         assert config.monitor.hash_threshold == 15
         assert config.phi_roi.top == 100
         assert config.openclaw.gateway_url == "ws://localhost:9999"
+        assert config.openclaw.gateway_start_timeout_sec == 180
         assert config.analysis.trigger_mode == TriggerMode.MANUAL
 
     def test_save_roi_config(self, tmp_path):
@@ -171,6 +172,14 @@ class TestOpenClawSettings:
 
 
 class TestOpenClawRuntimeCompatibility:
+    def test_gateway_ready_timeout_is_bounded(self, tmp_path):
+        manager = GatewayManager(repo_root=tmp_path, ready_timeout_sec=120)
+
+        assert manager._ready_timeout_sec == 120.0
+
+        with pytest.raises(ValueError, match="between 5 and 600"):
+            GatewayManager(repo_root=tmp_path, ready_timeout_sec=1)
+
     def test_safe_version_floor_matches_claw_chain_patch_boundary(self):
         assert MIN_SAFE_OPENCLAW_VERSION == "2026.4.22"
         assert not is_openclaw_version_supported("2026.4.21")
@@ -527,6 +536,21 @@ class TestAppBaseDir:
 
 
 class TestDesktopSettingsStore:
+    def test_creates_and_reuses_local_gateway_token(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        store = DesktopSettingsStore(repo_root=tmp_path)
+
+        first = store.ensure_gateway_token()
+        second = store.ensure_gateway_token()
+
+        assert first == second
+        assert len(first) >= 32
+        assert (tmp_path / ".env").read_text(encoding="utf-8").count(
+            "OPENCLAW_GATEWAY_TOKEN="
+        ) == 1
+
     def test_load_model_ref_reads_active_primary_without_credentials(self, tmp_path):
         config_path = tmp_path / "openclaw" / "openclaw.json"
         config_path.parent.mkdir(parents=True)

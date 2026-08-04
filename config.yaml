@@ -24,6 +24,8 @@ monitor:
   - Viewer
 openclaw:
   connect_timeout_sec: 15
+  # Fresh portable OpenClaw startup can include migrations and antivirus scans.
+  gateway_start_timeout_sec: 180
   gateway_url: ws://127.0.0.1:18789
   inference_timeout_sec: 180
   reconnect_interval_sec: 5

@@ -97,6 +97,19 @@ class DesktopSettingsStore:
             encoding="utf-8",
         )
 
+    def ensure_gateway_token(self) -> str:
+        """Return or create the local loopback Gateway authentication token."""
+
+        token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+        if token:
+            return token
+        token = self._read_env_map().get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+        if token:
+            return token
+        token = secrets.token_urlsafe(32)
+        self._write_env_updates({"OPENCLAW_GATEWAY_TOKEN": token})
+        return token
+
     def load_model_ref(self) -> str:
         """Return the active OpenClaw model without exposing credentials."""
         payload = self._read_openclaw_config()

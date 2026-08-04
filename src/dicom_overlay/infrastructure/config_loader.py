@@ -84,6 +84,9 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
             gateway_url=oc_raw.get("gateway_url", "ws://127.0.0.1:18789"),
             reconnect_interval_sec=oc_raw.get("reconnect_interval_sec", 5),
             timeout_sec=oc_raw.get("timeout_sec", 15),
+            gateway_start_timeout_sec=oc_raw.get(
+                "gateway_start_timeout_sec", 180
+            ),
             connect_timeout_sec=oc_raw.get("connect_timeout_sec"),
             inference_timeout_sec=oc_raw.get("inference_timeout_sec"),
             analyze_retries=oc_raw.get("analyze_retries", 1),

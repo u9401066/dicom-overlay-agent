@@ -43,6 +43,7 @@ _DST_PLUGINS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "plugins"
 _HARNESS_PLUGIN = "dicom-overlay-agent-harness"
 _ECG_FOUNDER_TOOL = "ecg_founder_analyze_waveform"
 _GATEWAY_LAUNCH_LOCK = Path("data/tmp/openclaw-gateway.lock")
+DEFAULT_GATEWAY_READY_TIMEOUT_SEC = 180.0
 
 
 def ecg_founder_tool_enabled(environment: Mapping[str, str]) -> bool:
@@ -101,9 +102,22 @@ def pid_is_running(pid: int) -> bool:
 class GatewayManager:
     """Manages the OpenClaw Gateway Node.js subprocess lifecycle."""
 
-    def __init__(self, repo_root: Path | None = None, port: int = 18789) -> None:
+    def __init__(
+        self,
+        repo_root: Path | None = None,
+        port: int = 18789,
+        *,
+        ready_timeout_sec: float = DEFAULT_GATEWAY_READY_TIMEOUT_SEC,
+    ) -> None:
+        if (
+            isinstance(ready_timeout_sec, bool)
+            or not isinstance(ready_timeout_sec, (int, float))
+            or not 5 <= ready_timeout_sec <= 600
+        ):
+            raise ValueError("ready_timeout_sec must be between 5 and 600 seconds")
         self._repo_root = repo_root or Path.cwd()
         self._port = port
+        self._ready_timeout_sec = float(ready_timeout_sec)
         self._process: subprocess.Popen | None = None
         self._gateway_log: TextIO | None = None
         self._launch_lock_dir: Path | None = None
@@ -648,8 +662,11 @@ class GatewayManager:
                 self._gateway_log = None
             raise
 
-    async def wait_ready(self, timeout_sec: float = 15.0) -> bool:
+    async def wait_ready(self, timeout_sec: float | None = None) -> bool:
         """Wait until the Gateway WebSocket port is accepting connections."""
+        timeout_sec = (
+            self._ready_timeout_sec if timeout_sec is None else float(timeout_sec)
+        )
         deadline = asyncio.get_event_loop().time() + timeout_sec
         while asyncio.get_event_loop().time() < deadline:
             # Check subprocess hasn't crashed
@@ -726,7 +743,7 @@ class GatewayManager:
 
         try:
             self.start()
-            return await self.wait_ready(timeout_sec=15.0)
+            return await self.wait_ready()
         except Exception:
             logger.exception("Gateway restart failed")
             return False
