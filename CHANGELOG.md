@@ -9,6 +9,13 @@
 
 ### Added
 
+- **四臂 MEETI 實驗協定**：明確分離 minimal control、clinical single-pass、
+  MultiPass、MultiPass+ECGFounder，保存 manifest/case/scorer/protocol digest、
+  tool/crop/probe trace、bbox audit、review PNG 與 provider blocker；真實完成門檻
+  為 strict pass 0.75、mean partial credit 0.85
+- **凍結 Gateway 啟動 smoke**：`--gateway-smoke` 會在隔離副本產生 runtime-only
+  loopback token，等待 bundled OpenClaw migration、完成 authenticated WebSocket
+  connect、乾淨停止並確認無殘留 listener
 - **人工確認的區域問答寫回**：AI 框與人工框可送出 exact crop 結構化追問；OpenClaw 只能建議 `ADD`／`REVISE`／`RETRACT`，不能控制座標，須按 Apply 才寫回 report/overlay/export，並保留 `interactive_ai_review`、result revision、chat request id、local signal 與 reviewer confirmation audit
 - **ECGFounder 全分數研究評估**：offline runner 可保留完整 150 statement scores，新增 exact ontology mapping、protocol/hash 完整性檢查、deterministic five-fold out-of-fold evaluator 與 JSON/Markdown evidence；live OpenClaw tool 仍限制最多 20 筆 supporting predictions
 - **工具證據 UI**：Settings 顯示 secret-free waveform assist 配置狀態，Report 的 Process tab 顯示 ECGFounder status、prediction count 與 calibration state
@@ -35,6 +42,12 @@
 
 ### Fixed
 
+- **MultiPass 報告一致性與 lead inventory**：no-delta refine 仍進行 final
+  reconciliation；人工寫回同步 summary/triage/checklist；共用 typed parser
+  正確辨認 `I`／`II`／`V1` 等 12-lead 名稱，避免 parser/UI/bbox 規則漂移
+- **桌面首次 Gateway 啟動**：把 migration/startup 移出 Qt main thread，將
+  180 秒 readiness budget 與推論 timeout 分離，並呈現 AI starting/ready/offline
+  狀態；首次啟動自動建立本機 token，乾淨 bundle 不含 secret
 - **空白區互動標註與多診斷誤合併**：低訊號 crop 不再能透過模型 `ADD`／`REVISE` 變成 finding；不同診斷標籤即使 bbox IoU 高也保持分離，不再只憑幾何位置合併
 - **Windows stale Gateway lock**：改以 Win32 `OpenProcess/GetExitCodeProcess` 判斷 PID 存活，桌面程式與 MEETI runner 共用同一實作，修正異常中止後永遠誤判舊 PID 存活
 - **多螢幕座標錯位（潛在 PHI 風險）**：主螢幕不在原點時 mss 截圖會擷取錯誤螢幕；新增螢幕原點 offset 貫穿 capture 與 control bar
@@ -43,6 +56,10 @@
 
 ### Changed
 
+- mock perfect gate 現在明確只驗證 label-derived protocol self-test；真實 provider
+  quota/auth/parser 失敗保留為 infrastructure blocker，不轉成病例答錯或部分分數
+- OpenClaw 影像分析停用 web search/fetch；臨床影像只使用有界的 app-native
+  bbox 工具與選配、驗證過的 ECGFounder waveform tool
 - 桌面程式、Gateway seed 與 MEETI runner 預設模型統一為 `openai/gpt-5.6-luna`；GPT-5.4 Mini 與其他 API provider 保留為顯式 profile
 - `test-runner` agent 模型優先序改為 `GPT-5.5 mini → GPT-5 mini → GPT-4.1`
 - ruff 設定忽略 `RUF001`/`RUF003`（zh-TW 全形標點為正確排版，非錯字）

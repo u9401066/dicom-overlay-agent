@@ -228,23 +228,29 @@ not directly recover its uncertain acute ST concern in the top ten.
 
 Do not compare a screenshot-only baseline against an ECGFounder arm unless the
 same cases have eligible waveform artifacts. For a waveform-matched cohort,
-record three paired arms:
+record four paired arms with the same model, manifest, case order, OpenClaw
+runtime, and scorer:
 
-1. Single-pass image model.
-2. MultiPass image model with crop/refine.
-3. MultiPass plus ECGFounder waveform evidence.
+1. `minimal_control`: one image look with the minimal JSON envelope and no
+   clinical skill, tools, crop/refine, or rhythm pass.
+2. `single_pass`: the complete clinical prompt/schema harness with one image
+   look and no crop/refine or rhythm pass.
+3. `multipass`: the clinical harness plus source-image crop/refine, systematic
+   lead probes, rhythm-strip pass, and final report reconciliation.
+4. `multipass_ecgfounder`: the same MultiPass path plus exactly one verified
+   matched-waveform ECGFounder receipt.
 
-Start the third arm only after the sidecar endpoint and token are exported:
+Start the fourth arm only after the sidecar endpoint and token are exported:
 
 ```powershell
 scripts\run-meeti-openclaw-experiment.cmd `
-  --model-id openai/gpt-5.6-luna `
-  --manifest data\eval-datasets\meeti-1000-all\manifest.json `
+  --model-id openai/gpt-5.4-mini `
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json `
   --multi-pass `
   --ecgfounder-waveform-evidence
 ```
 
-The third arm tells OpenClaw to inspect the image independently first, call the
+The fourth arm tells OpenClaw to inspect the image independently first, call the
 waveform tool exactly once, then reconcile agreement or disagreement. Provider
 quota/authentication failures are experiment blockers, not negative model
 results, and must remain recorded as such.
@@ -255,6 +261,13 @@ not compute diagnostic accuracy because no deployment thresholds are installed.
 Accuracy and partial-credit comparison belong to the paired image experiment's
 scorecard and still require clinician review; this integration is a co-reading
 aid, not an autonomous diagnostic device.
+
+A real arm is `completed` only when its strict pass rate is at least 0.75 and
+its mean clinical partial credit is at least 0.85; otherwise the runner records
+`completed_below_target`. The comparator rejects incomplete runs, mismatched
+manifests or case sets, changed scorer provenance, and mixed/non-comparable
+protocols unless `--allow-incomplete` or `--allow-incompatible` is explicitly
+used for exploratory analysis.
 
 The upstream MIT notice is retained in
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and is included in the

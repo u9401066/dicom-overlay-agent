@@ -236,26 +236,32 @@ uv run --with scipy --with numpy python scripts\build-meeti-eval.py ^
   --extractor tar
 
 uv run python scripts\run-eval.py ^
-  --manifest data\eval-datasets\meeti-1000-all\manifest.json ^
-  --mock ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json ^
+  --mock --multi-pass --multi-pass-max-targets 3 ^
+  --multi-pass-max-ekg-systematic-probes 2 --rhythm-strip-pass ^
+  --analysis-prompt-profile clinical ^
   --require-perfect ^
-  --output data\eval\meeti-1000-mock-YYYYMMDD
+  --output data\eval\meeti-v2-1000-mock-multipass-YYYYMMDD
 
 uv run python scripts\export-eval-annotations.py ^
-  --eval-dir data\eval\meeti-1000-mock-YYYYMMDD ^
-  --manifest data\eval-datasets\meeti-1000-all\manifest.json
+  --eval-dir data\eval\meeti-v2-1000-mock-multipass-YYYYMMDD ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json
 
 uv run python scripts\verify-eval-artifacts.py ^
-  --eval-dir data\eval\meeti-1000-mock-YYYYMMDD ^
-  --manifest data\eval-datasets\meeti-1000-all\manifest.json ^
-  --min-cases 1000
+  --eval-dir data\eval\meeti-v2-1000-mock-multipass-YYYYMMDD ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json ^
+  --min-cases 1000 --require-multipass-trace ^
+  --require-multipass-refinement --require-ekg-systematic-probes ^
+  --require-projection-audit --min-strict-pass-rate 1 ^
+  --min-mean-partial-credit 1
 
 uv run python scripts\check-real-model-readiness.py ^
-  --model-id openrouter/openai/gpt-5.2-codex ^
-  --manifest data\eval-datasets\meeti-1000-all\manifest.json ^
-  --eval-dir data\eval\meeti-1000-mock-YYYYMMDD ^
+  --model-id openai/gpt-5.4-mini ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json ^
+  --eval-dir data\eval\meeti-v2-1000-mock-multipass-YYYYMMDD ^
   --min-cases 1000 ^
-  --output data\experiments\real-model-readiness.json
+  --probe-provider ^
+  --output data\experiments\readiness-openai-gpt-5.4-mini.json
 ```
 
 `run-eval.py` keeps console output bounded by default (`--case-print-limit 50`).
@@ -280,14 +286,29 @@ wrappers collapse non-zero exits to `1`. Once the key is present, the same
 command returns `status=ready` and records the exact command to start the real
 Gateway-backed experiment.
 
-The repo OpenClaw config is pinned to `openai/gpt-5.5`. The local runtime was
-validated with OpenClaw `2026.6.11` on 2026-07-02. The desktop Settings dialog
-can also save an OpenRouter profile (`OPENROUTER_API_KEY`,
-`https://openrouter.ai/api/v1`) into the app-managed OpenClaw provider/model
-sections without storing the secret in git. Always rerun config validation and
-the image harness smoke after changing providers or OpenClaw versions.
+The clean bundle currently contains OpenClaw `2026.7.1-2` and Node `v24.18.0`.
+The requested benchmark model is selected explicitly with
+`--model-id openai/gpt-5.4-mini`; the generated experiment config records the
+`openai-vision` profile and `text,image` input metadata without mutating the
+repo config. The desktop Settings dialog can also save OpenAI/OpenRouter
+profiles without storing the secret in git. Always rerun config validation,
+the image harness smoke, and readiness after changing providers or OpenClaw.
 
-Latest local evidence (2026-07-02):
+Current local evidence (2026-08-05):
+
+- The strict `manifest-v2.json` mock completed 1,000/1,000 with 4,869 analyzer
+  calls, 2,869 source-image crops, 2,000 systematic probes, and 1,000 review
+  PNGs. Its perfect score proves protocol plumbing, not model accuracy.
+- The bbox audit contains 865 model boxes and 135 zero-box cases; all projected
+  boxes passed round-trip calibration with zero clamps and 0 px maximum drift.
+- The requested GPT-5.4 Mini MultiPass canary reached the first real OpenAI
+  image request and returned `provider_credit_exhausted`. It is recorded as
+  `blocked`, not as a wrong clinical answer.
+- Full source verification is 769 passed and 2 release-only skips. The rebuilt
+  frozen bundle also passed an authenticated Gateway cold-start, WebSocket
+  connection, and clean-stop smoke.
+
+Historical local evidence (2026-07-02):
 
 - `node openclaw\node_modules\openclaw\openclaw.mjs config validate` passed
   against local OpenClaw `2026.6.11`.
@@ -327,31 +348,54 @@ review PNGs, bbox audit/crops, rebuilt scorecard, and `experiment.json` under
 `data\experiments\`. New runs write `experiment.json` with `status=running`
 before model evaluation starts, then update it in `finally`.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openrouter/openai/gpt-5.2-codex `
-  -ManifestPath data\eval-datasets\meeti-1000-all\manifest.json `
-  -TimeoutSec 90 `
-  -RequirePerfect
-```
-
-For the current `openai/gpt-5.6-luna` multi-pass MEETI benchmark:
+Run all four arms with the same model and immutable `manifest-v2.json`. Use
+distinct output directories and do not use `-RequirePerfect` for a real-model
+study; the runner's default completion gates are strict pass >= 0.75 and mean
+partial credit >= 0.85.
 
 ```powershell
+# Arm 1: one-look minimal control, no clinical harness or tools
 powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.6-luna `
-  -ManifestPath data\eval-datasets\meeti-1000-all\manifest.json `
-  -TimeoutSec 90 `
+  -ModelId openai/gpt-5.4-mini `
+  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
+  -ExperimentDir data\experiments\gpt54mini-minimal-control `
+  -TimeoutSec 180 `
+  -AnalysisPromptProfile minimal_control
+
+# Arm 2: clinical prompt/schema, exactly one image pass
+powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
+  -ModelId openai/gpt-5.4-mini `
+  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
+  -ExperimentDir data\experiments\gpt54mini-single-pass `
+  -TimeoutSec 180
+
+# Arm 3: clinical MultiPass with crops, probes, rhythm pass, reconciliation
+powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
+  -ModelId openai/gpt-5.4-mini `
+  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
+  -ExperimentDir data\experiments\gpt54mini-multipass `
+  -TimeoutSec 180 `
   -MultiPass `
-  -MultiPassMaxTargets 2 `
-  -RequirePerfect
+  -MultiPassMaxTargets 3 `
+  -MultiPassMaxEkgSystematicProbes 2
+
+# Arm 4: identical MultiPass path plus matched ECGFounder waveform evidence
+powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
+  -ModelId openai/gpt-5.4-mini `
+  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
+  -ExperimentDir data\experiments\gpt54mini-multipass-ecgfounder `
+  -TimeoutSec 180 `
+  -MultiPass `
+  -MultiPassMaxTargets 3 `
+  -MultiPassMaxEkgSystematicProbes 2 `
+  -EcgFounderWaveformEvidence
 ```
 
-As of 2026-07-02, local OpenClaw `2026.6.11` is the npm `latest` runtime. If a
-requested model id is not exposed by the local OpenClaw catalog, the experiment
-script records a blocked experiment instead of silently running another model.
-Use `check-real-model-readiness.py` before starting long real runs so missing
-credentials or an incomplete 1000-case artifact gate fail fast.
+If a requested model id is absent from the effective OpenClaw catalog, or the
+provider rejects authentication/quota, the runner records a blocked experiment
+instead of silently substituting a model or scoring an infrastructure failure.
+Every arm records `experiment_arm`, prompt profile, tool policy, protocol/scorer
+digests, raw results, traces, review PNGs, bbox audits, logs, and timing.
 
 ### 3. Read the scorecard
 
@@ -397,27 +441,32 @@ errors (default 5) instead of filling the remaining manifest with hundreds of
 fake model failures. Such runs are marked partial/aborted and are rejected by
 the comparator unless explicitly run with `--allow-incomplete`.
 
-### 3b. Compare baseline vs MultiPass
+### 3b. Compare the four paired arms
 
 The controlled experiment should use the same model, same MEETI manifest, same
 OpenClaw runtime, same scoring code, and differ only by the app interpretation
 path:
 
-- Baseline/control: single-pass `OpenClawClient` analysis.
-- Candidate/intervention: `MultiPassAnalyzer` (`--multi-pass`) with crop/refine.
+- No-harness control: `minimal_control`.
+- Clinical prompt/schema effect: `single_pass` versus `minimal_control`.
+- Crop/refine/tool effect: `multipass` versus `single_pass`.
+- Waveform evidence effect: `multipass_ecgfounder` versus `multipass`.
 
-After both runs have `scorecard.json`, compare them case-by-case:
+After each pair has complete `scorecard.json` artifacts, compare case-by-case.
+For example, isolate the MultiPass effect with:
 
 ```bat
 uv run python scripts\compare-eval-runs.py ^
-  --baseline data\experiments\meeti-full-20260530-215506-openai_gpt-5.4-mini ^
-  --candidate data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini
+  --baseline data\experiments\gpt54mini-single-pass ^
+  --candidate data\experiments\gpt54mini-multipass
 ```
 
 By default the comparator rejects incomplete/error scorecards (`error_count > 0`,
 `scored != total`, stale raw-result counts, or `is_partial=true`). For
 in-progress exploratory checks only, add `--allow-incomplete`; the report will
-exclude error cases and mark the comparison as incomplete.
+exclude error cases and mark the comparison as incomplete. It also rejects
+different manifests/case sets, scorer digests, or mixed protocol provenance;
+`--allow-incompatible` is only for an explicitly exploratory report.
 
 If a run was produced before the scorecard schema gained partial-credit fields,
 or if you want a partial summary from already-written `results/*.json` while a
@@ -425,16 +474,16 @@ long run is still in progress, rebuild a scorecard without rerunning the model:
 
 ```bat
 uv run python scripts\rebuild-eval-scorecard.py ^
-  --eval-dir data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini\eval ^
-  --manifest data\eval-datasets\meeti\manifest.json
+  --eval-dir data\experiments\gpt54mini-multipass\eval ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json
 ```
 
 Then compare against the rebuilt JSON explicitly:
 
 ```bat
 uv run python scripts\compare-eval-runs.py ^
-  --baseline data\experiments\meeti-full-20260530-215506-openai_gpt-5.4-mini\eval\scorecard.json ^
-  --candidate data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini\eval\scorecard.rebuilt.json
+  --baseline data\experiments\gpt54mini-single-pass\eval\scorecard.json ^
+  --candidate data\experiments\gpt54mini-multipass\eval\scorecard.rebuilt.json
 ```
 
 Outputs:
@@ -462,8 +511,8 @@ description panel:
 
 ```bat
 uv run python scripts\export-eval-annotations.py ^
-  --eval-dir data\experiments\meeti-full-multipass-20260530-221551-openai_gpt-5.4-mini\eval ^
-  --manifest data\eval-datasets\meeti\manifest.json
+  --eval-dir data\experiments\gpt54mini-multipass\eval ^
+  --manifest data\eval-datasets\meeti-1000-all\manifest-v2.json
 ```
 
 Outputs:
@@ -485,3 +534,18 @@ index, so stale review files do not masquerade as current results. Use
 `--no-clean` only when intentionally preserving older generated artifacts. Use
 `--limit N` while a long run is still in progress, then rerun without `--limit`
 after the experiment completes.
+
+### 5. Rebuild and verify the frozen desktop
+
+```powershell
+scripts\build-exe.bat
+$env:RUN_BUNDLE_SMOKE = "1"
+$env:RUN_GATEWAY_BUNDLE_SMOKE = "1"
+uv run pytest tests\smoke\test_packaging_bundle.py -q
+```
+
+This runs the source self-check, the real frozen EXE self-check, and an isolated
+Gateway smoke that creates a runtime-only loopback token, waits for first-run
+migrations, authenticates over WebSocket, stops OpenClaw, and checks that port
+18789 is closed. It does not send a model request. Desktop startup allows 180
+seconds for Gateway readiness independently of the per-inference timeout.

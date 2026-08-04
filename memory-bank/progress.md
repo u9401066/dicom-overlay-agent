@@ -1,6 +1,27 @@
-# Progress (Updated: 2026-08-04)
+# Progress (Updated: 2026-08-05)
 
 ## Done
+
+- **Current MultiPass protocol, scorer, startup, and package verification**
+  (2026-08-05):
+  - Added four distinct experiment arms, quality completion thresholds, strict
+    protocol/scorer compatibility checks, corrected extra-claim scoring, and
+    explicit normal/within-normal-range handling.
+  - Shared typed EKG lead parsing across MultiPass, validation, bbox calibration,
+    and UI; final report reconciliation now runs after every completed refine
+    path and reviewer writeback updates report/triage provenance coherently.
+  - Completed the 1,000-case strict mock protocol with 4,869 calls, 2,869 crops,
+    2,000 probes, 1,000 marked review images, and zero bbox projection failures.
+    This is protocol-plumbing evidence only.
+  - A real `openai/gpt-5.4-mini` image canary reached OpenAI and was retained as
+    `blocked` after `provider_credit_exhausted`; no clinical output or accuracy
+    was manufactured, so the real four-arm benchmark remains pending credits.
+  - Moved first-run Gateway startup off the GUI thread, added generated loopback
+    auth and observable AI startup state, and separated its 180-second readiness
+    budget from inference timeout.
+  - Ruff/whitespace pass; full suite `769 passed, 2 skipped`; frozen release
+    smoke 3/3. Final bundle is 363.92 MiB / 15,226 files with EXE SHA-256
+    `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`.
 
 - **Regional review and ECGFounder evidence-chain hardening** (2026-08-04):
   - Made image/result/capture/revision publication atomic; moved reviewer Apply

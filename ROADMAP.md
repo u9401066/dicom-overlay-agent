@@ -115,6 +115,32 @@
 - [x] Monotonic chat request ids discard late same-image answers and errors, in
   addition to result-revision protection across image changes.
 
+### v0.4.5 MultiPass experiment protocol and observable startup (2026-08-05)
+
+- [x] Reviewer-confirmed `ADD` / `REVISE` / `RETRACT` now reconcile summary,
+  triage, checklist freshness, safety floor, and before/after provenance.
+- [x] One typed EKG lead-inventory parser is shared by MultiPass, bbox
+  calibration, schema validation, and UI; it recognizes clinical names such as
+  `I`, `II`, and `V1` and validates 12 unique visible leads.
+- [x] Experiment harness separates `minimal_control`, `single_pass`,
+  `multipass`, and `multipass_ecgfounder`; completion requires strict pass
+  >=0.75 and mean partial credit >=0.85, while incompatible comparisons fail
+  closed by default.
+- [x] Current strict 1,000-case mock MultiPass protocol completed 4,869 analyzer
+  calls, 2,869 crops, 2,000 systematic probes, 1,000 review PNGs, and 865 bbox
+  projection audits with zero failures/clamps/drift. Perfect mock scores are
+  explicitly protocol evidence, not model accuracy.
+- [x] Desktop Gateway migration/startup moved off the Qt thread, has a separate
+  180-second readiness budget, displays `AI starting` / `AI ready` /
+  `AI offline`, and generates an authenticated loopback token on first launch.
+- [x] Fresh frozen bundle passed source/EXE self-check and isolated authenticated
+  Gateway start/connect/clean-stop smoke: 363.92 MiB, 15,226 files, EXE SHA-256
+  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`.
+- [ ] Restore OpenAI provider credits, then finish all four
+  `openai/gpt-5.4-mini` MEETI arms and clinician-review the paired annotated
+  images. The current first-image canary is correctly `blocked` by
+  `provider_credit_exhausted` and is not scored as a clinical miss.
+
 ## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制

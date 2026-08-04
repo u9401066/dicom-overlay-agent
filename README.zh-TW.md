@@ -8,30 +8,33 @@
 
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 
-## 2026-08-04 最新驗證狀態
+## 2026-08-05 最新驗證狀態
 
-- Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
-  負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
-- OOM-safe unit + smoke suite 為 741 passed（另 1 個 release-only skip）；
-  OpenClaw overlay integration 為 55 passed；重建後真實 EXE bundle smoke
-  為 2 passed，整個 repo 的 Ruff 也已全數通過。
+- unit + smoke suite 為 769 passed（另 2 個 release-only skip），Ruff 與
+  whitespace gate 全數通過；重建後 frozen bundle 的 selfcheck、native plugin、
+  authenticated Gateway cold-start/connect/clean-stop 為 3/3 passed。
+- 最新 MEETI 1,000-case strict mock protocol 已完整跑完：4,869 次 analyzer
+  call、2,869 個原圖 crop、2,000 個 limb/precordial systematic probe，並匯出
+  1,000 張 review PNG。865 個 bbox 的座標 round-trip 為 0 failure、0 clamp、
+  最大 drift 0 px。mock 的 1.0 只證明 pipeline/gate，不是模型準確率。
+- harness 現在明確區分 minimal control、clinical single-pass、MultiPass、
+  MultiPass+ECGFounder 四臂；低於 strict 0.75 或 partial credit 0.85 不能標記
+  completed，比較器也會拒絕不同 manifest/case/scorer/protocol 的結果。
 - 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
   全部仍標記為 uncalibrated supporting evidence，不會產生影像 bbox。
 - 完整 150 分數的五折 out-of-fold 研究評估在 23 個支撐足夠的概念得到
   macro balanced accuracy 0.865、sensitivity 0.848、明確正常對照 specificity
   0.883；holdout top-20 概念 recall 為 0.837，但 3-5 診斷完整 recall 只有
   0.479，尚未達 0.75 產品目標。這是波形弱標籤研究，不是影像 agent 準確率。
-- `openai/gpt-5.6-luna` 已設為桌面與 runner 預設，OpenClaw catalog 實際登記
-  為 `text+image`、1.05M context；真實 MultiPass
-  canary 成功啟動 Gateway、附上一張 MEETI 圖（`promptImages=1`）並抵達
-  OpenAI Responses API，之後才被 provider 的
-  `credit_balance_exhausted` / `insufficient_quota` 阻擋。在真正完成前不宣稱
-  single-pass、MultiPass、MultiPass+ECGFounder 的完整準確率。
+- 指定的 `openai/gpt-5.4-mini` 最新 MultiPass canary 已由 catalog 確認
+  `text,image`，Gateway 於 88.384 秒 ready，第一張圖的 coarse call 真實抵達
+  OpenAI 後被 `provider_credit_exhausted` 阻擋；因此紀錄為 infrastructure
+  `blocked`，不把它算成病例答錯。在額度恢復並完成四臂前不宣稱真實準確率。
 - 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
-  363.91 MiB（15,226 個 payload 檔案），EXE SHA-256 為
-  `0097097DECA61313FBF39EC48508520841CD47653FBED035B2713A82D20FE274`。
+  363.92 MiB（15,226 個 payload 檔案），EXE SHA-256 為
+  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`。
   封裝掃描確認沒有 `.env*`、Torch、checkpoint、MEETI、sidecar 或實驗資料。詳見
-  [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md)。
+  [`docs/verification-2026-08-05.md`](docs/verification-2026-08-05.md)。
 
 ## 2026-07-02 real-model smoke 狀態
 
@@ -334,11 +337,11 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 | 產物 | 預算 | 現況 |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **6.94 MiB** |
-| App + Python/Qt 層 | < 100 MiB | **94.63 MiB** |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **6.96 MiB** |
+| App + Python/Qt 層 | < 100 MiB | **94.64 MiB** |
 | slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
 | 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
-| 完整零安裝 bundle | < 650 MiB | **363.91 MiB** |
+| 完整零安裝 bundle | < 650 MiB | **363.92 MiB** |
 
 本次 staged OpenClaw runtime 為 181.03 MiB，所需 `dist` 與 plugin surfaces
 刻意保持完整：修剪其內部 `dist`
@@ -355,7 +358,7 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 - [真實測試 Runbook](REAL_TEST_RUNBOOK.md) - Live stack 測試
 - [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
 - [ECGFounder 工具契約](docs/ecgfounder-tool.md) - 外部波形證據邊界
-- [2026-08-04 驗證紀錄](docs/verification-2026-08-04.md) - 測試、實驗、bundle hash 與阻擋項
+- [2026-08-05 驗證紀錄](docs/verification-2026-08-05.md) - MultiPass、真實 canary、座標、bundle hash 與阻擋項
 - [GitHub Pages 原始碼](site/index.html) - 公開產品與證據網站
 
 ## 🎯 Copilot 自訂 Agents

@@ -8,6 +8,21 @@
 
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 
+## 2026-08-05 Verification Status
+
+- The full suite passes with 769 tests and 2 release-only skips; Ruff and the
+  whitespace gate pass.
+- A 1,000-case strict mock MultiPass run completed 4,869 analyzer calls, 2,869
+  source-image crops, 2,000 systematic EKG probes, and 1,000 annotated review
+  PNGs. All 865 bbox projection audits passed with zero clamp or drift. These
+  perfect mock scores prove protocol plumbing, not model accuracy.
+- The requested `openai/gpt-5.4-mini` current-protocol canary reached a real
+  image-capable OpenAI transaction and was blocked by exhausted provider
+  credits. No failed transaction is counted as a clinical answer.
+- The final 363.92 MiB portable bundle passed self-check, native plugin loading,
+  and an isolated authenticated Gateway start/connect/clean-stop smoke. See
+  [the current evidence ledger](docs/verification-2026-08-05.md).
+
 The agent never replaces the physician. It acts as a systematic *second-check*
 to reduce omissions caused by fatigue, workload, or distraction. It cannot reach
 the HIS API, so the screen is the only input: the user defines a screenshot ROI
@@ -24,7 +39,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.94 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.96 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -371,15 +386,16 @@ portable across OpenClaw releases.
   the runner and Settings default are now `openai/gpt-5.6-luna`. Copilot
   subscription models (e.g. MAI Flash) remain unusable as an API provider
   because they use an OAuth device-token flow, not an API key.
-- Current experiment status (2026-08-04): the current Luna MultiPass canary
-  parsed `openai/gpt-5.6-luna` as `text+image` with a 1,050,000-token context,
-  started the Gateway, attached one MEETI image, and reached OpenAI's
-  `/v1/responses` endpoint. The provider then returned
-  `credit_balance_exhausted` / `insufficient_quota`, so no answer was scored.
-  No full single-pass versus MultiPass versus MultiPass+ECGFounder accuracy
-  claim is made until that paired run completes. The independently
-  reproducible ECGFounder waveform arm did finish 1,000/1,000 paired cases. See
-  [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md).
+- Current experiment status (2026-08-05): the requested
+  `openai/gpt-5.4-mini` MultiPass canary used the full `manifest-v2` protocol,
+  clinical prompt, rhythm pass, three refinement slots, and two systematic
+  EKG probes. The catalog declared `text,image`; the Gateway became ready in
+  88.384 seconds and the first image request reached OpenAI. The provider then
+  returned `provider_credit_exhausted`, so the run is `blocked` and no answer
+  is scored. No full four-arm accuracy claim is made until minimal-control,
+  clinical single-pass, MultiPass, and MultiPass+ECGFounder all finish. The
+  independent ECGFounder waveform batch did finish 1,000/1,000 paired cases.
+  See [`docs/verification-2026-08-05.md`](docs/verification-2026-08-05.md).
 
 ### Core 4 — Minimal packaged executable
 
@@ -414,11 +430,11 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 
 | Artifact | Budget | Current |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **6.94 MiB** |
-| App + Python/Qt layer | < 100 MiB | **94.63 MiB** |
+| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **6.96 MiB** |
+| App + Python/Qt layer | < 100 MiB | **94.64 MiB** |
 | Slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
 | Portable Node.js `v24.18.0` | - | **88.25 MiB** |
-| Full zero-install bundle | < 650 MiB | **363.91 MiB** |
+| Full zero-install bundle | < 650 MiB | **363.92 MiB** |
 
 The staged OpenClaw runtime (181.03 MiB in this build) keeps its required dist
 and plugin surfaces intact on purpose: pruning those
@@ -435,7 +451,7 @@ internal `dist` chunks would couple the app to OpenClaw internals and break
 - [Real Test Runbook](REAL_TEST_RUNBOOK.md) - Live stack testing
 - [AGENTS.md](AGENTS.md) - AI maintenance guardrails for the four cores
 - [ECGFounder Tool Contract](docs/ecgfounder-tool.md) - External waveform evidence boundary
-- [2026-08-04 Verification Record](docs/verification-2026-08-04.md) - Tests, experiments, bundle hash, and open blockers
+- [2026-08-05 Verification Record](docs/verification-2026-08-05.md) - MultiPass, real canary, coordinates, bundle hashes, and blockers
 - [GitHub Pages source](site/index.html) - Public product/evidence site
 
 ## 🎯 Copilot Custom Agents

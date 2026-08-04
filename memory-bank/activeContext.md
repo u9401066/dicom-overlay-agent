@@ -1,5 +1,32 @@
 # Active Context
 
+## Session Update (2026-08-05, protocol hardening and final frozen bundle)
+
+- The MEETI experiment is now four explicitly recorded arms: one-look
+  `minimal_control`, clinical `single_pass`, `multipass`, and
+  `multipass_ecgfounder`. Real completion requires strict pass >=0.75 and mean
+  partial credit >=0.85; incomplete, mismatched-manifest/scorer, and mixed
+  protocol comparisons fail closed unless explicitly exploratory.
+- A current `manifest-v2.json` strict mock MultiPass run completed 1,000/1,000,
+  4,869 analyzer calls, 2,869 source crops, 2,000 systematic probes, and 1,000
+  review PNGs. All 865 bbox projection rows passed with zero clamp/failure and
+  0 px drift. The label-derived mock receipts are marked as protocol self-test
+  evidence and are not a model-accuracy claim.
+- The requested `openai/gpt-5.4-mini` current-protocol canary started the real
+  Gateway, confirmed `text,image`, and reached the first provider image call.
+  OpenAI returned `provider_credit_exhausted`; the experiment is `blocked`, has
+  no clinical answer, and cannot yet establish four-arm accuracy/improvement.
+- MultiPass now uses one typed 12-lead parser, always performs final report
+  reconciliation after no-delta refinements, and reconciles reviewer-confirmed
+  changes into summary/triage/checklist provenance. Web search/fetch are
+  disabled during medical-image analysis.
+- Full source verification passes: Ruff, whitespace, and 769 passed with 2
+  release-only skips. The rebuilt 363.92 MiB bundle contains OpenClaw
+  `2026.7.1-2` and
+  Node `v24.18.0`; source/EXE checks plus isolated authenticated Gateway
+  cold-start/connect/clean-stop pass 3/3. EXE SHA-256 is
+  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`.
+
 ## Session Update (2026-08-04, regional/ECGFounder audit hardening)
 
 - Published analysis state is now one immutable `ReviewSnapshot`: image bytes,
