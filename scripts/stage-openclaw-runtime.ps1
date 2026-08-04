@@ -1,11 +1,17 @@
 param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
-    [string]$OutputRoot = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..")).Path "build\openclaw-runtime")
+    [string]$OutputRoot = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..")).Path "build\openclaw-runtime"),
+    [int]$MaxRuntimeMB = 500,
+    [int]$MinFreeDiskMB = 2048
 )
 
 $ErrorActionPreference = "Stop"
 
 $repo = Resolve-Path $RepoRoot
+$drive = Get-PSDrive -Name $repo.Drive.Name
+if ($drive.Free -lt ($MinFreeDiskMB * 1MB)) {
+    throw "Insufficient free disk for OpenClaw staging: $([Math]::Round($drive.Free / 1MB, 2)) MB"
+}
 $source = Join-Path $repo "openclaw\node_modules\openclaw"
 if (-not (Test-Path (Join-Path $source "openclaw.mjs"))) {
     throw "OpenClaw runtime not found. Run scripts\install-openclaw-local.bat first."
@@ -30,7 +36,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
 Write-Host "[INFO] Staging slim OpenClaw runtime..."
 Copy-Item -LiteralPath $source -Destination $dest -Recurse
 
-$packageOnlyDirs = @("docs", "src", "patches", "scripts", "skills")
+$packageOnlyDirs = @("docs", "src", "patches", "scripts")
 foreach ($name in $packageOnlyDirs) {
     $path = Join-Path $dest $name
     if (Test-Path $path) {
@@ -48,8 +54,12 @@ $nonRuntimeExtensions = @(
     ".ps1", ".sh", ".yml", ".yaml", ".bcmap", ".pfb", ".eslintrc",
     ".nycrc", ".proto", ".rs"
 )
+$bundledSkills = Join-Path $dest "skills"
 Get-ChildItem -Recurse -File $dest |
-    Where-Object { $nonRuntimeExtensions -contains $_.Extension } |
+    Where-Object {
+        ($nonRuntimeExtensions -contains $_.Extension) -and
+        (-not $_.FullName.StartsWith("$bundledSkills\", [System.StringComparison]::OrdinalIgnoreCase))
+    } |
     Remove-Item -Force
 
 # DICOM Overlay Agent runs on Windows x64. Remove platform-native payloads for
@@ -77,39 +87,14 @@ foreach ($dir in $nativePruneDirs) {
     Remove-Item -LiteralPath $dir.FullName -Recurse -Force
 }
 
-# The desktop app only uses the Gateway + model/provider surface. Bundled UI,
-# browser, voice, phone, and file-transfer plugins are disabled at runtime.
-$disabledBundledDirs = @(
-    "dist\extensions",
-    "dist\canvas-host",
-    "dist\plugins",
-    "dist\plugin-sdk"
-)
-foreach ($rel in $disabledBundledDirs) {
-    $path = Join-Path $dest $rel
-    if (Test-Path $path) {
-        Remove-Item -LiteralPath $path -Recurse -Force
-    }
-}
-
-$largeDisabledDeps = @(
-    "@napi-rs",
-    "@lydell",
-    "@mariozechner",
-    "pdfjs-dist",
-    "playwright-core",
-    "tree-sitter-bash",
-    "web-tree-sitter",
-    "typescript",
-    "quickjs-wasi"
-)
-foreach ($rel in $largeDisabledDeps) {
-    $path = Join-Path $nodeModules $rel
-    if (Test-Path $path) {
-        Remove-Item -LiteralPath $path -Recurse -Force
-    }
-}
+# Keep OpenClaw's internal dist chunks intact. The agent harness resolves
+# bundled plugin public surfaces at runtime; pruning dist/extensions,
+# dist/plugins, or dist/plugin-sdk can pass ``gateway --help`` yet fail only
+# when the first image-analysis agent run starts.
 
 $sum = Get-ChildItem -Recurse -File $OutputRoot | Measure-Object Length -Sum
 $mb = [Math]::Round($sum.Sum / 1MB, 2)
+if ($sum.Sum -gt ($MaxRuntimeMB * 1MB)) {
+    throw "Staged OpenClaw runtime exceeds $MaxRuntimeMB MB budget: $mb MB"
+}
 Write-Host "[OK] Staged slim OpenClaw runtime: $($sum.Count) files, $mb MB"

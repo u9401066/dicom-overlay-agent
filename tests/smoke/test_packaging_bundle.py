@@ -42,7 +42,19 @@ def test_selfcheck_reports_all_components():
     out = buffer.getvalue()
 
     # Every component the bundle needs is reported on.
-    for component in ("base_dir", "config.yaml", "node", "openclaw", "writable_base"):
+    for component in (
+        "base_dir",
+        "config.yaml",
+        "skills",
+        "harness_plugin",
+        "clinical_rules",
+        "node",
+        "openclaw",
+        "openclaw_bundled_skills",
+        "openclaw_plugin_surfaces",
+        "harness_native_plugin",
+        "writable_base",
+    ):
         assert component in out, f"self-check did not report {component}\n{out}"
 
     # Config + writable base must be OK in the dev tree (they ship in the repo);

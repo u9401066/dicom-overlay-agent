@@ -17,6 +17,7 @@ def optional_file(source: str, target: str):
 
 datas = [
     ("config.yaml", "."),
+    *optional_tree("clinical_rules", "clinical_rules"),
     *optional_tree("openclaw/workspace", "openclaw/workspace"),
     *optional_tree("build/openclaw-runtime/openclaw", "openclaw"),
     # Core 4: bundle the portable Node.js runtime when present so the portable
@@ -146,6 +147,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    contents_directory=".",
 )
 
 coll = COLLECT(
@@ -156,5 +158,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name="DICOMOverlayAgent",
-    contents_directory=".",
 )

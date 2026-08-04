@@ -5,6 +5,7 @@
 
 # 依賴項目
 node_modules/
+/node/
 vendor/
 __pycache__/
 *.pyc
@@ -54,6 +55,8 @@ s41597-026-06796-1.pdf
 
 # OpenClaw Gateway (敏感：token, credentials, sessions)
 openclaw/*.json
+!openclaw/package.json
+!openclaw/package-lock.json
 openclaw/*.json.bak*
 openclaw/*.json.last-good
 openclaw-home/credentials/

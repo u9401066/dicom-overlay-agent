@@ -19,8 +19,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo [INFO] Fetching portable Node.js runtime for zero-install bundle...
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\fetch-node.ps1
+if errorlevel 1 (
+    echo [ERROR] Portable Node.js fetch failed; refusing an incomplete bundle.
+    popd
+    exit /b 1
+)
+
 echo [INFO] Installing repo-local OpenClaw package for bundling...
+set "FORCE_OPENCLAW_INSTALL=1"
 call scripts\install-openclaw-local.bat
+set "FORCE_OPENCLAW_INSTALL="
 if errorlevel 1 (
     echo [ERROR] OpenClaw install failed.
     popd
@@ -35,14 +45,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [INFO] Fetching portable Node.js runtime for zero-install bundle...
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\fetch-node.ps1
-if errorlevel 1 (
-    echo [WARN] Portable Node.js fetch failed; bundle will rely on system Node.js.
-)
-
 echo [INFO] Building DICOMOverlayAgent.exe...
-call .venv\Scripts\pyinstaller.exe --clean --noconfirm dicom-overlay-agent.spec
+call .venv\Scripts\python.exe -m PyInstaller --clean --noconfirm dicom-overlay-agent.spec
 if errorlevel 1 (
     echo [ERROR] PyInstaller build failed.
     popd
@@ -50,5 +54,15 @@ if errorlevel 1 (
 )
 
 echo [OK] Built dist\DICOMOverlayAgent\DICOMOverlayAgent.exe
+
+echo [INFO] Verifying packaged runtime, skills, rules, size, and self-check...
+call .venv\Scripts\python.exe scripts\verify-packaged-app.py --bundle dist\DICOMOverlayAgent
+if errorlevel 1 (
+    echo [ERROR] Packaged application verification failed.
+    popd
+    exit /b 1
+)
+
+echo [OK] Bundle manifest: dist\DICOMOverlayAgent\bundle-manifest.json
 popd
 exit /b 0

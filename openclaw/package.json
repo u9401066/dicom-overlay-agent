@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "description": "Repo-local OpenClaw runtime bundle for DICOM Overlay Agent",
+  "dependencies": {
+    "openclaw": "2026.7.1-2"
+  },
+  "dicomOverlayAgent": {
+    "minimumSafeOpenClaw": "2026.4.22",
+    "installDefault": "openclaw@latest"
+  }
+}

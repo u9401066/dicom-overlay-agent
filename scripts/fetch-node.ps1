@@ -10,10 +10,10 @@
     prefers this bundled binary over PATH.
 
 .PARAMETER Version
-    Node.js version to fetch (default: 22.12.0 LTS).
+    Node.js version to fetch (default: 24.18.0 LTS).
 #>
 param(
-    [string]$Version = "22.12.0",
+    [string]$Version = "24.18.0",
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 )
 
@@ -25,8 +25,11 @@ $nodeExe = Join-Path $nodeDir "node.exe"
 
 if (Test-Path $nodeExe) {
     $existing = (& $nodeExe --version) 2>$null
-    Write-Host "[OK] Portable node already present: $nodeExe ($existing)"
-    exit 0
+    if ($existing -eq "v$Version") {
+        Write-Host "[OK] Portable Node.js is current: $nodeExe ($existing)"
+        exit 0
+    }
+    Write-Host "[INFO] Updating portable Node.js: $existing -> v$Version"
 }
 
 $arch = "x64"
