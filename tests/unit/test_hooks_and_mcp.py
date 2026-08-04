@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
@@ -243,12 +242,13 @@ class _FakeProvider(MCPToolProvider):
 
 
 class TestMcpAdapter:
-    def test_empty_config_starts_ok(self):
+    @pytest.mark.asyncio
+    async def test_empty_config_starts_ok(self):
         adapter = McpAdapter()
-        asyncio.get_event_loop().run_until_complete(adapter.start())
+        await adapter.start()
         assert adapter.all_tools() == []
         assert adapter.get_status() == {}
-        asyncio.get_event_loop().run_until_complete(adapter.stop())
+        await adapter.stop()
 
     def test_register_provider(self):
         adapter = McpAdapter()
@@ -256,67 +256,59 @@ class TestMcpAdapter:
         adapter.register_provider(provider)
         assert "pubmed" in adapter.get_status()
 
-    def test_register_and_discover_tools(self):
-        async def _run():
-            adapter = McpAdapter()
-            provider = _FakeProvider("pubmed")
-            adapter.register_provider(provider)
+    @pytest.mark.asyncio
+    async def test_register_and_discover_tools(self):
+        adapter = McpAdapter()
+        provider = _FakeProvider("pubmed")
+        adapter.register_provider(provider)
 
-            await provider.connect()
-            tools = await provider.list_tools()
-            # Manually index tools (register_provider doesn't auto-discover)
-            for tool in tools:
-                adapter._tool_index[f"pubmed_{tool.name}"] = (
-                    "pubmed",
-                    tool.name,
-                )
-
-            all_tools = adapter.all_tools()
-            assert len(all_tools) == 2
-            names = [t.name for t in all_tools]
-            assert "pubmed_search" in names
-            assert "pubmed_fetch" in names
-
-        asyncio.get_event_loop().run_until_complete(_run())
-
-    def test_call_tool_success(self):
-        async def _run():
-            adapter = McpAdapter()
-            provider = _FakeProvider("pubmed")
-            adapter.register_provider(provider)
-            await provider.connect()
-
-            # Index tools
-            adapter._tool_index["pubmed_search"] = ("pubmed", "search")
-
-            result = await adapter.call_tool(
-                "pubmed_search", {"query": "airway"}
+        await provider.connect()
+        tools = await provider.list_tools()
+        # Manually index tools (register_provider doesn't auto-discover)
+        for tool in tools:
+            adapter._tool_index[f"pubmed_{tool.name}"] = (
+                "pubmed",
+                tool.name,
             )
-            assert result.success
-            assert "result from search" in result.text
-            assert provider._call_log == [("search", {"query": "airway"})]
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        all_tools = adapter.all_tools()
+        assert len(all_tools) == 2
+        names = [t.name for t in all_tools]
+        assert "pubmed_search" in names
+        assert "pubmed_fetch" in names
 
-    def test_call_unknown_tool(self):
-        async def _run():
-            adapter = McpAdapter()
-            result = await adapter.call_tool("nonexistent", {})
-            assert result.is_error
-            assert "Unknown tool" in result.text
+    @pytest.mark.asyncio
+    async def test_call_tool_success(self):
+        adapter = McpAdapter()
+        provider = _FakeProvider("pubmed")
+        adapter.register_provider(provider)
+        await provider.connect()
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        # Index tools
+        adapter._tool_index["pubmed_search"] = ("pubmed", "search")
 
-    def test_call_disconnected_server(self):
-        async def _run():
-            adapter = McpAdapter()
-            # Register but remove provider to simulate gone server
-            adapter._tool_index["gone_tool"] = ("gone_server", "tool")
-            result = await adapter.call_tool("gone_tool", {})
-            assert result.is_error
-            assert "not connected" in result.text.lower()
+        result = await adapter.call_tool(
+            "pubmed_search", {"query": "airway"}
+        )
+        assert result.success
+        assert "result from search" in result.text
+        assert provider._call_log == [("search", {"query": "airway"})]
 
-        asyncio.get_event_loop().run_until_complete(_run())
+    @pytest.mark.asyncio
+    async def test_call_unknown_tool(self):
+        adapter = McpAdapter()
+        result = await adapter.call_tool("nonexistent", {})
+        assert result.is_error
+        assert "Unknown tool" in result.text
+
+    @pytest.mark.asyncio
+    async def test_call_disconnected_server(self):
+        adapter = McpAdapter()
+        # Register but remove provider to simulate gone server
+        adapter._tool_index["gone_tool"] = ("gone_server", "tool")
+        result = await adapter.call_tool("gone_tool", {})
+        assert result.is_error
+        assert "not connected" in result.text.lower()
 
     def test_unregister_provider(self):
         adapter = McpAdapter()
@@ -328,22 +320,20 @@ class TestMcpAdapter:
         assert "pubmed" not in adapter.get_status()
         assert adapter.all_tools() == []
 
-    def test_stop_closes_all(self):
-        async def _run():
-            adapter = McpAdapter()
-            p1 = _FakeProvider("server1")
-            p2 = _FakeProvider("server2")
-            adapter.register_provider(p1)
-            adapter.register_provider(p2)
-            await p1.connect()
-            await p2.connect()
+    @pytest.mark.asyncio
+    async def test_stop_closes_all(self):
+        adapter = McpAdapter()
+        p1 = _FakeProvider("server1")
+        p2 = _FakeProvider("server2")
+        adapter.register_provider(p1)
+        adapter.register_provider(p2)
+        await p1.connect()
+        await p2.connect()
 
-            await adapter.stop()
-            assert not p1.connected
-            assert not p2.connected
-            assert adapter.get_status() == {}
-
-        asyncio.get_event_loop().run_until_complete(_run())
+        await adapter.stop()
+        assert not p1.connected
+        assert not p2.connected
+        assert adapter.get_status() == {}
 
 
 # ── MCPServerConfig Tests ────────────────────────────────────────────
