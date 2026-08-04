@@ -92,6 +92,7 @@ known-first-party = ["dicom_overlay"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "ARG", "PLR2004"]
+"scripts/hooks/*.py" = ["RUF002"]
 
 # === MyPy ===
 [tool.mypy]

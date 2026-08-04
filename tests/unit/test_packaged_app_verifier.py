@@ -107,6 +107,26 @@ def test_inspect_bundle_rejects_missing_and_banned_components(tmp_path: Path) ->
     assert report["banned_components"] == ["numpy/core.pyd"]
 
 
+def test_inspect_bundle_rejects_environment_files(tmp_path: Path, monkeypatch) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    monkeypatch.setattr(module, "_read_version", lambda _command: "v24.18.0")
+    environment_file = (
+        tmp_path
+        / "openclaw/node_modules/openclaw/node_modules/example/.env.production"
+    )
+    environment_file.parent.mkdir(parents=True)
+    environment_file.write_text("API_KEY=must-not-ship\n", encoding="utf-8")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert environment_file.relative_to(tmp_path).as_posix() in report[
+        "banned_components"
+    ]
+    assert "secret-like components" in " ".join(report["failures"])
+
+
 def test_native_plugin_requires_bbox_validation_tool_contract(tmp_path: Path) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)

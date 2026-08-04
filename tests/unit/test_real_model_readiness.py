@@ -12,6 +12,7 @@ from PIL import Image
 from dicom_overlay.infrastructure.real_model_readiness import (
     ProviderProbeResult,
     assess_real_model_readiness,
+    probe_provider_for_model,
 )
 
 
@@ -304,6 +305,34 @@ def test_readiness_provider_probe_blocks_models_without_image_input(
         "message": "Model openrouter/minimax/minimax-m3 does not advertise image input.",
         "provider": "openrouter",
     } in payload["blockers"]
+
+
+def test_openai_gpt54_mini_probe_uses_pinned_vision_profile() -> None:
+    probe = probe_provider_for_model("openai/gpt-5.4-mini")
+
+    assert probe.ok is True
+    assert probe.supports_image is True
+    assert probe.provider == "openai"
+
+
+def test_openai_readiness_recommends_transactional_canary(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, 1)
+
+    report = assess_real_model_readiness(
+        model_id="openai/gpt-5.4-mini",
+        manifest_path=manifest,
+        min_cases=1,
+        env={"OPENAI_API_KEY": "sk-test"},
+        provider_probe=probe_provider_for_model,
+    )
+    payload = report.to_dict()
+
+    assert payload["status"] == "ready"
+    assert payload["evidence"]["provider_transaction_tested"] is False
+    assert any("billing/quota" in warning for warning in payload["warnings"])
+    assert "--limit 1" in payload["next_commands"][0]
+    assert "--require-perfect" not in payload["next_commands"][0]
 
 
 def test_readiness_cli_writes_blocked_artifact_for_missing_key(tmp_path: Path) -> None:

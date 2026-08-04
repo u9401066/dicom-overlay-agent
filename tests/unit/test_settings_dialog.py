@@ -13,6 +13,7 @@ def test_settings_dialog_lists_desktop_provider_profiles(qtbot, tmp_path):
     ]
 
     assert "OpenAI Codex" in labels
+    assert "OpenAI GPT-5.4 Mini Vision" in labels
     assert "OpenRouter" in labels
     assert "GitHub Copilot CLI BYOK-compatible" in labels
 
@@ -42,6 +43,8 @@ def test_settings_dialog_exposes_bounded_multi_pass_controls(qtbot, tmp_path):
     qtbot.addWidget(dialog)
 
     assert dialog._multi_pass_check.isChecked() is False
+    assert dialog._multi_pass_check.text() == "Multi-pass clinical review"
+    assert "discovery" in dialog._multi_pass_check.toolTip()
     assert dialog._max_zoom_targets.value() == 4
     assert dialog._max_zoom_targets.minimum() == 1
     assert dialog._max_zoom_targets.maximum() == 5

@@ -1,5 +1,5 @@
 param(
-    [string]$ModelId = "openai/gpt-5.6-luna",
+    [string]$ModelId = "openai/gpt-5.4-mini",
     [string]$ManifestPath = "",
     [string]$ProviderProfile = "",
     [int]$TimeoutSec = 90,
@@ -7,6 +7,7 @@ param(
     [string]$ExperimentDir = "",
     [switch]$MultiPass,
     [int]$MultiPassMaxTargets = 3,
+    [int]$MultiPassMaxEkgSystematicProbes = 2,
     [switch]$RequirePerfect
 )
 
@@ -151,6 +152,12 @@ $effectiveProviderProfile = $ProviderProfile
 if (-not $effectiveProviderProfile -and $env:DICOM_OVERLAY_PROVIDER_PROFILE) {
     $effectiveProviderProfile = $env:DICOM_OVERLAY_PROVIDER_PROFILE
 }
+if (-not $effectiveProviderProfile -and $ModelId -eq "openai/gpt-5.4-mini") {
+    $effectiveProviderProfile = "openai-vision"
+}
+if (-not $effectiveProviderProfile -and $ModelId -eq "openai/gpt-5.6-luna") {
+    $effectiveProviderProfile = "openai-luna"
+}
 if (-not $effectiveProviderProfile -and $ModelId.ToLowerInvariant().StartsWith("openrouter/")) {
     $effectiveProviderProfile = "openrouter"
 }
@@ -276,11 +283,19 @@ $modelListExitCode = $modelListResult.ExitCode
 $modelListOutput = $modelListRaw | Out-String
 $modelListOutput | Set-Content -Path $modelsListPath -Encoding UTF8
 $modelCatalogWarning = ""
+$modelCatalogInput = @()
+foreach ($line in ($modelListOutput -split "`r?`n")) {
+    $columns = @($line.Trim() -split "\s+")
+    if ($columns.Count -ge 2 -and $columns[0] -eq $ModelId) {
+        $modelCatalogInput = @($columns[1] -split "\+")
+        break
+    }
+}
 
-if ($modelListExitCode -ne 0 -and -not $effectiveProviderProfile) {
+if ($modelCatalogInput.Count -eq 0) {
     Write-ExperimentJson $experimentJson @{
         status = "blocked"
-        reason = "could not read the local OpenClaw model catalog"
+        reason = "requested model id is not exposed by the effective OpenClaw catalog"
         requested_model = $ModelId
         provider_profile = $effectiveProviderProfile
         openclaw_config = $configPath
@@ -291,21 +306,21 @@ if ($modelListExitCode -ne 0 -and -not $effectiveProviderProfile) {
         manifest = $manifestPath
         created_at = (Get-Date).ToString("o")
     }
-    Write-Host "BLOCKED: could not read local OpenClaw model catalog"
+    Write-Host "BLOCKED: requested model is not in the effective OpenClaw catalog: $ModelId"
     Write-Host "Experiment record: $experimentJson"
     exit 20
 }
 if ($modelListExitCode -ne 0) {
-    $modelCatalogWarning = "OpenClaw models list failed before Gateway startup; provider-profile run will continue and rely on eval artifacts."
+    $modelCatalogWarning = "OpenClaw models list exited non-zero after emitting a usable model capability row; the run will continue and retain the log."
 }
 
-if ($modelListExitCode -eq 0 -and $modelListOutput -notmatch [regex]::Escape($ModelId)) {
+if ($modelCatalogInput -notcontains "image") {
     Write-ExperimentJson $experimentJson @{
         status = "blocked"
-        reason = "requested model id is not exposed by the local OpenClaw catalog"
+        reason = "requested model does not advertise image input"
         requested_model = $ModelId
         provider_profile = $effectiveProviderProfile
-        suggested_models = @("openai/gpt-5.6-luna", "openai/gpt-5.6-terra", "openai/gpt-5.6-sol", "openai/gpt-5.5")
+        model_catalog_input = $modelCatalogInput
         openclaw_config = $configPath
         config_builder = $configBuilderPath
         config_generation_log = $configGenerationPath
@@ -314,7 +329,7 @@ if ($modelListExitCode -eq 0 -and $modelListOutput -notmatch [regex]::Escape($Mo
         manifest = $manifestPath
         created_at = (Get-Date).ToString("o")
     }
-    Write-Host "BLOCKED: requested model is not in OpenClaw model catalog: $ModelId"
+    Write-Host "BLOCKED: requested model does not advertise image input: $ModelId"
     Write-Host "Experiment record: $experimentJson"
     exit 20
 }
@@ -356,7 +371,9 @@ try {
         $evalArgs += @(
             "--multi-pass",
             "--multi-pass-max-targets",
-            [string]$MultiPassMaxTargets
+            [string]$MultiPassMaxTargets,
+            "--multi-pass-max-ekg-systematic-probes",
+            [string]$MultiPassMaxEkgSystematicProbes
         )
     }
 
@@ -368,6 +385,7 @@ try {
         limit = $Limit
         multi_pass = [bool]$MultiPass
         multi_pass_max_targets = $MultiPassMaxTargets
+        multi_pass_max_ekg_systematic_probes = $MultiPassMaxEkgSystematicProbes
         require_perfect = [bool]$RequirePerfect
         manifest = $manifestPath
         experiment_dir = $experimentDir
@@ -463,6 +481,7 @@ finally {
         limit = $Limit
         multi_pass = [bool]$MultiPass
         multi_pass_max_targets = $MultiPassMaxTargets
+        multi_pass_max_ekg_systematic_probes = $MultiPassMaxEkgSystematicProbes
         require_perfect = [bool]$RequirePerfect
         exit_code = $exitCode
         eval_exit_code = $evalExitCode

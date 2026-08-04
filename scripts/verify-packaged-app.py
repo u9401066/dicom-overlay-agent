@@ -44,6 +44,8 @@ REQUIRED_FILES = (
 
 _BANNED_PARTS = {"numpy", "scipy", "matplotlib", "pandas", "imagehash"}
 _BANNED_FILENAMES = {"opengl32sw.dll"}
+_BANNED_ENV_FILENAMES = {".env"}
+_BANNED_ENV_PREFIXES = (".env.",)
 _BANNED_QT_PREFIXES = (
     "qt6pdf",
     "qt6qml",
@@ -84,6 +86,8 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
                 if (
                     folded_parts & _BANNED_PARTS
                     or folded_name in _BANNED_FILENAMES
+                    or folded_name in _BANNED_ENV_FILENAMES
+                    or folded_name.startswith(_BANNED_ENV_PREFIXES)
                     or folded_name.startswith(_BANNED_QT_PREFIXES)
                 ) and len(banned) < 100:
                     banned.append(relative.as_posix())
@@ -138,7 +142,9 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
     if missing:
         failures.append(f"missing required files: {', '.join(missing)}")
     if banned:
-        failures.append(f"banned heavy components present: {', '.join(banned[:10])}")
+        failures.append(
+            f"banned or secret-like components present: {', '.join(banned[:10])}"
+        )
     if launcher_bytes >= MAX_LAUNCHER_BYTES:
         failures.append("launcher exceeds 50 MiB budget")
     if totals["app_layer"] >= MAX_APP_LAYER_BYTES:
@@ -283,7 +289,7 @@ def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
                     "gateway": {"mode": "local"},
                     "agents": {
                         "defaults": {
-                            "model": {"primary": "openai/gpt-5.6-luna"}
+                            "model": {"primary": "openai/gpt-5.4-mini"}
                         }
                     },
                     "plugins": {

@@ -135,7 +135,7 @@ class TestOpenClawSettings:
         assert provider["timeoutSeconds"] == 165
         assert config["agents"]["defaults"]["timeoutSeconds"] == 175
 
-    def test_luna_profile_declares_native_image_and_responses_capabilities(self):
+    def test_default_vision_profile_declares_gpt54_mini_image_capabilities(self):
         profile = next(
             item
             for item in default_provider_profiles()
@@ -147,12 +147,23 @@ class TestOpenClawSettings:
         model = provider["models"][0]
 
         assert provider["api"] == "openai-responses"
-        assert model["id"] == "gpt-5.6-luna"
+        assert model["id"] == "gpt-5.4-mini"
         assert model["input"] == ["text", "image"]
-        assert model["contextWindow"] == 1_050_000
+        assert model["contextWindow"] == 400_000
         assert model["maxTokens"] == 128_000
         assert model["agentRuntime"] == {"id": "openclaw"}
         assert config["tools"] == {"allow": ["dicom_bbox_validate"]}
+
+    def test_luna_profile_remains_available_as_an_explicit_option(self):
+        profile = next(
+            item
+            for item in default_provider_profiles()
+            if item.key == "openai-luna"
+        )
+
+        assert profile.model_ref == "openai/gpt-5.6-luna"
+        assert profile.input_modalities == ("text", "image")
+        assert profile.context_window == 1_050_000
 
 
 class TestOpenClawRuntimeCompatibility:
@@ -395,7 +406,7 @@ class TestOpenClawRuntimeCompatibility:
         assert payload["gateway"]["mode"] == "local"
         assert "auth" not in payload["gateway"]
         assert payload["agents"]["defaults"]["model"]["primary"] == (
-            "openai/gpt-5.6-luna"
+            "openai/gpt-5.4-mini"
         )
         assert payload["models"]["providers"]["openai"]["apiKey"]["id"] == (
             "OPENAI_API_KEY"

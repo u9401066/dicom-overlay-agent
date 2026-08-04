@@ -107,6 +107,7 @@ def assess_real_model_readiness(
     evidence: dict[str, Any] = {
         "manifest": str(manifest_path),
         "min_cases": min_cases,
+        "provider_transaction_tested": False,
     }
 
     required_env = required_env_var_for_model(model_id)
@@ -146,6 +147,11 @@ def assess_real_model_readiness(
                     "message": f"Model {model_id} does not advertise image input.",
                     "provider": probe.provider,
                 }
+            )
+        else:
+            warnings.append(
+                "Provider metadata readiness does not test billing/quota or "
+                "perform inference; run a one-case canary before a full benchmark."
             )
 
     case_count = _manifest_case_count(manifest_path, blockers)
@@ -218,6 +224,27 @@ def probe_provider_for_model(model_id: str) -> ProviderProbeResult:
 
     if model_id.lower().startswith("openrouter/"):
         return _probe_openrouter_model(model_id)
+    if model_id.lower().startswith("openai/"):
+        from dicom_overlay.infrastructure.openclaw_settings import (
+            default_provider_profiles,
+        )
+
+        profile = next(
+            (
+                item
+                for item in default_provider_profiles()
+                if item.model_ref.lower() == model_id.lower()
+                and item.input_modalities
+            ),
+            None,
+        )
+        if profile is not None:
+            return ProviderProbeResult(
+                provider="openai",
+                model_id=model_id,
+                ok=True,
+                supports_image="image" in profile.input_modalities,
+            )
     return ProviderProbeResult(
         provider=_provider_name(model_id),
         model_id=model_id,
@@ -395,6 +422,6 @@ def _next_commands(
         (
             "scripts\\run-meeti-openclaw-experiment.cmd "
             f"--model-id {model_id} --manifest {manifest} --timeout-sec 90 "
-            "--multi-pass --multi-pass-max-targets 2 --require-perfect"
+            "--limit 1 --artifact-min-cases 1"
         )
     ]

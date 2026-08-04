@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -157,45 +158,54 @@ def main() -> int:
         output_path=paths["models_list"],
     )
     catalog_text = read_text_bounded(paths["models_list"])
+    catalog_input = parse_model_catalog_input(catalog_text, args.model_id)
     model_catalog_warning = ""
-    if catalog_result != 0 and not provider_profile:
+    if catalog_input is None:
         write_json(
             paths["experiment_json"],
             base_record(args, provider_profile, manifest_path, experiment_dir, paths)
             | {
                 "status": "blocked",
-                "reason": "could not read the local OpenClaw model catalog",
-                "model_catalog_exit_code": catalog_result,
-                "finished_at": now_iso(),
-            },
-        )
-        print("BLOCKED: could not read local OpenClaw model catalog")
-        print(f"Experiment record: {paths['experiment_json']}")
-        return 20
-    if catalog_result != 0:
-        model_catalog_warning = (
-            "OpenClaw models list failed before Gateway startup; "
-            "provider-profile run will continue and rely on eval artifacts."
-        )
-    if catalog_result == 0 and args.model_id not in catalog_text:
-        write_json(
-            paths["experiment_json"],
-            base_record(args, provider_profile, manifest_path, experiment_dir, paths)
-            | {
-                "status": "blocked",
-                "reason": "requested model id is not exposed by the local OpenClaw catalog",
+                "reason": (
+                    "requested model id is not exposed by the effective "
+                    "OpenClaw catalog"
+                ),
                 "suggested_models": [
+                    "openai/gpt-5.4-mini",
                     "openai/gpt-5.6-luna",
                     "openai/gpt-5.6-terra",
                     "openai/gpt-5.6-sol",
-                    "openai/gpt-5.5",
                 ],
                 "model_catalog_exit_code": catalog_result,
                 "finished_at": now_iso(),
             },
         )
         print(
-            f"BLOCKED: requested model is not in OpenClaw model catalog: {args.model_id}"
+            "BLOCKED: requested model is not in the effective OpenClaw catalog: "
+            f"{args.model_id}"
+        )
+        print(f"Experiment record: {paths['experiment_json']}")
+        return 20
+    if catalog_result != 0:
+        model_catalog_warning = (
+            "OpenClaw models list exited non-zero after emitting a usable "
+            "model capability row; the run will continue and retain the log."
+        )
+    if "image" not in catalog_input:
+        write_json(
+            paths["experiment_json"],
+            base_record(args, provider_profile, manifest_path, experiment_dir, paths)
+            | {
+                "status": "blocked",
+                "reason": "requested model does not advertise image input",
+                "model_catalog_exit_code": catalog_result,
+                "model_catalog_input": list(catalog_input),
+                "finished_at": now_iso(),
+            },
+        )
+        print(
+            "BLOCKED: requested model does not advertise image input in the "
+            f"effective OpenClaw catalog: {args.model_id}"
         )
         print(f"Experiment record: {paths['experiment_json']}")
         return 20
@@ -220,6 +230,7 @@ def main() -> int:
                 "status": "running",
                 "model_catalog_exit_code": catalog_result,
                 "model_catalog_warning": model_catalog_warning,
+                "model_catalog_input": list(catalog_input),
                 "started_at": now_iso(),
                 "updated_at": now_iso(),
             },
@@ -255,6 +266,8 @@ def main() -> int:
                 "--multi-pass",
                 "--multi-pass-max-targets",
                 str(args.multi_pass_max_targets),
+                "--multi-pass-max-ekg-systematic-probes",
+                str(args.multi_pass_max_ekg_systematic_probes),
             ]
         if args.ecgfounder_waveform_evidence:
             eval_args.append("--ecgfounder-waveform-evidence")
@@ -331,6 +344,7 @@ def main() -> int:
                     verify_command += [
                         "--require-multipass-trace",
                         "--require-multipass-refinement",
+                        "--require-ekg-systematic-probes",
                     ]
                 artifact_verify_exit_code = run_logged_command(
                     verify_command,
@@ -398,6 +412,7 @@ def main() -> int:
                 "eval_error_count": eval_error_count,
                 "model_catalog_exit_code": catalog_result,
                 "model_catalog_warning": model_catalog_warning,
+                "model_catalog_input": list(catalog_input),
                 "eval_attempts": eval_attempts,
                 "postprocess_exit_code": postprocess_exit_code,
                 "artifact_verify_exit_code": artifact_verify_exit_code,
@@ -414,7 +429,7 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-id", default="openai/gpt-5.6-luna")
+    parser.add_argument("--model-id", default="openai/gpt-5.4-mini")
     parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--provider-profile", default="")
     parser.add_argument(
@@ -424,6 +439,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--experiment-dir", type=Path, default=None)
     parser.add_argument("--multi-pass", action="store_true")
     parser.add_argument("--multi-pass-max-targets", type=int, default=3)
+    parser.add_argument(
+        "--multi-pass-max-ekg-systematic-probes",
+        type=int,
+        default=2,
+        help=(
+            "Maximum layout-derived EKG discovery probes within the total "
+            "multi-pass target budget."
+        ),
+    )
     parser.add_argument(
         "--ecgfounder-waveform-evidence",
         action="store_true",
@@ -465,7 +489,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--gateway-wait-sec",
         type=int,
-        default=45,
+        default=120,
         help="Maximum seconds to wait for the Gateway port to become ready.",
     )
     parser.add_argument("--gateway-retry-attempts", type=int, default=6)
@@ -531,9 +555,35 @@ def effective_provider_profile(
     from_env = env.get("DICOM_OVERLAY_PROVIDER_PROFILE", "")
     if from_env:
         return from_env
+    for profile in default_provider_profiles():
+        if (
+            profile.model_ref.lower() == model_id.lower()
+            and "image" in profile.input_modalities
+        ):
+            return profile.key
     if model_id.lower().startswith("openrouter/"):
         return "openrouter"
     return ""
+
+
+def parse_model_catalog_input(
+    catalog_text: str,
+    model_id: str,
+) -> tuple[str, ...] | None:
+    """Read the advertised input modalities from an OpenClaw catalog row."""
+    ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+    expected = model_id.strip().lower()
+    for raw_line in catalog_text.splitlines():
+        parts = ansi_escape.sub("", raw_line).split()
+        if len(parts) < 2 or parts[0].lower() != expected:
+            continue
+        modalities = tuple(
+            item.strip().lower()
+            for item in parts[1].split("+")
+            if item.strip()
+        )
+        return modalities
+    return None
 
 
 def write_experiment_openclaw_config(
@@ -879,6 +929,9 @@ def base_record(
         "limit": args.limit,
         "multi_pass": bool(args.multi_pass),
         "multi_pass_max_targets": args.multi_pass_max_targets,
+        "multi_pass_max_ekg_systematic_probes": (
+            args.multi_pass_max_ekg_systematic_probes
+        ),
         "ecgfounder_waveform_evidence": bool(
             args.ecgfounder_waveform_evidence
         ),

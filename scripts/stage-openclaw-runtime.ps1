@@ -49,6 +49,15 @@ foreach ($name in $packageOnlyFiles) {
     Remove-Item -LiteralPath (Join-Path $dest $name) -Force -ErrorAction SilentlyContinue
 }
 
+# npm packages occasionally publish local development environment files. They
+# are not required at runtime and portable builds must never carry .env data.
+Get-ChildItem -LiteralPath $dest -Recurse -Force -File |
+    Where-Object {
+        $_.Name -ieq ".env" -or
+        $_.Name.StartsWith(".env.", [System.StringComparison]::OrdinalIgnoreCase)
+    } |
+    Remove-Item -Force
+
 $nonRuntimeExtensions = @(
     ".ts", ".mts", ".cts", ".map", ".md", ".txt", ".scss", ".coffee",
     ".ps1", ".sh", ".yml", ".yaml", ".bcmap", ".pfb", ".eslintrc",

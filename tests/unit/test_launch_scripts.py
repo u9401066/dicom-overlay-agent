@@ -51,7 +51,7 @@ def test_meeti_experiment_script_records_model_and_artifacts() -> None:
         encoding="utf-8"
     )
 
-    assert '[string]$ModelId = "openai/gpt-5.6-luna"' in script
+    assert '[string]$ModelId = "openai/gpt-5.4-mini"' in script
     assert '[string]$ManifestPath = ""' in script
     assert '[string]$ProviderProfile = ""' in script
     assert "openclaw-models-list.txt" in script
@@ -132,6 +132,33 @@ def test_meeti_experiment_config_records_bounded_openclaw_timeouts(tmp_path) -> 
     assert payload["agents"]["defaults"]["timeoutSeconds"] == 175
 
 
+def test_meeti_experiment_auto_selects_exact_vision_profile() -> None:
+    module = _load_meeti_experiment_module()
+
+    assert (
+        module.effective_provider_profile("openai/gpt-5.4-mini", "", {})
+        == "openai-vision"
+    )
+    assert (
+        module.effective_provider_profile("openai/gpt-5.6-luna", "", {})
+        == "openai-luna"
+    )
+
+
+def test_meeti_experiment_parses_catalog_input_even_after_cli_crash() -> None:
+    module = _load_meeti_experiment_module()
+    catalog = """
+Model                                      Input      Ctx
+openai/gpt-5.4-mini                        text+image 400k
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)
+"""
+
+    assert module.parse_model_catalog_input(
+        catalog, "openai/gpt-5.4-mini"
+    ) == ("text", "image")
+    assert module.parse_model_catalog_input(catalog, "openai/missing") is None
+
+
 def test_meeti_experiment_detects_hard_provider_block_without_log_details(
     tmp_path,
 ) -> None:
@@ -190,14 +217,15 @@ def test_meeti_experiment_script_generates_openrouter_config_before_catalog() ->
     )
 
 
-def test_meeti_experiment_script_does_not_hard_block_profile_catalog_errors() -> None:
+def test_meeti_experiment_script_accepts_usable_catalog_row_after_cli_error() -> None:
     script = Path("scripts/run-meeti-openclaw-experiment.ps1").read_text(
         encoding="utf-8"
     )
 
     assert "Invoke-NativeCommand" in script
     assert "model_catalog_exit_code" in script
-    assert "$modelListExitCode -ne 0 -and -not $effectiveProviderProfile" in script
+    assert "$modelCatalogInput.Count -eq 0" in script
+    assert '$modelCatalogInput -notcontains "image"' in script
     assert "model_catalog_warning" in script
 
 
@@ -321,6 +349,7 @@ def test_meeti_experiment_python_runner_verifies_eval_artifacts_after_export() -
     assert "skip_artifact_verify" in script
     assert "--min-cases" in script
     assert "--require-multipass-trace" in script
+    assert "--require-ekg-systematic-probes" in script
     assert "--require-multipass-refinement" in script
     assert "--require-projection-audit" in script
     assert "if postprocess_exit_code != 0:" in script
@@ -422,6 +451,8 @@ def test_openclaw_staging_preserves_runtime_plugin_surfaces_and_skills() -> None
     assert "dist/plugins" in script
     assert "dist/plugin-sdk" in script
     assert '"quickjs-wasi"' not in script
+    assert '$_.Name -ieq ".env"' in script
+    assert '$_.Name.StartsWith(".env."' in script
 
 
 def test_portable_node_fetcher_pins_current_lts_and_updates_stale_binary() -> None:

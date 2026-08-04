@@ -171,14 +171,20 @@ class SettingsDialog(QDialog):
         tab = QWidget()
         form = QFormLayout(tab)
 
-        self._multi_pass_check = QCheckBox("Crop/refine abnormal regions")
+        self._multi_pass_check = QCheckBox("Multi-pass clinical review")
+        self._multi_pass_check.setToolTip(
+            "Targeted crop verification plus layout-derived EKG discovery review"
+        )
         self._multi_pass_check.setChecked(multi_pass_enabled)
         form.addRow("Multi-pass", self._multi_pass_check)
 
         self._max_zoom_targets = QSpinBox()
         self._max_zoom_targets.setRange(1, 5)
         self._max_zoom_targets.setValue(max(1, min(5, max_zoom_targets)))
-        form.addRow("Refine targets", self._max_zoom_targets)
+        self._max_zoom_targets.setToolTip(
+            "Total crop budget shared by finding verification and discovery probes"
+        )
+        form.addRow("Pass budget", self._max_zoom_targets)
 
         save_btn = QPushButton("Save analysis")
         save_btn.clicked.connect(self._save_analysis_settings)

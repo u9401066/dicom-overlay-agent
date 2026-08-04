@@ -156,7 +156,7 @@ Required JSON schema:
     "detail": "<brief quality assessment>"
   },
   "next_steps": ["<specific review or acquisition action>"],
-  "model_used": "openai/gpt-5.6-luna",
+  "model_used": "openai/gpt-5.4-mini",
   "incomplete": false,
   "incomplete_reasons": []
 }

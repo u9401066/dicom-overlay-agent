@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import structlog
 
-from dicom_overlay.domain.entities import AnalysisResult
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
 )
+
+if TYPE_CHECKING:
+    from dicom_overlay.domain.entities import AnalysisResult
 
 logger = structlog.get_logger(__name__)
 

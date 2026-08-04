@@ -53,6 +53,12 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(tmp_path):
     assert any((package_root / "skills").glob("*/SKILL.md"))
     assert (package_root / "node_modules" / "quickjs-wasi").exists()
     assert (package_root / "node_modules" / "playwright-core").exists()
+    assert not [
+        path
+        for path in package_root.rglob("*")
+        if path.is_file()
+        and (path.name.casefold() == ".env" or path.name.casefold().startswith(".env."))
+    ]
 
     total_bytes = sum(
         path.stat().st_size for path in output_root.rglob("*") if path.is_file()

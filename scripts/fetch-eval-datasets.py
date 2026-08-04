@@ -77,6 +77,7 @@ def _synthetic_ekg(path: Path, *, abnormal: bool, label: str) -> None:
     w, h = 900, 600
     img = Image.new("RGB", (w, h), "white")
     draw = ImageDraw.Draw(img)
+    draw.text((12, 6), f"EKG {label}", fill=(30, 30, 30), font=_font())
     for x in range(0, w, 25):
         draw.line((x, 0, x, h), fill=(238, 220, 220), width=1)
     for y in range(0, h, 25):
@@ -157,14 +158,14 @@ def _download_real(dataset_dir: Path, urls_file: Path) -> list[dict[str, Any]]:
         out.parent.mkdir(parents=True, exist_ok=True)
         print(f"  downloading {label} <- {url}")
         try:
-            req = urllib.request.Request(url, headers=_HTTP_HEADERS)  # noqa: S310
-            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            req = urllib.request.Request(url, headers=_HTTP_HEADERS)
+            with urllib.request.urlopen(req, timeout=30) as resp:
                 data = resp.read()
             # Normalize to PNG via PIL so downstream is uniform.
             from io import BytesIO
 
             Image.open(BytesIO(data)).convert("RGB").save(out, format="PNG")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"    WARNING: download failed ({exc}); skipping")
             continue
         cases.append({
