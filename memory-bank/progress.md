@@ -18,7 +18,7 @@
     receipts, success/failure provenance, strict 12-lead/per-lead gates, deep
     health, desktop evaluation-only status, full MIT notice, and bundle bans for
     model/waveform/sidecar payloads.
-  - Ruff passed. Unit+smoke: 738 passed plus one release-only skip. OpenClaw
+  - Ruff passed. Unit+smoke: 741 passed plus one release-only skip. OpenClaw
     integration: 55/55. Fresh bundle rebuild is pending.
 
 - **Reviewer-confirmed regional writeback and export provenance** (2026-08-04):

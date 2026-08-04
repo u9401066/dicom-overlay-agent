@@ -29,7 +29,7 @@
   gates run before preprocessing. The portable bundle verifier now bans Torch,
   sidecar/MEETI paths, waveform/model suffixes, and includes the upstream MIT
   notice without bundling checkpoint or waveform data.
-- Current source verification: Ruff passed; unit+smoke `738 passed, 1 skipped`;
+- Current source verification: Ruff passed; unit+smoke `741 passed, 1 skipped`;
   OpenClaw integration `55 passed`. Fresh bundle rebuild/hash remains pending.
 
 ## Session Update (2026-08-04, reviewer-confirmed regional writeback)

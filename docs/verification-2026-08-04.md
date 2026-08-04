@@ -9,7 +9,7 @@ or a schema-valid response is never mistaken for clinical accuracy evidence.
 | Surface | Status | Evidence |
 | --- | --- | --- |
 | Source self-check | passed | Node, OpenClaw, 51 bundled skills, native plugin, rules, writable base |
-| Unit + smoke suite | 738 passed, 1 release-only skip | `uv run python -m pytest -q` |
+| Unit + smoke suite | 741 passed, 1 release-only skip | `uv run python -m pytest -q` |
 | Full repository Ruff | passed | `scripts/run-ruff-safe.cmd check .` |
 | OpenClaw overlay integration | 55 passed | `tests/integration/test_openclaw_overlay.py` |
 | Fresh bundle smoke | 2 passed | `RUN_BUNDLE_SMOKE=1`, real frozen EXE self-check |

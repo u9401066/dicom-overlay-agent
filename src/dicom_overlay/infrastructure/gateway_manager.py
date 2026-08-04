@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
@@ -233,12 +234,16 @@ class GatewayManager:
             )
         )
 
-        home = self._repo_root / _OPENCLAW_HOME
         try:
-            (home / ".openclaw" / "workspace").mkdir(parents=True, exist_ok=True)
-            probe = home / ".selfcheck_write_probe"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink()
+            with tempfile.TemporaryDirectory(
+                prefix=".dicom-overlay-selfcheck-",
+                dir=self._repo_root,
+            ) as temp_text:
+                workspace = Path(temp_text) / _OPENCLAW_HOME / ".openclaw" / "workspace"
+                workspace.mkdir(parents=True)
+                probe = workspace / "write-probe"
+                probe.write_text("ok", encoding="utf-8")
+                probe.unlink()
             rows.append(("writable_base", True, str(self._repo_root)))
         except OSError as exc:
             rows.append(("writable_base", False, str(exc)))

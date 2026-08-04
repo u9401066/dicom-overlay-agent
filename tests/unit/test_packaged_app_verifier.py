@@ -152,6 +152,32 @@ def test_inspect_bundle_rejects_environment_files(tmp_path: Path, monkeypatch) -
     assert "secret-like components" in " ".join(report["failures"])
 
 
+def test_inspect_bundle_rejects_fresh_release_runtime_residue(tmp_path: Path) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    (tmp_path / "overlay_agent.log").write_text("local build path", encoding="utf-8")
+    (tmp_path / "openclaw-home").mkdir()
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert report["runtime_residue"] == ["openclaw-home", "overlay_agent.log"]
+    assert "runtime residue" in " ".join(report["failures"])
+
+
+def test_inspect_bundle_excludes_its_generated_manifest_from_payload_size(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    first = module.inspect_bundle(tmp_path, run_selfcheck=False)
+    (tmp_path / "bundle-manifest.json").write_text("{}", encoding="utf-8")
+
+    second = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert second["sizes"] == first["sizes"]
+
+
 def test_native_plugin_requires_bbox_validation_tool_contract(tmp_path: Path) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)

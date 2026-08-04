@@ -139,9 +139,7 @@ class TestOpenClawSettings:
 
     def test_default_vision_profile_declares_gpt54_mini_image_capabilities(self):
         profile = next(
-            item
-            for item in default_provider_profiles()
-            if item.key == "openai-vision"
+            item for item in default_provider_profiles() if item.key == "openai-vision"
         )
 
         config = build_openclaw_config(profile)
@@ -158,9 +156,7 @@ class TestOpenClawSettings:
 
     def test_luna_profile_remains_available_as_an_explicit_option(self):
         profile = next(
-            item
-            for item in default_provider_profiles()
-            if item.key == "openai-luna"
+            item for item in default_provider_profiles() if item.key == "openai-luna"
         )
 
         assert profile.model_ref == "openai/gpt-5.6-luna"
@@ -210,9 +206,9 @@ class TestOpenClawRuntimeCompatibility:
         assert manifest["capabilities"]["coordinateDriftCalibration"] is True
         assert manifest["capabilities"]["ecgFounderWaveformAssist"] is True
         assert manifest["capabilities"]["noScreenshotToWaveformInference"] is True
-        assert "ecg_founder_analyze_waveform" in manifest["capabilities"][
-            "openClawTools"
-        ]
+        assert (
+            "ecg_founder_analyze_waveform" in manifest["capabilities"]["openClawTools"]
+        )
         assert manifest["capabilities"]["gatewayOnlyDesktopBoundary"] is True
         assert "plugin-sdk" not in yaml.safe_dump(manifest)
 
@@ -402,6 +398,15 @@ class TestOpenClawRuntimeCompatibility:
 
         assert not (tmp_path / "data" / "tmp" / "openclaw-gateway.lock").exists()
 
+    def test_gateway_runtime_selfcheck_leaves_no_state_directory(self, tmp_path):
+        manager = GatewayManager(repo_root=tmp_path)
+
+        rows = manager.verify_runtime()
+
+        assert ("writable_base", True, str(tmp_path)) in rows
+        assert not (tmp_path / "openclaw-home").exists()
+        assert not list(tmp_path.glob(".dicom-overlay-selfcheck-*"))
+
     def test_gateway_manager_seeds_vision_model_and_native_plugin(
         self, monkeypatch, tmp_path
     ):
@@ -507,9 +512,7 @@ class TestDesktopSettingsStore:
             json.dumps(
                 {
                     "agents": {
-                        "defaults": {
-                            "model": {"primary": "openai/gpt-5.6-luna"}
-                        }
+                        "defaults": {"model": {"primary": "openai/gpt-5.6-luna"}}
                     },
                     "models": {"providers": {"openai": {"apiKey": "secret"}}},
                 }

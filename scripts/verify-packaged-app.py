@@ -107,6 +107,8 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             for filename in filenames:
                 path = parent / filename
                 relative = path.relative_to(bundle)
+                if relative.as_posix() == "bundle-manifest.json":
+                    continue
                 try:
                     size = path.stat().st_size
                 except OSError:
@@ -185,6 +187,18 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         ).is_file()
         else None
     )
+    runtime_residue = (
+        sorted(
+            [
+                path.name
+                for path in bundle.iterdir()
+                if path.is_file() and path.suffix.casefold() == ".log"
+            ]
+            + (["openclaw-home"] if (bundle / "openclaw-home").exists() else [])
+        )
+        if bundle.is_dir()
+        else []
+    )
 
     failures: list[str] = []
     if missing:
@@ -192,6 +206,10 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
     if banned:
         failures.append(
             f"banned or secret-like components present: {', '.join(banned[:10])}"
+        )
+    if runtime_residue:
+        failures.append(
+            "fresh bundle contains runtime residue: " + ", ".join(runtime_residue)
         )
     if launcher_bytes >= MAX_LAUNCHER_BYTES:
         failures.append("launcher exceeds 50 MiB budget")
@@ -250,6 +268,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         "required_files": list(REQUIRED_FILES),
         "missing_files": missing,
         "banned_components": banned,
+        "runtime_residue": runtime_residue,
         "versions": {
             "openclaw": openclaw_version,
             "node": node_version,

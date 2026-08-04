@@ -201,10 +201,6 @@ def main() -> None:
 
     config = load_config(config_path)
 
-    # --- Setup logging ---
-    setup_logging(log_level=config.log_level, log_file=config.log_file)
-    logger.info("DICOM Overlay Agent starting...")
-
     # --- Portable self-check (USB plug-and-play verification) ---
     # `--selfcheck` verifies the bundle can start (node + openclaw + writable
     # base + config) and exits, without launching the GUI or contacting an LLM.
@@ -218,6 +214,11 @@ def main() -> None:
     # overrides) without launching the GUI or contacting an LLM.
     if "--explain-rules" in sys.argv:
         sys.exit(_run_explain_rules(base_dir))
+
+    # --- Setup logging ---
+    # Diagnostic commands above must not leave runtime logs in a fresh bundle.
+    setup_logging(log_level=config.log_level, log_file=config.log_file)
+    logger.info("DICOM Overlay Agent starting...")
 
     # --- Build modality registry (single source of truth, config-extensible) ---
     registry = build_registry(config.modalities)

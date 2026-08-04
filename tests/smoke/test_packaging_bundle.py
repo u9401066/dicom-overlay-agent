@@ -81,6 +81,9 @@ def _built_exe() -> Path | None:
 def test_built_bundle_selfcheck_exits_zero():
     exe = _built_exe()
     assert exe is not None
+    bundle = exe.parent
+    assert not (bundle / "overlay_agent.log").exists()
+    assert not (bundle / "openclaw-home").exists()
     result = subprocess.run(
         [str(exe), "--selfcheck"],
         cwd=str(exe.parent),
@@ -95,3 +98,5 @@ def test_built_bundle_selfcheck_exits_zero():
         f"bundle self-check failed (exit {result.returncode}):\n"
         f"{result.stdout}\n{result.stderr}"
     )
+    assert not (bundle / "overlay_agent.log").exists()
+    assert not (bundle / "openclaw-home").exists()

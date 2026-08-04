@@ -12,7 +12,7 @@
 
 - Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
   負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
-- OOM-safe unit + smoke suite 為 738 passed（另 1 個 release-only skip）；
+- OOM-safe unit + smoke suite 為 741 passed（另 1 個 release-only skip）；
   OpenClaw overlay integration 為 55 passed；重建後真實 EXE bundle smoke
   為 2 passed，整個 repo 的 Ruff 也已全數通過。
 - 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
