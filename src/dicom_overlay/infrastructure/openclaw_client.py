@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 from dicom_overlay.application.interpretation_harness import (
     build_initial_analysis_prompt,
+    build_minimal_control_prompt,
 )
 from dicom_overlay.application.multi_pass import (
     RefinementAction,
@@ -47,6 +48,8 @@ from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_runtime import build_openclaw_chat_frame
 
 logger = structlog.get_logger(__name__)
+
+_ANALYSIS_PROMPT_PROFILES = frozenset({"clinical", "minimal_control"})
 
 _OPENCLAW_VERSION = "2026.3.11"
 # The websockets default frame limit is 1 MiB. A real medical screenshot,
@@ -100,7 +103,12 @@ class OpenClawClient(VisionAnalyzerService):
         inference_timeout_sec: int | None = None,
         registry: ModalityRegistry | None = None,
         base_dir: Path | None = None,
+        analysis_prompt_profile: str = "clinical",
     ) -> None:
+        if analysis_prompt_profile not in _ANALYSIS_PROMPT_PROFILES:
+            raise ValueError(
+                "analysis_prompt_profile must be clinical or minimal_control"
+            )
         self._url = gateway_url
         self._timeout = timeout_sec
         # Split timeouts: handshake is fast, inference can be slow on big images.
@@ -109,6 +117,7 @@ class OpenClawClient(VisionAnalyzerService):
         self._reconnect_interval = reconnect_interval_sec
         self._registry = registry or get_active_registry()
         self._base_dir = (base_dir or Path.cwd()).resolve()
+        self._analysis_prompt_profile = analysis_prompt_profile
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
@@ -445,6 +454,7 @@ class OpenClawClient(VisionAnalyzerService):
             waveform_evidence_nonce=(
                 waveform_context.evidence_nonce if waveform_context else ""
             ),
+            prompt_profile=self._analysis_prompt_profile,
         )
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
@@ -1199,7 +1209,17 @@ def _build_analysis_prompt(
     waveform_artifact_id: str = "",
     waveform_lead_mode: str = "",
     waveform_evidence_nonce: str = "",
+    prompt_profile: str = "clinical",
 ) -> str:
+    if prompt_profile == "minimal_control":
+        if waveform_artifact_id:
+            raise ValueError("minimal control cannot use waveform evidence")
+        return build_minimal_control_prompt(
+            modality=modality,
+            valid_regions=valid_regions,
+        )
+    if prompt_profile != "clinical":
+        raise ValueError("unsupported analysis prompt profile")
     skill_prompt = _load_skill_prompt(skill_name, base_dir=base_dir)
     return build_initial_analysis_prompt(
         modality=modality,

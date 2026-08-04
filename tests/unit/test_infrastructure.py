@@ -152,7 +152,13 @@ class TestOpenClawSettings:
         assert model["contextWindow"] == 400_000
         assert model["maxTokens"] == 128_000
         assert model["agentRuntime"] == {"id": "openclaw"}
-        assert config["tools"] == {"allow": ["dicom_bbox_validate"]}
+        assert config["tools"] == {
+            "allow": ["dicom_bbox_validate"],
+            "web": {
+                "search": {"enabled": False},
+                "fetch": {"enabled": False},
+            },
+        }
 
     def test_luna_profile_remains_available_as_an_explicit_option(self):
         profile = next(
@@ -439,7 +445,13 @@ class TestOpenClawRuntimeCompatibility:
             "enabled": True
         }
         assert payload["plugins"]["allow"] == ["dicom-overlay-agent-harness"]
-        assert payload["tools"] == {"allow": ["dicom_bbox_validate"]}
+        assert payload["tools"] == {
+            "allow": ["dicom_bbox_validate"],
+            "web": {
+                "search": {"enabled": False},
+                "fetch": {"enabled": False},
+            },
+        }
 
     def test_gateway_manager_enables_ecg_founder_only_with_endpoint_and_token(
         self, monkeypatch, tmp_path
@@ -453,7 +465,13 @@ class TestOpenClawRuntimeCompatibility:
 
         path = manager._ensure_openclaw_config()
         payload = json.loads(path.read_text(encoding="utf-8"))
-        assert payload["tools"] == {"allow": ["dicom_bbox_validate"]}
+        assert payload["tools"] == {
+            "allow": ["dicom_bbox_validate"],
+            "web": {
+                "search": {"enabled": False},
+                "fetch": {"enabled": False},
+            },
+        }
 
         monkeypatch.setenv("DICOM_ECGFOUNDER_TOKEN", "test-only-token")
         path = manager._ensure_openclaw_config()
@@ -462,7 +480,11 @@ class TestOpenClawRuntimeCompatibility:
             "allow": [
                 "dicom_bbox_validate",
                 "ecg_founder_analyze_waveform",
-            ]
+            ],
+            "web": {
+                "search": {"enabled": False},
+                "fetch": {"enabled": False},
+            },
         }
 
     def test_pyinstaller_spec_uses_staged_openclaw_runtime(self):

@@ -4,6 +4,7 @@ from dicom_overlay.application.interpretation_harness import (
     InterpretationContext,
     build_followup_prompt,
     build_initial_analysis_prompt,
+    build_minimal_control_prompt,
     summarize_result_for_followup,
 )
 from dicom_overlay.domain.entities import (
@@ -50,6 +51,20 @@ def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
     assert f"evidence_nonce='{'a' * 32}'" in prompt
     assert "uncalibrated_score is neither a positive nor a negative" in prompt
     assert "has no image localization" in prompt
+
+
+def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> None:
+    prompt = build_minimal_control_prompt(
+        modality=Modality.EKG,
+        valid_regions=["lead_I", "lead_II"],
+    )
+
+    assert "minimal-control" in prompt
+    assert "do not call tools" in prompt
+    assert "Required top-level keys" in prompt
+    assert "lead_I, lead_II" in prompt
+    assert "systematic image interpretation protocol" not in prompt
+    assert "dicom_bbox_validate" not in prompt
 
 
 def test_followup_prompt_carries_image_context_and_prior_result():

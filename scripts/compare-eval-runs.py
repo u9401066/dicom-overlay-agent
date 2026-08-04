@@ -57,6 +57,7 @@ def build_comparison(
     *,
     min_delta: float = 0.05,
     allow_incomplete: bool = False,
+    allow_incompatible: bool = False,
 ) -> dict[str, Any]:
     """Build a paired comparison report from two eval runs."""
     baseline_dir = resolve_eval_dir(baseline_path)
@@ -86,14 +87,20 @@ def build_comparison(
 
     baseline_manifest = _protocol_manifest_identity(baseline_dir)
     candidate_manifest = _protocol_manifest_identity(candidate_dir)
-    if (
-        baseline_manifest is not None
-        and candidate_manifest is not None
-        and baseline_manifest != candidate_manifest
-    ):
+    compatibility_issues = _protocol_compatibility_issues(
+        baseline_health=baseline_health,
+        candidate_health=candidate_health,
+        baseline_manifest=baseline_manifest,
+        candidate_manifest=candidate_manifest,
+    )
+    if compatibility_issues and not allow_incompatible:
         raise ValueError(
-            "baseline and candidate protocol fingerprints use different manifests"
+            "baseline and candidate are not protocol-compatible: "
+            + "; ".join(compatibility_issues)
+            + ". Pass --allow-incompatible only for an explicitly exploratory report."
         )
+    if not allow_incomplete and set(baseline_cases) != set(candidate_cases):
+        raise ValueError("baseline and candidate do not contain the same case set")
 
     rows = [
         _compare_case(
@@ -125,6 +132,9 @@ def build_comparison(
         "candidate_eval_dir": str(candidate_dir),
         "paired_cases": len(rows),
         "allow_incomplete": allow_incomplete,
+        "allow_incompatible": allow_incompatible,
+        "protocol_compatible": not compatibility_issues,
+        "protocol_compatibility_issues": compatibility_issues,
         "baseline_health": baseline_health,
         "candidate_health": candidate_health,
         "baseline_manifest": baseline_manifest,
@@ -224,6 +234,8 @@ def _scorecard_health(
         incomplete_reasons.append(f"scored={scored} total={total}")
     if is_partial:
         incomplete_reasons.append("is_partial=true")
+    if scorecard.get("scorecard_kind") != "full_rebuild":
+        incomplete_reasons.append("scorecard_kind is not full_rebuild")
     if raw_result_count is not None and raw_result_count != case_count:
         incomplete_reasons.append(
             f"raw_result_count={raw_result_count} case_count={case_count}"
@@ -238,6 +250,12 @@ def _scorecard_health(
         if isinstance(comparability, dict)
         else ""
     )
+    if comparability_status != "comparable":
+        incomplete_reasons.append(
+            f"protocol_comparability_status={comparability_status or 'missing'}"
+        )
+    if not scorer_digest:
+        incomplete_reasons.append("scorer_digest is missing")
     return {
         "scorecard": str(scorecard_path),
         "scorecard_kind": str(scorecard.get("scorecard_kind") or ""),
@@ -257,6 +275,38 @@ def _scorecard_health(
         "complete": not incomplete_reasons,
         "incomplete_reasons": incomplete_reasons,
     }
+
+
+def _protocol_compatibility_issues(
+    *,
+    baseline_health: dict[str, Any],
+    candidate_health: dict[str, Any],
+    baseline_manifest: dict[str, Any] | None,
+    candidate_manifest: dict[str, Any] | None,
+) -> list[str]:
+    issues: list[str] = []
+    if baseline_manifest is None or candidate_manifest is None:
+        issues.append("one or both protocol fingerprints lack manifest identity")
+    elif baseline_manifest != candidate_manifest:
+        issues.append("protocol fingerprints use different manifests")
+
+    baseline_scorer = str(baseline_health.get("scorer_digest") or "")
+    candidate_scorer = str(candidate_health.get("scorer_digest") or "")
+    if not baseline_scorer or not candidate_scorer:
+        issues.append("one or both scorecards lack scorer provenance")
+    elif baseline_scorer != candidate_scorer:
+        issues.append("scorecards use different scorer digests")
+
+    for label, health in (
+        ("baseline", baseline_health),
+        ("candidate", candidate_health),
+    ):
+        status = str(health.get("protocol_comparability_status") or "")
+        if status != "comparable":
+            issues.append(
+                f"{label} protocol is {status or 'missing comparability status'}"
+            )
+    return issues
 
 
 def _raw_result_count(eval_dir: Path) -> int | None:
@@ -775,6 +825,14 @@ def main() -> int:
             "error cases are excluded from the paired set."
         ),
     )
+    parser.add_argument(
+        "--allow-incompatible",
+        action="store_true",
+        help=(
+            "Allow mismatched scorer provenance or non-comparable protocol "
+            "fingerprints for an explicitly exploratory report."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -783,6 +841,7 @@ def main() -> int:
             args.candidate,
             min_delta=args.min_delta,
             allow_incomplete=args.allow_incomplete,
+            allow_incompatible=args.allow_incompatible,
         )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

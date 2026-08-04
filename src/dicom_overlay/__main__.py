@@ -340,6 +340,7 @@ def main() -> None:
         tuple[FindingDelta, int, dict[str, object], list[dict[str, object]]] | None
     ] = [None]
     _chat_request_id = [0]
+    _pending_user_region: dict[int, RegionRect] = {}
 
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
     agent.on_state_change = signals.state_changed.emit
@@ -672,12 +673,11 @@ def main() -> None:
             control_bar.set_status("Analyze an image before export")
             return
         try:
-            user_regions = [RegionRect(*values) for values in overlay.user_regions]
             review_path = export_desktop_review(
                 image_base64=snapshot.image_base64,
                 result=snapshot.result,
                 output_root=app_base_dir() / "data" / "exports",
-                user_regions=user_regions,
+                user_annotations=overlay.user_region_annotations,
             )
         except Exception:
             logger.exception("Desktop review export failed")
@@ -690,6 +690,7 @@ def main() -> None:
     # ─── Chat handler (non-blocking) ───
     def _begin_chat_request() -> int:
         _chat_request_id[0] += 1
+        _pending_user_region.clear()
         _pending_review[0] = None
         overlay.clear_chat_proposal()
         return _chat_request_id[0]
@@ -736,6 +737,8 @@ def main() -> None:
         current_result = snapshot.result
         revision = snapshot.revision
         request_id = _begin_chat_request()
+        if allow_add:
+            _pending_user_region[request_id] = selected_region
         try:
             signal_audit = {
                 "status": "ok",
@@ -971,6 +974,7 @@ def main() -> None:
             control_bar.set_status("Image changed; draw the region again")
             return
         region = RegionRect(x=x, y=y, w=width, h=height)
+        overlay.annotate_user_region(region, question=question.strip())
         crop_base64 = image_processor.crop_region_base64(
             snapshot.image_base64,
             region,
@@ -1025,6 +1029,13 @@ def main() -> None:
             or revision != agent.result_revision
         ):
             return
+        manual_region = _pending_user_region.pop(request_id, None)
+        if manual_region is not None:
+            overlay.annotate_user_region(
+                manual_region,
+                question=question,
+                answer=response.answer,
+            )
         answer = response.answer
         if response.warning:
             answer = f"{answer}\n\nReport update not available: {response.warning}"

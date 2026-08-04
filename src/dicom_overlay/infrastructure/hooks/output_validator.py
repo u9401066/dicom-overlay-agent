@@ -6,6 +6,7 @@ import dataclasses
 
 import structlog
 
+from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
 from dicom_overlay.domain.entities import AnalysisResult, Severity
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
@@ -143,7 +144,14 @@ class OutputValidator(AnalyzeHook):
                     f"Checklist missing keys: {', '.join(sorted(missing))}"
                 )
 
-        # 5. Checklist value validation
+        # 5. The layout drives systematic crop/refine passes, so an EKG cannot
+        # be represented as complete without a valid visible 12-lead inventory.
+        if request.modality.value == "EKG":
+            warnings.extend(
+                parse_ekg_lead_inventory(result.layout).validation_warnings()
+            )
+
+        # 6. Checklist value validation
         for key, item in result.checklist.items():
             if not item.value or not item.value.strip():
                 warnings.append(f"Checklist[{key}] has empty value")

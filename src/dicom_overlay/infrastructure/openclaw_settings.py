@@ -156,6 +156,18 @@ def default_provider_profiles() -> list[ProviderProfile]:
     ]
 
 
+def build_analysis_tool_policy(allowed_tools: list[str]) -> dict[str, Any]:
+    """Build the bounded tool surface used by screenshot-analysis agents."""
+
+    return {
+        "allow": list(dict.fromkeys(allowed_tools)),
+        "web": {
+            "search": {"enabled": False},
+            "fetch": {"enabled": False},
+        },
+    }
+
+
 def build_openclaw_config(
     profile: ProviderProfile,
     *,
@@ -226,7 +238,7 @@ def build_openclaw_config(
                 "timeoutSeconds": agent_timeout_sec,
             },
         },
-        "tools": {"allow": ["dicom_bbox_validate"]},
+        "tools": build_analysis_tool_policy(["dicom_bbox_validate"]),
     }
 
 

@@ -24,6 +24,7 @@ from dicom_overlay.infrastructure.openclaw_settings import (
     DEFAULT_INFERENCE_TIMEOUT_SEC,
     DEFAULT_VISION_MODEL_REF,
     ProviderProfile,
+    build_analysis_tool_policy,
     build_openclaw_config,
     default_provider_profiles,
     derive_openclaw_timeout_budget,
@@ -40,6 +41,8 @@ GATEWAY_URL = "ws://127.0.0.1:18789"
 OPENCLAW_GATEWAY_LOCK = REPO_ROOT / "data" / "tmp" / "openclaw-gateway.lock"
 UV_TMP_RELATIVE = "data/tmp/uv"
 MAX_CAPTURED_COMMAND_OUTPUT_CHARS = 200_000
+DEFAULT_MIN_STRICT_PASS_RATE = 0.75
+DEFAULT_MIN_MEAN_PARTIAL_CREDIT = 0.85
 _PROVIDER_BLOCK_MARKERS = {
     "credit_balance_exhausted": (
         "provider_credit_exhausted",
@@ -219,6 +222,12 @@ def main() -> int:
     artifact_verify_exit_code: int | None = None
     eval_attempts = 0
     eval_error_count = 0
+    quality_gate: dict[str, object] = {
+        "minimum_strict_pass_rate": args.min_strict_pass_rate,
+        "minimum_mean_partial_credit": args.min_mean_partial_credit,
+        "passed": False,
+        "failures": ["scorecard_not_available"],
+    }
     status = "failed"
     failure_reason = ""
     provider_block: dict[str, str] = {}
@@ -258,6 +267,13 @@ def main() -> int:
             str(paths["eval_dir"]),
             "--partial-scorecard-interval",
             str(args.partial_scorecard_interval),
+            "--analysis-prompt-profile",
+            args.analysis_prompt_profile,
+            (
+                "--rhythm-strip-pass"
+                if args.multi_pass
+                else "--no-rhythm-strip-pass"
+            ),
         ]
         if args.limit > 0:
             eval_args += ["--limit", str(args.limit)]
@@ -348,6 +364,12 @@ def main() -> int:
                         "--require-multipass-refinement",
                         "--require-ekg-systematic-probes",
                     ]
+                verify_command += [
+                    "--min-strict-pass-rate",
+                    str(args.min_strict_pass_rate),
+                    "--min-mean-partial-credit",
+                    str(args.min_mean_partial_credit),
+                ]
                 artifact_verify_exit_code = run_logged_command(
                     verify_command,
                     cwd=REPO_ROOT,
@@ -362,6 +384,13 @@ def main() -> int:
             try:
                 scorecard = json.loads(paths["scorecard"].read_text(encoding="utf-8"))
                 eval_error_count = int(scorecard.get("error_count", 1))
+                quality_gate = evaluate_quality_gate(
+                    scorecard,
+                    min_strict_pass_rate=args.min_strict_pass_rate,
+                    min_mean_partial_credit=args.min_mean_partial_credit,
+                )
+                if not quality_gate["passed"]:
+                    postprocess_exit_code = 1
             except Exception as exc:
                 eval_error_count = 1
                 postprocess_exit_code = 1
@@ -390,13 +419,23 @@ def main() -> int:
             failure_reason = provider_block["reason"]
             exit_code = 20
         else:
-            status = (
-                "completed"
-                if exit_code == 0
-                and postprocess_exit_code == 0
+            if (
+                not quality_gate["passed"]
                 and eval_error_count == 0
-                else "completed_with_failures"
-            )
+                and artifact_verify_exit_code in {None, 0}
+            ):
+                status = "completed_below_target"
+                failure_reason = "; ".join(
+                    str(item) for item in quality_gate.get("failures", [])
+                )
+            else:
+                status = (
+                    "completed"
+                    if exit_code == 0
+                    and postprocess_exit_code == 0
+                    and eval_error_count == 0
+                    else "completed_with_failures"
+                )
     except Exception as exc:
         failure_reason = f"{type(exc).__name__}: {exc}"
         append_log(paths["eval_console"], f"\nExperiment failure: {failure_reason}\n")
@@ -412,6 +451,7 @@ def main() -> int:
                 "exit_code": exit_code,
                 "eval_exit_code": eval_exit_code,
                 "eval_error_count": eval_error_count,
+                "quality_gate": quality_gate,
                 "model_catalog_exit_code": catalog_result,
                 "model_catalog_warning": model_catalog_warning,
                 "model_catalog_input": list(catalog_input),
@@ -439,6 +479,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--experiment-dir", type=Path, default=None)
+    parser.add_argument(
+        "--analysis-prompt-profile",
+        choices=("clinical", "minimal_control"),
+        default="clinical",
+        help=(
+            "Use the app clinical prompt harness, or a single-look minimal JSON "
+            "control without skills/tools."
+        ),
+    )
     parser.add_argument("--multi-pass", action="store_true")
     parser.add_argument("--multi-pass-max-targets", type=int, default=3)
     parser.add_argument(
@@ -459,6 +508,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--require-perfect", action="store_true")
+    parser.add_argument(
+        "--min-strict-pass-rate",
+        type=float,
+        default=DEFAULT_MIN_STRICT_PASS_RATE,
+        help="Minimum strict pass rate required for completed status (default: 0.75).",
+    )
+    parser.add_argument(
+        "--min-mean-partial-credit",
+        type=float,
+        default=DEFAULT_MIN_MEAN_PARTIAL_CREDIT,
+        help=(
+            "Minimum mean partial-credit score required for completed status "
+            "(default: 0.85)."
+        ),
+    )
     parser.add_argument(
         "--resume",
         action="store_true",
@@ -496,7 +560,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gateway-retry-attempts", type=int, default=6)
     parser.add_argument("--gateway-retry-delay-sec", type=int, default=5)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.ecgfounder_waveform_evidence and not args.multi_pass:
+        parser.error("--ecgfounder-waveform-evidence requires --multi-pass")
+    if args.analysis_prompt_profile == "minimal_control" and args.multi_pass:
+        parser.error("minimal_control cannot be combined with --multi-pass")
+    for name in ("min_strict_pass_rate", "min_mean_partial_credit"):
+        value = float(getattr(args, name))
+        if not 0.0 <= value <= 1.0:
+            parser.error(f"--{name.replace('_', '-')} must be in [0, 1]")
+    return args
 
 
 def artifact_min_cases(args: argparse.Namespace) -> int:
@@ -505,6 +578,46 @@ def artifact_min_cases(args: argparse.Namespace) -> int:
     if args.limit > 0:
         return int(args.limit)
     return 1000
+
+
+def experiment_arm(args: argparse.Namespace) -> str:
+    if args.analysis_prompt_profile == "minimal_control":
+        return "minimal_control"
+    if args.ecgfounder_waveform_evidence:
+        return "multipass_ecgfounder"
+    if args.multi_pass:
+        return "multipass"
+    return "single_pass"
+
+
+def evaluate_quality_gate(
+    scorecard: dict[str, Any],
+    *,
+    min_strict_pass_rate: float,
+    min_mean_partial_credit: float,
+) -> dict[str, object]:
+    failures: list[str] = []
+    rates: dict[str, float | None] = {}
+    for field, minimum in (
+        ("strict_pass_rate", min_strict_pass_rate),
+        ("mean_partial_credit", min_mean_partial_credit),
+    ):
+        try:
+            actual = float(scorecard.get(field))
+        except (TypeError, ValueError):
+            actual = None
+        rates[field] = actual
+        if actual is None:
+            failures.append(f"{field} is missing or invalid")
+        elif actual + 1e-12 < minimum:
+            failures.append(f"{field}={actual:.6f} below minimum={minimum:.6f}")
+    return {
+        "minimum_strict_pass_rate": min_strict_pass_rate,
+        "minimum_mean_partial_credit": min_mean_partial_credit,
+        **rates,
+        "passed": not failures,
+        "failures": failures,
+    }
 
 
 def build_child_env(
@@ -672,7 +785,7 @@ def write_experiment_openclaw_config(
         allowed_tools = ["dicom_bbox_validate"]
         if enable_ecg_founder_tool:
             allowed_tools.append("ecg_founder_analyze_waveform")
-        merged["tools"] = {"allow": allowed_tools}
+        merged["tools"] = build_analysis_tool_policy(allowed_tools)
         metadata["harness_plugin_path"] = plugin_path
         metadata["ecg_founder_tool_enabled"] = bool(enable_ecg_founder_tool)
     write_json(target_config, merged)
@@ -915,6 +1028,9 @@ def base_record(
         "provider_profile": provider_profile,
         "timeout_sec": args.timeout_sec,
         "limit": args.limit,
+        "experiment_arm": experiment_arm(args),
+        "analysis_prompt_profile": args.analysis_prompt_profile,
+        "rhythm_strip_pass": bool(args.multi_pass),
         "multi_pass": bool(args.multi_pass),
         "multi_pass_max_targets": args.multi_pass_max_targets,
         "multi_pass_max_ekg_systematic_probes": (
@@ -924,6 +1040,8 @@ def base_record(
             args.ecgfounder_waveform_evidence
         ),
         "require_perfect": bool(args.require_perfect),
+        "minimum_strict_pass_rate": args.min_strict_pass_rate,
+        "minimum_mean_partial_credit": args.min_mean_partial_credit,
         "resume": bool(args.resume),
         "resume_legacy_policy": args.resume_legacy_policy,
         "partial_scorecard_interval": args.partial_scorecard_interval,

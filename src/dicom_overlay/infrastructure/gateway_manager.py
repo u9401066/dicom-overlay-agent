@@ -24,6 +24,7 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
 from dicom_overlay.infrastructure.openclaw_settings import (
     DEFAULT_INFERENCE_TIMEOUT_SEC,
     DEFAULT_VISION_PROFILE_KEY,
+    build_analysis_tool_policy,
     build_openclaw_config,
     default_provider_profiles,
     derive_openclaw_timeout_budget,
@@ -463,7 +464,7 @@ class GatewayManager:
         allowed_tools = ["dicom_bbox_validate"]
         if ecg_founder_tool_enabled(env_values):
             allowed_tools.append(_ECG_FOUNDER_TOOL)
-        payload["tools"] = {"allow": allowed_tools}
+        payload["tools"] = build_analysis_tool_policy(allowed_tools)
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(

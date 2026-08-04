@@ -33,12 +33,26 @@ def main() -> int:
         help="Do not require review/index.html and review/bbox-audit.jsonl.",
     )
     parser.add_argument(
+        "--allow-nonperfect-mock",
         "--allow-nonperfect-real",
+        dest="allow_nonperfect_mock",
         action="store_true",
         help=(
-            "Do not require strict_pass_rate=100%% for non-mock clinical model "
-            "benchmarks; schema/bbox/artifact completeness still gate."
+            "Do not require strict_pass_rate=100%% for mock pipeline self-tests. "
+            "Real clinical runs are governed by the explicit minimum-rate gates."
         ),
+    )
+    parser.add_argument(
+        "--min-strict-pass-rate",
+        type=float,
+        default=None,
+        help="Optional minimum strict pass rate in [0, 1].",
+    )
+    parser.add_argument(
+        "--min-mean-partial-credit",
+        type=float,
+        default=None,
+        help="Optional minimum mean partial-credit score in [0, 1].",
     )
     parser.add_argument(
         "--require-multipass-trace",
@@ -79,11 +93,13 @@ def main() -> int:
         manifest_path=args.manifest,
         min_cases=args.min_cases,
         require_review=not args.no_review,
-        require_perfect_mock=not args.allow_nonperfect_real,
+        require_perfect_mock=not args.allow_nonperfect_mock,
         require_multipass_trace=args.require_multipass_trace,
         require_multipass_refinement=args.require_multipass_refinement,
         require_ekg_systematic_probes=args.require_ekg_systematic_probes,
         require_projection_audit=args.require_projection_audit,
+        min_strict_pass_rate=args.min_strict_pass_rate,
+        min_mean_partial_credit=args.min_mean_partial_credit,
     )
     print(verification.to_json())
     return 0 if verification.ok else 1

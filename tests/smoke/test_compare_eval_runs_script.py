@@ -92,6 +92,7 @@ def _scorecard(
             }
         )
     return {
+        "scorecard_kind": "full_rebuild",
         "gateway_mode": "real",
         "total": len(cases),
         "scored": 1,
@@ -105,6 +106,12 @@ def _scorecard(
         "mean_latency_ms": latency_ms,
         "strict_pass_rate": 1.0 if strict else 0.0,
         "mean_partial_credit": case_partial,
+        "protocol_comparability": {
+            "status": "comparable",
+            "comparable": True,
+            "reasons": [],
+        },
+        "scorer_provenance": {"digest": "a" * 64},
         "partial_credit_breakdown": {
             "severity_abnormal": 1.0,
             "severity_exact": 1.0 if strict else 0.0,
@@ -120,12 +127,31 @@ def _scorecard(
     }
 
 
+def _write_protocol_identity(*paths: Path, manifest_sha: str = "b" * 64) -> None:
+    for path in paths:
+        eval_dir = path.parent if path.suffix == ".json" else path
+        (eval_dir / "protocol-fingerprint.json").write_text(
+            json.dumps(
+                {
+                    "protocol": {
+                        "manifest": {
+                            "sha256": manifest_sha,
+                            "selected_case_count": 1,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+
 def test_build_comparison_pairs_cases_and_records_improvement(tmp_path: Path) -> None:
     module = _load_compare_module()
     baseline = tmp_path / "baseline"
     candidate = tmp_path / "candidate"
     baseline.mkdir()
     candidate.mkdir()
+    _write_protocol_identity(baseline, candidate)
     (baseline / "scorecard.json").write_text(
         json.dumps(_scorecard(0.55, strict=False, latency_ms=1000)),
         encoding="utf-8",
@@ -207,6 +233,7 @@ def test_build_comparison_accepts_explicit_scorecard_json_path(
         json.dumps(_scorecard(0.80, strict=False, latency_ms=1)),
         encoding="utf-8",
     )
+    _write_protocol_identity(baseline, candidate)
 
     report = module.build_comparison(baseline, candidate, min_delta=0.05)
 
@@ -282,11 +309,63 @@ def test_build_comparison_allow_incomplete_filters_error_cases(
     )
     candidate.write_text(json.dumps(candidate_payload), encoding="utf-8")
 
+    _write_protocol_identity(baseline, candidate)
     report = module.build_comparison(baseline, candidate, allow_incomplete=True)
 
     assert report["paired_cases"] == 1
     assert report["baseline_health"]["error_count"] == 1
     assert report["candidate_only_cases"] == ["case_2"]
+
+
+def test_build_comparison_rejects_mismatched_scorer_provenance(
+    tmp_path: Path,
+) -> None:
+    module = _load_compare_module()
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    baseline.mkdir()
+    candidate.mkdir()
+    baseline_payload = _scorecard(0.60, strict=False, latency_ms=1)
+    candidate_payload = _scorecard(0.80, strict=False, latency_ms=1)
+    candidate_payload["scorer_provenance"]["digest"] = "c" * 64
+    (baseline / "scorecard.json").write_text(json.dumps(baseline_payload))
+    (candidate / "scorecard.json").write_text(json.dumps(candidate_payload))
+    _write_protocol_identity(baseline, candidate)
+
+    try:
+        module.build_comparison(baseline, candidate)
+    except ValueError as exc:
+        assert "different scorer digests" in str(exc)
+    else:
+        raise AssertionError("expected scorer-provenance mismatch rejection")
+
+
+def test_build_comparison_allows_incompatible_only_when_explicit(
+    tmp_path: Path,
+) -> None:
+    module = _load_compare_module()
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    baseline.mkdir()
+    candidate.mkdir()
+    baseline_payload = _scorecard(0.60, strict=False, latency_ms=1)
+    candidate_payload = _scorecard(0.80, strict=False, latency_ms=1)
+    candidate_payload["scorer_provenance"]["digest"] = "c" * 64
+    (baseline / "scorecard.json").write_text(json.dumps(baseline_payload))
+    (candidate / "scorecard.json").write_text(json.dumps(candidate_payload))
+    _write_protocol_identity(baseline, candidate)
+
+    report = module.build_comparison(
+        baseline,
+        candidate,
+        allow_incompatible=True,
+    )
+
+    assert report["protocol_compatible"] is False
+    assert any(
+        "different scorer digests" in issue
+        for issue in report["protocol_compatibility_issues"]
+    )
 
 
 def test_paired_sign_test_quantifies_improvement_signal() -> None:
@@ -348,6 +427,7 @@ def test_clinical_safety_reports_normal_false_positives_and_urgent_regression(
 
     baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
     candidate.write_text(json.dumps(candidate_payload), encoding="utf-8")
+    _write_protocol_identity(baseline, candidate)
     report = module.build_comparison(baseline, candidate)
     safety = report["clinical_safety"]
 

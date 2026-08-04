@@ -11,6 +11,11 @@ from typing import Any
 
 from PIL import Image
 
+from dicom_overlay.domain.ekg_layout import (
+    canonical_ekg_lead_name,
+    parse_ekg_lead_inventory,
+)
+
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
 _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
 _ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23"
@@ -78,8 +83,16 @@ def verify_eval_artifacts(
     require_multipass_refinement: bool = False,
     require_ekg_systematic_probes: bool = False,
     require_projection_audit: bool = False,
+    min_strict_pass_rate: float | None = None,
+    min_mean_partial_credit: float | None = None,
 ) -> EvalArtifactVerification:
     """Verify a complete eval run without invoking a model."""
+    for name, value in (
+        ("min_strict_pass_rate", min_strict_pass_rate),
+        ("min_mean_partial_credit", min_mean_partial_credit),
+    ):
+        if value is not None and not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be in [0, 1]")
     eval_dir = Path(eval_dir)
     manifest_path = Path(manifest_path)
     failures: list[str] = []
@@ -130,6 +143,8 @@ def verify_eval_artifacts(
             min_cases=min_cases,
             protocol_digest=protocol_digest,
             require_perfect_mock=require_perfect_mock,
+            min_strict_pass_rate=min_strict_pass_rate,
+            min_mean_partial_credit=min_mean_partial_credit,
             failures=failures,
             passed=passed,
         )
@@ -517,6 +532,8 @@ def _verify_scorecard(
     min_cases: int,
     protocol_digest: str,
     require_perfect_mock: bool,
+    min_strict_pass_rate: float | None,
+    min_mean_partial_credit: float | None,
     failures: list[str],
     passed: list[str],
 ) -> None:
@@ -607,6 +624,44 @@ def _verify_scorecard(
             failures.append(
                 f"mock_perfect_gate: strict_pass_rate={scorecard.get('strict_pass_rate')}"
             )
+    _verify_minimum_rate(
+        scorecard,
+        field="strict_pass_rate",
+        minimum=min_strict_pass_rate,
+        check="strict_accuracy_gate",
+        failures=failures,
+        passed=passed,
+    )
+    _verify_minimum_rate(
+        scorecard,
+        field="mean_partial_credit",
+        minimum=min_mean_partial_credit,
+        check="partial_credit_gate",
+        failures=failures,
+        passed=passed,
+    )
+
+
+def _verify_minimum_rate(
+    scorecard: dict[str, Any],
+    *,
+    field: str,
+    minimum: float | None,
+    check: str,
+    failures: list[str],
+    passed: list[str],
+) -> None:
+    if minimum is None:
+        return
+    try:
+        actual = float(scorecard.get(field))
+    except (TypeError, ValueError):
+        failures.append(f"{check}: {field} is missing or invalid")
+        return
+    if actual + 1e-12 >= minimum:
+        passed.append(check)
+    else:
+        failures.append(f"{check}: {field}={actual:.6f}, minimum={minimum:.6f}")
 
 
 def _verify_results(
@@ -858,39 +913,19 @@ def _canonical_ekg_region(value: object) -> str | None:
     name = str(value or "").strip()
     if name == "rhythm_strip":
         return name
-    if name.startswith("lead_"):
-        name = name[5:]
-    if name in {
-        "I",
-        "II",
-        "III",
-        "aVR",
-        "aVL",
-        "aVF",
-        "V1",
-        "V2",
-        "V3",
-        "V4",
-        "V5",
-        "V6",
-    }:
-        return f"lead_{name}"
-    return None
+    return canonical_ekg_lead_name(name)
 
 
 def _ekg_layout_regions(layout: object) -> list[tuple[str, tuple[float, ...]]]:
     if not isinstance(layout, dict):
         return []
-    regions: list[tuple[str, tuple[float, ...]]] = []
-    leads = layout.get("leads")
-    if isinstance(leads, list):
-        for lead in leads:
-            if not isinstance(lead, dict):
-                continue
-            name = _canonical_ekg_region(lead.get("name"))
-            box = _normalized_box_tuple(lead.get("bbox"))
-            if name is not None and box is not None:
-                regions.append((name, box))
+    regions = [
+        (
+            lead.name,
+            (lead.bbox.x, lead.bbox.y, lead.bbox.w, lead.bbox.h),
+        )
+        for lead in parse_ekg_lead_inventory(layout).leads
+    ]
     rhythm = _normalized_box_tuple(layout.get("rhythm_strip_bbox"))
     if rhythm is not None:
         regions.append(("rhythm_strip", rhythm))

@@ -14,7 +14,11 @@ from PIL import Image
 from dicom_overlay.infrastructure.annotation_exporter import render_annotated_result
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult, RegionRect
+    from dicom_overlay.domain.entities import (
+        AnalysisResult,
+        RegionRect,
+        UserRegionAnnotation,
+    )
 
 
 def _finding_payload(result: AnalysisResult) -> list[dict[str, object]]:
@@ -46,6 +50,7 @@ def export_desktop_review(
     result: AnalysisResult,
     output_root: Path,
     user_regions: list[RegionRect] | None = None,
+    user_annotations: list[UserRegionAnnotation] | None = None,
     now: datetime | None = None,
 ) -> Path:
     """Write one self-contained, coordinate-auditable desktop review folder."""
@@ -81,6 +86,40 @@ def export_desktop_review(
                     }
                 ],
                 "notes": [],
+                "source": "user",
+            }
+        )
+    annotation_offset = len(user_regions or [])
+    for index, annotation in enumerate(user_annotations or [], start=1):
+        question = annotation.question.strip()
+        answer = annotation.answer.strip()
+        detail_parts = []
+        if question:
+            detail_parts.append(f"Reviewer question/observation: {question}")
+        if answer:
+            detail_parts.append(f"Regional AI response: {answer}")
+        findings.append(
+            {
+                "id": f"user-{annotation_offset + index}",
+                "regions": ["user_selected"],
+                "label": "Reviewer annotation" if detail_parts else "User region",
+                "detail": (
+                    "\n".join(detail_parts)
+                    if detail_parts
+                    else "Region selected manually for expert review."
+                ),
+                "severity": "info",
+                "bboxes": [
+                    {
+                        "x": annotation.region.x,
+                        "y": annotation.region.y,
+                        "w": annotation.region.w,
+                        "h": annotation.region.h,
+                    }
+                ],
+                "notes": [],
+                "question": question,
+                "answer": answer,
                 "source": "user",
             }
         )

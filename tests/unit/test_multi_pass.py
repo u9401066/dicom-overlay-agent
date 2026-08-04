@@ -220,6 +220,44 @@ class TestEkgSystematicProbeRegions:
         assert probes[1][1].y == pytest.approx(0.5)
         assert probes[1][1].h == pytest.approx(0.5)
 
+    def test_accepts_unprefixed_real_model_lead_names(self):
+        result = _ekg_row_layout_result([])
+        for lead in result.layout["leads"]:
+            lead["name"] = lead["name"].removeprefix("lead_")
+
+        probes = select_ekg_systematic_probe_regions(result)
+
+        assert [key for key, _region in probes] == [
+            "limb_leads",
+            "precordial_leads",
+        ]
+
+    def test_accepts_case_and_separator_variants(self):
+        result = _ekg_row_layout_result([])
+        variants = [
+            "lead i",
+            "LEAD-II",
+            "iii",
+            "AVR",
+            "aVl",
+            "avf",
+            "v 1",
+            "V-2",
+            "v3",
+            "V4",
+            "v5",
+            "V6",
+        ]
+        for lead, name in zip(result.layout["leads"], variants, strict=True):
+            lead["name"] = name
+
+        probes = select_ekg_systematic_probe_regions(result)
+
+        assert [key for key, _region in probes] == [
+            "limb_leads",
+            "precordial_leads",
+        ]
+
     def test_rejects_sparse_or_non_ekg_layout(self):
         result = _ekg_row_layout_result([])
         result.layout = {
@@ -604,6 +642,39 @@ class TestMultiPassInterpreter:
         assert analyzer.finalize_calls[0]["refinement_trace"]
         assert result.analysis_trace[-1]["stage"] == "finalize"
         assert result.analysis_trace[-1]["status"] == "completed"
+
+    async def test_negative_refinement_still_runs_final_report_reconciliation(self):
+        coarse = _result(
+            [
+                _finding(
+                    "f1",
+                    Severity.WARNING,
+                    RegionRect(0.2, 0.2, 0.2, 0.2),
+                )
+            ]
+        )
+        final = _result([])
+        final.summary = "Regional review found no additional finding."
+        analyzer = _FinalizingAnalyzer(coarse, [RefinementResult()], final)
+        interpreter = MultiPassInterpreter(
+            analyzer=analyzer,
+            cropper=_RecordingCropper(),
+            max_zoom_targets=1,
+        )
+
+        result = await interpreter.interpret(
+            "coarse-image",
+            Modality.CXR,
+            [],
+            source_image_base64="original-image",
+            source_size_px=(1000, 1000),
+        )
+
+        assert len(analyzer.finalize_calls) == 1
+        assert analyzer.finalize_calls[0]["refinement_trace"]
+        assert result.summary == "Regional review found no additional finding."
+        assert [finding.id for finding in result.findings] == ["f1"]
+        assert result.analysis_trace[-1]["stage"] == "finalize"
 
     async def test_refinement_crop_uses_original_source_not_coarse_downscale(self):
         box = RegionRect(x=0.2, y=0.2, w=0.4, h=0.4)

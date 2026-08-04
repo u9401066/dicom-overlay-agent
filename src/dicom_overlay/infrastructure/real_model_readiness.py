@@ -28,6 +28,8 @@ _PROVIDER_ENV = {
     "openai/": "OPENAI_API_KEY",
     "anthropic/": "ANTHROPIC_API_KEY",
 }
+_DEFAULT_MIN_STRICT_PASS_RATE = 0.75
+_DEFAULT_MIN_MEAN_PARTIAL_CREDIT = 0.85
 
 
 @dataclass(frozen=True)
@@ -168,13 +170,27 @@ def assess_real_model_readiness(
             }
         )
 
+    protocol_flags: dict[str, Any] = {}
     if eval_dir is not None:
+        protocol_flags = _eval_protocol_flags(eval_dir)
+        is_multipass = protocol_flags.get("multi_pass") is True
         verification = verify_eval_artifacts(
             eval_dir=eval_dir,
             manifest_path=manifest_path,
             min_cases=min_cases,
+            require_multipass_trace=is_multipass,
+            require_multipass_refinement=is_multipass,
+            require_ekg_systematic_probes=is_multipass,
+            require_projection_audit=True,
+            min_strict_pass_rate=_DEFAULT_MIN_STRICT_PASS_RATE,
+            min_mean_partial_credit=_DEFAULT_MIN_MEAN_PARTIAL_CREDIT,
         )
         evidence["eval_dir"] = str(eval_dir)
+        evidence["eval_protocol_flags"] = protocol_flags
+        evidence["eval_quality_targets"] = {
+            "minimum_strict_pass_rate": _DEFAULT_MIN_STRICT_PASS_RATE,
+            "minimum_mean_partial_credit": _DEFAULT_MIN_MEAN_PARTIAL_CREDIT,
+        }
         evidence["eval_artifacts_ok"] = verification.ok
         evidence["eval_passed_checks"] = verification.passed_checks
         if not verification.ok:
@@ -201,6 +217,7 @@ def assess_real_model_readiness(
         eval_dir=eval_dir,
         min_cases=min_cases,
         blockers=blockers,
+        protocol_flags=protocol_flags,
     )
     return RealModelReadinessReport(
         status="ready" if not blockers else "blocked",
@@ -292,6 +309,20 @@ def _manifest_case_count(path: Path, blockers: list[dict[str, Any]]) -> int:
         return 0
     cases = payload.get("cases", []) if isinstance(payload, dict) else []
     return len(cases) if isinstance(cases, list) else 0
+
+
+def _eval_protocol_flags(eval_dir: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(
+            (Path(eval_dir) / "protocol-fingerprint.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, json.JSONDecodeError):
+        return {}
+    protocol = payload.get("protocol") if isinstance(payload, dict) else None
+    flags = protocol.get("flags") if isinstance(protocol, dict) else None
+    return dict(flags) if isinstance(flags, dict) else {}
 
 
 def _probe_openrouter_model(model_id: str) -> ProviderProbeResult:
@@ -406,6 +437,7 @@ def _next_commands(
     eval_dir: Path | None,
     min_cases: int,
     blockers: list[dict[str, Any]],
+    protocol_flags: dict[str, Any],
 ) -> list[str]:
     manifest = str(manifest_path)
     blocker_codes = {str(item.get("code", "")) for item in blockers}
@@ -418,10 +450,16 @@ def _next_commands(
         if eval_dir is not None:
             command += f" --eval-dir {eval_dir}"
         return [command]
-    return [
-        (
-            "scripts\\run-meeti-openclaw-experiment.cmd "
-            f"--model-id {model_id} --manifest {manifest} --timeout-sec 90 "
-            "--limit 1 --artifact-min-cases 1"
-        )
-    ]
+    command = (
+        "scripts\\run-meeti-openclaw-experiment.cmd "
+        f"--model-id {model_id} --manifest {manifest} --timeout-sec 90 "
+        "--limit 1 --artifact-min-cases 1"
+    )
+    prompt_profile = str(protocol_flags.get("analysis_prompt_profile") or "")
+    if prompt_profile and prompt_profile != "clinical":
+        command += f" --analysis-prompt-profile {prompt_profile}"
+    if protocol_flags.get("multi_pass") is True:
+        command += " --multi-pass"
+    if protocol_flags.get("ecgfounder_waveform_evidence") is True:
+        command += " --ecgfounder-waveform-evidence"
+    return [command]

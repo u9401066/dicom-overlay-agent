@@ -70,6 +70,12 @@ def test_meeti_experiment_script_records_model_and_artifacts() -> None:
     assert "scripts\\export-eval-annotations.py" in script
     assert "scorecard_rebuilt" in script
     assert "review_artifacts" in script
+    assert '"scripts/run-meeti-openclaw-experiment.py"' in script
+    assert script.index('"scripts/run-meeti-openclaw-experiment.py"') < script.index(
+        "function Write-ExperimentJson"
+    )
+    assert "--min-strict-pass-rate" in script
+    assert "--min-mean-partial-credit" in script
 
 
 def test_meeti_experiment_waits_for_actual_gateway_socket(monkeypatch) -> None:
@@ -121,6 +127,7 @@ def test_meeti_experiment_config_records_bounded_openclaw_timeouts(tmp_path) -> 
         target_config=target_config,
         model_id="openai/gpt-5.6-luna",
         profile_key="openai-vision",
+        harness_plugin_path=tmp_path / "dicom-overlay-agent-harness",
         inference_timeout_sec=180,
     )
 
@@ -130,6 +137,13 @@ def test_meeti_experiment_config_records_bounded_openclaw_timeouts(tmp_path) -> 
     assert metadata["agent_timeout_sec"] == 175
     assert payload["models"]["providers"]["openai"]["timeoutSeconds"] == 165
     assert payload["agents"]["defaults"]["timeoutSeconds"] == 175
+    assert payload["tools"] == {
+        "allow": ["dicom_bbox_validate"],
+        "web": {
+            "search": {"enabled": False},
+            "fetch": {"enabled": False},
+        },
+    }
 
 
 def test_meeti_experiment_auto_selects_exact_vision_profile() -> None:
@@ -143,6 +157,55 @@ def test_meeti_experiment_auto_selects_exact_vision_profile() -> None:
         module.effective_provider_profile("openai/gpt-5.6-luna", "", {})
         == "openai-luna"
     )
+
+
+def test_meeti_experiment_arm_and_quality_gate_are_fail_closed() -> None:
+    module = _load_meeti_experiment_module()
+    args = SimpleNamespace(
+        multi_pass=False,
+        ecgfounder_waveform_evidence=False,
+        analysis_prompt_profile="clinical",
+    )
+
+    assert module.experiment_arm(args) == "single_pass"
+    args.multi_pass = True
+    assert module.experiment_arm(args) == "multipass"
+    args.ecgfounder_waveform_evidence = True
+    assert module.experiment_arm(args) == "multipass_ecgfounder"
+    args.ecgfounder_waveform_evidence = False
+    args.multi_pass = False
+    args.analysis_prompt_profile = "minimal_control"
+    assert module.experiment_arm(args) == "minimal_control"
+
+    failed = module.evaluate_quality_gate(
+        {"strict_pass_rate": 0.74, "mean_partial_credit": 0.84},
+        min_strict_pass_rate=0.75,
+        min_mean_partial_credit=0.85,
+    )
+    assert failed["passed"] is False
+    assert len(failed["failures"]) == 2
+    passed = module.evaluate_quality_gate(
+        {"strict_pass_rate": 0.75, "mean_partial_credit": 0.85},
+        min_strict_pass_rate=0.75,
+        min_mean_partial_credit=0.85,
+    )
+    assert passed["passed"] is True
+
+
+def test_meeti_experiment_rejects_ecgfounder_without_multipass(
+    monkeypatch,
+) -> None:
+    module = _load_meeti_experiment_module()
+    monkeypatch.setattr(
+        module.sys,
+        "argv",
+        ["run-meeti-openclaw-experiment.py", "--ecgfounder-waveform-evidence"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        module.parse_args()
+
+    assert exc.value.code == 2
 
 
 def test_meeti_experiment_parses_catalog_input_even_after_cli_crash() -> None:

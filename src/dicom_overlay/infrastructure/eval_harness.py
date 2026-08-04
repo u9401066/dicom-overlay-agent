@@ -706,19 +706,19 @@ def _recall(
 
 
 def _keyword_hit(needle: str, haystack: str) -> bool:
-    if _positive_phrase_hit(needle, haystack):
-        return True
-    return any(
-        _positive_phrase_hit(alias, haystack)
-        for alias in _KEYWORD_ALIASES.get(_normalize_lexical(needle), ())
-    )
+    return bool(_keyword_positive_spans(needle, haystack))
 
 
 def _positive_phrase_hit(phrase: str, haystack: str) -> bool:
+    return bool(_positive_phrase_spans(phrase, haystack))
+
+
+def _positive_phrase_spans(phrase: str, haystack: str) -> list[tuple[int, int]]:
     phrase_l = _normalize_lexical(phrase)
     if not phrase_l:
-        return False
+        return []
     pattern = re.compile(rf"(?<!\w){re.escape(phrase_l)}(?!\w)")
+    spans: list[tuple[int, int]] = []
     for match in pattern.finditer(haystack):
         if not _is_non_asserted_positive_hit(
             phrase_l,
@@ -726,8 +726,37 @@ def _positive_phrase_hit(phrase: str, haystack: str) -> bool:
             match.start(),
             match.end(),
         ):
-            return True
-    return False
+            spans.append((match.start(), match.end()))
+    return spans
+
+
+def _keyword_positive_spans(keyword: str, haystack: str) -> list[tuple[int, int]]:
+    folded = _normalize_lexical(keyword)
+    forms = (keyword, *_KEYWORD_ALIASES.get(folded, ()))
+    return sorted(
+        {
+            span
+            for form in forms
+            for span in _positive_phrase_spans(form, haystack)
+        }
+    )
+
+
+def _has_unconsumed_concept_assertion(
+    candidate: str,
+    haystack: str,
+    expected_spans: list[tuple[int, int]],
+) -> bool:
+    """True when a candidate has an assertion beyond a longer reference phrase."""
+
+    candidate_spans = _keyword_positive_spans(candidate, haystack)
+    return any(
+        not any(
+            expected_start <= start and end <= expected_end
+            for expected_start, expected_end in expected_spans
+        )
+        for start, end in candidate_spans
+    )
 
 
 def _is_non_asserted_positive_hit(
@@ -806,13 +835,22 @@ def _concept_metrics(
         )
 
     predicted: set[str] = set()
+    expected_spans: list[tuple[int, int]] = []
     for canonical, keywords in expected_groups.items():
         if any(_keyword_hit(keyword, haystack) for keyword in keywords):
             predicted.add(canonical)
+        expected_spans.extend(
+            span
+            for keyword in keywords
+            for span in _keyword_positive_spans(keyword, haystack)
+        )
 
     for candidate in _SCORABLE_CONCEPTS:
-        if _keyword_hit(candidate, haystack):
-            predicted.add(_canonical_concept(candidate))
+        canonical = _canonical_concept(candidate)
+        if canonical in expected_groups:
+            continue
+        if _has_unconsumed_concept_assertion(candidate, haystack, expected_spans):
+            predicted.add(canonical)
 
     # An abnormal structured finding is an asserted prediction even when its
     # label is outside the controlled vocabulary. Do not double-count a label

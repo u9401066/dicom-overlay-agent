@@ -114,6 +114,7 @@ def _write_eval_artifacts(eval_dir: Path, manifest_path: Path, count: int) -> No
                 "schema_pass_rate": 1.0,
                 "bbox_in_bounds_rate": 1.0,
                 "strict_pass_rate": 1.0,
+                "mean_partial_credit": 1.0,
                 "cant_miss_missed": [],
                 "urgent_concern_missed": [],
                 "manifest_total": count,
@@ -230,6 +231,14 @@ def test_readiness_accepts_complete_artifacts_and_present_provider_key(
     assert payload["blockers"] == []
     assert payload["evidence"]["manifest_cases"] == 2
     assert payload["evidence"]["eval_artifacts_ok"] is True
+    assert payload["evidence"]["eval_protocol_flags"] == {"multi_pass": False}
+    assert payload["evidence"]["eval_quality_targets"] == {
+        "minimum_strict_pass_rate": 0.75,
+        "minimum_mean_partial_credit": 0.85,
+    }
+    assert "projection_audit_artifacts" in payload["evidence"][
+        "eval_passed_checks"
+    ]
     assert "sk-secret" not in json.dumps(payload)
     assert "scripts\\run-meeti-openclaw-experiment.cmd" in payload["next_commands"][0]
     assert "--model-id openrouter/minimax/minimax-m3" in payload["next_commands"][0]

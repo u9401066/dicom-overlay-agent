@@ -106,6 +106,7 @@ _PROMPT_SOURCE_PATHS = (
     "src/dicom_overlay/application/interpretation_harness.py",
     "src/dicom_overlay/application/multi_pass.py",
     "src/dicom_overlay/application/rhythm_strip.py",
+    "src/dicom_overlay/domain/ekg_layout.py",
     "src/dicom_overlay/infrastructure/bbox_signal_calibrator.py",
     "src/dicom_overlay/infrastructure/clinical_rule_loader.py",
     "src/dicom_overlay/infrastructure/hooks/clinical_consistency.py",
@@ -827,12 +828,27 @@ class _MockGateway:
             )
 
 
+def _bbox_count(value: object) -> int:
+    findings = getattr(value, "findings", None)
+    if isinstance(findings, list):
+        return sum(_bbox_count(finding) for finding in findings)
+    bboxes = getattr(value, "bboxes", None)
+    return len(bboxes) if isinstance(bboxes, list) else 0
+
+
 class _CountingAnalyzer(VisionAnalyzerService):
     """Count model turns while preserving optional refinement/trace capabilities."""
 
-    def __init__(self, inner: VisionAnalyzerService) -> None:
+    def __init__(
+        self,
+        inner: VisionAnalyzerService,
+        *,
+        synthetic_bbox_receipts: bool = False,
+    ) -> None:
         self._inner = inner
         self.analyze_calls = 0
+        self._synthetic_bbox_receipts = synthetic_bbox_receipts
+        self._last_synthetic_receipts: list[dict[str, object]] = []
 
     async def analyze(
         self,
@@ -841,7 +857,9 @@ class _CountingAnalyzer(VisionAnalyzerService):
         valid_regions: list[str],
     ) -> Any:
         self.analyze_calls += 1
-        return await self._inner.analyze(image_base64, modality, valid_regions)
+        result = await self._inner.analyze(image_base64, modality, valid_regions)
+        self._set_synthetic_bbox_receipt(_bbox_count(result))
+        return result
 
     async def refine(
         self,
@@ -856,13 +874,18 @@ class _CountingAnalyzer(VisionAnalyzerService):
         if not callable(refine_method):
             raise NotImplementedError("inner analyzer does not support refine()")
         self.analyze_calls += 1
-        return await refine_method(
+        result = await refine_method(
             image_base64,
             modality,
             valid_regions,
             hypothesis=hypothesis,
             crop_region=crop_region,
         )
+        accepted = _bbox_count(hypothesis)
+        for delta in getattr(result, "deltas", ()):
+            accepted += _bbox_count(getattr(delta, "finding", None))
+        self._set_synthetic_bbox_receipt(accepted)
+        return result
 
     async def finalize(
         self,
@@ -877,20 +900,55 @@ class _CountingAnalyzer(VisionAnalyzerService):
         if not callable(finalize_method):
             raise NotImplementedError("inner analyzer does not support finalize()")
         self.analyze_calls += 1
-        return await finalize_method(
+        result = await finalize_method(
             image_base64,
             modality,
             valid_regions,
             draft=draft,
             refinement_trace=refinement_trace,
         )
+        self._set_synthetic_bbox_receipt(_bbox_count(draft))
+        return result
 
     def last_run_trace(self) -> dict[str, object]:
         trace_method = getattr(self._inner, "last_run_trace", None)
         if not callable(trace_method):
             return {}
         trace = trace_method()
-        return trace if isinstance(trace, dict) else {}
+        trace = dict(trace) if isinstance(trace, dict) else {}
+        if self._last_synthetic_receipts:
+            tools = trace.get("tools")
+            tools = list(tools) if isinstance(tools, list) else []
+            if "dicom_bbox_validate" not in tools:
+                tools.append("dicom_bbox_validate")
+            audit = trace.get("tool_audit")
+            audit = list(audit) if isinstance(audit, list) else []
+            trace["tools"] = tools
+            trace["tool_audit"] = [*audit, *self._last_synthetic_receipts]
+        return trace
+
+    def _set_synthetic_bbox_receipt(self, accepted_count: int) -> None:
+        self._last_synthetic_receipts = []
+        if not self._synthetic_bbox_receipts:
+            return
+        details = {
+            "mode": "mock_protocol_selftest",
+            "accepted_count": accepted_count,
+            "rejected_count": 0,
+        }
+        self._last_synthetic_receipts = [
+            {
+                "schema_version": 1,
+                "tool": "dicom_bbox_validate",
+                "tool_call_id": f"mock-{uuid4()}",
+                "accepted_count": accepted_count,
+                "rejected_count": 0,
+                "details_sha256": hashlib.sha256(
+                    json.dumps(details, sort_keys=True).encode("utf-8")
+                ).hexdigest(),
+                "source": "mock_protocol_selftest",
+            }
+        ]
 
     async def chat(self, message: str) -> str:
         return await self._inner.chat(message)
@@ -958,8 +1016,12 @@ def _build_multi_pass_analyzer(
     cropper: Any,
     max_zoom_targets: int,
     max_ekg_systematic_probes: int = DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
+    synthetic_bbox_receipts: bool = False,
 ) -> tuple[MultiPassAnalyzer, _CountingAnalyzer]:
-    counter = _CountingAnalyzer(inner)
+    counter = _CountingAnalyzer(
+        inner,
+        synthetic_bbox_receipts=synthetic_bbox_receipts,
+    )
     interpreter = MultiPassInterpreter(
         analyzer=counter,
         cropper=cropper,
@@ -1101,6 +1163,7 @@ async def _run(
     multi_pass: bool,
     multi_pass_max_targets: int,
     multi_pass_max_ekg_systematic_probes: int,
+    analysis_prompt_profile: str,
     partial_scorecard_interval: int,
     rhythm_strip_pass: bool = True,
     ecg_founder_waveform_evidence: bool = False,
@@ -1133,6 +1196,7 @@ async def _run(
                 cropper=cropper,
                 max_zoom_targets=multi_pass_max_targets,
                 max_ekg_systematic_probes=(multi_pass_max_ekg_systematic_probes),
+                synthetic_bbox_receipts=mode == "mock",
             )
             analyzer = _wrap_with_app_hooks(
                 multi_pass_analyzer,
@@ -1402,20 +1466,33 @@ async def _run(
     if mode == "mock":
         payloads = [_mock_payload_for(c) for c in cases]
         async with _MockGateway(payloads) as gw:
-            client = _make_client(gw.url, timeout_sec=timeout_sec)
+            client = _make_client(
+                gw.url,
+                timeout_sec=timeout_sec,
+                analysis_prompt_profile=analysis_prompt_profile,
+            )
             try:
                 return await analyze_with_client(client)
             finally:
                 await client.disconnect()
 
-    client = _make_client(gateway_url, timeout_sec=timeout_sec)
+    client = _make_client(
+        gateway_url,
+        timeout_sec=timeout_sec,
+        analysis_prompt_profile=analysis_prompt_profile,
+    )
     try:
         return await analyze_with_client(client)
     finally:
         await client.disconnect()
 
 
-def _make_client(gateway_url: str, *, timeout_sec: int) -> OpenClawClient:
+def _make_client(
+    gateway_url: str,
+    *,
+    timeout_sec: int,
+    analysis_prompt_profile: str = "clinical",
+) -> OpenClawClient:
     return OpenClawClient(
         gateway_url=gateway_url,
         timeout_sec=timeout_sec,
@@ -1423,6 +1500,7 @@ def _make_client(gateway_url: str, *, timeout_sec: int) -> OpenClawClient:
         inference_timeout_sec=timeout_sec,
         registry=get_active_registry(),
         base_dir=_REPO_ROOT,
+        analysis_prompt_profile=analysis_prompt_profile,
     )
 
 
@@ -1775,6 +1853,15 @@ def main() -> int:
         help="Use app MultiPassAnalyzer: coarse read, crop abnormal bboxes, refine.",
     )
     parser.add_argument(
+        "--analysis-prompt-profile",
+        choices=("clinical", "minimal_control"),
+        default="clinical",
+        help=(
+            "clinical uses the app skill/prompt harness; minimal_control keeps "
+            "only a single-look JSON envelope for the no-harness control arm."
+        ),
+    )
+    parser.add_argument(
         "--multi-pass-max-targets",
         type=int,
         default=3,
@@ -1844,6 +1931,12 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
+    if args.analysis_prompt_profile == "minimal_control" and args.multi_pass:
+        parser.error("minimal_control cannot be combined with --multi-pass")
+    if args.analysis_prompt_profile == "minimal_control" and args.rhythm_strip_pass:
+        parser.error("minimal_control requires --no-rhythm-strip-pass")
+    if args.ecgfounder_waveform_evidence and not args.multi_pass:
+        parser.error("--ecgfounder-waveform-evidence requires --multi-pass")
     _configure_eval_logging(args.verbose)
 
     manifest_path = args.manifest or (
@@ -1955,6 +2048,7 @@ def main() -> int:
                 "single_pass_bbox_calibrator": "calibrate_ekg_bboxes",
                 "max_image_edge_px": _MAX_IMAGE_EDGE_PX,
                 "multi_pass": bool(args.multi_pass),
+                "analysis_prompt_profile": args.analysis_prompt_profile,
                 "multi_pass_max_targets": args.multi_pass_max_targets,
                 "multi_pass_max_ekg_systematic_probes": (
                     args.multi_pass_max_ekg_systematic_probes
@@ -2030,6 +2124,7 @@ def main() -> int:
                 multi_pass_max_ekg_systematic_probes=(
                     args.multi_pass_max_ekg_systematic_probes
                 ),
+                analysis_prompt_profile=args.analysis_prompt_profile,
                 partial_scorecard_interval=args.partial_scorecard_interval,
                 rhythm_strip_pass=args.rhythm_strip_pass,
                 ecg_founder_waveform_evidence=(args.ecgfounder_waveform_evidence),

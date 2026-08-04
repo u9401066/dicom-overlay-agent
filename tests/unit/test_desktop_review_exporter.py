@@ -16,6 +16,7 @@ from dicom_overlay.domain.entities import (
     Modality,
     RegionRect,
     Severity,
+    UserRegionAnnotation,
 )
 from dicom_overlay.infrastructure.desktop_review_exporter import (
     export_desktop_review,
@@ -61,6 +62,13 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
         result=result,
         output_root=tmp_path,
         user_regions=[RegionRect(0.6, 0.5, 0.2, 0.2)],
+        user_annotations=[
+            UserRegionAnnotation(
+                region=RegionRect(0.1, 0.6, 0.2, 0.2),
+                question="Is the baseline stable here?",
+                answer="The crop remains indeterminate; verify on source ECG.",
+            )
+        ],
         now=datetime(2026, 7, 25, 4, 5, 6, tzinfo=UTC),
     )
 
@@ -75,6 +83,10 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
         "h": 0.25,
     }
     assert payload["findings"][1]["source"] == "user"
+    assert payload["findings"][2]["label"] == "Reviewer annotation"
+    assert payload["findings"][2]["question"] == "Is the baseline stable here?"
+    assert payload["findings"][2]["answer"].startswith("The crop remains")
+    assert "Regional AI response" in payload["findings"][2]["detail"]
     assert payload["findings"][0]["confidence"] == "low"
     assert payload["findings"][0]["question"].startswith("Is this")
     assert payload["findings"][0]["source"] == "interactive_ai_review"

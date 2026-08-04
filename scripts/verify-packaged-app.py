@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -22,6 +23,22 @@ MIN_NODE_VERSION = (24, 15, 0)
 EXPECTED_OPENCLAW_VERSION = "2026.7.1-2"
 EXPECTED_NODE_VERSION = "v24.18.0"
 PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC = 180
+
+BUILD_SOURCE_ROOTS = (
+    "src/dicom_overlay",
+    "openclaw/workspace",
+    "clinical_rules",
+    "scripts",
+)
+BUILD_SOURCE_FILES = (
+    "config.yaml",
+    "dicom-overlay-agent.spec",
+    "openclaw/package.json",
+    "openclaw/package-lock.json",
+    "pyproject.toml",
+    "THIRD_PARTY_NOTICES.md",
+    "uv.lock",
+)
 
 REQUIRED_FILES = (
     "DICOMOverlayAgent.exe",
@@ -282,6 +299,13 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             "node_bytes": totals["node"],
             "total_bytes": totals["total"],
         },
+        "integrity": {
+            "launcher_sha256": _sha256_file(exe),
+            "payload_tree_sha256": _bundle_tree_sha256(bundle),
+        },
+        "source_provenance": _source_provenance(
+            Path(__file__).resolve().parents[1]
+        ),
         "budgets": {
             "launcher_max_bytes": MAX_LAUNCHER_BYTES,
             "app_layer_max_bytes": MAX_APP_LAYER_BYTES,
@@ -302,6 +326,83 @@ def _read_openclaw_version(bundle: Path) -> str:
     except (OSError, json.JSONDecodeError):
         return ""
     return str(payload.get("version") or "")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
+
+
+def _bundle_tree_sha256(bundle: Path) -> str:
+    if not bundle.is_dir():
+        return ""
+    digest = hashlib.sha256()
+    paths = sorted(
+        (
+            path
+            for path in bundle.rglob("*")
+            if path.is_file() and path.name != "bundle-manifest.json"
+        ),
+        key=lambda path: path.relative_to(bundle).as_posix(),
+    )
+    for path in paths:
+        relative = path.relative_to(bundle).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_sha256_file(path).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _source_provenance(repo_root: Path) -> dict[str, Any]:
+    files: list[Path] = []
+    for relative in BUILD_SOURCE_ROOTS:
+        root = repo_root / relative
+        if root.is_dir():
+            files.extend(
+                path
+                for path in root.rglob("*")
+                if path.is_file()
+                and "__pycache__" not in path.parts
+                and path.suffix.casefold() not in {".pyc", ".pyo"}
+            )
+    files.extend(
+        path
+        for relative in BUILD_SOURCE_FILES
+        if (path := repo_root / relative).is_file()
+    )
+    unique_files = sorted(
+        set(files),
+        key=lambda path: path.relative_to(repo_root).as_posix(),
+    )
+    digest = hashlib.sha256()
+    for path in unique_files:
+        relative = path.relative_to(repo_root).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_sha256_file(path).encode("ascii"))
+        digest.update(b"\n")
+
+    source_args = [*BUILD_SOURCE_ROOTS, *BUILD_SOURCE_FILES]
+    commit = _read_version(["git", "rev-parse", "HEAD"], cwd=repo_root)
+    status = _read_version(
+        ["git", "status", "--porcelain", "--", *source_args],
+        cwd=repo_root,
+    )
+    return {
+        "git_commit": commit,
+        "git_dirty": bool(status.strip()),
+        "source_tree_sha256": digest.hexdigest(),
+        "source_file_count": len(unique_files),
+        "included_roots": list(BUILD_SOURCE_ROOTS),
+        "included_files": list(BUILD_SOURCE_FILES),
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -452,12 +553,11 @@ def _version_tuple(version: str) -> tuple[int, int, int]:
     return (parts[0], parts[1], parts[2])
 
 
-def _read_version(command: list[str]) -> str:
-    if not Path(command[0]).is_file():
-        return ""
+def _read_version(command: list[str], *, cwd: Path | None = None) -> str:
     try:
         result = subprocess.run(
             command,
+            cwd=cwd,
             capture_output=True,
             text=True,
             encoding="utf-8",

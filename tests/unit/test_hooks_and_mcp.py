@@ -47,7 +47,7 @@ def _make_result(
     modality: Modality = Modality.EKG,
     summary: str = "Normal sinus rhythm",
 ) -> AnalysisResult:
-    return AnalysisResult(
+    result = AnalysisResult(
         modality=modality,
         summary=summary,
         severity=Severity.NORMAL,
@@ -83,6 +83,34 @@ def _make_result(
         analysis_time_ms=150,
         model_used="test",
     )
+    if modality is Modality.EKG:
+        result.layout = {
+            "format": "12lead_rows",
+            "leads": [
+                {
+                    "name": name,
+                    "label_visible": True,
+                    "bbox": [0.0, index / 12, 1.0, 1 / 12],
+                }
+                for index, name in enumerate(
+                    [
+                        "I",
+                        "II",
+                        "III",
+                        "aVR",
+                        "aVL",
+                        "aVF",
+                        "V1",
+                        "V2",
+                        "V3",
+                        "V4",
+                        "V5",
+                        "V6",
+                    ]
+                )
+            ],
+        }
+    return result
 
 
 # ── InputGuard Tests ─────────────────────────────────────────────────
@@ -190,6 +218,20 @@ class TestOutputValidator:
         assert len(result.checklist) == 16
         validated = validator.post_analyze(req, result)
         assert validated.summary == result.summary
+
+    def test_missing_ekg_lead_inventory_is_incomplete(self):
+        validator = OutputValidator(strict=False)
+        req = _make_request()
+        result = _make_result()
+        result.layout = {}
+
+        validated = validator.post_analyze(req, result)
+
+        assert validated.incomplete is True
+        assert "EKG layout is missing a lead inventory" in (
+            validated.validation_warnings
+        )
+        assert validated.review_required is True
 
     def test_low_confidence_finding_with_question_requires_review(self):
         validator = OutputValidator()

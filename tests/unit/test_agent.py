@@ -242,7 +242,16 @@ class TestOverlayAgent:
         assert updated.findings[0].severity is Severity.INFO
         assert updated.findings[0].source == "interactive_ai_review"
         assert updated.severity is Severity.CRITICAL
+        assert updated.summary.startswith(
+            "Reviewer-confirmed regional update: revised Nonspecific ST-T change."
+        )
+        assert "Current overlay findings: Nonspecific ST-T change [info]." in (
+            updated.summary
+        )
+        assert "safety floor" in updated.summary
         assert updated.review_required is True
+        assert any("initial checklist" in reason for reason in updated.review_reasons)
+        assert any("Reconcile" in step for step in updated.next_steps)
         assert updated.analysis_trace[-1]["stage"] == "interactive_review"
         assert updated.analysis_trace[-1]["user_confirmed"] is True
         assert updated.analysis_trace[-1]["bbox_source"] == (
@@ -252,6 +261,18 @@ class TestOverlayAgent:
             "status": "ok",
             "ink_pixel_ratio": 0.12,
             "low_signal": False,
+        }
+        assert updated.analysis_trace[-1]["report_reconciliation"] == {
+            "findings": "updated",
+            "summary": "updated",
+            "overall_severity": "retained_safety_floor",
+            "checklist": "retained_requires_review",
+            "next_steps": "retained_with_reconciliation_step",
+            "summary_before": "Abnormal ECG",
+            "summary_after": updated.summary,
+            "severity_before": "critical",
+            "structured_severity_after": "info",
+            "severity_after": "critical",
         }
         assert agent.result_revision == 5
 
@@ -359,12 +380,52 @@ class TestOverlayAgent:
         )
 
         assert updated.findings == []
+        assert "No focal overlay findings remain." in updated.summary
+        assert "safety floor" in updated.summary
         assert updated.analysis_trace[-1]["bbox_source"] == (
             "selected_static_region_fallback"
         )
         assert updated.analysis_trace[-1]["bboxes"] == [
             {"x": 0.4, "y": 0.3, "w": 0.2, "h": 0.2}
         ]
+
+    def test_reviewer_reconciliation_includes_retained_checklist_severity(
+        self,
+        agent,
+    ):
+        original = Finding(
+            id="f1",
+            regions=["lead_V2"],
+            label="Candidate",
+            detail="Regional candidate.",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.2, 0.2, 0.2)],
+        )
+        agent._last_result = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Initial report",
+            severity=Severity.WARNING,
+            findings=[original],
+            checklist={
+                "rhythm": ChecklistItem("sinus", Severity.NORMAL),
+                "qt": ChecklistItem("prolonged", Severity.WARNING),
+            },
+        )
+        agent._annotation_accumulator.reset([original])
+        agent._result_revision = 5
+        agent._state = AgentState.DISPLAYING
+
+        updated = agent.apply_finding_delta(
+            FindingDelta(op=FindingOp.RETRACT, finding=original),
+            expected_revision=5,
+            local_signal_audit={"status": "ok", "low_signal": False},
+        )
+
+        assert updated.findings == []
+        assert updated.severity is Severity.WARNING
+        reconciliation = updated.analysis_trace[-1]["report_reconciliation"]
+        assert reconciliation["structured_severity_after"] == "warning"
+        assert reconciliation["overall_severity"] == "matches_structured_report"
 
     def test_reviewer_delta_rejects_ambiguous_duplicate_current_ids(self, agent):
         first = Finding(

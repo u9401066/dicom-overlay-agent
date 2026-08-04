@@ -59,6 +59,32 @@ def _result() -> AnalysisResult:
         model_used="openai/gpt-5.6-luna",
         image_quality="Limited screenshot; waveform remains readable.",
         next_steps=["Review V2 at source resolution."],
+        layout={
+            "format": "12lead_rows",
+            "leads": [
+                {
+                    "name": name,
+                    "label_visible": True,
+                    "bbox": [0.0, index / 12, 1.0, 1 / 12],
+                }
+                for index, name in enumerate(
+                    [
+                        "I",
+                        "II",
+                        "III",
+                        "aVR",
+                        "aVL",
+                        "aVF",
+                        "V1",
+                        "V2",
+                        "V3",
+                        "V4",
+                        "V5",
+                        "V6",
+                    ]
+                )
+            ],
+        },
         analysis_trace=[
             {
                 "stage": "coarse",
@@ -115,19 +141,58 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     assert "Question for review" in finding.text()
     assert "Source: interactive ai review" in finding.text()
     assert panel._checklist_layout.count() == 2
-    process = panel._process_layout.itemAt(0).widget()
+    inventory = panel._process_layout.itemAt(0).widget()
+    assert inventory is not None
+    assert "12/12 visible and valid" in inventory.text()
+    process = panel._process_layout.itemAt(1).widget()
     assert process is not None
     assert "dicom_bbox_validate" in process.text()
-    systematic = panel._process_layout.itemAt(1).widget()
+    systematic = panel._process_layout.itemAt(2).widget()
     assert systematic is not None
     assert "ekg_systematic_precordial_leads" in systematic.text()
-    refined = panel._process_layout.itemAt(2).widget()
+    refined = panel._process_layout.itemAt(3).widget()
     assert refined is not None
     assert "Source: original_roi" in refined.text()
     assert "accepted=2" in refined.text()
     assert "ecg_founder_analyze_waveform" in refined.text()
     assert "predictions=10" in refined.text()
     assert "calibration=uncalibrated" in refined.text()
+    panel.close()
+
+
+def test_report_panel_marks_retained_checklist_after_review_writeback(
+    qt_app: QApplication,
+) -> None:
+    result = _result()
+    result.analysis_trace.append(
+        {
+            "stage": "interactive_review",
+            "status": "applied",
+            "operation": "revise",
+            "user_confirmed": True,
+            "report_reconciliation": {
+                "findings": "updated",
+                "summary": "updated",
+                "checklist": "retained_requires_review",
+                "severity_before": "warning",
+                "structured_severity_after": "info",
+                "severity_after": "warning",
+            },
+        }
+    )
+    panel = SummaryPanel()
+
+    panel.update_result(result)
+
+    assert panel._tabs.tabText(1) == "Checklist*"
+    assert panel._checklist_layout.count() == 3
+    notice = panel._checklist_layout.itemAt(0).widget()
+    assert notice is not None
+    assert "pending reconciliation" in notice.text()
+    process = panel._process_layout.itemAt(4).widget()
+    assert process is not None
+    assert "Report reconciliation" in process.text()
+    assert "warning -> warning (structured=info)" in process.text()
     panel.close()
 
 
@@ -157,6 +222,31 @@ def test_promoted_manual_region_is_consumed_without_removing_other_regions(
     assert overlay.consume_user_region(RegionRect(*promoted)) is False
     overlay.clear_user_regions()
     assert overlay.user_regions == []
+    overlay.close()
+
+
+def test_manual_region_retains_reviewer_question_and_regional_answer(
+    qt_app: QApplication,
+) -> None:
+    overlay = OverlayWindow()
+    values = (0.1, 0.2, 0.3, 0.2)
+    region = RegionRect(*values)
+    overlay._user_regions = [values]
+    overlay._content_rect = (0, 0, 1000, 500)
+
+    assert overlay.annotate_user_region(
+        region,
+        question="Is this real?",
+        answer="The crop is indeterminate.",
+    )
+
+    annotation = overlay.user_region_annotations[0]
+    assert annotation.region == region
+    assert annotation.question == "Is this real?"
+    assert annotation.answer == "The crop is indeterminate."
+    assert [item[5] for item in overlay._highlights] == ["Reviewer annotation"]
+    assert overlay.consume_user_region(region) is True
+    assert overlay.user_region_annotations == []
     overlay.close()
 
 
@@ -272,7 +362,7 @@ def test_process_tab_exposes_interactive_writeback_receipt(
 
     panel.update_result(result)
 
-    receipt = panel._process_layout.itemAt(3).widget()
+    receipt = panel._process_layout.itemAt(4).widget()
     assert receipt is not None
     assert "Operation: revise" in receipt.text()
     assert "Box source: app_selected_original_roi" in receipt.text()

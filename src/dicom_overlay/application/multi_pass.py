@@ -27,6 +27,7 @@ from typing import Protocol
 
 import structlog
 
+from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     Finding,
@@ -346,31 +347,7 @@ def select_ekg_systematic_probe_regions(
     """
     if max_probes <= 0 or result.modality is not Modality.EKG:
         return []
-    raw_leads = result.layout.get("leads", [])
-    if not isinstance(raw_leads, list):
-        return []
-
-    lead_regions: dict[str, RegionRect] = {}
-    for raw in raw_leads:
-        if not isinstance(raw, dict) or raw.get("label_visible") is False:
-            continue
-        name = str(raw.get("name", "")).strip()
-        bbox = raw.get("bbox")
-        if not name or not isinstance(bbox, (list, tuple)) or len(bbox) < 4:
-            continue
-        try:
-            region = _clamp_region(
-                RegionRect(
-                    x=float(bbox[0]),
-                    y=float(bbox[1]),
-                    w=float(bbox[2]),
-                    h=float(bbox[3]),
-                )
-            )
-        except (TypeError, ValueError):
-            continue
-        if region is not None:
-            lead_regions[name] = region
+    lead_regions = parse_ekg_lead_inventory(result.layout).by_name()
 
     probes: list[tuple[str, RegionRect]] = []
     for key, expected_names in _EKG_SYSTEMATIC_LEAD_GROUPS:
@@ -1051,6 +1028,7 @@ class MultiPassInterpreter:
 
         zoom_hints: list[str] = []
         refinements: list[tuple[_RefinementTarget, RegionRect, RefinementResult]] = []
+        completed_refinement_turn = False
         for target in targets:
             bbox = target.crop_region
             source_limited = source_size_px is not None and needs_manual_zoom(
@@ -1112,6 +1090,9 @@ class MultiPassInterpreter:
                 target=target,
                 crop_region=crop_region,
             )
+            completed_refinement_turn = completed_refinement_turn or (
+                refinement is not None
+            )
             if refinement is not None and refinement.deltas:
                 refinements.append((target, crop_region, refinement))
             trace.append(
@@ -1146,7 +1127,10 @@ class MultiPassInterpreter:
                 }
             )
 
-        if not refinements and not zoom_hints:
+        can_finalize = callable(getattr(self._analyzer, "finalize", None))
+        if not refinements and not zoom_hints and not (
+            completed_refinement_turn and can_finalize
+        ):
             return coarse
         merged = self._merge(coarse, refinements, zoom_hints)
         if self._bbox_calibrator is not None:
@@ -1157,7 +1141,7 @@ class MultiPassInterpreter:
                 )
             except Exception:
                 logger.warning("Final bbox calibration failed; keeping merged result")
-        if refinements:
+        if completed_refinement_turn and can_finalize:
             merged = await self._finalize_report(
                 source_image_base64 or image_base64,
                 modality,

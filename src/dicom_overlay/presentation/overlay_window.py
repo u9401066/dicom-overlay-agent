@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         ChecklistItem,
         DisplayFrame,
         RegionRect,
+        UserRegionAnnotation,
         WindowRect,
     )
     from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
@@ -204,6 +205,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
 
     def update_result(self, result: AnalysisResult) -> None:
         """Update panel with new analysis result."""
+        from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
         from dicom_overlay.domain.entities import Severity
         from dicom_overlay.domain.modality_profile import get_active_registry
 
@@ -215,6 +217,29 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._clear_layout(self._findings_layout)
         self._clear_layout(self._checklist_layout)
         self._clear_layout(self._process_layout)
+
+        report_reconciliation = next(
+            (
+                entry.get("report_reconciliation")
+                for entry in reversed(result.analysis_trace)
+                if entry.get("stage") == "interactive_review"
+                and entry.get("status") == "applied"
+                and isinstance(entry.get("report_reconciliation"), dict)
+            ),
+            None,
+        )
+        self._tabs.setTabText(1, "Checklist*" if report_reconciliation else "Checklist")
+        if report_reconciliation:
+            reconciliation_label = QLabel(
+                "Retained from the initial report; pending reconciliation with "
+                "the reviewer-confirmed regional update."
+            )
+            reconciliation_label.setWordWrap(True)
+            reconciliation_label.setTextFormat(Qt.TextFormat.PlainText)
+            reconciliation_label.setStyleSheet(
+                "color: #ffb000; padding: 2px 0 6px 0;"
+            )
+            self._checklist_layout.addWidget(reconciliation_label)
 
         severity_rank = {
             Severity.CRITICAL: 0,
@@ -319,6 +344,27 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             next_label.setStyleSheet("color: #c8ced9; padding: 4px 0;")
             self._findings_layout.addWidget(next_label)
 
+        if result.modality.value == "EKG":
+            inventory = parse_ekg_lead_inventory(result.layout)
+            lead_text = f"Lead inventory: {len(inventory.leads)}/12 visible and valid"
+            if inventory.missing_names:
+                lead_text += "\nMissing: " + ", ".join(inventory.missing_names)
+            if inventory.duplicate_names:
+                lead_text += "\nDuplicates: " + ", ".join(
+                    inventory.duplicate_names
+                )
+            if inventory.malformed_entries:
+                lead_text += (
+                    f"\nMalformed/hidden entries: {inventory.malformed_entries}"
+                )
+            layout_label = QLabel(lead_text)
+            layout_label.setWordWrap(True)
+            layout_label.setTextFormat(Qt.TextFormat.PlainText)
+            layout_label.setStyleSheet(
+                "color: #8ad0ff; padding: 3px 0; border-bottom: 1px solid #3f3f49;"
+            )
+            self._process_layout.addWidget(layout_label)
+
         for index, entry in enumerate(result.analysis_trace, start=1):
             stage = str(entry.get("stage", "step")).replace("_", " ").title()
             status = str(entry.get("status", ""))
@@ -337,6 +383,20 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 details.append(f"Box source: {entry['bbox_source']}")
             if entry.get("user_confirmed") is True:
                 details.append("Reviewer confirmation: recorded")
+            reconciliation = entry.get("report_reconciliation")
+            if isinstance(reconciliation, dict):
+                details.append(
+                    "Report reconciliation: "
+                    f"findings={reconciliation.get('findings', 'unknown')}, "
+                    f"summary={reconciliation.get('summary', 'unknown')}, "
+                    "checklist="
+                    f"{reconciliation.get('checklist', 'unknown')}, "
+                    "severity="
+                    f"{reconciliation.get('severity_before', '?')} -> "
+                    f"{reconciliation.get('severity_after', '?')} "
+                    "(structured="
+                    f"{reconciliation.get('structured_severity_after', '?')})"
+                )
             signal_audit = entry.get("local_signal_audit")
             if isinstance(signal_audit, dict):
                 signal_bits = []
@@ -695,6 +755,9 @@ class OverlayWindow(QWidget):
         self._selection_start: QPoint | None = None
         self._draft_rect: tuple[int, int, int, int] | None = None
         self._user_regions: list[tuple[float, float, float, float]] = []
+        self._user_region_notes: dict[
+            tuple[float, float, float, float], tuple[str, str]
+        ] = {}
 
         # Region highlights to draw
         self._highlights: list[
@@ -727,10 +790,56 @@ class OverlayWindow(QWidget):
     def user_regions(self) -> list[tuple[float, float, float, float]]:
         return list(self._user_regions)
 
+    @property
+    def user_region_annotations(self) -> list[UserRegionAnnotation]:
+        from dicom_overlay.domain.entities import RegionRect, UserRegionAnnotation
+
+        annotations: list[UserRegionAnnotation] = []
+        for values in self._user_regions:
+            question, answer = self._user_region_notes.get(values, ("", ""))
+            annotations.append(
+                UserRegionAnnotation(
+                    region=RegionRect(*values),
+                    question=question,
+                    answer=answer,
+                )
+            )
+        return annotations
+
+    def annotate_user_region(
+        self,
+        region: RegionRect,
+        *,
+        question: str = "",
+        answer: str = "",
+        tolerance: float = 1e-6,
+    ) -> bool:
+        """Attach reviewer-visible text to an existing manual region."""
+
+        target = (region.x, region.y, region.w, region.h)
+        for values in self._user_regions:
+            if all(
+                abs(actual - expected) <= tolerance
+                for actual, expected in zip(values, target, strict=True)
+            ):
+                previous_question, previous_answer = self._user_region_notes.get(
+                    values,
+                    ("", ""),
+                )
+                self._user_region_notes[values] = (
+                    question.strip()[:2000] or previous_question,
+                    answer.strip()[:4000] or previous_answer,
+                )
+                self._refresh_user_region_highlights()
+                self.update()
+                return True
+        return False
+
     def clear_user_regions(self) -> None:
         """Clear reviewer-drawn regions at a new-image boundary."""
 
         self._user_regions.clear()
+        self._user_region_notes.clear()
         self._refresh_user_region_highlights()
 
     def consume_user_region(
@@ -747,7 +856,8 @@ class OverlayWindow(QWidget):
                 abs(actual - expected) <= tolerance
                 for actual, expected in zip(values, target, strict=True)
             ):
-                self._user_regions.pop(index)
+                removed = self._user_regions.pop(index)
+                self._user_region_notes.pop(removed, None)
                 self._refresh_user_region_highlights()
                 self.update()
                 return True
@@ -761,6 +871,7 @@ class OverlayWindow(QWidget):
             return
         content_x, content_y, content_w, content_h = self._content_rect
         for nx, ny, nw, nh in self._user_regions:
+            values = (nx, ny, nw, nh)
             self._highlights.append(
                 (
                     round(content_x + nx * content_w),
@@ -768,7 +879,11 @@ class OverlayWindow(QWidget):
                     round(nw * content_w),
                     round(nh * content_h),
                     "info",
-                    "User region",
+                    (
+                        "Reviewer annotation"
+                        if values in self._user_region_notes
+                        else "User region"
+                    ),
                     _USER_REGION_HIGHLIGHT_ID,
                 )
             )
@@ -880,6 +995,7 @@ class OverlayWindow(QWidget):
         self.summary_panel.clear()
         self._highlights.clear()
         self._user_regions.clear()
+        self._user_region_notes.clear()
         self._content_rect = None
         self.clear_chat()
         self.update()
@@ -932,6 +1048,7 @@ class OverlayWindow(QWidget):
         self.chat_panel.clear()
         self._highlights.clear()
         self._user_regions.clear()
+        self._user_region_notes.clear()
         self._content_rect = None
         self.set_interaction_mode("passive")
         self.update()

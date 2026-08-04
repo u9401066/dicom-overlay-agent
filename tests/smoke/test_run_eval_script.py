@@ -325,6 +325,44 @@ def test_counting_analyzer_delegates_refine_and_runtime_trace() -> None:
     }
 
 
+def test_counting_analyzer_marks_mock_bbox_receipts_as_synthetic() -> None:
+    module = _load_run_eval_module()
+    finding = Finding(
+        id="f1",
+        label="candidate",
+        detail="candidate",
+        severity=Severity.WARNING,
+        regions=["lead_II"],
+        bboxes=[RegionRect(x=0.1, y=0.2, w=0.2, h=0.1)],
+    )
+
+    class Inner:
+        async def refine(self, *args, **kwargs) -> RefinementResult:
+            return RefinementResult()
+
+        def last_run_trace(self) -> dict[str, object]:
+            return {"run_id": "mock-run", "tools": []}
+
+    counter = module._CountingAnalyzer(
+        Inner(),
+        synthetic_bbox_receipts=True,
+    )
+    asyncio.run(
+        counter.refine(
+            "crop",
+            Modality.EKG,
+            ["lead_II"],
+            hypothesis=finding,
+            crop_region=RegionRect(x=0.1, y=0.2, w=0.2, h=0.1),
+        )
+    )
+
+    trace = counter.last_run_trace()
+    assert trace["tools"] == ["dicom_bbox_validate"]
+    assert trace["tool_audit"][0]["accepted_count"] == 1
+    assert trace["tool_audit"][0]["source"] == "mock_protocol_selftest"
+
+
 def test_eval_image_payload_keeps_original_and_bounds_only_coarse_pass() -> None:
     module = _load_run_eval_module()
     processor = module.ImageProcessor()

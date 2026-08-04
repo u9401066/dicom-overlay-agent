@@ -104,6 +104,29 @@ def build_initial_analysis_prompt(
     )
 
 
+def build_minimal_control_prompt(
+    *,
+    modality: Modality,
+    valid_regions: list[str],
+) -> str:
+    """Build the single-look control prompt with only a parseable JSON envelope."""
+
+    allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
+    return (
+        "Experimental minimal-control read. Inspect the attached medical image "
+        "once and do not call tools or use external files. Return one JSON object "
+        "only, without markdown. Do not invent an abnormality when the image is "
+        "within normal limits.\n"
+        f"modality must be '{modality.value}'.\n"
+        f"Allowed region names: {allowed_regions}.\n"
+        "Required top-level keys: modality, summary, severity, findings, "
+        "checklist, layout, next_steps, image_quality, model_used, incomplete, "
+        "incomplete_reasons. Each finding should include id, label, detail, "
+        "severity, regions, and normalized 0-1 bboxes when localization is "
+        "available."
+    )
+
+
 def build_followup_prompt(
     *,
     user_question: str,

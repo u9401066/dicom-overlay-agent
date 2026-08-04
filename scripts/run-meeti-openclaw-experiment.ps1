@@ -5,13 +5,51 @@ param(
     [int]$TimeoutSec = 90,
     [int]$Limit = 0,
     [string]$ExperimentDir = "",
+    [ValidateSet("clinical", "minimal_control")]
+    [string]$AnalysisPromptProfile = "clinical",
     [switch]$MultiPass,
     [int]$MultiPassMaxTargets = 3,
     [int]$MultiPassMaxEkgSystematicProbes = 2,
-    [switch]$RequirePerfect
+    [switch]$EcgFounderWaveformEvidence,
+    [switch]$RequirePerfect,
+    [double]$MinStrictPassRate = 0.75,
+    [double]$MinMeanPartialCredit = 0.85,
+    [switch]$Resume,
+    [ValidateSet("reject", "mark")]
+    [string]$ResumeLegacyPolicy = "reject",
+    [switch]$SkipArtifactVerify
 )
 
 $ErrorActionPreference = "Stop"
+
+# The Python runner is the canonical implementation. Keep this PowerShell entry
+# point only as an argument adapter so protocol gates cannot drift by shell.
+$canonicalRepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $canonicalRepoRoot
+$canonicalArgs = @(
+    "run", "python", "scripts/run-meeti-openclaw-experiment.py",
+    "--model-id", $ModelId,
+    "--timeout-sec", $TimeoutSec,
+    "--limit", $Limit,
+    "--analysis-prompt-profile", $AnalysisPromptProfile,
+    "--multi-pass-max-targets", $MultiPassMaxTargets,
+    "--multi-pass-max-ekg-systematic-probes", $MultiPassMaxEkgSystematicProbes,
+    "--min-strict-pass-rate", $MinStrictPassRate,
+    "--min-mean-partial-credit", $MinMeanPartialCredit,
+    "--resume-legacy-policy", $ResumeLegacyPolicy
+)
+if ($ManifestPath) { $canonicalArgs += @("--manifest", $ManifestPath) }
+if ($ProviderProfile) { $canonicalArgs += @("--provider-profile", $ProviderProfile) }
+if ($ExperimentDir) { $canonicalArgs += @("--experiment-dir", $ExperimentDir) }
+if ($MultiPass) { $canonicalArgs += "--multi-pass" }
+if ($EcgFounderWaveformEvidence) {
+    $canonicalArgs += "--ecgfounder-waveform-evidence"
+}
+if ($RequirePerfect) { $canonicalArgs += "--require-perfect" }
+if ($Resume) { $canonicalArgs += "--resume" }
+if ($SkipArtifactVerify) { $canonicalArgs += "--skip-artifact-verify" }
+& uv @canonicalArgs
+exit $LASTEXITCODE
 
 function Write-ExperimentJson {
     param(

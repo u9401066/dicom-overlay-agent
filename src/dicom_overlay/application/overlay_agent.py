@@ -20,6 +20,7 @@ from dicom_overlay.domain.entities import (
     AgentState,
     AnalysisResult,
     DisplayFrame,
+    Finding,
     FindingDelta,
     FindingOp,
     Modality,
@@ -72,6 +73,67 @@ _REGIONAL_TRACE_KEYS = frozenset(
 _REGIONAL_REVIEW_OUTCOMES = frozenset(
     {"no_change", "blocked", "dismissed", "superseded"}
 )
+
+_REVIEW_RECONCILIATION_REASON = (
+    "A reviewer-confirmed regional update changed the overlay findings. The "
+    "initial checklist and management plan were retained and require reconciliation."
+)
+_REVIEW_RECONCILIATION_STEP = (
+    "Reconcile the reviewer-confirmed regional update with the retained checklist "
+    "and management plan in the source viewer."
+)
+
+
+def _structured_severity(
+    result: AnalysisResult,
+    findings: list[Finding],
+) -> Severity:
+    """Return the highest severity still present in structured report fields."""
+
+    severity = Severity.NORMAL
+    for finding in findings:
+        severity = max_severity(severity, finding.severity)
+    for item in result.checklist.values():
+        severity = max_severity(severity, item.status)
+    return severity
+
+
+def _finding_inventory(findings: list[Finding]) -> str:
+    if not findings:
+        return "No focal overlay findings remain."
+    visible = [
+        f"{finding.label.strip() or finding.id} [{finding.severity.value}]"
+        for finding in findings[:5]
+    ]
+    suffix = f"; plus {len(findings) - 5} more" if len(findings) > 5 else ""
+    return f"Current overlay findings: {'; '.join(visible)}{suffix}."
+
+
+def _review_summary(
+    *,
+    delta: FindingDelta,
+    findings: list[Finding],
+    triage_severity: Severity,
+    structured_severity: Severity,
+) -> str:
+    if delta.op is FindingOp.ADD:
+        action = f"added {delta.finding.label.strip() or delta.finding.id}"
+    elif delta.op is FindingOp.REVISE:
+        action = f"revised {delta.finding.label.strip() or delta.finding.id}"
+    else:
+        action = f"retracted {delta.finding.label.strip() or delta.finding.id}"
+
+    severity_note = f"Overall triage severity is {triage_severity.value}."
+    if triage_severity is not structured_severity:
+        severity_note = (
+            f"Overall triage severity remains {triage_severity.value} as a safety "
+            f"floor; current structured findings/checklist peak at "
+            f"{structured_severity.value}."
+        )
+    return (
+        f"Reviewer-confirmed regional update: {action}. "
+        f"{_finding_inventory(findings)} {severity_note}"
+    )
 
 
 def _safe_local_signal_audit(
@@ -344,9 +406,14 @@ class OverlayAgent:
                 raise ValueError("Review proposal bbox is outside the original ROI")
 
         findings = self._annotation_accumulator.apply(delta)
-        severity = self._last_result.severity
-        for finding in findings:
-            severity = max_severity(severity, finding.severity)
+        structured_severity = _structured_severity(self._last_result, findings)
+        severity = max_severity(self._last_result.severity, structured_severity)
+        summary = _review_summary(
+            delta=delta,
+            findings=findings,
+            triage_severity=severity,
+            structured_severity=structured_severity,
+        )
 
         reason = (
             "Interactive regional AI proposal was applied by the local reviewer; "
@@ -355,6 +422,11 @@ class OverlayAgent:
         review_reasons = list(self._last_result.review_reasons)
         if reason not in review_reasons:
             review_reasons.append(reason)
+        if _REVIEW_RECONCILIATION_REASON not in review_reasons:
+            review_reasons.append(_REVIEW_RECONCILIATION_REASON)
+        next_steps = list(self._last_result.next_steps)
+        if _REVIEW_RECONCILIATION_STEP not in next_steps:
+            next_steps.append(_REVIEW_RECONCILIATION_STEP)
         trace_entry: dict[str, object] = {
             "stage": "interactive_review",
             "status": "applied",
@@ -369,6 +441,22 @@ class OverlayAgent:
                 else "selected_static_region_fallback"
             ),
             "user_confirmed": True,
+            "report_reconciliation": {
+                "findings": "updated",
+                "summary": "updated",
+                "overall_severity": (
+                    "retained_safety_floor"
+                    if severity is not structured_severity
+                    else "matches_structured_report"
+                ),
+                "checklist": "retained_requires_review",
+                "next_steps": "retained_with_reconciliation_step",
+                "summary_before": self._last_result.summary,
+                "summary_after": summary,
+                "severity_before": self._last_result.severity.value,
+                "structured_severity_after": structured_severity.value,
+                "severity_after": severity.value,
+            },
             "bboxes": [
                 {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
                 for box in delta.finding.bboxes
@@ -383,8 +471,10 @@ class OverlayAgent:
         trace = [*self._last_result.analysis_trace, trace_entry]
         updated = dataclasses.replace(
             self._last_result,
+            summary=summary,
             findings=findings,
             severity=severity,
+            next_steps=next_steps,
             review_required=True,
             review_reasons=review_reasons,
             analysis_trace=trace,

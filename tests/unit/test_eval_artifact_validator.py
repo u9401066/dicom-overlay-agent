@@ -234,6 +234,7 @@ def _write_minimal_eval(
                 "bbox_in_bounds_rate": 1.0,
                 "cant_miss_missed": [],
                 "strict_pass_rate": 1.0,
+                "mean_partial_credit": 1.0,
                 "missing_cases": [],
                 "protocol_digest": protocol_digest,
                 "protocol_comparability": {
@@ -292,6 +293,56 @@ def _write_minimal_eval(
         ),
         encoding="utf-8",
     )
+
+
+def test_accuracy_and_partial_credit_thresholds_gate_real_completion(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    scorecard_path = eval_dir / "scorecard.json"
+    scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
+    scorecard["gateway_mode"] = "real"
+    scorecard["strict_pass_rate"] = 0.74
+    scorecard["mean_partial_credit"] = 0.84
+    scorecard_path.write_text(json.dumps(scorecard), encoding="utf-8")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        min_strict_pass_rate=0.75,
+        min_mean_partial_credit=0.85,
+    )
+
+    assert verification.ok is False
+    assert any(
+        failure.startswith("strict_accuracy_gate:")
+        for failure in verification.failures
+    )
+    assert any(
+        failure.startswith("partial_credit_gate:")
+        for failure in verification.failures
+    )
+
+
+def test_accuracy_thresholds_accept_rates_at_target(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        min_strict_pass_rate=1.0,
+        min_mean_partial_credit=1.0,
+    )
+
+    assert verification.ok is True
+    assert "strict_accuracy_gate" in verification.passed_checks
+    assert "partial_credit_gate" in verification.passed_checks
 
 
 def test_multipass_trace_requires_local_candidate_audit_fields(tmp_path: Path) -> None:

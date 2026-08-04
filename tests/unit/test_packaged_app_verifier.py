@@ -82,7 +82,9 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
 ) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)
-    monkeypatch.setattr(module, "_read_version", lambda _command: "v24.18.0")
+    monkeypatch.setattr(
+        module, "_read_version", lambda _command, **_kwargs: "v24.18.0"
+    )
 
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
@@ -90,6 +92,9 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert report["missing_files"] == []
     assert report["banned_components"] == []
     assert report["versions"]["openclaw"] == "2026.7.1-2"
+    assert len(report["integrity"]["launcher_sha256"]) == 64
+    assert len(report["integrity"]["payload_tree_sha256"]) == 64
+    assert len(report["source_provenance"]["source_tree_sha256"]) == 64
 
 
 def test_inspect_bundle_rejects_missing_and_banned_components(tmp_path: Path) -> None:
@@ -136,7 +141,9 @@ def test_inspect_bundle_rejects_sidecar_runtime_and_model_artifacts(
 def test_inspect_bundle_rejects_environment_files(tmp_path: Path, monkeypatch) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)
-    monkeypatch.setattr(module, "_read_version", lambda _command: "v24.18.0")
+    monkeypatch.setattr(
+        module, "_read_version", lambda _command, **_kwargs: "v24.18.0"
+    )
     environment_file = (
         tmp_path / "openclaw/node_modules/openclaw/node_modules/example/.env.production"
     )
@@ -176,6 +183,33 @@ def test_inspect_bundle_excludes_its_generated_manifest_from_payload_size(
     second = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
     assert second["sizes"] == first["sizes"]
+    assert second["integrity"] == first["integrity"]
+
+
+def test_source_provenance_records_scoped_git_state(tmp_path: Path, monkeypatch) -> None:
+    module = _load_module()
+    source = tmp_path / "src" / "dicom_overlay" / "app.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("print('packaged')\n", encoding="utf-8")
+    config = tmp_path / "config.yaml"
+    config.write_text("provider: openai\n", encoding="utf-8")
+    calls: list[tuple[list[str], Path | None]] = []
+
+    def fake_read(command: list[str], *, cwd: Path | None = None) -> str:
+        calls.append((command, cwd))
+        return "abc123" if command[1:3] == ["rev-parse", "HEAD"] else ""
+
+    monkeypatch.setattr(module, "_read_version", fake_read)
+
+    report = module._source_provenance(tmp_path)
+
+    assert report["git_commit"] == "abc123"
+    assert report["git_dirty"] is False
+    assert report["source_file_count"] == 2
+    assert len(report["source_tree_sha256"]) == 64
+    assert calls[0][1] == tmp_path
+    assert calls[1][1] == tmp_path
+    assert calls[1][0][:4] == ["git", "status", "--porcelain", "--"]
 
 
 def test_native_plugin_requires_bbox_validation_tool_contract(tmp_path: Path) -> None:

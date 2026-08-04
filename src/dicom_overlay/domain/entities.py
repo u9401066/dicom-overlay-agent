@@ -64,6 +64,15 @@ class RegionRect:
 
 
 @dataclass(frozen=True)
+class UserRegionAnnotation:
+    """Reviewer-authored context attached to one normalized manual region."""
+
+    region: RegionRect
+    question: str = ""
+    answer: str = ""
+
+
+@dataclass(frozen=True)
 class Finding:
     """A single analysis finding (spec §3.3).
 

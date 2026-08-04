@@ -538,13 +538,40 @@ def _full_ekg_checklist() -> dict[str, ChecklistItem]:
 
 
 def _make_result() -> AnalysisResult:
-    return AnalysisResult(
+    result = AnalysisResult(
         modality=Modality.EKG,
         summary="Normal sinus rhythm",
         severity=Severity.NORMAL,
         findings=[],
         checklist=_full_ekg_checklist(),
     )
+    result.layout = {
+        "format": "12lead_rows",
+        "leads": [
+            {
+                "name": name,
+                "label_visible": True,
+                "bbox": [0.0, index / 12, 1.0, 1 / 12],
+            }
+            for index, name in enumerate(
+                [
+                    "I",
+                    "II",
+                    "III",
+                    "aVR",
+                    "aVL",
+                    "aVF",
+                    "V1",
+                    "V2",
+                    "V3",
+                    "V4",
+                    "V5",
+                    "V6",
+                ]
+            )
+        ],
+    }
+    return result
 
 
 class TestIncompleteFlag:
@@ -563,6 +590,18 @@ class TestIncompleteFlag:
         validated = validator.post_analyze(_make_request(), result)
         assert validated.incomplete is False
         assert validated.incomplete_reasons == []
+
+    def test_empty_layout_marks_ekg_result_incomplete(self):
+        validator = OutputValidator(strict=False)
+        result = _make_result()
+        result.layout = {}
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        assert validated.incomplete is True
+        assert "EKG layout is missing a lead inventory" in (
+            validated.validation_warnings
+        )
 
     def test_normal_observation_boxes_are_removed_from_overlay(self):
         validator = OutputValidator(strict=False)

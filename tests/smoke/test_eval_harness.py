@@ -276,6 +276,51 @@ def test_extra_diagnoses_reduce_concept_precision_and_partial_credit(
     assert noisy_score.strict_pass is False
 
 
+def test_specific_expected_phrase_does_not_create_broader_false_positive(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="nonspecific_stt",
+        keywords=("nonspecific st-t changes",),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Inferolateral nonspecific ST-T changes are present.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_recall == 1.0
+    assert score.concept_false_positives == []
+    assert score.concept_precision == 1.0
+    assert score.strict_pass is True
+
+
+def test_separate_broader_assertion_remains_a_false_positive(tmp_path: Path) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="nonspecific_stt_with_extra",
+        keywords=("nonspecific st-t changes",),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary=(
+            "Inferolateral nonspecific ST-T changes are present. "
+            "Separate anterior T waves are inverted."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_false_positives == ["t wave changes"]
+    assert score.strict_pass is False
+
+
 def test_partial_uncertain_reference_does_not_score_unlabeled_extras(
     tmp_path: Path,
 ) -> None:
@@ -646,6 +691,21 @@ _EKG_CHECKLIST_KEYS = (
 )
 
 
+def _full_ekg_layout() -> dict[str, object]:
+    names = ("I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6")
+    return {
+        "format": "12lead_rows",
+        "leads": [
+            {
+                "name": name,
+                "label_visible": True,
+                "bbox": [0.0, index / 12, 1.0, 1 / 12],
+            }
+            for index, name in enumerate(names)
+        ],
+    }
+
+
 def _result_with_checklist(
     severity: Severity, *, summary: str, checklist: dict[str, ChecklistItem]
 ) -> AnalysisResult:
@@ -660,6 +720,7 @@ def _result_with_checklist(
         severity=severity,
         findings=[],
         checklist=full_checklist,
+        layout=_full_ekg_layout(),
     )
 
 

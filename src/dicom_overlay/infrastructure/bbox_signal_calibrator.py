@@ -8,6 +8,7 @@ import io
 
 from PIL import Image
 
+from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     Modality,
@@ -29,20 +30,6 @@ _RHYTHM_CONTEXT_SIZE_PX = (180, 64)
 _MAX_FINDING_BOX_WIDTH = 0.35
 _MAX_FINDING_BOX_HEIGHT = 0.30
 _MAX_FINDING_BOX_AREA = 0.08
-_CANONICAL_LEADS = {
-    "I",
-    "II",
-    "III",
-    "aVR",
-    "aVL",
-    "aVF",
-    "V1",
-    "V2",
-    "V3",
-    "V4",
-    "V5",
-    "V6",
-}
 
 
 def _pixel_box(
@@ -75,34 +62,11 @@ def _region_payload(region: RegionRect) -> dict[str, float]:
     }
 
 
-def _canonical_lead_name(value: object) -> str | None:
-    name = str(value or "").strip()
-    if name.startswith("lead_"):
-        name = name[5:]
-    return f"lead_{name}" if name in _CANONICAL_LEADS else None
-
-
 def _layout_leads(layout: object) -> list[tuple[str, RegionRect]]:
-    if not isinstance(layout, dict) or not isinstance(layout.get("leads"), list):
-        return []
-    leads: list[tuple[str, RegionRect]] = []
-    for item in layout["leads"]:
-        if not isinstance(item, dict):
-            continue
-        name = _canonical_lead_name(item.get("name"))
-        raw_box = item.get("bbox")
-        if name is None or not isinstance(raw_box, list | tuple) or len(raw_box) < 4:
-            continue
-        try:
-            x, y, w, h = (float(value) for value in raw_box[:4])
-        except (TypeError, ValueError):
-            continue
-        if x < 0.0 or y < 0.0 or w <= 0.0 or h <= 0.0:
-            continue
-        if x + w > 1.0 or y + h > 1.0:
-            continue
-        leads.append((name, RegionRect(x=x, y=y, w=w, h=h)))
-    return leads
+    return [
+        (lead.name, lead.bbox)
+        for lead in parse_ekg_lead_inventory(layout).leads
+    ]
 
 
 def _lead_at_box_center(
