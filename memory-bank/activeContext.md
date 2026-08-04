@@ -28,8 +28,12 @@
   uncalibrated supporting evidence and supplies no screenshot bbox.
 - Verification passes Ruff, mypy for 63 source files, unit+smoke 791 passed with
   3 opt-in skips, OpenClaw integration 55 passed, and the opt-in native Windows
-  rendered capture-exclusion smoke. A fresh frozen bundle rebuild is the next
-  release step.
+  rendered capture-exclusion smoke. The fresh frozen bundle from `1d73a9c` is
+  manifest `ok`: 363.94 MiB / 15,226 files, OpenClaw `2026.7.1-2`, Node
+  `v24.18.0`, EXE SHA-256 `444b99d4...a24d`, and release-only smoke 4/4. Frozen
+  PYZ contains the GPT-5.4 Mini defaults; plugin 1.2.0 source/bundle hashes match
+  and both native tools load. No `.env`, SQLite, Torch, checkpoint, MEETI,
+  waveform, sidecar, banned component, runtime residue, or failure was bundled.
 
 ## Session Update (2026-08-04, regional/ECGFounder audit hardening)
 

@@ -28,8 +28,12 @@
   - Release default is now `openai/gpt-5.4-mini`; the final canary again reached
     an image-capable OpenAI transaction but credits remained exhausted.
   - Ruff, mypy, whitespace, unit+smoke `791 passed, 3 opt-in skipped`, OpenClaw
-    integration 55/55, and rendered Windows capture exclusion all pass. Fresh
-    frozen release rebuild is pending this record.
+    integration 55/55, and rendered Windows capture exclusion all pass.
+  - Rebuilt from `1d73a9c`: manifest `ok`, 363.94 MiB / 15,226 files, OpenClaw
+    `2026.7.1-2`, Node `v24.18.0`, release-only smoke 4/4, and EXE SHA-256
+    `444b99d4614f1f5f4616118f1c0ac35f35f9a79c15b24bc8366f60a13170a24d`.
+    Frozen GPT-5.4 Mini defaults and plugin 1.2.0 are present; both native tools
+    load and banned/residue/sensitive scans are empty.
 
 - **Regional review and ECGFounder evidence-chain hardening** (2026-08-04):
   - Made image/result/capture/revision publication atomic; moved reviewer Apply

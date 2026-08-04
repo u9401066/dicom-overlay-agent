@@ -33,8 +33,8 @@
   OpenAI 後被 `provider_credit_exhausted` 阻擋；因此紀錄為 infrastructure
   `blocked`，不把它算成病例答錯。在額度恢復並完成四臂前不宣稱真實準確率。
 - 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
-  363.92 MiB（15,226 個 payload 檔案），EXE SHA-256 為
-  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`。
+  363.94 MiB（15,226 個 payload 檔案），EXE SHA-256 為
+  `444b99d4614f1f5f4616118f1c0ac35f35f9a79c15b24bc8366f60a13170a24d`。
   封裝掃描確認沒有 `.env*`、Torch、checkpoint、MEETI、sidecar 或實驗資料。詳見
   [`docs/verification-2026-08-05.md`](docs/verification-2026-08-05.md)。
 
@@ -339,13 +339,13 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 | 產物 | 預算 | 現況 |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **6.96 MiB** |
-| App + Python/Qt 層 | < 100 MiB | **94.64 MiB** |
-| slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **6.97 MiB** |
+| App + Python/Qt 層 | < 100 MiB | **94.66 MiB** |
+| slim pinned OpenClaw runtime | < 500 MiB | **181.04 MiB** |
 | 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
-| 完整零安裝 bundle | < 650 MiB | **363.92 MiB** |
+| 完整零安裝 bundle | < 650 MiB | **363.94 MiB** |
 
-本次 staged OpenClaw runtime 為 181.03 MiB，所需 `dist` 與 plugin surfaces
+本次 staged OpenClaw runtime 為 181.04 MiB，所需 `dist` 與 plugin surfaces
 刻意保持完整：修剪其內部 `dist`
 chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們只修剪它
 *周圍* 的一切。

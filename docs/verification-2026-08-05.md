@@ -199,24 +199,33 @@ MultiPass, bbox calibration, schema validation, and UI inventory reporting.
 Final artifact:
 
 - Path: `dist/DICOMOverlayAgent/DICOMOverlayAgent.exe`
-- Source commit: `6debf5997861a3396a5fe1cac92fede71b8c1dd3`
+- Source commit: `1d73a9c911263a358ee1ccc05606c65e4b6a0350`
 - Source dirty: false
 - EXE SHA-256:
-  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`
+  `444b99d4614f1f5f4616118f1c0ac35f35f9a79c15b24bc8366f60a13170a24d`
 - Payload-tree SHA-256:
-  `1ec551a132ebe6ed078c6735b2589e37632b54d85a301a899349946fb3917370`
+  `cd879e9cd2ce2d204d8cd9178dfeba9517ac6139a7413f0d9b3a0ece633b1494`
 - Source-tree SHA-256:
-  `028094520b9c7d612111c780096bc6d5ff77761cfb7d806dfb44332ae91930b4`
+  `6a55715f5c774e285e3d6d145abedb01077662c830ebf7cde9b988781270769c`
 - OpenClaw `2026.7.1-2`; Node `v24.18.0`
-- 381,596,178 bytes, 363.92 MiB, 15,226 payload files
-- Launcher 6.96 MiB; app layer 94.64 MiB; OpenClaw 181.03 MiB; Node 88.25 MiB
+- 381,618,986 bytes, 363.94 MiB, 15,226 payload files
+- Launcher 6.97 MiB; app layer 94.66 MiB; OpenClaw 181.04 MiB; Node 88.25 MiB
 
 The manifest has zero missing, banned, residue, diagnostic, or failure rows.
-Both native tools loaded at runtime. The frozen release tests passed 3/3:
-source self-check, real EXE self-check, and an isolated authenticated Gateway
-smoke. The frozen smoke copied the bundle, generated a local loopback token,
+Both native tools loaded at runtime. The frozen release tests passed 4/4:
+source self-check, verifier self-check, real EXE self-check, and an isolated
+authenticated Gateway smoke (4/4). The frozen smoke copied the bundle,
+generated a local loopback token,
 started OpenClaw, completed a WebSocket handshake, stopped it, and verified
 port 18789 had no remaining listener. No model request was made.
+
+The native harness plugin is version 1.2.0. Source and bundled `index.js` share
+SHA-256 `01e1128c09f7d7e98c37e00dc56f6a37f840208824e98b7348ffd0b3fcf8c022`;
+runtime inspection loaded `dicom_bbox_validate` and
+`ecg_founder_analyze_waveform` with no diagnostics. Direct frozen-PYZ inspection
+found `openai-vision`, `openai/gpt-5.4-mini`, `gpt-5.4-mini`, and the GPT-5.4
+Mini UI label in `openclaw_settings`, plus the screen-selection and projection
+modules. The shipped `config.yaml` has `phi_roi.configured=false`.
 
 The desktop now displays `AI starting`, `AI ready`, or `AI offline` separately
 from the clinical workflow state. First-run OpenClaw migration runs on the
@@ -224,6 +233,10 @@ AsyncBridge with a bounded 180-second budget, so the Qt UI appears immediately.
 The token is generated at first runtime in `.env`; the clean release contains
 no `.env`, logs, state database, waveform, MEETI data, Torch, sidecar, or model
 checkpoint.
+
+The pinned npm tree currently reports 7 moderate and 4 high transitive
+advisories, 0 critical. No automatic breaking `npm audit fix --force` was
+applied during this release build.
 
 ## Reproduction
 

@@ -70,9 +70,9 @@ call it out and propose mitigation before proceeding.
   minimal. `scripts/fetch-node.ps1` provides the opt-in portable `node\node.exe`
   that `gateway_manager._find_node()` prefers for zero-install. `pywin32` stays a
   Windows-only conditional dependency.
-- **Measured budget:** launcher `.exe` < 50 MiB (currently ~6.96 MiB); app +
-  Python/Qt layer < 100 MiB (currently ~94.64 MiB); full zero-install bundle
-  including pinned Node/OpenClaw is ~363.92 MiB. Do NOT prune OpenClaw's internal `dist`
+- **Measured budget:** launcher `.exe` < 50 MiB (currently ~6.97 MiB); app +
+  Python/Qt layer < 100 MiB (currently ~94.66 MiB); full zero-install bundle
+  including pinned Node/OpenClaw is ~363.94 MiB. Do NOT prune OpenClaw's internal `dist`
   chunks to hit a smaller number — that couples to OpenClaw internals and breaks
   Core 3. Trim only *around* the vendored runtime, and re-check sizes after any
   dependency change.

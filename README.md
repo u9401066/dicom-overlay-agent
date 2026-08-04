@@ -20,7 +20,7 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 - The requested `openai/gpt-5.4-mini` current-protocol canary reached a real
   image-capable OpenAI transaction and was blocked by exhausted provider
   credits. No failed transaction is counted as a clinical answer.
-- The final 363.92 MiB portable bundle passed self-check, native plugin loading,
+- The final 363.94 MiB portable bundle passed self-check, native plugin loading,
   and an isolated authenticated Gateway start/connect/clean-stop smoke. See
   [the current evidence ledger](docs/verification-2026-08-05.md).
 
@@ -40,7 +40,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.96 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.97 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -433,13 +433,13 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 
 | Artifact | Budget | Current |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **6.96 MiB** |
-| App + Python/Qt layer | < 100 MiB | **94.64 MiB** |
-| Slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
+| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **6.97 MiB** |
+| App + Python/Qt layer | < 100 MiB | **94.66 MiB** |
+| Slim pinned OpenClaw runtime | < 500 MiB | **181.04 MiB** |
 | Portable Node.js `v24.18.0` | - | **88.25 MiB** |
-| Full zero-install bundle | < 650 MiB | **363.92 MiB** |
+| Full zero-install bundle | < 650 MiB | **363.94 MiB** |
 
-The staged OpenClaw runtime (181.03 MiB in this build) keeps its required dist
+The staged OpenClaw runtime (181.04 MiB in this build) keeps its required dist
 and plugin surfaces intact on purpose: pruning those
 internal `dist` chunks would couple the app to OpenClaw internals and break
 **Core 3** across releases. We trim everything *around* it instead.

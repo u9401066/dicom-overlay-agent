@@ -139,9 +139,10 @@
 - [x] Desktop Gateway migration/startup moved off the Qt thread, has a separate
   180-second readiness budget, displays `AI starting` / `AI ready` /
   `AI offline`, and generates an authenticated loopback token on first launch.
-- [x] Fresh frozen bundle passed source/EXE self-check and isolated authenticated
-  Gateway start/connect/clean-stop smoke: 363.92 MiB, 15,226 files, EXE SHA-256
-  `aa6d9284df7ef6738319e853495cca537014269f62a1f424f371f61a0342e43b`.
+- [x] Fresh frozen bundle passed 4/4 source/verifier/real-EXE self-check and
+  isolated authenticated Gateway start/connect/clean-stop smoke: 363.94 MiB,
+  15,226 files, EXE SHA-256
+  `444b99d4614f1f5f4616118f1c0ac35f35f9a79c15b24bc8366f60a13170a24d`.
 - [ ] Restore OpenAI provider credits, then finish all four
   `openai/gpt-5.4-mini` MEETI arms and clinician-review the paired annotated
   images. The current first-image canary is correctly `blocked` by
