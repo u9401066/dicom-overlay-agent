@@ -47,7 +47,9 @@ def _case(
     )
 
 
-def _result(severity: Severity, *, summary: str, bbox: RegionRect | None = None) -> AnalysisResult:
+def _result(
+    severity: Severity, *, summary: str, bbox: RegionRect | None = None
+) -> AnalysisResult:
     findings = []
     if bbox is not None:
         findings.append(
@@ -105,6 +107,10 @@ def test_score_case_exact_severity_and_keyword_recall(tmp_path: Path) -> None:
     assert score.severity_match is True
     assert score.severity_abnormal_match is True
     assert score.keyword_recall == 1.0
+    assert score.concept_precision == 1.0
+    assert score.concept_recall == 1.0
+    assert score.concept_f1 == 1.0
+    assert score.concept_false_positives == []
     assert score.schema_ok is True
     assert score.bbox_in_bounds is True
     assert score.partial_credit == 1.0
@@ -142,6 +148,20 @@ def test_score_case_marks_incomplete_schema_as_not_ok(tmp_path: Path) -> None:
     assert score.strict_pass is False
 
 
+def test_score_case_accepts_clinically_incomplete_but_structurally_valid_result(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.NORMAL, ())
+    result = _complete_result(Severity.NORMAL, summary="Within normal limits.")
+    result.incomplete = True
+    result.incomplete_reasons = ["Lead V6 is cropped; QTc is not assessable."]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.schema_ok is True
+    assert score.schema_issue == ""
+
+
 def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None:
     case = _case(
         tmp_path,
@@ -152,7 +172,6 @@ def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None
     result = _result(
         Severity.WARNING,
         summary="Anterior STEMI pattern. No effusion.",
-        bbox=RegionRect(x=0.5, y=0.5, w=0.2, h=0.2),
     )
 
     score = score_case(case, result, latency_ms=12)
@@ -165,6 +184,10 @@ def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None
         "severity_abnormal": 1.0,
         "severity_exact": 0.0,
         "keyword_recall": 1.0,
+        "concept_precision": 1.0,
+        "concept_recall": 1.0,
+        "concept_f1": 1.0,
+        "false_positive_penalty": 0.0,
         "negative_recall": 1.0,
     }
     assert score.partial_credit == 0.8
@@ -184,6 +207,11 @@ def test_partial_credit_does_not_award_empty_negative_recall(
         "severity_abnormal": 0.0,
         "severity_exact": 0.0,
         "keyword_recall": 0.0,
+        "concept_precision": 0.0,
+        "concept_recall": 0.0,
+        "concept_f1": 0.0,
+        "false_positive_penalty": 0.0,
+        "negative_recall": 1.0,
     }
     assert score.partial_credit == 0.0
 
@@ -206,7 +234,85 @@ def test_partial_credit_is_capped_when_cant_miss_is_missed(
     score = score_case(case, result, latency_ms=12)
 
     assert score.cant_miss_missed == ["STEMI"]
-    assert score.partial_credit == 0.4
+    assert score.partial_credit <= 0.4
+
+
+def test_extra_diagnoses_reduce_concept_precision_and_partial_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="afib_precision",
+        keywords=("atrial fibrillation",),
+    )
+    clean = _result_with_checklist(
+        Severity.WARNING,
+        summary="Atrial fibrillation is present.",
+        checklist={},
+    )
+    noisy = _result_with_checklist(
+        Severity.WARNING,
+        summary=(
+            "Atrial fibrillation, ventricular tachycardia, and hyperkalemia "
+            "are present."
+        ),
+        checklist={},
+    )
+
+    clean_score = score_case(case, clean, latency_ms=12)
+    noisy_score = score_case(case, noisy, latency_ms=12)
+
+    assert noisy_score.keyword_recall == 1.0
+    assert noisy_score.concept_recall == 1.0
+    assert noisy_score.concept_precision == 0.333
+    assert noisy_score.concept_f1 == 0.5
+    assert noisy_score.concept_false_positives == [
+        "hyperkalemia",
+        "ventricular tachycardia",
+    ]
+    assert noisy_score.false_positive_penalty == 0.667
+    assert noisy_score.partial_credit < clean_score.partial_credit
+    assert noisy_score.strict_pass is False
+
+
+def test_partial_uncertain_reference_does_not_score_unlabeled_extras(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="partial_reference",
+        keywords=("atrial fibrillation",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Atrial fibrillation and prominent T waves are present.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.false_positive_scorable is False
+    assert score.concept_false_positives == []
+    assert score.false_positive_penalty == 0.0
+    assert score.strict_pass is True
+
+
+def test_rather_than_phrase_does_not_assert_rejected_diagnosis(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(tmp_path, Severity.NORMAL, name="normal_variant")
+    result = _result_with_checklist(
+        Severity.INFO,
+        summary="Early repolarization rather than acute ischemia.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "ischemia" not in score.concept_false_positives
 
 
 def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
@@ -215,6 +321,20 @@ def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
         Severity.NORMAL,
         summary="No acute finding.",
     )
+    result.layout = {
+        "format": "12lead_3x4_rhythm",
+        "rhythm_strip_bbox": [0.0, 0.8, 1.0, 0.18],
+    }
+    result.analysis_time_ms = 321
+    result.model_used = "openai/gpt-5.6-luna"
+    result.image_quality = {"grade": "limited"}
+    result.next_steps = ["Confirm calibration."]
+    result.incomplete = True
+    result.incomplete_reasons = ["Calibration marker is not visible."]
+    result.validation_warnings = ["Synthetic validator warning"]
+    result.review_required = True
+    result.review_reasons = ["Low-confidence rhythm classification."]
+    result.analysis_trace = [{"stage": "refine", "tool": "crop_region_base64"}]
     score = score_case(case, result, latency_ms=10)
 
     _write_raw_result(
@@ -226,6 +346,16 @@ def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
 
     raw = json.loads((tmp_path / "case_meta.json").read_text(encoding="utf-8"))
     assert raw["local_image_quality"] == {"low_signal": False}
+    assert raw["layout"]["rhythm_strip_bbox"] == [0.0, 0.8, 1.0, 0.18]
+    assert raw["analysis_time_ms"] == 321
+    assert raw["model_used"] == "openai/gpt-5.6-luna"
+    assert raw["image_quality"] == {"grade": "limited"}
+    assert raw["next_steps"] == ["Confirm calibration."]
+    assert raw["incomplete_reasons"] == ["Calibration marker is not visible."]
+    assert raw["validation_warnings"] == ["Synthetic validator warning"]
+    assert raw["review_required"] is True
+    assert raw["review_reasons"] == ["Low-confidence rhythm classification."]
+    assert raw["analysis_trace"][0]["tool"] == "crop_region_base64"
 
 
 def test_keyword_recall_accepts_no_acute_alias(tmp_path: Path) -> None:
@@ -353,6 +483,52 @@ def test_score_case_detects_out_of_bounds_bbox(tmp_path: Path) -> None:
     )
     score = score_case(case, result, latency_ms=0)
     assert score.bbox_in_bounds is False
+
+
+def test_score_case_rejects_zero_area_bbox(tmp_path: Path) -> None:
+    case = _case(tmp_path, Severity.WARNING, ())
+    zero_width = _result(
+        Severity.WARNING,
+        summary="degenerate bbox",
+        bbox=RegionRect(x=0.2, y=0.2, w=0.0, h=0.3),
+    )
+    zero_height = _result(
+        Severity.WARNING,
+        summary="degenerate bbox",
+        bbox=RegionRect(x=0.2, y=0.2, w=0.3, h=0.0),
+    )
+
+    assert score_case(case, zero_width, latency_ms=0).bbox_in_bounds is False
+    assert score_case(case, zero_height, latency_ms=0).bbox_in_bounds is False
+
+
+def test_normal_and_info_receive_full_clinical_partial_credit(tmp_path: Path) -> None:
+    case = _case(tmp_path, Severity.NORMAL, ())
+    result = _complete_result(Severity.INFO, summary="No acute finding.")
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.severity_match is False
+    assert score.strict_pass is True
+    assert score.partial_credit == 1.0
+    assert score.partial_credit_breakdown["severity_exact"] == 1.0
+    assert score.partial_credit_breakdown["negative_recall"] == 1.0
+
+
+def test_ungradable_info_without_concepts_does_not_manufacture_false_positives(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.INFO, ())
+    result = _complete_result(
+        Severity.WARNING,
+        summary="Hyperkalemia is present.",
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.concept_false_positives == []
+    assert score.concept_precision == 1.0
+    assert score.concept_recall == 1.0
 
 
 def test_score_case_abnormal_group_mismatch(tmp_path: Path) -> None:
@@ -582,9 +758,7 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
         return answers[case.image_path]
 
     out = tmp_path / "out"
-    report = await run_evaluation(
-        cases, analyze, output_dir=out, gateway_mode="mock"
-    )
+    report = await run_evaluation(cases, analyze, output_dir=out, gateway_mode="mock")
 
     assert report.total == 2
     assert report.scored == 2
@@ -593,9 +767,23 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert report.strict_pass_rate == 1.0
     assert report.mean_partial_credit == 1.0
     assert report.partial_credit_breakdown["keyword_recall"] == 1.0
+    assert report.partial_credit_breakdown["negative_recall"] == 1.0
+    assert (
+        report.partial_credit_breakdown["negative_recall"]
+        == report.mean_negative_recall
+    )
+    assert report.mean_concept_precision == 1.0
+    assert report.mean_concept_recall == 1.0
+    assert report.mean_concept_f1 == 1.0
     scorecard = json.loads((out / "scorecard.json").read_text(encoding="utf-8"))
     assert scorecard["gateway_mode"] == "mock"
     assert "mean_negative_recall" in scorecard
+    assert scorecard["mean_concept_precision"] == 1.0
+    assert scorecard["mean_concept_recall"] == 1.0
+    assert scorecard["mean_concept_f1"] == 1.0
+    assert scorecard["mean_false_positive_penalty"] == 0.0
+    assert scorecard["cases"][0]["concept_false_positives"] == []
+    assert scorecard["cases"][0]["concept_f1"] == 1.0
     assert scorecard["mean_partial_credit"] == 1.0
     assert scorecard["strict_pass_rate"] == 1.0
     assert scorecard["manifest_total"] == 2
@@ -607,6 +795,32 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert partial["manifest_total"] == 2
     assert partial["result_count"] == 2
     assert partial["is_partial"] is False
+
+
+async def test_run_evaluation_collects_case_metadata_after_analysis(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.NORMAL, (), name="metadata_after")
+    observed: dict[str, object] = {}
+
+    async def analyze(_case: EvalCase) -> AnalysisResult:
+        observed["local_image_quality"] = {"low_signal": False}
+        return _complete_result(Severity.NORMAL, summary="Within normal limits.")
+
+    await run_evaluation(
+        [case],
+        analyze,
+        output_dir=tmp_path / "out_metadata",
+        gateway_mode="mock",
+        case_metadata=lambda _case: dict(observed),
+    )
+
+    raw = json.loads(
+        (tmp_path / "out_metadata" / "results" / "metadata_after.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert raw["local_image_quality"] == {"low_signal": False}
 
 
 async def test_run_evaluation_fail_fast_on_consecutive_gateway_errors(
@@ -690,11 +904,24 @@ async def test_run_evaluation_records_errors_without_aborting(tmp_path: Path) ->
         raise ConnectionError("gateway down")
 
     report = await run_evaluation(
-        cases, analyze, output_dir=tmp_path / "o", gateway_mode="real"
+        cases,
+        analyze,
+        output_dir=tmp_path / "o",
+        gateway_mode="real",
+        case_metadata=lambda _case: {
+            "protocol_digest": "protocol-123",
+            "source_image_sha256": "image-456",
+        },
     )
     assert report.error_count == 1
     assert report.scored == 0
     assert report.cases[0].error is not None
+    raw = json.loads(
+        (tmp_path / "o" / "results" / "x.json").read_text(encoding="utf-8")
+    )
+    assert raw["protocol_digest"] == "protocol-123"
+    assert raw["source_image_sha256"] == "image-456"
+    assert raw["incomplete"] is True
 
 
 async def test_run_evaluation_throttles_partial_scorecard_for_1000_cases(
@@ -702,8 +929,7 @@ async def test_run_evaluation_throttles_partial_scorecard_for_1000_cases(
     monkeypatch,
 ) -> None:
     cases = [
-        _case(tmp_path, Severity.NORMAL, (), name=f"case_{i:04d}")
-        for i in range(1000)
+        _case(tmp_path, Severity.NORMAL, (), name=f"case_{i:04d}") for i in range(1000)
     ]
     partial_writes: list[int] = []
 
@@ -746,13 +972,17 @@ async def test_run_evaluation_throttles_partial_scorecard_for_1000_cases(
 # Task B: framework coverage matrix (axis x severity)
 # ---------------------------------------------------------------------------
 
+
 def _ekg_case(
     tmp_path: Path,
     severity: Severity,
     *,
     name: str,
+    keywords: tuple[str, ...] = (),
     target_axes: tuple[str, ...] = (),
     cant_miss: tuple[str, ...] = (),
+    urgent_concerns: tuple[str, ...] = (),
+    label_status: str = "asserted",
 ) -> EvalCase:
     img = tmp_path / f"{name}.png"
     img.write_bytes(b"\x89PNG\r\n")
@@ -760,8 +990,11 @@ def _ekg_case(
         image_path=img,
         modality=Modality.EKG,
         expected_severity=severity,
+        expected_keywords=keywords,
         target_axes=target_axes,
         cant_miss=cant_miss,
+        urgent_concerns=urgent_concerns,
+        label_status=label_status,
         label=name,
     )
 
@@ -800,10 +1033,9 @@ def test_compute_axis_coverage_normal_and_abnormal(tmp_path: Path) -> None:
 # Task C: can't-miss hard gate
 # ---------------------------------------------------------------------------
 
+
 def test_cant_miss_caught_when_abnormal_and_named(tmp_path: Path) -> None:
-    case = _ekg_case(
-        tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",)
-    )
+    case = _ekg_case(tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",))
     result = _result_with_checklist(
         Severity.CRITICAL,
         summary="Anterior STEMI with ST elevation in V1-V4.",
@@ -817,9 +1049,7 @@ def test_cant_miss_caught_when_abnormal_and_named(tmp_path: Path) -> None:
 
 
 def test_cant_miss_missed_when_called_normal(tmp_path: Path) -> None:
-    case = _ekg_case(
-        tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",)
-    )
+    case = _ekg_case(tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",))
     # The read names STEMI but calls the tracing normal -> still a miss.
     result = _result_with_checklist(
         Severity.NORMAL,
@@ -832,9 +1062,7 @@ def test_cant_miss_missed_when_called_normal(tmp_path: Path) -> None:
 
 
 def test_cant_miss_missed_when_not_named(tmp_path: Path) -> None:
-    case = _ekg_case(
-        tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",)
-    )
+    case = _ekg_case(tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",))
     result = _result_with_checklist(
         Severity.CRITICAL,
         summary="Significant abnormality, refer urgently.",
@@ -845,15 +1073,251 @@ def test_cant_miss_missed_when_not_named(tmp_path: Path) -> None:
     assert score.cant_miss_missed == ["STEMI"]
 
 
+def test_stemi_cant_miss_requires_critical_severity(tmp_path: Path) -> None:
+    case = _ekg_case(tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",))
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Definite anterior STEMI with ST elevation.",
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="anterior",
+                status=Severity.WARNING,
+            )
+        },
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.cant_miss_caught is False
+    assert score.cant_miss_missed == ["STEMI"]
+
+
+def test_early_repolarization_without_stemi_is_not_a_positive_hit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="early_repol",
+        keywords=("stemi",),
+        cant_miss=("STEMI",),
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Early repolarization pattern without STEMI.",
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="anterior",
+                status=Severity.CRITICAL,
+            )
+        },
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["stemi"]
+    assert score.concept_recall == 0.0
+    assert "early repolarization" in score.concept_false_positives
+    assert score.cant_miss_caught is False
+    assert score.cant_miss_missed == ["STEMI"]
+
+
+def test_uncertain_stemi_is_not_a_positive_hit(tmp_path: Path) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="possible_stemi",
+        keywords=("stemi",),
+        cant_miss=("STEMI",),
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible STEMI cannot be excluded.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.keyword_misses == ["stemi"]
+    assert score.concept_hits == []
+    assert score.cant_miss_caught is False
+
+
+def test_urgent_concern_accepts_critical_uncertain_stemi(tmp_path: Path) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_stemi",
+        urgent_concerns=("STEMI",),
+        label_status="uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible anterior STEMI cannot be excluded; urgent review.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == ["STEMI"]
+    assert score.urgent_concern_missed == []
+    assert score.urgent_concern_recall == 1.0
+
+
+def test_urgent_stemi_concern_accepts_critical_hyperacute_ischemia(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_hyperacute_ischemia",
+        urgent_concerns=("STEMI",),
+        label_status="uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary=(
+            "Tall broad T waves may reflect hyperacute ischemia or benign "
+            "repolarization; no definite STEMI is established."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == ["STEMI"]
+    assert score.urgent_concern_missed == []
+    assert score.urgent_concern_recall == 1.0
+
+
+def test_urgent_concern_rejects_negation_and_unqualified_certainty(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_stemi",
+        urgent_concerns=("STEMI",),
+        label_status="uncertain",
+    )
+    no_stemi = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="No STEMI pattern.",
+        checklist={},
+    )
+    overconfident = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Definite anterior STEMI.",
+        checklist={},
+    )
+
+    assert score_case(case, no_stemi, 10).urgent_concern_missed == ["STEMI"]
+    assert score_case(case, overconfident, 10).urgent_concern_missed == ["STEMI"]
+
+
+def test_urgent_acute_mi_is_distinct_from_stemi(tmp_path: Path) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_acute_mi",
+        urgent_concerns=("acute MI",),
+        label_status="uncertain",
+    )
+    acute_mi = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible acute myocardial infarction cannot be excluded.",
+        checklist={},
+    )
+    stemi_only = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible STEMI cannot be excluded.",
+        checklist={},
+    )
+
+    assert score_case(case, acute_mi, 10).urgent_concern_hits == ["acute MI"]
+    assert score_case(case, stemi_only, 10).urgent_concern_missed == ["acute MI"]
+
+
+async def test_info_ungradable_case_is_excluded_from_accuracy_denominators(
+    tmp_path: Path,
+) -> None:
+    gradable = _ekg_case(tmp_path, Severity.NORMAL, name="normal")
+    ungradable = _ekg_case(
+        tmp_path,
+        Severity.INFO,
+        name="ungradable",
+        label_status="ungradable",
+    )
+    answers = {
+        gradable.image_path: _result_with_checklist(
+            Severity.NORMAL, summary="Normal ECG.", checklist={}
+        ),
+        ungradable.image_path: _result_with_checklist(
+            Severity.WARNING, summary="Possible abnormality.", checklist={}
+        ),
+    }
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        return answers[case.image_path]
+
+    report = await run_evaluation(
+        [gradable, ungradable],
+        analyze,
+        output_dir=tmp_path / "ungradable-output",
+        gateway_mode="mock",
+    )
+
+    assert report.clinical_scorable_count == 1
+    assert report.severity_scorable_count == 1
+    assert report.severity_accuracy == 1.0
+    assert report.severity_abnormal_accuracy == 1.0
+
+
+async def test_run_evaluation_aggregates_urgent_concern_gate(tmp_path: Path) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_stemi",
+        urgent_concerns=("STEMI",),
+        label_status="uncertain",
+    )
+
+    async def analyze(_case: EvalCase) -> AnalysisResult:
+        return _result_with_checklist(
+            Severity.CRITICAL,
+            summary="Possible STEMI; urgent expert review is required.",
+            checklist={},
+        )
+
+    report = await run_evaluation(
+        [case],
+        analyze,
+        output_dir=tmp_path / "urgent-output",
+        gateway_mode="mock",
+    )
+
+    assert report.urgent_concern_total == 1
+    assert report.urgent_concern_caught_count == 1
+    assert report.urgent_concern_missed == []
+    assert report.urgent_concern_passed is True
+
+
 async def test_run_evaluation_aggregates_cant_miss_and_coverage(
     tmp_path: Path,
 ) -> None:
     caught = _ekg_case(
-        tmp_path, Severity.CRITICAL, name="stemi", cant_miss=("STEMI",),
+        tmp_path,
+        Severity.CRITICAL,
+        name="stemi",
+        cant_miss=("STEMI",),
         target_axes=("stemi_pattern",),
     )
     missed = _ekg_case(
-        tmp_path, Severity.CRITICAL, name="vt", cant_miss=("ventricular tachycardia",),
+        tmp_path,
+        Severity.CRITICAL,
+        name="vt",
+        cant_miss=("ventricular tachycardia",),
         target_axes=("rhythm",),
     )
     answers = {
@@ -877,4 +1341,3 @@ async def test_run_evaluation_aggregates_cant_miss_and_coverage(
     assert report.cant_miss_passed is False
     assert "EKG" in report.axis_coverage
     assert report.axis_coverage["EKG"]["covered_axes"] == 2
-

@@ -30,3 +30,13 @@ def test_control_bar_mode_button_cycles_modes(qtbot):
 
     assert seen == [TriggerMode.AUTO, TriggerMode.MANUAL, TriggerMode.HYBRID]
     assert bar.current_trigger_mode == TriggerMode.HYBRID
+
+
+def test_control_bar_positions_inside_offset_screen(qtbot):
+    bar = ControlBarWindow()
+    qtbot.addWidget(bar)
+
+    bar.position_bottom_right(1920, 1080, screen_left=-1920, screen_top=40)
+
+    assert bar.x() == -20 - bar.width()
+    assert bar.y() == 40 + 1080 - bar.height() - 60

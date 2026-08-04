@@ -11,6 +11,7 @@ from dicom_overlay.domain.entities import (
     AnalysisResult,
     AppConfig,
     ChecklistItem,
+    DisplayFrame,
     Modality,
     RegionRect,
     ROICrop,
@@ -36,11 +37,18 @@ class MockScreenMonitor(ScreenMonitorService):
         )
         self.hash_value: str = "0000000000000000"
         self.hash_changed: bool = False
+        self.display: DisplayFrame | None = None
+        self.capture_rects: list[WindowRect] = []
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         return self.window
 
+    def display_for_window(self, window: WindowRect) -> DisplayFrame | None:
+        del window
+        return self.display
+
     def capture_region(self, rect: WindowRect) -> bytes:
+        self.capture_rects.append(rect)
         return self.screenshot
 
     def compute_hash(self, image_data: bytes) -> str:
@@ -385,3 +393,31 @@ class TestOverlayAgent:
 
         assert agent.state == AgentState.DISPLAYING
         assert analyzer.source_size_px == (640, 360)
+
+    @pytest.mark.asyncio
+    async def test_capture_tracks_secondary_display_and_preserves_exact_rect(
+        self, agent, agent_deps
+    ):
+        monitor = agent_deps["screen_monitor"]
+        monitor.window = WindowRect(left=-1800, top=100, width=1600, height=800)
+        monitor.display = DisplayFrame(
+            physical_rect=WindowRect(
+                left=-1920,
+                top=0,
+                width=1920,
+                height=1080,
+            ),
+            device_name=r"\\.\DISPLAY2",
+            monitor_index=1,
+            is_primary=False,
+        )
+        agent._config.phi_roi = ROICrop(top=10, bottom=20, left=30, right=40)
+
+        await agent.start()
+        await agent.tick()
+        await agent.trigger_manual()
+
+        expected = WindowRect(left=-1890, top=10, width=1850, height=1050)
+        assert agent.display_frame == monitor.display
+        assert agent.last_capture_rect == expected
+        assert monitor.capture_rects[-1] == expected

@@ -49,6 +49,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--require-multipass-refinement",
+        action="store_true",
+        help=(
+            "Require real per-case crop/refine model turns and, for boxed "
+            "findings, auditable decisions plus dicom_bbox_validate use."
+        ),
+    )
+    parser.add_argument(
         "--require-projection-audit",
         action="store_true",
         help=(
@@ -65,6 +73,7 @@ def main() -> int:
         require_review=not args.no_review,
         require_perfect_mock=not args.allow_nonperfect_real,
         require_multipass_trace=args.require_multipass_trace,
+        require_multipass_refinement=args.require_multipass_refinement,
         require_projection_audit=args.require_projection_audit,
     )
     print(verification.to_json())

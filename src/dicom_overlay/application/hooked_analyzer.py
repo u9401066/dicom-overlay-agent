@@ -15,7 +15,13 @@ from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.services import VisionAnalyzerService
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult, Modality
+    from dicom_overlay.application.multi_pass import RefinementResult
+    from dicom_overlay.domain.entities import (
+        AnalysisResult,
+        Finding,
+        Modality,
+        RegionRect,
+    )
 
 logger = structlog.get_logger(__name__)
 
@@ -87,6 +93,75 @@ class HookedVisionAnalyzer(VisionAnalyzerService):
                 raise
 
         return result
+
+    async def analyze_with_source_size(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        source_size_px: tuple[int, int] | None,
+        source_image_base64: str | None = None,
+        local_candidate_regions: list[RegionRect] | None = None,
+    ) -> AnalysisResult:
+        """Preserve source-ROI context while wrapping the full multi-pass result."""
+        request = AnalyzeRequest(
+            image_base64=image_base64,
+            modality=modality,
+            valid_regions=valid_regions,
+            metadata={
+                "source_image_base64": source_image_base64,
+                "source_size_px": source_size_px,
+            },
+        )
+        for hook in self._hooks:
+            request = hook.pre_analyze(request)
+
+        analyze_with_source = getattr(self._inner, "analyze_with_source_size", None)
+        if callable(analyze_with_source):
+            result = await analyze_with_source(
+                request.image_base64,
+                request.modality,
+                request.valid_regions,
+                source_size_px=source_size_px,
+                source_image_base64=source_image_base64,
+                local_candidate_regions=local_candidate_regions,
+            )
+        else:
+            result = await self._inner.analyze(
+                request.image_base64,
+                request.modality,
+                request.valid_regions,
+            )
+
+        for hook in reversed(self._hooks):
+            result = hook.post_analyze(request, result)
+        return result
+
+    async def refine(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        hypothesis: Finding | None,
+        crop_region: RegionRect,
+    ) -> RefinementResult:
+        """Delegate the optional hypothesis-aware crop refinement capability."""
+        refine_method = getattr(self._inner, "refine", None)
+        if not callable(refine_method):
+            raise NotImplementedError("inner analyzer does not support refine()")
+        return await refine_method(
+            image_base64,
+            modality,
+            valid_regions,
+            hypothesis=hypothesis,
+            crop_region=crop_region,
+        )
+
+    def last_run_trace(self) -> dict[str, object]:
+        trace_method = getattr(self._inner, "last_run_trace", None)
+        return trace_method() if callable(trace_method) else {}
 
     # -- Delegate all other methods to inner --
 

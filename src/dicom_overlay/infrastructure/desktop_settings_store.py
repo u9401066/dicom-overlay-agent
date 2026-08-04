@@ -57,6 +57,18 @@ class DesktopSettingsStore:
         analysis["trigger_mode"] = mode.value
         self._write_yaml(self._config_path, raw)
 
+    def save_analysis_settings(
+        self, *, multi_pass_enabled: bool, max_zoom_targets: int
+    ) -> None:
+        """Persist the bounded crop/refine settings without dropping config."""
+        if not 1 <= max_zoom_targets <= 5:
+            raise ValueError("max_zoom_targets must be between 1 and 5")
+        raw = self._read_yaml(self._config_path)
+        analysis = raw.setdefault("analysis", {})
+        analysis["multi_pass_enabled"] = bool(multi_pass_enabled)
+        analysis["multi_pass_max_zoom_targets"] = int(max_zoom_targets)
+        self._write_yaml(self._config_path, raw)
+
     def save_provider_profile(
         self,
         profile: ProviderProfile,

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING
+
+from PIL import Image
 
 from dicom_overlay.infrastructure.eval_artifact_validator import (
     verify_eval_artifacts,
@@ -23,11 +26,73 @@ def _write_minimal_eval(eval_dir: Path, manifest_path: Path, count: int = 2) -> 
         ),
         encoding="utf-8",
     )
+    image_hashes: dict[str, str] = {}
+    image_sizes: dict[str, int] = {}
+    for index in range(count):
+        image_path = manifest_path.parent / f"case_{index}.png"
+        Image.new("RGB", (20, 20), "white").save(image_path)
+        image_hashes[f"case_{index}"] = hashlib.sha256(
+            image_path.read_bytes()
+        ).hexdigest()
+        image_sizes[f"case_{index}"] = image_path.stat().st_size
+    protocol = {
+        "source": {
+            "commit": "abc123",
+            "dirty": False,
+            "tracked_diff_sha256": hashlib.sha256(b"").hexdigest(),
+        },
+        "model": {
+            "id": "mock-eval-gateway",
+            "openclaw": {"version": "test"},
+        },
+        "prompts": [{"path": "prompt.py", "sha256": "0" * 64}],
+        "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
+        "flags": {"multi_pass": False},
+        "manifest": {
+            "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "selected_case_count": count,
+            "cases": [
+                {
+                    "case": f"case_{index}",
+                    "image": f"case_{index}.png",
+                    "image_name": f"case_{index}.png",
+                    "size_bytes": image_sizes[f"case_{index}"],
+                    "sha256": image_hashes[f"case_{index}"],
+                }
+                for index in range(count)
+            ],
+        },
+    }
+    protocol_digest = hashlib.sha256(
+        json.dumps(
+            protocol,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
     eval_dir.mkdir(parents=True)
+    (eval_dir / "protocol-fingerprint.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "protocol_scope": "entire_run",
+                "protocol_digest": protocol_digest,
+                "comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
+                "protocol": protocol,
+            }
+        ),
+        encoding="utf-8",
+    )
     (eval_dir / "scorecard.json").write_text(
         json.dumps(
             {
                 "gateway_mode": "mock",
+                "scorecard_kind": "full_rebuild",
                 "manifest_total": count,
                 "result_count": count,
                 "total": count,
@@ -38,6 +103,14 @@ def _write_minimal_eval(eval_dir: Path, manifest_path: Path, count: int = 2) -> 
                 "bbox_in_bounds_rate": 1.0,
                 "cant_miss_missed": [],
                 "strict_pass_rate": 1.0,
+                "missing_cases": [],
+                "protocol_digest": protocol_digest,
+                "protocol_comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
+                "cases": [{"case_label": f"case_{index}"} for index in range(count)],
             }
         ),
         encoding="utf-8",
@@ -49,6 +122,15 @@ def _write_minimal_eval(eval_dir: Path, manifest_path: Path, count: int = 2) -> 
             json.dumps(
                 {
                     "case": f"case_{index}",
+                    "image": f"case_{index}.png",
+                    "protocol_digest": protocol_digest,
+                    "source_image_sha256": image_hashes[f"case_{index}"],
+                    "findings": [
+                        {
+                            "id": "f1",
+                            "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2}],
+                        }
+                    ],
                     "local_image_quality": {"low_signal": False},
                     "local_signal_candidates": {
                         "candidate_count": 1,
@@ -61,8 +143,22 @@ def _write_minimal_eval(eval_dir: Path, manifest_path: Path, count: int = 2) -> 
     review = eval_dir / "review"
     review.mkdir()
     (review / "index.html").write_text("<html></html>", encoding="utf-8")
+    for index in range(count):
+        Image.new("RGB", (40, 20), "white").save(review / f"case_{index}.review.png")
     (review / "bbox-audit.jsonl").write_text(
-        "".join(json.dumps({"case": f"case_{index}"}) + "\n" for index in range(count)),
+        "".join(
+            json.dumps(
+                {
+                    "audit_type": "bbox",
+                    "case": f"case_{index}",
+                    "finding_index": 1,
+                    "bbox_index": 1,
+                    "review_image": f"case_{index}.review.png",
+                }
+            )
+            + "\n"
+            for index in range(count)
+        ),
         encoding="utf-8",
     )
 
@@ -109,9 +205,7 @@ def test_multipass_trace_with_local_candidate_audit_fields_passes(
                 "openclaw_analyze_calls": 1,
                 "crop_calls": 0,
                 "local_candidate_count": 1,
-                "local_candidate_regions": [
-                    {"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}
-                ],
+                "local_candidate_regions": [{"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}],
             }
         )
         + "\n",
@@ -152,14 +246,17 @@ def test_required_multipass_trace_accepts_valid_trace(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     _write_minimal_eval(eval_dir, manifest_path)
     (eval_dir / "multipass-trace.jsonl").write_text(
-        json.dumps(
-            {
-                "case": "case_0",
-                "local_candidate_count": 0,
-                "local_candidate_regions": [],
-            }
-        )
-        + "\n",
+        "".join(
+            json.dumps(
+                {
+                    "case": f"case_{index}",
+                    "local_candidate_count": 0,
+                    "local_candidate_regions": [],
+                }
+            )
+            + "\n"
+            for index in range(2)
+        ),
         encoding="utf-8",
     )
 
@@ -172,6 +269,209 @@ def test_required_multipass_trace_accepts_valid_trace(tmp_path: Path) -> None:
 
     assert verification.ok
     assert "multipass_trace_artifacts" in verification.passed_checks
+
+
+def test_required_multipass_refinement_rejects_trace_only_run(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    (eval_dir / "multipass-trace.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "case": f"case_{index}",
+                    "openclaw_analyze_calls": 1,
+                    "coarse_passes": 1,
+                    "zoom_passes": 0,
+                    "crop_calls": 0,
+                    "local_candidate_count": 1,
+                    "local_candidate_regions": [
+                        {"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}
+                    ],
+                }
+            )
+            + "\n"
+            for index in range(2)
+        ),
+        encoding="utf-8",
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_multipass_refinement=True,
+    )
+
+    assert not verification.ok
+    assert any(
+        "no real crop/refine model turn" in failure
+        for failure in verification.failures
+    )
+    assert any("lack actual dicom_bbox_validate" in failure for failure in verification.failures)
+
+
+def _write_refinement_evidence(
+    eval_dir: Path,
+    *,
+    crop_source: str = "original_roi",
+    accepted_count: int = 1,
+) -> None:
+    for index in range(2):
+        result_path = eval_dir / "results" / f"case_{index}.json"
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        result["analysis_trace"] = [
+            {
+                "stage": "coarse",
+                "status": "completed",
+                "tools": ["dicom_bbox_validate"],
+            },
+            {
+                "stage": "refine",
+                "status": "completed",
+                "tool": "crop_region_base64",
+                "crop_source": crop_source,
+                "tools": ["dicom_bbox_validate"],
+                "tool_audit": [
+                    {
+                        "tool": "dicom_bbox_validate",
+                        "accepted_count": accepted_count,
+                    }
+                ],
+                "decisions": [
+                    {
+                        "action": "confirm",
+                        "target_id": "f1",
+                        "rationale": "Visible morphology persists in the source crop.",
+                    }
+                ],
+            },
+            {
+                "stage": "finalize",
+                "status": "completed",
+                "source": "original_roi",
+                "tools": ["dicom_bbox_validate"],
+                "tool_audit": [
+                    {
+                        "tool": "dicom_bbox_validate",
+                        "accepted_count": accepted_count,
+                    }
+                ],
+            },
+        ]
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+    (eval_dir / "multipass-trace.jsonl").write_text(
+        "".join(
+            json.dumps(
+                {
+                    "case": f"case_{index}",
+                    "openclaw_analyze_calls": 2,
+                    "coarse_passes": 1,
+                    "zoom_passes": 1,
+                    "crop_calls": 1,
+                    "local_candidate_count": 1,
+                    "local_candidate_regions": [
+                        {"x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2}
+                    ],
+                }
+            )
+            + "\n"
+            for index in range(2)
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_required_multipass_refinement_accepts_real_turn_decision_and_tool(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    _write_refinement_evidence(eval_dir)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_multipass_refinement=True,
+    )
+
+    assert verification.ok
+    assert "multipass_refinement_artifacts" in verification.passed_checks
+
+
+def test_required_multipass_refinement_rejects_non_source_crop(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    _write_refinement_evidence(eval_dir, crop_source="coarse_image")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_multipass_refinement=True,
+    )
+
+    assert not verification.ok
+    assert any("did not use original_roi" in item for item in verification.failures)
+
+
+def test_required_multipass_refinement_rejects_unaccepted_bbox_tool_call(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    _write_refinement_evidence(eval_dir, accepted_count=0)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_multipass_refinement=True,
+    )
+
+    assert not verification.ok
+    assert any(
+        "lack an accepted dicom_bbox_validate" in item
+        for item in verification.failures
+    )
+
+
+def test_results_reject_ekg_bbox_outside_declared_lead(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    result_path = eval_dir / "results" / "case_0.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["modality"] = "EKG"
+    result["layout"] = {
+        "leads": [
+            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+        ]
+    }
+    result["findings"][0]["regions"] = ["lead_V5"]
+    result["findings"][0]["bboxes"] = [
+        {"x": 0.1, "y": 0.55, "w": 0.2, "h": 0.1}
+    ]
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+    )
+
+    assert not verification.ok
+    assert any("EKG bbox/lead mismatch" in item for item in verification.failures)
+
 
 def test_required_projection_audit_rejects_missing_fields(tmp_path: Path) -> None:
     eval_dir = tmp_path / "eval"
@@ -200,7 +500,17 @@ def test_required_projection_audit_accepts_roundtrip_fields(tmp_path: Path) -> N
     for index in range(2):
         rows.append(
             {
+                "audit_type": "bbox",
                 "case": f"case_{index}",
+                "finding_index": 1,
+                "bbox_index": 1,
+                "review_image": f"case_{index}.review.png",
+                "normalized": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2},
+                "pixels": {"x0": 2, "y0": 4, "x1": 8, "y1": 8},
+                "width_px": 6,
+                "height_px": 4,
+                "invalid_reason": "",
+                "was_clamped": False,
                 "projection_ok": True,
                 "projection_max_edge_drift_px": 0.4,
                 "projection_was_clamped": False,
@@ -226,3 +536,108 @@ def test_required_projection_audit_accepts_roundtrip_fields(tmp_path: Path) -> N
 
     assert verification.ok
     assert "projection_audit_artifacts" in verification.passed_checks
+
+
+def test_review_verification_rejects_unreadable_png(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    (eval_dir / "review" / "case_0.review.png").write_bytes(b"not-a-png")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+    )
+
+    assert not verification.ok
+    assert any(
+        "unreadable PNG case_0.review.png" in item for item in verification.failures
+    )
+
+
+def test_review_verification_requires_exact_audit_case_set(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    audit = eval_dir / "review" / "bbox-audit.jsonl"
+    audit.write_text(audit.read_text(encoding="utf-8").splitlines()[0] + "\n")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+    )
+
+    assert not verification.ok
+    assert "review_artifacts: bbox audit case set is not exact" in verification.failures
+
+
+def test_projection_verification_rejects_false_or_degenerate_bbox(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path, count=1)
+    row = {
+        "audit_type": "bbox",
+        "case": "case_0",
+        "finding_index": 1,
+        "bbox_index": 1,
+        "review_image": "case_0.review.png",
+        "normalized": {"x": 0.1, "y": 0.2, "w": 0.0, "h": 0.2},
+        "pixels": {},
+        "width_px": 0,
+        "height_px": 0,
+        "invalid_reason": "bbox_degenerate",
+        "was_clamped": False,
+        "projection_ok": False,
+        "projection_max_edge_drift_px": 0.0,
+        "projection_was_clamped": False,
+        "projection_back_projected_bbox": {},
+    }
+    (eval_dir / "review" / "bbox-audit.jsonl").write_text(
+        json.dumps(row) + "\n",
+        encoding="utf-8",
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_projection_audit=True,
+    )
+
+    assert not verification.ok
+    assert any("projection_ok is not true" in item for item in verification.failures)
+
+
+def test_mixed_or_missing_protocol_is_never_reported_comparable(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path, count=1)
+    fingerprint_path = eval_dir / "protocol-fingerprint.json"
+    fingerprint = json.loads(fingerprint_path.read_text(encoding="utf-8"))
+    fingerprint["comparability"] = {
+        "status": "mixed_protocol_legacy",
+        "comparable": False,
+        "reasons": ["legacy results"],
+    }
+    fingerprint_path.write_text(json.dumps(fingerprint), encoding="utf-8")
+
+    mixed = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+    )
+    assert not mixed.ok
+    assert any("mixed/non-comparable" in item for item in mixed.failures)
+
+    fingerprint_path.unlink()
+    missing = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+    )
+    assert not missing.ok
+    assert any("legacy runs are not comparable" in item for item in missing.failures)

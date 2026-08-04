@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dicom_overlay.domain.entities import RegionRect, WindowRect
+from dicom_overlay.domain.entities import RegionRect, ROICrop, WindowRect
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,107 @@ class LogicalRect:
     y: int
     w: int
     h: int
+
+
+@dataclass(frozen=True)
+class OverlayCoordinateFrame:
+    """Exact physical-display to overlay-local logical-pixel mapping."""
+
+    physical_screen: WindowRect
+    logical_screen: WindowRect
+
+    def __post_init__(self) -> None:
+        dimensions = (
+            self.physical_screen.width,
+            self.physical_screen.height,
+            self.logical_screen.width,
+            self.logical_screen.height,
+        )
+        if any(value <= 0 for value in dimensions):
+            raise ValueError("screen dimensions must be positive")
+
+    @property
+    def logical_per_physical_x(self) -> float:
+        return self.logical_screen.width / self.physical_screen.width
+
+    @property
+    def logical_per_physical_y(self) -> float:
+        return self.logical_screen.height / self.physical_screen.height
+
+    @property
+    def max_physical_px_per_logical_px(self) -> float:
+        return max(
+            self.physical_screen.width / self.logical_screen.width,
+            self.physical_screen.height / self.logical_screen.height,
+        )
+
+    def physical_edges_to_local_rect(
+        self, edges: tuple[float, float, float, float]
+    ) -> LogicalRect:
+        """Map absolute physical edges to overlay-local Qt coordinates."""
+        x0, y0, x1, y1 = edges
+        lx0 = round(
+            (x0 - self.physical_screen.left) * self.logical_per_physical_x
+        )
+        ly0 = round(
+            (y0 - self.physical_screen.top) * self.logical_per_physical_y
+        )
+        lx1 = round(
+            (x1 - self.physical_screen.left) * self.logical_per_physical_x
+        )
+        ly1 = round(
+            (y1 - self.physical_screen.top) * self.logical_per_physical_y
+        )
+        return LogicalRect(
+            x=lx0,
+            y=ly0,
+            w=max(1, lx1 - lx0),
+            h=max(1, ly1 - ly0),
+        )
+
+    def physical_rect_to_local(self, rect: WindowRect) -> LogicalRect:
+        return self.physical_edges_to_local_rect(
+            (rect.left, rect.top, rect.right, rect.bottom)
+        )
+
+    def physical_rect_to_global_logical(self, rect: WindowRect) -> WindowRect:
+        local = self.physical_rect_to_local(rect)
+        return WindowRect(
+            left=self.logical_screen.left + local.x,
+            top=self.logical_screen.top + local.y,
+            width=local.w,
+            height=local.h,
+        )
+
+    def local_rect_to_physical_edges(
+        self, rect: LogicalRect
+    ) -> tuple[float, float, float, float]:
+        physical_per_logical_x = 1.0 / self.logical_per_physical_x
+        physical_per_logical_y = 1.0 / self.logical_per_physical_y
+        return (
+            self.physical_screen.left + rect.x * physical_per_logical_x,
+            self.physical_screen.top + rect.y * physical_per_logical_y,
+            self.physical_screen.left
+            + (rect.x + rect.w) * physical_per_logical_x,
+            self.physical_screen.top
+            + (rect.y + rect.h) * physical_per_logical_y,
+        )
+
+    def physical_roi_to_logical(self, roi: ROICrop) -> ROICrop:
+        return ROICrop(
+            top=round(roi.top * self.logical_per_physical_y),
+            bottom=round(roi.bottom * self.logical_per_physical_y),
+            left=round(roi.left * self.logical_per_physical_x),
+            right=round(roi.right * self.logical_per_physical_x),
+        )
+
+    def logical_roi_to_physical(self, roi: ROICrop) -> ROICrop:
+        return ROICrop(
+            top=round(roi.top / self.logical_per_physical_y),
+            bottom=round(roi.bottom / self.logical_per_physical_y),
+            left=round(roi.left / self.logical_per_physical_x),
+            right=round(roi.right / self.logical_per_physical_x),
+        )
 
 
 @dataclass(frozen=True)
@@ -48,7 +149,8 @@ def project_bbox_to_overlay_highlight(
     *,
     bbox: RegionRect,
     image_rect: WindowRect,
-    dpr: float,
+    dpr: float | None = None,
+    coordinate_frame: OverlayCoordinateFrame | None = None,
     severity: str,
     label: str,
     max_roundtrip_drift_px: float | None = None,
@@ -60,13 +162,27 @@ def project_bbox_to_overlay_highlight(
     with the source bbox more reliably across non-integer DPR values.
     """
 
-    if dpr <= 0:
-        raise ValueError("dpr must be > 0")
-    drift_limit = max_roundtrip_drift_px if max_roundtrip_drift_px is not None else dpr
+    if image_rect.width <= 0 or image_rect.height <= 0:
+        raise ValueError("image_rect dimensions must be positive")
+    if coordinate_frame is None and (dpr is None or dpr <= 0):
+        raise ValueError("dpr must be > 0 when coordinate_frame is not provided")
     clamped = _clamp_bbox_extent(bbox)
     physical = _bbox_to_physical_edges(clamped, image_rect)
-    logical = _physical_edges_to_logical_rect(physical, dpr)
-    back_projected, back_physical = _logical_rect_to_bbox(logical, image_rect, dpr)
+    if coordinate_frame is not None:
+        logical = coordinate_frame.physical_edges_to_local_rect(physical)
+        back_physical = coordinate_frame.local_rect_to_physical_edges(logical)
+        default_drift_limit = coordinate_frame.max_physical_px_per_logical_px
+    else:
+        assert dpr is not None
+        logical = _physical_edges_to_logical_rect(physical, dpr)
+        back_physical = _logical_rect_to_physical_edges(logical, dpr)
+        default_drift_limit = dpr
+    drift_limit = (
+        max_roundtrip_drift_px
+        if max_roundtrip_drift_px is not None
+        else default_drift_limit
+    )
+    back_projected = _physical_edges_to_bbox(back_physical, image_rect)
     drift = max(abs(a - b) for a, b in zip(physical, back_physical, strict=True))
     calibration = BboxProjectionCalibration(
         original_bbox=bbox,
@@ -118,22 +234,26 @@ def _physical_edges_to_logical_rect(
     )
 
 
-def _logical_rect_to_bbox(
-    rect: LogicalRect,
-    image_rect: WindowRect,
-    dpr: float,
-) -> tuple[RegionRect, tuple[float, float, float, float]]:
+def _logical_rect_to_physical_edges(
+    rect: LogicalRect, dpr: float
+) -> tuple[float, float, float, float]:
     x0 = rect.x * dpr
     y0 = rect.y * dpr
     x1 = (rect.x + rect.w) * dpr
     y1 = (rect.y + rect.h) * dpr
-    bbox = RegionRect(
+    return (x0, y0, x1, y1)
+
+
+def _physical_edges_to_bbox(
+    edges: tuple[float, float, float, float], image_rect: WindowRect
+) -> RegionRect:
+    x0, y0, x1, y1 = edges
+    return RegionRect(
         x=_clamp_unit((x0 - image_rect.left) / image_rect.width),
         y=_clamp_unit((y0 - image_rect.top) / image_rect.height),
         w=_clamp_unit((x1 - x0) / image_rect.width),
         h=_clamp_unit((y1 - y0) / image_rect.height),
     )
-    return bbox, (x0, y0, x1, y1)
 
 
 def _clamp_unit(value: float) -> float:

@@ -149,6 +149,8 @@ def test_export_eval_annotations_writes_bbox_audit_and_crops(
     assert audit_rows[1]["low_signal"] is True
     assert audit_rows[0]["pixels"] == {"x0": 8, "y0": 14, "x1": 43, "y1": 26}
     assert audit_rows[0]["projection_ok"] is True
+    assert audit_rows[0]["audit_type"] == "bbox"
+    assert audit_rows[0]["review_image"] == "case_1.review.png"
     assert audit_rows[0]["projection_was_clamped"] is False
     assert audit_rows[0]["projection_max_edge_drift_px"] == pytest.approx(0.4)
     assert audit_rows[0]["projection_back_projected_bbox"] == {
@@ -233,9 +235,70 @@ def test_export_eval_annotations_audits_clamped_overflow_bbox(
     }
     assert audit_row["pixels"] == {"x0": 90, "y0": 64, "x1": 100, "y1": 80}
     assert audit_row["was_clamped"] is True
-    assert audit_row["projection_ok"] is True
+    assert audit_row["projection_ok"] is False
     assert audit_row["projection_was_clamped"] is True
     assert audit_row["invalid_reason"] == "extent_out_of_bounds"
+
+
+def test_export_eval_annotations_keeps_degenerate_bbox_as_failed_audit(
+    tmp_path: Path,
+) -> None:
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    Image.new("RGB", (100, 80), "white").save(dataset / "case.png")
+    manifest = dataset / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "label": "case_1",
+                        "image": "case.png",
+                        "modality": "EKG",
+                        "expected_severity": "warning",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = tmp_path / "eval"
+    results = eval_dir / "results"
+    results.mkdir(parents=True)
+    (results / "case_1.json").write_text(
+        json.dumps(
+            {
+                "case": "case_1",
+                "image": "case.png",
+                "findings": [
+                    {
+                        "id": "f1",
+                        "label": "zero box",
+                        "severity": "warning",
+                        "bboxes": [{"x": 0.2, "y": 0.3, "w": 0.0, "h": 0.2}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    export_eval_annotations(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        output_dir=eval_dir / "review",
+    )
+
+    row = json.loads(
+        (eval_dir / "review" / "bbox-audit.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert row["audit_type"] == "bbox"
+    assert row["invalid_reason"] == "bbox_degenerate"
+    assert row["projection_ok"] is False
+    assert row["width_px"] == 0
+    assert row["review_image"] == "case_1.review.png"
 
 
 def test_export_eval_annotations_removes_stale_generated_review_artifacts(
@@ -302,7 +365,9 @@ def test_export_eval_annotations_removes_stale_generated_review_artifacts(
 
     audit_rows = [
         json.loads(line)
-        for line in (review / "bbox-audit.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (review / "bbox-audit.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert audit_rows == [
         {

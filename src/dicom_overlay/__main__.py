@@ -29,17 +29,20 @@ from dicom_overlay.application.multi_pass import (
     MultiPassInterpreter,
 )
 from dicom_overlay.application.overlay_agent import OverlayAgent
-from dicom_overlay.domain.entities import AgentState, Modality
+from dicom_overlay.domain.entities import AgentState, Modality, RegionRect, WindowRect
 from dicom_overlay.domain.modality_profile import (
     build_registry,
     set_active_registry,
 )
 from dicom_overlay.infrastructure.app_paths import app_base_dir
 from dicom_overlay.infrastructure.async_bridge import AsyncBridge
+from dicom_overlay.infrastructure.bbox_signal_calibrator import calibrate_ekg_bboxes
 from dicom_overlay.infrastructure.clinical_rule_loader import build_clinical_engine
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
+from dicom_overlay.infrastructure.desktop_review_exporter import export_desktop_review
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.gateway_manager import GatewayManager
+from dicom_overlay.infrastructure.hooks.bbox_calibration import BboxCalibrationHook
 from dicom_overlay.infrastructure.hooks.clinical_consistency import (
     ClinicalConsistencyHook,
 )
@@ -89,6 +92,52 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
         ("base_dir", True, str(base_dir)),
         ("config.yaml", config_path.exists(), str(config_path)),
     ]
+    required_skills = (
+        "dicom-ekg-analysis",
+        "dicom-cxr-analysis",
+        "dicom-ct-brain-analysis",
+    )
+    skills_root = base_dir / "openclaw" / "workspace" / "skills"
+    missing_skills = [
+        name
+        for name in required_skills
+        if not (skills_root / name / "SKILL.md").is_file()
+    ]
+    rows.append(
+        (
+            "skills",
+            not missing_skills,
+            (
+                str(skills_root)
+                if not missing_skills
+                else f"missing: {', '.join(missing_skills)}"
+            ),
+        )
+    )
+    harness_root = (
+        base_dir / "openclaw" / "workspace" / "plugins" / "dicom-overlay-agent-harness"
+    )
+    harness_files = (
+        harness_root / "manifest.json",
+        harness_root / "openclaw.plugin.json",
+        harness_root / "package.json",
+        harness_root / "index.js",
+    )
+    rows.append(
+        (
+            "harness_plugin",
+            all(path.is_file() for path in harness_files),
+            str(harness_root),
+        )
+    )
+    clinical_rules = base_dir / "clinical_rules"
+    rows.append(
+        (
+            "clinical_rules",
+            clinical_rules.is_dir() and any(clinical_rules.iterdir()),
+            str(clinical_rules),
+        )
+    )
     gateway = GatewayManager(repo_root=base_dir)
     rows.extend(gateway.verify_runtime())
 
@@ -163,36 +212,57 @@ def main() -> None:
         connect_timeout_sec=config.openclaw.connect_timeout_sec,
         inference_timeout_sec=config.openclaw.inference_timeout_sec,
         registry=registry,
+        base_dir=base_dir,
     )
 
     # --- Build hook pipeline (guardrails) ---
     # ClinicalConsistencyHook runs AFTER OutputValidator so it sees a
     # schema-validated result, then applies the data-driven, guideline-grounded
-    # safety net (escalate-only, flag-for-review). Rule packs in
+    # safety net (optional severity floor, flag-for-review). Rule packs in
     # <base>/clinical_rules/*.rules.yaml override the built-in rules, so updating
     # a diagnostic guideline is a data edit — no code change.
     clinical_engine = build_clinical_engine(app_base_dir() / "clinical_rules")
-    hooks = [
-        RateLimiter(),
-        InputGuard(registry=registry),
-        OutputValidator(registry=registry),
-        ClinicalConsistencyHook(engine=clinical_engine),
-    ]
-    hooked_analyzer = HookedVisionAnalyzer(inner=openclaw_client, hooks=hooks)
 
-    # --- Optional multi-pass interpretation (coarse → crop abnormal → refine) ---
-    # Off by default (latency / token cost). When enabled it wraps the hooked
-    # analyzer as a drop-in VisionAnalyzerService, so OverlayAgent is unchanged.
-    vision_analyzer: VisionAnalyzerService = hooked_analyzer
-    if config.analysis.multi_pass_enabled:
+    def build_guardrail_hooks(*, include_bbox_calibration: bool):
+        hooks = [
+            RateLimiter(),
+            InputGuard(registry=registry),
+            ClinicalConsistencyHook(engine=clinical_engine),
+        ]
+        if include_bbox_calibration:
+            hooks.append(BboxCalibrationHook())
+        hooks.append(OutputValidator(registry=registry))
+        return hooks
+
+    hooked_analyzer = HookedVisionAnalyzer(
+        inner=openclaw_client,
+        hooks=build_guardrail_hooks(include_bbox_calibration=True),
+    )
+
+    # --- Bounded multi-pass interpretation (coarse → crop abnormal → refine) ---
+    def build_multi_pass_analyzer(max_zoom_targets: int) -> HookedVisionAnalyzer:
         interpreter = MultiPassInterpreter(
-            analyzer=hooked_analyzer,
+            analyzer=openclaw_client,
             cropper=image_processor.crop_region_base64,
-            max_zoom_targets=config.analysis.multi_pass_max_zoom_targets,
+            bbox_calibrator=calibrate_ekg_bboxes,
+            max_zoom_targets=max_zoom_targets,
         )
-        vision_analyzer = MultiPassAnalyzer(
-            inner=hooked_analyzer, interpreter=interpreter
+        analyzer = MultiPassAnalyzer(inner=openclaw_client, interpreter=interpreter)
+        return HookedVisionAnalyzer(
+            inner=analyzer,
+            hooks=build_guardrail_hooks(include_bbox_calibration=False),
         )
+
+    multi_pass_analyzer = build_multi_pass_analyzer(
+        config.analysis.multi_pass_max_zoom_targets
+    )
+    # Guardrails wrap the complete coarse -> crop -> refine transaction once.
+    # The single-pass path additionally calibrates boxes through its hook;
+    # MultiPass performs the same operation internally against the source ROI.
+    vision_analyzer: VisionAnalyzerService = (
+        multi_pass_analyzer if config.analysis.multi_pass_enabled else hooked_analyzer
+    )
+    if config.analysis.multi_pass_enabled:
         logger.info(
             "multi_pass_enabled",
             max_zoom_targets=config.analysis.multi_pass_max_zoom_targets,
@@ -235,9 +305,7 @@ def main() -> None:
         agent._screen_left = int(geo.x() * dpr)
         agent._screen_top = int(geo.y() * dpr)
         agent._dpr = dpr
-        control_bar.position_bottom_right(
-            geo.width(), geo.height(), geo.x(), geo.y()
-        )
+        control_bar.position_bottom_right(geo.width(), geo.height(), geo.x(), geo.y())
 
     # --- Async bridge (background thread for all agent operations) ---
     bridge = AsyncBridge()
@@ -282,34 +350,53 @@ def main() -> None:
             result.severity.value,
             len(result.findings),
         )
-        # Calculate highlight rects
-        highlights = []
-        if agent.target_window and config.overlay.region_highlights:
-            # Region percentages are relative to the ROI-cropped image,
-            # so map them to the cropped content area — NOT the full window.
-            roi = config.phi_roi
-            from dicom_overlay.domain.entities import Severity
-            from dicom_overlay.domain.entities import WindowRect as WR
-            from dicom_overlay.infrastructure.dpi import get_dpi_scale
-            dpr = get_dpi_scale()
-            # ROI is screen-relative in physical pixels;
-            # content_rect = the captured area in physical pixels.
-            content_rect = WR(
-                left=roi.left,
-                top=roi.top,
-                width=agent._screen_width - roi.left - roi.right,
-                height=agent._screen_height - roi.top - roi.bottom,
+        # Position first so every projected box uses the same target-display
+        # coordinate frame as the screenshot that was actually analyzed.
+        highlights: list[tuple[int, int, int, int, str, str]] = []
+        overlay_content_rect: tuple[int, int, int, int] | None = None
+        coordinate_frame = None
+        if agent.target_window:
+            coordinate_frame = overlay.position_over_window(
+                agent.target_window,
+                agent.display_frame,
             )
+
+        content_rect = agent.last_capture_rect
+        if content_rect is None and agent.target_window:
+            try:
+                content_rect = agent._get_roi_rect()
+            except ValueError:
+                logger.exception("Cannot map result: ROI exceeds target display")
+
+        if coordinate_frame is not None and content_rect is not None:
+            local_content = coordinate_frame.physical_rect_to_local(content_rect)
+            overlay_content_rect = (
+                local_content.x,
+                local_content.y,
+                local_content.w,
+                local_content.h,
+            )
+
+        if (
+            coordinate_frame is not None
+            and content_rect is not None
+            and config.overlay.region_highlights
+        ):
+            # Region percentages are relative to the ROI-cropped image,
+            # so map them to the exact captured content area, not the window.
+            from dicom_overlay.domain.entities import Severity
+
             for finding in result.findings:
-                # Only highlight abnormal findings (skip normal/info)
-                if finding.severity in (Severity.NORMAL, Severity.INFO):
+                # Normal findings stay in the report. Info findings with boxes
+                # are intentionally visible/clickable for uncertainty review.
+                if finding.severity is Severity.NORMAL:
                     continue
                 # Prefer AI-provided bboxes (dynamic, precise)
                 if finding.bboxes:
                     built = build_ai_bbox_highlights(
                         findings=[finding],
                         image_rect=content_rect,
-                        dpr=dpr,
+                        coordinate_frame=coordinate_frame,
                     )
                     highlights.extend(built.highlights)
                     for audit_row in built.audit_rows:
@@ -328,17 +415,24 @@ def main() -> None:
                             sx, sy, sw, sh = region_mapper.to_screen_rect(
                                 rect, content_rect
                             )
-                            lx = round(sx / dpr)
-                            ly = round(sy / dpr)
-                            lw = round(sw / dpr)
-                            lh = round(sh / dpr)
-                            highlights.append(
-                                (lx, ly, lw, lh, finding.severity.value, finding.label)
+                            logical = coordinate_frame.physical_rect_to_local(
+                                WindowRect(sx, sy, sw, sh)
                             )
-
-        if agent.target_window:
-            overlay.position_over_window(agent.target_window)
-        overlay.show_result(result, highlights)
+                            highlights.append(
+                                (
+                                    logical.x,
+                                    logical.y,
+                                    logical.w,
+                                    logical.h,
+                                    finding.severity.value,
+                                    finding.label,
+                                )
+                            )
+        overlay.show_result(
+            result,
+            highlights,
+            content_rect=overlay_content_rect,
+        )
         control_bar.set_pending_analysis(False)
         if config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
@@ -363,6 +457,7 @@ def main() -> None:
     def _on_display_expired() -> None:
         async def _timeout():
             agent.on_display_timeout()
+
         bridge.submit(_timeout())
 
     overlay.display_expired.connect(_on_display_expired)
@@ -393,11 +488,13 @@ def main() -> None:
     def on_pause():
         async def _p():
             agent.pause()
+
         bridge.submit(_p())
 
     def on_resume():
         async def _r():
             agent.resume()
+
         bridge.submit(_r())
 
     def on_retrigger():
@@ -412,12 +509,26 @@ def main() -> None:
         control_bar.set_trigger_mode(mode)
         control_bar.set_status(f"Mode: {mode.value}")
 
+    def on_analysis_settings_changed(enabled: bool, max_targets: int) -> None:
+        nonlocal multi_pass_analyzer
+        multi_pass_analyzer = build_multi_pass_analyzer(max_targets)
+        agent.set_vision_analyzer(multi_pass_analyzer if enabled else hooked_analyzer)
+        config.analysis.multi_pass_enabled = enabled
+        config.analysis.multi_pass_max_zoom_targets = max_targets
+        settings_store.save_analysis_settings(
+            multi_pass_enabled=enabled,
+            max_zoom_targets=max_targets,
+        )
+        state = "on" if enabled else "off"
+        control_bar.set_status(f"Multi-pass: {state} ({max_targets} targets)")
+
     def on_modality_cycle():
         modality_index[0] = (modality_index[0] + 1) % len(modality_cycle)
         mod = modality_cycle[modality_index[0]]
 
         async def _set():
             agent.set_modality(mod)
+
         bridge.submit(_set())
         control_bar.set_modality(mod.value)
 
@@ -429,7 +540,12 @@ def main() -> None:
         app.quit()
 
     def open_settings_roi_setup() -> None:
-        roi = run_roi_setup(app, agent.target_window, config.phi_roi)
+        roi = run_roi_setup(
+            app,
+            agent.target_window,
+            config.phi_roi,
+            agent.display_frame,
+        )
         if roi is None:
             control_bar.set_status("ROI 設定已取消")
             return
@@ -438,6 +554,7 @@ def main() -> None:
 
         async def _roi():
             agent.on_roi_setup_complete(roi)
+
         bridge.submit(_roi())
         control_bar.set_status(
             f"ROI 已更新 top={roi.top} bottom={roi.bottom}"
@@ -448,9 +565,13 @@ def main() -> None:
         dialog = SettingsDialog(
             repo_root=base_dir,
             current_mode=agent.trigger_mode,
+            multi_pass_enabled=config.analysis.multi_pass_enabled,
+            multi_pass_max_zoom_targets=(config.analysis.multi_pass_max_zoom_targets),
+            config_path=config_path,
             parent=control_bar,
         )
         dialog.trigger_mode_saved.connect(on_trigger_mode_changed)
+        dialog.analysis_settings_saved.connect(on_analysis_settings_changed)
         dialog.roi_setup_requested.connect(open_settings_roi_setup)
         dialog.vision_test_requested.connect(_run_vision_test)
         dialog.exec()
@@ -486,32 +607,54 @@ def main() -> None:
     control_bar.dismiss_clicked.connect(on_dismiss)
     signals.vision_test_done.connect(_on_vision_test_done)
 
-    # ─── Chat handler (non-blocking) ───
-    def on_chat() -> None:
-        text, ok = QInputDialog.getText(
-            control_bar, "問 AI", "請輸入問題:",
-        )
-        if not ok or not text.strip():
+    def on_interaction_mode_changed(mode: str) -> None:
+        overlay.set_interaction_mode(mode)
+        labels = {
+            "passive": "Overlay click-through",
+            "inspect": "Select an AI box",
+            "annotate": "Draw a review region",
+        }
+        control_bar.set_status(labels.get(mode, mode))
+
+    control_bar.interaction_mode_changed.connect(on_interaction_mode_changed)
+
+    def on_export_review() -> None:
+        if not agent.last_image_base64 or not agent.last_result:
+            control_bar.set_status("Analyze an image before export")
             return
-
-        question = text.strip()
-        logger.info("User chat question: %s", question)
-
-        if agent.target_window:
-            overlay.position_over_window(agent.target_window)
-        overlay.show_chat_waiting(question)
-
-        if agent.last_image_base64 and agent.last_result:
-            context = summarize_result_for_followup(agent.last_result)
-            future = bridge.submit(
-                openclaw_client.chat_about_image(
-                    question,
-                    image_base64=agent.last_image_base64,
-                    context=context,
-                )
+        try:
+            user_regions = [RegionRect(*values) for values in overlay.user_regions]
+            review_path = export_desktop_review(
+                image_base64=agent.last_image_base64,
+                result=agent.last_result,
+                output_root=app_base_dir() / "data" / "exports",
+                user_regions=user_regions,
             )
-        else:
-            future = bridge.submit(openclaw_client.chat(question))
+        except Exception:
+            logger.exception("Desktop review export failed")
+            control_bar.set_status("Export failed")
+            return
+        control_bar.set_status(f"Exported: {review_path.parent.name}")
+
+    control_bar.export_clicked.connect(on_export_review)
+
+    # ─── Chat handler (non-blocking) ───
+    def _submit_image_chat(
+        *,
+        question: str,
+        image_base64: str,
+        context: str,
+    ) -> None:
+        if agent.target_window:
+            overlay.position_over_window(agent.target_window, agent.display_frame)
+        overlay.show_chat_waiting(question)
+        future = bridge.submit(
+            openclaw_client.chat_about_image(
+                question,
+                image_base64=image_base64,
+                context=context,
+            )
+        )
 
         def _chat_done(f):
             try:
@@ -522,6 +665,92 @@ def main() -> None:
                 signals.chat_failed.emit()
 
         future.add_done_callback(_chat_done)
+
+    def on_chat() -> None:
+        text, ok = QInputDialog.getText(
+            control_bar,
+            "問 AI",
+            "請輸入問題:",
+        )
+        if not ok or not text.strip():
+            return
+
+        question = text.strip()
+        logger.info("User chat question: %s", question)
+
+        if agent.last_image_base64 and agent.last_result:
+            context = summarize_result_for_followup(agent.last_result)
+            _submit_image_chat(
+                question=question,
+                image_base64=agent.last_image_base64,
+                context=context,
+            )
+            return
+
+        if agent.target_window:
+            overlay.position_over_window(agent.target_window, agent.display_frame)
+        overlay.show_chat_waiting(question)
+        future = bridge.submit(openclaw_client.chat(question))
+
+        def _chat_done(f):
+            try:
+                answer = f.result()
+                signals.chat_done.emit(question, answer)
+            except Exception:
+                logger.exception("Chat request failed")
+                signals.chat_failed.emit()
+
+        future.add_done_callback(_chat_done)
+
+    def _ask_about_region(
+        label: str,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        control_bar.set_interaction_mode("passive")
+        overlay.set_interaction_mode("passive")
+        if not agent.last_image_base64 or not agent.last_result:
+            control_bar.set_status("Analyze an image before regional QA")
+            return
+        title = label.strip() or "Selected region"
+        question, ok = QInputDialog.getText(
+            control_bar,
+            "Regional QA",
+            f"{title}:",
+        )
+        if not ok or not question.strip():
+            control_bar.set_status("Regional QA cancelled")
+            return
+        region = RegionRect(x=x, y=y, w=width, h=height)
+        crop_base64 = image_processor.crop_region_base64(
+            agent.last_image_base64,
+            region,
+        )
+        context = (
+            summarize_result_for_followup(agent.last_result)
+            + "\nSelected original-image region: "
+            + f"label={title}; x={x:.4f}, y={y:.4f}, "
+            + f"w={width:.4f}, h={height:.4f}. "
+            + "The attached image is the exact crop of that region."
+        )
+        _submit_image_chat(
+            question=question.strip(),
+            image_base64=crop_base64,
+            context=context,
+        )
+
+    def _ask_about_user_region(
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        _ask_about_region("User region", x, y, width, height)
+
+    overlay.highlight_selected.connect(_ask_about_region)
+    overlay.user_region_created.connect(_ask_about_user_region)
 
     def _show_chat_response(question: str, answer: str) -> None:
         overlay.show_chat_response(question, answer)
@@ -544,19 +773,22 @@ def main() -> None:
 
     hk = config.hotkeys
     shortcut_trigger = QShortcut(
-        QKeySequence(hk.trigger_manual), control_bar,
+        QKeySequence(hk.trigger_manual),
+        control_bar,
     )
     shortcut_trigger.setContext(Qt.ShortcutContext.ApplicationShortcut)
     shortcut_trigger.activated.connect(on_retrigger)
 
     shortcut_dismiss = QShortcut(
-        QKeySequence(hk.dismiss_overlay), control_bar,
+        QKeySequence(hk.dismiss_overlay),
+        control_bar,
     )
     shortcut_dismiss.setContext(Qt.ShortcutContext.ApplicationShortcut)
     shortcut_dismiss.activated.connect(on_dismiss)
 
     shortcut_toggle = QShortcut(
-        QKeySequence(hk.toggle_enable), control_bar,
+        QKeySequence(hk.toggle_enable),
+        control_bar,
     )
     shortcut_toggle.setContext(Qt.ShortcutContext.ApplicationShortcut)
     shortcut_toggle.activated.connect(_toggle_enable)

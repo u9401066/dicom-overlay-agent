@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from PIL import Image
 
 from dicom_overlay.infrastructure.real_model_readiness import (
     ProviderProbeResult,
@@ -14,6 +17,10 @@ from dicom_overlay.infrastructure.real_model_readiness import (
 
 def _write_manifest(path: Path, count: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    images = path.parent / "images"
+    images.mkdir()
+    for i in range(count):
+        Image.new("RGB", (20, 20), "white").save(images / f"{i:04d}.png")
     path.write_text(
         json.dumps(
             {
@@ -33,12 +40,73 @@ def _write_manifest(path: Path, count: int) -> None:
     )
 
 
-def _write_eval_artifacts(eval_dir: Path, count: int) -> None:
+def _write_eval_artifacts(eval_dir: Path, manifest_path: Path, count: int) -> None:
     eval_dir.mkdir(parents=True, exist_ok=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    identities: list[dict[str, object]] = []
+    image_hashes: dict[str, str] = {}
+    for row in manifest["cases"]:
+        label = row["label"]
+        image_path = manifest_path.parent / row["image"]
+        digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
+        image_hashes[label] = digest
+        identities.append(
+            {
+                "case": label,
+                "image": row["image"],
+                "image_name": image_path.name,
+                "size_bytes": image_path.stat().st_size,
+                "sha256": digest,
+            }
+        )
+    protocol = {
+        "source": {
+            "commit": "readiness-fixture",
+            "dirty": False,
+            "tracked_diff_sha256": hashlib.sha256(b"").hexdigest(),
+        },
+        "model": {
+            "id": "mock-eval-gateway",
+            "openclaw": {"version": "test"},
+        },
+        "prompts": [{"path": "prompt.py", "sha256": "0" * 64}],
+        "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
+        "flags": {"multi_pass": False},
+        "manifest": {
+            "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "selected_case_count": count,
+            "cases": identities,
+        },
+    }
+    protocol_digest = hashlib.sha256(
+        json.dumps(
+            protocol,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    (eval_dir / "protocol-fingerprint.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "protocol_scope": "entire_run",
+                "protocol_digest": protocol_digest,
+                "comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
+                "protocol": protocol,
+            }
+        ),
+        encoding="utf-8",
+    )
     (eval_dir / "scorecard.json").write_text(
         json.dumps(
             {
                 "gateway_mode": "mock",
+                "scorecard_kind": "full_rebuild",
                 "total": count,
                 "scored": count,
                 "error_count": 0,
@@ -46,9 +114,17 @@ def _write_eval_artifacts(eval_dir: Path, count: int) -> None:
                 "bbox_in_bounds_rate": 1.0,
                 "strict_pass_rate": 1.0,
                 "cant_miss_missed": [],
+                "urgent_concern_missed": [],
                 "manifest_total": count,
                 "result_count": count,
                 "is_partial": False,
+                "missing_cases": [],
+                "protocol_digest": protocol_digest,
+                "protocol_comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
                 "cases": [
                     {
                         "case_label": f"meeti_{i:04d}",
@@ -69,6 +145,10 @@ def _write_eval_artifacts(eval_dir: Path, count: int) -> None:
             json.dumps(
                 {
                     "case": f"meeti_{i:04d}",
+                    "image": f"images/{i:04d}.png",
+                    "protocol_digest": protocol_digest,
+                    "source_image_sha256": image_hashes[f"meeti_{i:04d}"],
+                    "findings": [],
                     "local_image_quality": {"low_signal": False},
                     "local_signal_candidates": {
                         "candidate_count": 1,
@@ -81,8 +161,22 @@ def _write_eval_artifacts(eval_dir: Path, count: int) -> None:
     review = eval_dir / "review"
     review.mkdir()
     (review / "index.html").write_text("<html></html>", encoding="utf-8")
+    for i in range(count):
+        Image.new("RGB", (40, 20), "white").save(
+            review / f"meeti_{i:04d}.review.png"
+        )
     (review / "bbox-audit.jsonl").write_text(
-        "\n".join(json.dumps({"case": f"meeti_{i:04d}"}) for i in range(count))
+        "\n".join(
+            json.dumps(
+                {
+                    "audit_type": "case",
+                    "case": f"meeti_{i:04d}",
+                    "bbox_count": 0,
+                    "review_image": f"meeti_{i:04d}.review.png",
+                }
+            )
+            for i in range(count)
+        )
         + "\n",
         encoding="utf-8",
     )
@@ -94,7 +188,7 @@ def test_readiness_blocks_missing_openrouter_key_without_leaking_secret(
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
     _write_manifest(manifest, 2)
-    _write_eval_artifacts(eval_dir, 2)
+    _write_eval_artifacts(eval_dir, manifest, 2)
 
     report = assess_real_model_readiness(
         model_id="openrouter/minimax/minimax-m3",
@@ -120,7 +214,7 @@ def test_readiness_accepts_complete_artifacts_and_present_provider_key(
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
     _write_manifest(manifest, 2)
-    _write_eval_artifacts(eval_dir, 2)
+    _write_eval_artifacts(eval_dir, manifest, 2)
 
     report = assess_real_model_readiness(
         model_id="openrouter/minimax/minimax-m3",
@@ -148,7 +242,7 @@ def test_readiness_provider_probe_blocks_unreachable_openrouter_without_secret(
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
     _write_manifest(manifest, 2)
-    _write_eval_artifacts(eval_dir, 2)
+    _write_eval_artifacts(eval_dir, manifest, 2)
 
     report = assess_real_model_readiness(
         model_id="openrouter/minimax/minimax-m3",
@@ -186,7 +280,7 @@ def test_readiness_provider_probe_blocks_models_without_image_input(
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
     _write_manifest(manifest, 2)
-    _write_eval_artifacts(eval_dir, 2)
+    _write_eval_artifacts(eval_dir, manifest, 2)
 
     report = assess_real_model_readiness(
         model_id="openrouter/minimax/minimax-m3",
@@ -217,7 +311,7 @@ def test_readiness_cli_writes_blocked_artifact_for_missing_key(tmp_path: Path) -
     eval_dir = tmp_path / "eval"
     output = tmp_path / "readiness.json"
     _write_manifest(manifest, 2)
-    _write_eval_artifacts(eval_dir, 2)
+    _write_eval_artifacts(eval_dir, manifest, 2)
     script = (
         Path(__file__).resolve().parents[2]
         / "scripts"
@@ -260,7 +354,7 @@ def test_readiness_cli_loads_dotenv_without_leaking_values(tmp_path: Path) -> No
     dotenv = tmp_path / ".env"
     output = tmp_path / "readiness.json"
     _write_manifest(manifest, 2)
-    _write_eval_artifacts(eval_dir, 2)
+    _write_eval_artifacts(eval_dir, manifest, 2)
     dotenv.write_text("OPENROUTER_API_KEY=sk-secret-dotenv\n", encoding="utf-8")
     script = (
         Path(__file__).resolve().parents[2]

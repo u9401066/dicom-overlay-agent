@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dicom_overlay.application.rhythm_strip import (
     merge_rhythm_strip,
     refine_rhythm_strip,
@@ -49,6 +51,12 @@ def test_resolve_rhythm_strip_region_none_when_absent_or_malformed() -> None:
     assert resolve_rhythm_strip_region(_result(layout={})) is None
     assert resolve_rhythm_strip_region(_result(layout={"rhythm_strip_bbox": None})) is None
     assert resolve_rhythm_strip_region(_result(layout={"rhythm_strip_bbox": [0, 1]})) is None
+    assert (
+        resolve_rhythm_strip_region(
+            _result(layout={"rhythm_strip_bbox": [float("nan"), 0.8, 1.0, 0.1]})
+        )
+        is None
+    )
 
 
 def test_resolve_clamps_and_drops_degenerate() -> None:
@@ -217,3 +225,59 @@ async def test_refine_returns_coarse_on_analyze_failure() -> None:
         valid_regions=[],
     )
     assert out is coarse
+
+
+async def test_refine_retries_transient_analysis_failure() -> None:
+    attempts = 0
+
+    async def flaky(img: str, modality: Modality, regions: list[str]) -> AnalysisResult:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TimeoutError("transient gateway timeout")
+        return _result(
+            severity=Severity.WARNING,
+            findings=[
+                Finding(
+                    id="s1",
+                    regions=["rhythm_strip"],
+                    label="Atrial Fibrillation",
+                    detail="irregularly irregular rhythm",
+                    severity=Severity.WARNING,
+                    bboxes=[RegionRect(0.1, 0.1, 0.2, 0.2)],
+                )
+            ],
+        )
+
+    coarse = _result(
+        severity=Severity.NORMAL,
+        layout={"rhythm_strip_bbox": [0.0, 0.8, 1.0, 0.2]},
+    )
+    out = await refine_rhythm_strip(
+        coarse,
+        "img",
+        analyze_fn=flaky,
+        cropper=lambda _img, _region: "crop",
+        valid_regions=["rhythm_strip"],
+        retry_attempts=1,
+    )
+
+    assert attempts == 2
+    assert any(f.label == "Atrial Fibrillation" for f in out.findings)
+
+
+async def test_refine_rejects_negative_retry_attempts() -> None:
+    async def never_analyze(
+        _image: str, _modality: Modality, _regions: list[str]
+    ) -> AnalysisResult:
+        raise AssertionError("should not be called")
+
+    with pytest.raises(ValueError):
+        await refine_rhythm_strip(
+            _result(layout={"rhythm_strip_bbox": [0.0, 0.8, 1.0, 0.2]}),
+            "img",
+            analyze_fn=never_analyze,
+            cropper=lambda _img, _region: "crop",
+            valid_regions=[],
+            retry_attempts=-1,
+        )

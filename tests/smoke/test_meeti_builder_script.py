@@ -59,3 +59,37 @@ def test_flat_member_cache_detects_existing_archive_members(tmp_path: Path) -> N
 
     assert module._all_flat_members_exist(tmp_path, members) is True
     assert module._all_flat_members_exist(tmp_path, [*members, "missing.mat"]) is False
+
+
+def test_waveform_artifact_id_is_stable_and_does_not_expose_study_id() -> None:
+    module = _load_builder_module()
+    source_sha256 = "a" * 64
+
+    first = module._waveform_artifact_id(source_sha256)
+    second = module._waveform_artifact_id(source_sha256)
+
+    assert first == second
+    assert first.startswith("wf-")
+    assert len(first) == 35
+    assert "47511997" not in first
+
+
+def test_waveform_registry_entry_records_explicit_lead_reorder(
+    tmp_path: Path,
+) -> None:
+    module = _load_builder_module()
+    waveform_dir = tmp_path / "waveforms"
+    waveform_dir.mkdir()
+    waveform_path = waveform_dir / "case.mat"
+    waveform_path.write_bytes(b"mat")
+
+    entry = module._waveform_registry_entry(
+        waveform_path=waveform_path,
+        registry_dir=tmp_path,
+        source_sha256="b" * 64,
+    )
+
+    assert entry["path"] == "waveforms/case.mat"
+    assert entry["source_lead_names"][4:6] == ["aVF", "aVL"]
+    assert entry["model_lead_names"][4:6] == ["aVL", "aVF"]
+    assert entry["source_points_per_lead"] == 5000

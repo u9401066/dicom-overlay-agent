@@ -5,10 +5,10 @@ debug:
 analysis:
   trigger_mode: hybrid
   # Multi-pass interpretation: after a coarse read, re-examine abnormal regions
-  # at full ROI resolution to refine bounding boxes. Off by default (adds
-  # latency / token cost). Set true to enable.
-  multi_pass_enabled: false
-  multi_pass_max_zoom_targets: 3
+  # at full ROI resolution to refine bounding boxes. The bounded default keeps
+  # the workflow clinically useful without unbounded model calls.
+  multi_pass_enabled: true
+  multi_pass_max_zoom_targets: 2
 hotkeys:
   dismiss_overlay: ctrl+shift+d
   toggle_enable: ctrl+shift+e
@@ -23,7 +23,9 @@ monitor:
   - 影像
   - Viewer
 openclaw:
+  connect_timeout_sec: 15
   gateway_url: ws://127.0.0.1:18789
+  inference_timeout_sec: 180
   reconnect_interval_sec: 5
   timeout_sec: 30
 overlay:

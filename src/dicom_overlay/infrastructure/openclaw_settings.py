@@ -14,6 +14,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+DEFAULT_INFERENCE_TIMEOUT_SEC = 180
+_PROVIDER_TIMEOUT_HEADROOM_SEC = 15
+_AGENT_TIMEOUT_HEADROOM_SEC = 5
+
+
 class ProviderType(Enum):
     """Provider families exposed by the desktop settings UI."""
 
@@ -36,6 +41,12 @@ class ProviderProfile:
     model: str
     api_key_env: str
     base_url: str = ""
+    api: str = ""
+    input_modalities: tuple[str, ...] = ()
+    context_window: int = 0
+    max_tokens: int = 0
+    reasoning: bool = False
+    agent_runtime: str = ""
     requires_vision_check: bool = True
     notes: str = ""
 
@@ -63,10 +74,16 @@ def default_provider_profiles() -> list[ProviderProfile]:
             label="OpenAI Vision",
             provider_id="openai",
             provider_type=ProviderType.OPENAI,
-            model="gpt-5.4-mini",
+            model="gpt-5.6-luna",
             api_key_env="OPENAI_API_KEY",
             base_url="https://api.openai.com/v1",
-            notes="Lower-latency OpenAI vision-capable default.",
+            api="openai-responses",
+            input_modalities=("text", "image"),
+            context_window=1_050_000,
+            max_tokens=128_000,
+            reasoning=True,
+            agent_runtime="openclaw",
+            notes="High-volume OpenAI multimodal default with tool support.",
         ),
         ProviderProfile(
             key="openrouter",
@@ -125,22 +142,43 @@ def build_openclaw_config(
     profile: ProviderProfile,
     *,
     gateway_token_env: str = "OPENCLAW_GATEWAY_TOKEN",
-    image_max_dimension_px: int = 1200,
+    image_max_dimension_px: int = 1568,
+    inference_timeout_sec: int = DEFAULT_INFERENCE_TIMEOUT_SEC,
 ) -> dict[str, Any]:
     """Build the OpenClaw config subset managed by this desktop app.
 
     Secrets are represented as OpenClaw SecretRef objects so generated config
     can remain shareable while values live in the local environment/.env file.
     """
+    provider_timeout_sec, agent_timeout_sec = derive_openclaw_timeout_budget(
+        inference_timeout_sec
+    )
     provider_config: dict[str, Any] = {
         "apiKey": {
             "source": "env",
             "provider": "default",
             "id": profile.api_key_env,
         },
+        "timeoutSeconds": provider_timeout_sec,
     }
     if profile.base_url:
         provider_config["baseUrl"] = profile.base_url
+    if profile.api:
+        provider_config["api"] = profile.api
+    if profile.input_modalities:
+        model_config: dict[str, Any] = {
+            "id": profile.model,
+            "name": profile.label,
+            "input": list(profile.input_modalities),
+            "reasoning": profile.reasoning,
+        }
+        if profile.context_window > 0:
+            model_config["contextWindow"] = profile.context_window
+        if profile.max_tokens > 0:
+            model_config["maxTokens"] = profile.max_tokens
+        if profile.agent_runtime:
+            model_config["agentRuntime"] = {"id": profile.agent_runtime}
+        provider_config["models"] = [model_config]
 
     return {
         "gateway": {
@@ -150,6 +188,7 @@ def build_openclaw_config(
             },
         },
         "models": {
+            "mode": "merge",
             "providers": {
                 profile.provider_id: provider_config,
             },
@@ -166,9 +205,24 @@ def build_openclaw_config(
                     },
                 },
                 "imageMaxDimensionPx": image_max_dimension_px,
+                "timeoutSeconds": agent_timeout_sec,
             },
         },
+        "tools": {"allow": ["dicom_bbox_validate"]},
     }
+
+
+def derive_openclaw_timeout_budget(inference_timeout_sec: int) -> tuple[int, int]:
+    """Keep provider and agent watchdogs below the desktop receive timeout."""
+    if (
+        isinstance(inference_timeout_sec, bool)
+        or not isinstance(inference_timeout_sec, int)
+        or inference_timeout_sec < 30
+    ):
+        raise ValueError("inference_timeout_sec must be an integer >= 30")
+    provider_timeout_sec = inference_timeout_sec - _PROVIDER_TIMEOUT_HEADROOM_SEC
+    agent_timeout_sec = inference_timeout_sec - _AGENT_TIMEOUT_HEADROOM_SEC
+    return provider_timeout_sec, agent_timeout_sec
 
 
 def merge_openclaw_config(

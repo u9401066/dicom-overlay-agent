@@ -10,20 +10,24 @@
 #
 # WHAT A RULE DOES
 #   A rule fires when ALL its conditions hold for the AI's structured result.
-#   On firing the engine ONLY:
-#     • escalates severity toward `escalate_to` (it never downgrades), and
-#     • flags the result for human review with `message` + the guideline citation.
+#   On firing the engine may:
+#     • escalate severity toward optional `escalate_to` (it never downgrades), and
+#     • flag the result for human review with `message` + the guideline citation.
 #   It never imposes a diagnosis or removes findings. The physician decides.
 #
 # CONDITION FIELDS
 #   severity                  the overall result severity (normal|info|warning|critical)
 #   summary                   the free-text summary
 #   checklist.<key>           the text of one checklist item (e.g. checklist.st_segment)
+#   checklist.<key>.status    that item's severity (normal|info|warning|critical)
 #   all_text                  summary + every finding label/detail + every checklist value
 #
 # CONDITION OPERATORS
-#   text fields:     contains_any | not_contains_any | equals   (case-insensitive)
-#   severity field:  severity_at_most | severity_at_least | equals
+#   text fields:     contains_any | contains_any_asserted |
+#                    contains_any_non_negated | not_contains_any | equals
+#                    contains_any_asserted excludes negated/uncertain mentions;
+#                    contains_any_non_negated permits uncertainty but not negation
+#   severity/status: severity_at_most | severity_at_least | equals
 #
 # REQUIRED FIELDS (per rule): id, modality, description, conditions, message.
 #   `description` is MANDATORY — a rule with no human-readable description is
@@ -32,24 +36,44 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 rules:
-  # Example: override the built-in STEMI rule to also trigger on de Winter /
-  # hyperacute T-wave wording, reflecting a guideline update.
+  # Example: override the built-in review-only ST-elevation consistency rule.
   - id: ekg-st-elevation-not-flagged
     modality: EKG
     description: >-
-      ST elevation OR STEMI-equivalent pattern described but study rated benign.
+      A non-normal ST axis describes elevation but the study is rated benign.
     conditions:
       - field: checklist.st_segment
         op: contains_any
         values: ["elevat", "ste ", "de winter", "hyperacute", "抬高", "上升"]
+      - field: checklist.st_segment.status
+        op: severity_at_least
+        value: info
       - field: severity
         op: severity_at_most
         value: info
-    message: "ST 段抬高或 STEMI 等位型卻評為非異常 — 需人工排除急性冠心症"
+    message: "ST 段有抬高描述但整體嚴重度偏低，請人工確認良性變異或急性缺血"
     guideline: "ESC Guidelines for ACS"
     guideline_version: "2023"
     effective_date: "2023-08-25"
     source_url: "https://www.escardio.org/Guidelines"
+    require_review: true
+
+  # Explicit, affirmative STEMI claims may be escalated. Negated wording such
+  # as "no STEMI" and uncertain wording such as "cannot exclude STEMI" do not hit.
+  - id: ekg-explicit-stemi-undercall
+    modality: EKG
+    description: Explicit STEMI/acute myocardial injury claim rated benign.
+    conditions:
+      - field: all_text
+        op: contains_any_asserted
+        values: ["stemi", "acute myocardial infarction", "acute myocardial injury", "急性心肌梗塞"]
+      - field: severity
+        op: severity_at_most
+        value: info
+    message: "判讀明確宣稱急性心肌梗塞/損傷卻評為非異常，需立即人工複核"
+    guideline: "Fourth Universal Definition of MI; ACC/AHA STEMI"
+    guideline_version: "2018"
+    effective_date: "2018-08-25"
     escalate_to: critical
     require_review: true
 

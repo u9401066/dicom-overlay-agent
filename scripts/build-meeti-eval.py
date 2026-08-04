@@ -9,6 +9,11 @@ subset, extracts the chosen ``.png`` images into
 ``data/eval-datasets/meeti/ekg/`` and writes a ``manifest.json`` in the schema
 ``scripts/run-eval.py`` consumes.
 
+With ``--include-waveforms``, the matching raw ``signal`` matrices are retained
+under ``waveforms/`` and indexed by an opaque artifact id in
+``waveform-registry.json``. OpenClaw sees only that id; the ECGFounder sidecar
+owns path resolution and verifies the source hash before inference.
+
 Design notes:
 * ``data/`` is fully gitignored -- images and manifest stay out of version control.
 * scipy is a dev/eval-only dependency (never bundled in the runtime). Run with
@@ -24,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -35,6 +41,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from dicom_overlay.infrastructure.meeti_dataset import (  # noqa: E402
+    REPORT_LABEL_SCHEMA_VERSION,
     ReportLabels,
     classify_report,
     read_mat_report,
@@ -46,6 +53,34 @@ _SEVENZIP_CANDIDATES = (
     "7z",
 )
 _TAR_CANDIDATES = ("tar", "bsdtar")
+_MEETI_SOURCE_LEADS = (
+    "I",
+    "II",
+    "III",
+    "aVR",
+    "aVF",
+    "aVL",
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V5",
+    "V6",
+)
+_ECGFOUNDER_MODEL_LEADS = (
+    "I",
+    "II",
+    "III",
+    "aVR",
+    "aVL",
+    "aVF",
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V5",
+    "V6",
+)
 
 
 def _find_first(candidates: tuple[str, ...]) -> str | None:
@@ -134,6 +169,43 @@ def _mat_for_png(png_path: str) -> str:
     return png_path[:-4] + ".mat"
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _waveform_artifact_id(source_sha256: str) -> str:
+    """Derive a stable non-path id from the trusted waveform content hash."""
+
+    digest = hashlib.sha256(
+        b"meeti-ecgfounder-artifact-v1\0" + bytes.fromhex(source_sha256)
+    ).hexdigest()
+    return f"wf-{digest[:32]}"
+
+
+def _waveform_registry_entry(
+    *,
+    waveform_path: Path,
+    registry_dir: Path,
+    source_sha256: str,
+) -> dict[str, object]:
+    return {
+        "path": waveform_path.relative_to(registry_dir).as_posix(),
+        "source_kind": "raw_waveform",
+        "source_sha256": source_sha256,
+        "source_sample_rate_hz": 500,
+        "source_duration_sec": 10,
+        "source_points_per_lead": 5000,
+        "source_lead_names": list(_MEETI_SOURCE_LEADS),
+        "model_lead_names": list(_ECGFOUNDER_MODEL_LEADS),
+        "lead_mode": "12_lead",
+        "dataset": "MEETI",
+    }
+
+
 def _extract_many(
     tool_kind: str,
     exe: str,
@@ -185,13 +257,19 @@ def _extract_many(
 def _all_flat_members_exist(dest_dir: Path, members: list[str]) -> bool:
     """True when every archive member already exists by basename in ``dest_dir``."""
 
-    return bool(members) and all((dest_dir / Path(member).name).exists() for member in members)
+    return bool(members) and all(
+        (dest_dir / Path(member).name).exists() for member in members
+    )
 
 
-def _primary_concept(concepts: tuple[str, ...]) -> str:
-    """The concept used for balancing -- first (highest-priority) match."""
+def _primary_concept(labels: ReportLabels) -> str:
+    """Return an explicit sampling stratum without polluting diagnoses."""
 
-    return concepts[0] if concepts else "normal"
+    if labels.concepts:
+        return labels.concepts[0]
+    if labels.uncertain_concepts:
+        return f"uncertain:{labels.uncertain_concepts[0]}"
+    return f"status:{labels.label_status}"
 
 
 def _candidate_slice(png_entries: list[str], scan_limit: int) -> list[str]:
@@ -260,7 +338,17 @@ def main() -> int:
         help="Archive backend. Windows bsdtar can read the MEETI RAR.",
     )
     parser.add_argument("--sevenzip", default="", help="Explicit 7z executable path.")
-    parser.add_argument("--tar", default="", help="Explicit tar/bsdtar executable path.")
+    parser.add_argument(
+        "--tar", default="", help="Explicit tar/bsdtar executable path."
+    )
+    parser.add_argument(
+        "--include-waveforms",
+        action="store_true",
+        help=(
+            "Retain selected .mat signals and emit waveform-registry.json for "
+            "the optional ECGFounder sidecar."
+        ),
+    )
     args = parser.parse_args()
 
     rar = Path(args.rar)
@@ -271,8 +359,11 @@ def main() -> int:
     tool_kind, exe = _find_archive_tool(args.extractor, explicit_path=explicit)
     out_dir = Path(args.output)
     img_dir = out_dir / "ekg"
+    waveform_dir = out_dir / "waveforms"
     tmp_dir = out_dir / "_tmp"
     img_dir.mkdir(parents=True, exist_ok=True)
+    if args.include_waveforms:
+        waveform_dir.mkdir(parents=True, exist_ok=True)
 
     print(
         f"[meeti] listing png entries in {rar.name} via {tool_kind} ...",
@@ -283,7 +374,9 @@ def main() -> int:
 
     per_concept: Counter[str] = Counter()
     cant_miss_have: Counter[str] = Counter()
+    urgent_concerns_have: Counter[str] = Counter()
     cases: list[dict[str, object]] = []
+    waveform_artifacts: dict[str, dict[str, object]] = {}
     scanned = 0
 
     candidates = _candidate_slice(png_entries, args.scan_limit)
@@ -307,7 +400,9 @@ def main() -> int:
             _extract_many(tool_kind, exe, rar, mat_members, tmp_dir)
 
         keep_png: list[str] = []  # png members chosen from this chunk
-        keep_meta: dict[str, tuple[str, ReportLabels]] = {}  # study_id -> (report, labels)
+        keep_meta: dict[
+            str, tuple[str, ReportLabels]
+        ] = {}  # study_id -> (report, labels)
 
         for png_member in chunk:
             scanned += 1
@@ -322,7 +417,7 @@ def main() -> int:
                 continue
 
             labels = classify_report(report)
-            concept = _primary_concept(labels.concepts)
+            concept = _primary_concept(labels)
 
             if not _under_case_limit(len(cases), len(keep_png), args.max_cases):
                 continue
@@ -345,15 +440,15 @@ def main() -> int:
             per_concept[concept] += 1
             for cm in labels.cant_miss:
                 cant_miss_have[cm] += 1
+            for concern in labels.urgent_concerns:
+                urgent_concerns_have[concern] += 1
             keep_png.append(png_member)
             keep_meta[study_id] = (report, labels)
 
         # Batch-extract only the chosen .png images for this chunk. Reuse prior
         # output if an interrupted run already copied every selected image.
         missing_png = [
-            member
-            for member in keep_png
-            if not (img_dir / Path(member).name).exists()
+            member for member in keep_png if not (img_dir / Path(member).name).exists()
         ]
         if missing_png:
             _extract_many(tool_kind, exe, rar, missing_png, img_dir)
@@ -367,17 +462,31 @@ def main() -> int:
             case: dict[str, object] = {
                 "image": f"ekg/{png_out.name}",
                 "modality": "EKG",
-                "expected_severity": labels.severity,
                 "label": f"meeti_{study_id}",
-                "keywords": list(labels.keywords),
-                "target_axes": list(labels.target_axes),
                 "source": "meeti",
                 "report": report,
+                **labels.manifest_fields(),
             }
-            if labels.negatives:
-                case["negatives"] = list(labels.negatives)
-            if labels.cant_miss:
-                case["cant_miss"] = list(labels.cant_miss)
+            if args.include_waveforms:
+                mat_source = tmp_dir / f"{study_id}.mat"
+                waveform_out = waveform_dir / mat_source.name
+                if not waveform_out.exists() or (
+                    waveform_out.stat().st_size != mat_source.stat().st_size
+                ):
+                    shutil.copy2(mat_source, waveform_out)
+                source_sha256 = _sha256_file(waveform_out)
+                artifact_id = _waveform_artifact_id(source_sha256)
+                waveform_artifacts[artifact_id] = _waveform_registry_entry(
+                    waveform_path=waveform_out,
+                    registry_dir=out_dir,
+                    source_sha256=source_sha256,
+                )
+                case.update(
+                    {
+                        "waveform_artifact_id": artifact_id,
+                        "waveform_lead_mode": "12_lead",
+                    }
+                )
             cases.append(case)
 
         print(
@@ -391,6 +500,16 @@ def main() -> int:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     by_severity = dict(Counter(str(c["expected_severity"]) for c in cases))
+    by_label_status = dict(Counter(str(c["label_status"]) for c in cases))
+    classifier_path = (
+        _REPO_ROOT / "src" / "dicom_overlay" / "infrastructure" / "meeti_dataset.py"
+    )
+    artifact_index_payload = json.dumps(
+        waveform_artifacts,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    artifact_index_sha256 = hashlib.sha256(artifact_index_payload).hexdigest()
     manifest = {
         "dataset": "MEETI",
         "modality": "EKG",
@@ -407,24 +526,62 @@ def main() -> int:
         },
         "note": (
             "Ground truth derived from MEETI .mat 'report' field via "
-            "classify_report(). Images are rendered 12-lead ECGs."
+            "classify_report(). Images are rendered 12-lead ECGs. Matching raw "
+            "waveforms are retained only when include_waveforms is true."
         ),
+        "labeling": {
+            "schema_version": REPORT_LABEL_SCHEMA_VERSION,
+            "classifier": "classify_report",
+            "classifier_sha256": hashlib.sha256(
+                classifier_path.read_bytes()
+            ).hexdigest(),
+        },
         "counts": {
             "cases": len(cases),
-            "by_concept": dict(per_concept),
+            "by_selection_stratum": dict(per_concept),
             "cant_miss": dict(cant_miss_have),
+            "urgent_concerns": dict(urgent_concerns_have),
             "by_severity": by_severity,
+            "by_label_status": by_label_status,
         },
+        "waveform_registry": (
+            {
+                "path": "waveform-registry.json",
+                "artifact_count": len(waveform_artifacts),
+                "artifact_index_sha256": artifact_index_sha256,
+            }
+            if args.include_waveforms
+            else None
+        ),
         "cases": cases,
     }
     manifest_path = out_dir / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    if args.include_waveforms:
+        registry = {
+            "schema_version": 1,
+            "dataset": "MEETI",
+            "artifact_index_sha256": artifact_index_sha256,
+            "artifacts": waveform_artifacts,
+        }
+        registry_path = out_dir / "waveform-registry.json"
+        registry_path.write_text(
+            json.dumps(registry, indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
     _enforce_min_cases(cases, args.min_cases)
 
     print("\n[meeti] DONE", flush=True)
     print(f"[meeti] cases: {len(cases)} (scanned {scanned})", flush=True)
     print(f"[meeti] severity: {by_severity}", flush=True)
     print(f"[meeti] cant_miss: {dict(cant_miss_have)}", flush=True)
+    if args.include_waveforms:
+        print(
+            f"[meeti] waveform artifacts: {len(waveform_artifacts)}",
+            flush=True,
+        )
     print(f"[meeti] manifest: {manifest_path}", flush=True)
     return 0
 

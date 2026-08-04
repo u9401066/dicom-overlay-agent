@@ -12,6 +12,7 @@ from typing import Any
 from dicom_overlay.domain.entities import Finding, RegionRect, Severity, WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
     BboxProjectionCalibration,
+    OverlayCoordinateFrame,
     project_bbox_to_overlay_highlight,
 )
 
@@ -59,19 +60,21 @@ def build_ai_bbox_highlights(
     *,
     findings: list[Finding],
     image_rect: WindowRect,
-    dpr: float,
+    dpr: float | None = None,
+    coordinate_frame: OverlayCoordinateFrame | None = None,
     max_roundtrip_drift_px: float | None = None,
 ) -> BboxHighlightBuildResult:
     highlights: list[HighlightTuple] = []
     audit_rows: list[BboxHighlightAuditRow] = []
     for finding in findings:
-        if finding.severity in (Severity.NORMAL, Severity.INFO):
+        if finding.severity is Severity.NORMAL:
             continue
         for bbox_index, bbox in enumerate(finding.bboxes):
             projected = project_bbox_to_overlay_highlight(
                 bbox=bbox,
                 image_rect=image_rect,
                 dpr=dpr,
+                coordinate_frame=coordinate_frame,
                 severity=finding.severity.value,
                 label=finding.label,
                 max_roundtrip_drift_px=max_roundtrip_drift_px,

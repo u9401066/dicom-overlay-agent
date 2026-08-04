@@ -80,6 +80,10 @@ class Finding:
     severity: Severity
     bboxes: list[RegionRect] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Model-reported certainty is intentionally qualitative.  A low-confidence
+    # finding can carry a short question that the UI surfaces for human review.
+    confidence: str = ""
+    question: str = ""
 
 
 class FindingOp(Enum):
@@ -138,8 +142,15 @@ class AnalysisResult:
     checklist: dict[str, ChecklistItem]
     analysis_time_ms: int = 0
     model_used: str = ""
+    image_quality: str | dict[str, object] = ""
+    next_steps: list[str] = field(default_factory=list)
     incomplete: bool = False
     incomplete_reasons: list[str] = field(default_factory=list)
+    # Structural/parser degradation is separate from a clinically honest
+    # ``incomplete`` result (for example, cropped leads or unreadable scale).
+    # Eval schema gates use this field so image limitations are not scored as
+    # malformed model output.
+    validation_warnings: list[str] = field(default_factory=list)
     # Advisory hints asking the user to manually zoom in their DICOM viewer and
     # re-capture, because a region is too small in the screen-captured pixels to
     # resolve any further by digital crop (screenshots cap at the screen
@@ -160,6 +171,11 @@ class AnalysisResult:
     # at higher resolution without assuming a fixed layout. Empty when the model
     # did not declare a layout (keeps non-EKG and legacy paths unchanged).
     layout: dict = field(default_factory=dict)
+    # Auditable workflow facts for this interpretation: coarse/refine stages,
+    # deterministic local image aids, crop coordinates, registered tool names,
+    # and explicit refinement decisions. This intentionally excludes hidden
+    # chain-of-thought and stores only information safe to show to a reviewer.
+    analysis_trace: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -178,6 +194,16 @@ class WindowRect:
     @property
     def bottom(self) -> int:
         return self.top + self.height
+
+
+@dataclass(frozen=True)
+class DisplayFrame:
+    """Physical-pixel bounds and identity of one desktop display."""
+
+    physical_rect: WindowRect
+    device_name: str = ""
+    monitor_index: int = 0
+    is_primary: bool = False
 
 
 @dataclass(frozen=True)
@@ -251,10 +277,10 @@ class AnalysisConfig:
 
     trigger_mode: TriggerMode = TriggerMode.HYBRID
     # Multi-pass interpretation: after a coarse first read, re-examine abnormal
-    # regions at full ROI resolution to refine bounding boxes. Off by default
-    # because it adds latency / token cost; opt in via config.
-    multi_pass_enabled: bool = False
-    multi_pass_max_zoom_targets: int = 3
+    # regions at full ROI resolution to refine bounding boxes. Keep the number
+    # of follow-up crops bounded so the desktop default remains predictable.
+    multi_pass_enabled: bool = True
+    multi_pass_max_zoom_targets: int = 2
 
 
 @dataclass

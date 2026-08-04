@@ -31,3 +31,17 @@ def test_settings_dialog_updates_fields_when_provider_changes(qtbot, tmp_path):
     assert dialog._model_edit.text() == "minimax/minimax-m3"
     assert dialog._base_url_edit.text() == "https://openrouter.ai/api/v1"
     assert dialog._api_key_env_edit.text() == "OPENROUTER_API_KEY"
+
+
+def test_settings_dialog_exposes_bounded_multi_pass_controls(qtbot, tmp_path):
+    dialog = SettingsDialog(
+        repo_root=tmp_path,
+        multi_pass_enabled=False,
+        multi_pass_max_zoom_targets=4,
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog._multi_pass_check.isChecked() is False
+    assert dialog._max_zoom_targets.value() == 4
+    assert dialog._max_zoom_targets.minimum() == 1
+    assert dialog._max_zoom_targets.maximum() == 5

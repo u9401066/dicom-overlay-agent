@@ -148,7 +148,11 @@ def test_build_comparison_pairs_cases_and_records_improvement(tmp_path: Path) ->
     assert report["paired_cases"] == 1
     assert report["headline"]["partial_credit_delta"] == 0.35
     assert report["headline"]["strict_pass_rate_delta"] == 1.0
-    assert report["case_status_counts"] == {"improved": 1, "regressed": 0, "unchanged": 0}
+    assert report["case_status_counts"] == {
+        "improved": 1,
+        "regressed": 0,
+        "unchanged": 0,
+    }
     assert report["candidate_cost"]["mean_openclaw_analyze_calls"] == 3.0
     assert report["cases"][0]["status"] == "improved"
 
@@ -158,7 +162,9 @@ def test_resolve_eval_dir_accepts_experiment_root(tmp_path: Path) -> None:
     experiment = tmp_path / "experiment"
     eval_dir = experiment / "eval"
     eval_dir.mkdir(parents=True)
-    (eval_dir / "scorecard.json").write_text(json.dumps(_scorecard(1.0, strict=True, latency_ms=1)))
+    (eval_dir / "scorecard.json").write_text(
+        json.dumps(_scorecard(1.0, strict=True, latency_ms=1))
+    )
 
     assert module.resolve_eval_dir(experiment) == eval_dir
 
@@ -191,7 +197,9 @@ def test_build_comparison_rejects_incomplete_scorecards_by_default(
     baseline = tmp_path / "baseline.json"
     candidate = tmp_path / "candidate.json"
     baseline.write_text(
-        json.dumps(_scorecard(0.60, strict=False, latency_ms=1, errored_extra_case=True)),
+        json.dumps(
+            _scorecard(0.60, strict=False, latency_ms=1, errored_extra_case=True)
+        ),
         encoding="utf-8",
     )
     candidate.write_text(
@@ -207,6 +215,26 @@ def test_build_comparison_rejects_incomplete_scorecards_by_default(
         raise AssertionError("expected incomplete scorecard rejection")
 
 
+def test_build_comparison_rejects_different_reference_labels(
+    tmp_path: Path,
+) -> None:
+    module = _load_compare_module()
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    baseline_payload = _scorecard(0.60, strict=False, latency_ms=1)
+    candidate_payload = _scorecard(0.80, strict=False, latency_ms=1)
+    candidate_payload["cases"][0]["expected_severity"] = "critical"
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+    candidate.write_text(json.dumps(candidate_payload), encoding="utf-8")
+
+    try:
+        module.build_comparison(baseline, candidate)
+    except ValueError as exc:
+        assert "different reference labels" in str(exc)
+    else:
+        raise AssertionError("expected reference-label mismatch rejection")
+
+
 def test_build_comparison_allow_incomplete_filters_error_cases(
     tmp_path: Path,
 ) -> None:
@@ -214,7 +242,9 @@ def test_build_comparison_allow_incomplete_filters_error_cases(
     baseline = tmp_path / "baseline.json"
     candidate = tmp_path / "candidate.json"
     baseline.write_text(
-        json.dumps(_scorecard(0.60, strict=False, latency_ms=1, errored_extra_case=True)),
+        json.dumps(
+            _scorecard(0.60, strict=False, latency_ms=1, errored_extra_case=True)
+        ),
         encoding="utf-8",
     )
     candidate_payload = _scorecard(0.80, strict=False, latency_ms=1)

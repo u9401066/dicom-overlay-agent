@@ -43,9 +43,28 @@ def build_initial_analysis_prompt(
     valid_regions: list[str],
     skill_name: str,
     skill_prompt: str,
+    waveform_artifact_id: str = "",
+    waveform_lead_mode: str = "",
 ) -> str:
     """Build the initial structured analysis prompt for an attached image."""
     allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
+    waveform_protocol = ""
+    if waveform_artifact_id:
+        waveform_protocol = (
+            "\nMatched raw-waveform evidence is available for this EKG case:\n"
+            "- First inspect the attached image independently and form a provisional "
+            "visual interpretation.\n"
+            "- Then call ecg_founder_analyze_waveform exactly once with "
+            f"artifact_id='{waveform_artifact_id}', "
+            f"lead_mode='{waveform_lead_mode or '12_lead'}', and "
+            "max_predictions=10. Do not alter or invent the artifact id.\n"
+            "- Treat returned probabilities only as supporting waveform evidence. "
+            "An uncalibrated_score is neither a positive nor a negative diagnosis.\n"
+            "- Explicitly reconcile agreement or disagreement in the summary and "
+            "retain uncertainty when the image and waveform evidence differ.\n"
+            "- ECGFounder has no image localization. Every finding bbox must still "
+            "be grounded in the attached image and validated by dicom_bbox_validate.\n"
+        )
     return (
         f"Use the {skill_name} instructions below to analyze the attached image.\n\n"
         f"{skill_prompt}\n\n"
@@ -53,15 +72,33 @@ def build_initial_analysis_prompt(
         "1. Confirm modality and image quality before interpreting.\n"
         "2. Inspect the image systematically using the modality checklist.\n"
         "3. Report only findings visible in the image.\n"
-        "4. For every abnormal finding, include label, detail, severity, regions, "
-        "and bboxes with normalized 0-1 coordinates (x, y, w, h).\n"
-        "5. Provide next_steps that explain what the user should inspect next.\n"
-        "6. Use cautious medical language and do not overstate certainty.\n\n"
+        "4. Put normal and negative observations in summary/checklist, not in "
+        "overlay findings. For every abnormal or unresolved finding, include "
+        "label, detail, severity, regions, and tight bboxes with normalized 0-1 "
+        "coordinates (x, y, w, h).\n"
+        "5. Before finalizing any abnormal or uncertain bbox, call the "
+        "dicom_bbox_validate tool with modality set to the requested modality, "
+        "and copy only its accepted full-image boxes "
+        "into the corresponding finding. Never substitute crop-local coordinates.\n"
+        "6. Provide next_steps that explain what the user should inspect next.\n"
+        "7. A normal or within-normal-limits interpretation is valid; never invent "
+        "an abnormality merely to return a finding.\n"
+        "8. For a non-urgent unresolved candidate, set severity to info, confidence "
+        "to low, include a tight bbox, and provide a concrete question for human "
+        "review. If the unresolved differential is time-critical, severity is the "
+        "triage priority rather than diagnostic certainty: use critical with "
+        "cautious wording, confidence, and a concrete urgent-review question. Do "
+        "not phrase an uncertain candidate as a confirmed diagnosis.\n"
+        "9. Set incomplete=true and list incomplete_reasons when image quality, "
+        "labels, or captured leads are insufficient.\n"
+        "10. Use cautious medical language and do not overstate certainty.\n\n"
+        f"{waveform_protocol}"
         "Return a single JSON object only. Do not wrap it in markdown.\n"
         f"modality must be '{modality.value}'.\n"
         f"Only reference region names from this allow-list: {allowed_regions}.\n"
         "Required top-level keys: modality, summary, severity, findings, "
-        "checklist, next_steps, image_quality, model_used.\n"
+        "checklist, layout, next_steps, image_quality, model_used, incomplete, "
+        "incomplete_reasons.\n"
     )
 
 

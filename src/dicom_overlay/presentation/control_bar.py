@@ -40,6 +40,8 @@ class ControlBarWindow(QWidget):
     settings_clicked = pyqtSignal()
     dismiss_clicked = pyqtSignal()
     chat_clicked = pyqtSignal()
+    interaction_mode_changed = pyqtSignal(str)
+    export_clicked = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -51,7 +53,7 @@ class ControlBarWindow(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedHeight(44)
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(860)
         self.setStyleSheet(
             "background-color: rgba(25, 25, 35, 240); border-radius: 8px;"
         )
@@ -87,6 +89,27 @@ class ControlBarWindow(QWidget):
         self._chat_btn = self._button("Ask AI")
         self._chat_btn.clicked.connect(self.chat_clicked.emit)
         layout.addWidget(self._chat_btn)
+
+        self._inspect_btn = self._button("Inspect")
+        self._inspect_btn.setCheckable(True)
+        self._inspect_btn.setToolTip("Select an AI box and ask a focused question")
+        self._inspect_btn.toggled.connect(
+            lambda checked: self._toggle_interaction("inspect", checked)
+        )
+        layout.addWidget(self._inspect_btn)
+
+        self._annotate_btn = self._button("Mark")
+        self._annotate_btn.setCheckable(True)
+        self._annotate_btn.setToolTip("Draw a region for focused AI review")
+        self._annotate_btn.toggled.connect(
+            lambda checked: self._toggle_interaction("annotate", checked)
+        )
+        layout.addWidget(self._annotate_btn)
+
+        self._export_btn = self._button("Export")
+        self._export_btn.setToolTip("Export the source image with review overlays")
+        self._export_btn.clicked.connect(self.export_clicked.emit)
+        layout.addWidget(self._export_btn)
 
         self._status_label = QLabel("Waiting")
         self._status_label.setFont(QFont("Segoe UI", 10))
@@ -163,8 +186,9 @@ class ControlBarWindow(QWidget):
         screen_left: int = 0,
         screen_top: int = 0,
     ) -> None:
-        x = screen_left + screen_width - self.width() - 20
-        y = screen_top + screen_height - self.height() - 60
+        x = max(screen_left, screen_left + screen_width - self.width() - 20)
+        y = max(screen_top, screen_top + screen_height - self.height() - 60)
+        self.move(x, y)
         self.move(x, y)
 
     def _emit_analyze(self) -> None:
@@ -177,6 +201,23 @@ class ControlBarWindow(QWidget):
         next_mode = cycle[(index + 1) % len(cycle)]
         self.set_trigger_mode(next_mode)
         self.trigger_mode_changed.emit(next_mode)
+
+    def _toggle_interaction(self, mode: str, checked: bool) -> None:
+        other = self._annotate_btn if mode == "inspect" else self._inspect_btn
+        if checked and other.isChecked():
+            other.blockSignals(True)
+            other.setChecked(False)
+            other.blockSignals(False)
+        self.interaction_mode_changed.emit(mode if checked else "passive")
+
+    def set_interaction_mode(self, mode: str) -> None:
+        for button, button_mode in (
+            (self._inspect_btn, "inspect"),
+            (self._annotate_btn, "annotate"),
+        ):
+            button.blockSignals(True)
+            button.setChecked(mode == button_mode)
+            button.blockSignals(False)
 
     def mousePressEvent(self, a0: QMouseEvent | None) -> None:
         if a0 is None:

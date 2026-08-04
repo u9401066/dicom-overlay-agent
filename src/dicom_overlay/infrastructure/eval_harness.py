@@ -45,9 +45,11 @@ _ABNORMAL = frozenset({Severity.WARNING, Severity.CRITICAL})
 _PARTIAL_CREDIT_WEIGHTS: dict[str, float] = {
     "severity_abnormal": 0.30,
     "severity_exact": 0.20,
-    "keyword_recall": 0.35,
+    "keyword_recall": 0.20,
+    "concept_f1": 0.15,
     "negative_recall": 0.15,
 }
+_FALSE_POSITIVE_PENALTY_WEIGHT = 0.25
 
 
 def is_empty_read(result: AnalysisResult) -> bool:
@@ -58,6 +60,8 @@ def is_empty_read(result: AnalysisResult) -> bool:
     retries these once instead of banking a 0-score hard failure.
     """
     return not result.summary.strip() and not result.findings
+
+
 _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
     "no acute": (
         "no acute",
@@ -68,7 +72,12 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
         "no evidence of acute",
         "no acute cardiopulmonary",
     ),
-    "infarction": ("infarction", "stemi", "lad territory occlusion", "myocardial infarction"),
+    "infarction": (
+        "infarction",
+        "stemi",
+        "lad territory occlusion",
+        "myocardial infarction",
+    ),
     "left ventricular hypertrophy": ("left ventricular hypertrophy", "lvh"),
     "t wave changes": (
         "t wave changes",
@@ -122,6 +131,11 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
         "poor r wave progression",
         "poor precordial r wave",
     ),
+    "early transition": (
+        "early transition",
+        "early r wave transition",
+        "early r/s transition",
+    ),
     "atrial abnormality": (
         "atrial abnormality",
         "atrial enlargement",
@@ -144,6 +158,26 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
         "first degree av block",
     ),
     "low voltage": ("low voltage", "low qrs voltage"),
+    "long qt": ("long qt", "prolonged qt", "qtc prolongation"),
+    "prolonged qt": ("prolonged qt", "long qt", "qtc prolongation"),
+    "premature atrial complexes": (
+        "premature atrial complexes",
+        "premature atrial contractions",
+        "pac",
+        "atrial ectopy",
+    ),
+    "acute infarction": (
+        "acute infarction",
+        "acute myocardial infarction",
+        "acute mi",
+        "acute infarct",
+    ),
+    "nonspecific st-t changes": (
+        "nonspecific st-t changes",
+        "nonspecific st changes",
+        "nonspecific t wave changes",
+        "nonspecific repolarization",
+    ),
     "q waves": ("q waves", "q wave", "pathological q", "pathologic q"),
     "fascicular block": (
         "fascicular block",
@@ -155,7 +189,77 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "st elevation": ("st elevation", "st segment elevation", "elevated st"),
     "st depression": ("st depression", "st segment depression", "depressed st"),
+    "intraventricular conduction delay": (
+        "intraventricular conduction delay",
+        "iv conduction defect",
+        "iv conduction delay",
+        "ivcd",
+    ),
+    "junctional rhythm": ("junctional rhythm", "accelerated junctional rhythm"),
+    "ectopic atrial rhythm": ("ectopic atrial rhythm", "atrial tachycardia"),
+    "sinus arrhythmia": ("sinus arrhythmia",),
+    "paced rhythm": (
+        "paced rhythm",
+        "atrial pacing",
+        "ventricular pacing",
+        "demand pacing",
+        "pacemaker rhythm",
+    ),
 }
+
+# Controlled positive-concept vocabulary used to find *extra* diagnoses.  The
+# legacy keyword scorer only measures recall, so an answer could improve its
+# score by listing many diagnoses.  This list is intentionally limited to
+# clinically meaningful findings rather than generic words such as "abnormal".
+# Unknown structured finding labels are handled separately below.
+_SCORABLE_CONCEPTS: tuple[str, ...] = (
+    "atrial fibrillation",
+    "atrial flutter",
+    "bradycardia",
+    "cardiomegaly",
+    "complete heart block",
+    "consolidation",
+    "early repolarization",
+    "fascicular block",
+    "first degree av block",
+    "hyperkalemia",
+    "infarction",
+    "ischemia",
+    "intraventricular conduction delay",
+    "junctional rhythm",
+    "left bundle branch block",
+    "left ventricular hypertrophy",
+    "long qt",
+    "low voltage",
+    "pleural effusion",
+    "pneumomediastinum",
+    "pneumothorax",
+    "poor r wave progression",
+    "early transition",
+    "premature ventricular complexes",
+    "paced rhythm",
+    "right bundle branch block",
+    "st depression",
+    "st elevation",
+    "supraventricular tachycardia",
+    "sinus arrhythmia",
+    "t wave changes",
+    "tension pneumothorax",
+    "ventricular fibrillation",
+    "ventricular tachycardia",
+    "wellens",
+)
+
+_GENERIC_FINDING_LABELS = frozenset(
+    {
+        "abnormality",
+        "finding",
+        "none",
+        "normal",
+        "observation",
+        "other",
+    }
+)
 
 # Can't-miss diagnoses -- the lethal calls that must NEVER be silently dropped.
 # These are the *reference* fatal list per modality; the per-case ground truth
@@ -203,8 +307,20 @@ class EvalCase:
     # (abnormal severity + the phrase appears in the read) or the harness
     # fails hard. e.g. ``("STEMI",)`` for an anterior STEMI tracing.
     cant_miss: tuple[str, ...] = ()
+    # Urgent differentials raised by the reference report without a definitive
+    # diagnosis. A correct answer must surface the concern urgently while
+    # preserving uncertainty (for example, possible STEMI + reviewer question).
+    urgent_concerns: tuple[str, ...] = ()
+    label_status: str = "asserted"
+    uncertain_concepts: tuple[str, ...] = ()
+    ungradable_reasons: tuple[str, ...] = ()
     label: str = ""
     valid_regions: tuple[str, ...] = ()
+    # Optional paired raw-waveform evidence. The value is an opaque registry id,
+    # never a filesystem path. It is used only by an explicitly enabled
+    # ECGFounder experiment arm.
+    waveform_artifact_id: str = ""
+    waveform_lead_mode: str = ""
 
 
 @dataclass
@@ -229,6 +345,12 @@ class CaseScore:
     bbox_in_bounds: bool
     finding_count: int
     latency_ms: int
+    clinical_scorable: bool = True
+    severity_scorable: bool = True
+    false_positive_scorable: bool = True
+    label_status: str = "asserted"
+    reference_uncertain_concepts: list[str] = field(default_factory=list)
+    reference_ungradable_reasons: list[str] = field(default_factory=list)
     strict_pass: bool = False
     partial_credit: float = 0.0
     partial_credit_breakdown: dict[str, float] = field(default_factory=dict)
@@ -240,6 +362,20 @@ class CaseScore:
     # case carries no can't-miss labels.
     cant_miss_caught: bool = True
     cant_miss_missed: list[str] = field(default_factory=list)
+    urgent_concerns: list[str] = field(default_factory=list)
+    urgent_concern_hits: list[str] = field(default_factory=list)
+    urgent_concern_missed: list[str] = field(default_factory=list)
+    urgent_concern_recall: float = 1.0
+    # Assertion-aware concept metrics complement the legacy keyword-recall
+    # fields. Defaults keep older scorecard readers and direct constructors
+    # source-compatible.
+    concept_hits: list[str] = field(default_factory=list)
+    concept_misses: list[str] = field(default_factory=list)
+    concept_false_positives: list[str] = field(default_factory=list)
+    concept_precision: float = 1.0
+    concept_recall: float = 1.0
+    concept_f1: float = 1.0
+    false_positive_penalty: float = 0.0
 
 
 @dataclass
@@ -273,11 +409,28 @@ class EvalReport:
     aborted_reason: str = ""
     updated_at: str = ""
     cases: list[CaseScore] = field(default_factory=list)
+    mean_concept_precision: float = 1.0
+    mean_concept_recall: float = 1.0
+    mean_concept_f1: float = 1.0
+    mean_false_positive_penalty: float = 0.0
+    clinical_scorable_count: int = 0
+    severity_scorable_count: int = 0
+    keyword_scorable_count: int = 0
+    negative_scorable_count: int = 0
+    false_positive_scorable_count: int = 0
+    urgent_concern_total: int = 0
+    urgent_concern_caught_count: int = 0
+    urgent_concern_missed: list[str] = field(default_factory=list)
 
     @property
     def cant_miss_passed(self) -> bool:
         """True iff every can't-miss diagnosis across all cases was caught."""
         return not self.cant_miss_missed
+
+    @property
+    def urgent_concern_passed(self) -> bool:
+        """True iff every urgent uncertain differential was surfaced safely."""
+        return not self.urgent_concern_missed
 
     @property
     def is_perfect(self) -> bool:
@@ -292,18 +445,23 @@ class EvalReport:
             if score.error:
                 failures.append(f"{prefix}: error {score.error}")
                 continue
-            if not _strict_severity_match(score):
+            if score.clinical_scorable and not _strict_severity_match(score):
                 failures.append(
                     f"{prefix}: severity expected {score.expected_severity} "
                     f"got {score.actual_severity}"
                 )
-            if score.keyword_misses:
+            if score.clinical_scorable and score.keyword_misses:
                 failures.append(
                     f"{prefix}: missing keywords {', '.join(score.keyword_misses)}"
                 )
-            if score.negative_misses:
+            if score.clinical_scorable and score.negative_misses:
                 failures.append(
                     f"{prefix}: missing negatives {', '.join(score.negative_misses)}"
+                )
+            if score.clinical_scorable and score.concept_false_positives:
+                failures.append(
+                    f"{prefix}: false-positive concepts "
+                    f"{', '.join(score.concept_false_positives)}"
                 )
             if not score.schema_ok:
                 failures.append(f"{prefix}: schema {score.schema_issue}")
@@ -311,6 +469,8 @@ class EvalReport:
                 failures.append(f"{prefix}: bbox out of bounds")
             for missed in score.cant_miss_missed:
                 failures.append(f"{prefix}: missed can't-miss {missed}")
+            for missed in score.urgent_concern_missed:
+                failures.append(f"{prefix}: missed urgent concern {missed}")
         return failures
 
     def to_json(self) -> str:
@@ -328,7 +488,7 @@ def _strict_severity_match(score: CaseScore) -> bool:
     missed warning/critical condition. Abnormal severities still require exact
     matching so a STEMI downgraded to warning remains a strict failure.
     """
-    if score.severity_match:
+    if not score.severity_scorable or score.severity_match:
         return True
     normalish = {"normal", "info"}
     return (
@@ -357,9 +517,20 @@ def _partial_credit(
     severity_exact: bool,
     severity_abnormal: bool,
     keyword_recall: float,
+    concept_precision: float,
+    concept_recall: float,
+    concept_f1: float,
+    false_positive_penalty: float,
+    false_positive_scorable: bool,
     negative_recall: float,
+    has_expected_keywords: bool,
     has_expected_negatives: bool,
+    severity_scorable: bool,
+    clinical_scorable: bool,
     cant_miss_missed: bool,
+    urgent_concern_recall: float,
+    has_urgent_concerns: bool,
+    urgent_concern_missed: bool,
 ) -> tuple[float, dict[str, float]]:
     """Clinical partial-credit score for near-miss analysis.
 
@@ -371,17 +542,40 @@ def _partial_credit(
         "severity_abnormal": 1.0 if severity_abnormal else 0.0,
         "severity_exact": 1.0 if severity_exact else 0.0,
         "keyword_recall": keyword_recall,
+        "concept_precision": concept_precision,
+        "concept_recall": concept_recall,
+        "concept_f1": concept_f1,
+        "false_positive_penalty": false_positive_penalty,
+        # Keep this key for every case so the aggregate breakdown has the same
+        # vacuous-recall convention as ``mean_negative_recall``. Its weight is
+        # still removed when a case has no expected negatives.
+        "negative_recall": negative_recall,
     }
+    if has_urgent_concerns:
+        breakdown["urgent_concern_recall"] = urgent_concern_recall
+    if not clinical_scorable:
+        return 0.0, breakdown
     weights = dict(_PARTIAL_CREDIT_WEIGHTS)
-    if has_expected_negatives:
-        breakdown["negative_recall"] = negative_recall
-    else:
+    if not severity_scorable:
+        weights.pop("severity_abnormal")
+        weights.pop("severity_exact")
+    if not has_expected_keywords:
+        weights.pop("keyword_recall")
+    if not false_positive_scorable:
+        weights.pop("concept_f1")
+    if not has_expected_negatives:
         weights.pop("negative_recall")
+    if has_urgent_concerns:
+        weights["urgent_concern_recall"] = 0.25
     denominator = sum(weights.values()) or 1.0
-    score = sum(
-        breakdown[name] * weight for name, weight in weights.items()
-    ) / denominator
-    if cant_miss_missed:
+    score = (
+        sum(breakdown[name] * weight for name, weight in weights.items()) / denominator
+    )
+    score = max(
+        0.0,
+        score - (_FALSE_POSITIVE_PENALTY_WEIGHT * false_positive_penalty),
+    )
+    if cant_miss_missed or urgent_concern_missed:
         score = min(score, 0.4)
     return round(score, 3), breakdown
 
@@ -403,18 +597,79 @@ def _normalize_lexical(text: str) -> str:
     return re.sub(r"\s+", " ", swapped).strip()
 
 
-def _haystack(result: AnalysisResult) -> str:
+_NEGATED_PREFIX = re.compile(
+    r"\b(?:no|not|without|neither|absent|negative for|free of|lack of|"
+    r"lacks|denies|ruled out|rule out|excluded|rather than)\b[^.;:]{0,56}$"
+)
+_NEGATED_SUFFIX = re.compile(
+    r"^\s*(?:is|was|are|were|has been)?\s*"
+    r"(?:absent|negative|not seen|not present|excluded|ruled out)\b"
+)
+_UNCERTAIN_PREFIX = re.compile(
+    r"\b(?:possible|possibly|probable|probably|suspected|suspicious for|"
+    r"suggestive of|may(?: be| represent)?|might(?: be| represent)?|"
+    r"could(?: be| represent)?|cannot exclude|can not exclude|"
+    r"unable to exclude|questionable|equivocal|likely)\b[^.;:]{0,64}$"
+)
+_UNCERTAIN_SUFFIX = re.compile(
+    r"^\s*(?:is|was|are|were|remains|pattern)?\s*"
+    r"(?:possible|probable|suspected|questionable|equivocal|uncertain|likely|"
+    r"cannot be excluded|can not be excluded|is not confirmed|not confirmed|"
+    r"versus|vs\b)"
+)
+_LEADING_NON_ASSERTION = re.compile(
+    r"^(?:no|not|without|possible|possibly|probable|probably|suspected|"
+    r"questionable|equivocal|cannot exclude|can not exclude|"
+    r"unable to exclude)\b"
+)
+
+
+def _checklist_value_is_affirmative(value: str) -> bool:
+    folded = _normalize_lexical(value)
+    if not folded:
+        return False
+    return not bool(
+        re.search(
+            r"\b(?:absent|normal|negative|none|not present|without|uncertain|"
+            r"equivocal|possible|cannot exclude|early repolarization)\b",
+            folded,
+        )
+    )
+
+
+def _narrative_haystack(result: AnalysisResult) -> str:
     parts = [result.summary]
     for finding in result.findings:
-        parts.append(finding.label)
-        parts.append(finding.detail)
+        # Keep label and detail in one assertion scope. A structured label such
+        # as "STEMI" followed by "cannot be excluded" is still uncertain.
+        parts.append(f"{finding.label} {finding.detail}")
+    return _normalize_lexical(". ".join(part for part in parts if part))
+
+
+def _haystack(result: AnalysisResult) -> str:
+    parts = [_narrative_haystack(result)]
     for key, item in result.checklist.items():
         parts.append(item.value)
         parts.append(item.value.replace("_", " "))
         if item.status in _ABNORMAL:
-            parts.append(key)
-            parts.append(key.replace("_", " "))
-    return _normalize_lexical(" ".join(parts))
+            # A checklist axis is not itself a diagnosis. In particular,
+            # ``stemi_pattern: early_repolarization`` must not manufacture an
+            # affirmative STEMI mention merely because the key contains the
+            # word. A critical, affirmative structured value may support it.
+            if key == "stemi_pattern":
+                if (
+                    item.status is Severity.CRITICAL
+                    and _checklist_value_is_affirmative(item.value)
+                    and re.search(
+                        r"\b(?:stemi|myocardial infarction|present|positive)\b",
+                        _normalize_lexical(item.value),
+                    )
+                ):
+                    parts.append(f"stemi {item.value}")
+            else:
+                parts.append(key)
+                parts.append(key.replace("_", " "))
+    return _normalize_lexical(". ".join(part for part in parts if part))
 
 
 def _negative_haystack(result: AnalysisResult) -> str:
@@ -433,7 +688,9 @@ def _negative_haystack(result: AnalysisResult) -> str:
     return _normalize_lexical(" ".join(parts))
 
 
-def _recall(needles: tuple[str, ...], haystack: str) -> tuple[list[str], list[str], float]:
+def _recall(
+    needles: tuple[str, ...], haystack: str
+) -> tuple[list[str], list[str], float]:
     """Split ``needles`` into hits/misses against ``haystack`` and return recall."""
     hits: list[str] = []
     misses: list[str] = []
@@ -459,28 +716,149 @@ def _positive_phrase_hit(phrase: str, haystack: str) -> bool:
     phrase_l = _normalize_lexical(phrase)
     if not phrase_l:
         return False
-    start = 0
-    while True:
-        index = haystack.find(phrase_l, start)
-        if index < 0:
-            return False
-        if not _is_negated_positive_hit(phrase_l, haystack, index):
+    pattern = re.compile(rf"(?<!\w){re.escape(phrase_l)}(?!\w)")
+    for match in pattern.finditer(haystack):
+        if not _is_non_asserted_positive_hit(
+            phrase_l,
+            haystack,
+            match.start(),
+            match.end(),
+        ):
             return True
-        start = index + len(phrase_l)
+    return False
 
 
-def _is_negated_positive_hit(phrase: str, haystack: str, index: int) -> bool:
+def _is_non_asserted_positive_hit(
+    phrase: str,
+    haystack: str,
+    start: int,
+    end: int,
+) -> bool:
     if phrase.startswith(("no ", "without ", "absent", "negative for ")):
         return False
-    before = haystack[max(0, index - 48) : index]
-    after = haystack[index + len(phrase) : index + len(phrase) + 48]
+    before = haystack[max(0, start - 96) : start]
+    after = haystack[end : end + 80]
+    # Contrast words start a new assertion scope: "no ischemia, but STEMI".
+    before = re.split(r"\b(?:but|however|although|yet)\b", before)[-1]
     return bool(
-        re.search(
-            r"\b(no|without|absent|negative for|free of|lack of|"
-            r"no evidence of|ruled out|rule out)\b[\w\s,-]{0,32}$",
-            before,
+        _NEGATED_PREFIX.search(before)
+        or _NEGATED_SUFFIX.search(after)
+        or _UNCERTAIN_PREFIX.search(before)
+        or _UNCERTAIN_SUFFIX.search(after)
+    )
+
+
+def _canonical_concept(value: str) -> str:
+    folded = _normalize_lexical(value)
+    for canonical, aliases in _KEYWORD_ALIASES.items():
+        forms = (canonical, *aliases)
+        if folded in {_normalize_lexical(form) for form in forms}:
+            return _normalize_lexical(canonical)
+    return folded
+
+
+def _is_negative_expectation(value: str) -> bool:
+    folded = _normalize_lexical(value)
+    return folded.startswith(("no ", "without ", "absent", "negative for "))
+
+
+@dataclass(frozen=True)
+class _ConceptMetrics:
+    hits: list[str]
+    misses: list[str]
+    false_positives: list[str]
+    precision: float
+    recall: float
+    f1: float
+    false_positive_penalty: float
+
+
+def _concept_metrics(
+    expected_keywords: tuple[str, ...],
+    expected_severity: Severity,
+    result: AnalysisResult,
+    haystack: str,
+    *,
+    score_false_positives: bool,
+) -> _ConceptMetrics:
+    expected_groups: dict[str, list[str]] = {}
+    for keyword in expected_keywords:
+        if _is_negative_expectation(keyword):
+            continue
+        expected_groups.setdefault(_canonical_concept(keyword), []).append(keyword)
+
+    # Some legacy abnormal cases only label an exercised checklist axis, while
+    # an empty ``info`` label can mean uncertain/ungradable. Precision is not
+    # identifiable there; treating every diagnosis as false would manufacture
+    # errors from missing labels. Only explicit empty-normal ground truth is a
+    # valid negative set for false-alarm scoring.
+    if not expected_groups and expected_severity is not Severity.NORMAL:
+        return _ConceptMetrics(
+            hits=[],
+            misses=[],
+            false_positives=[],
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+            false_positive_penalty=0.0,
         )
-        or re.search(r"^\s*(is|was|are|were)?\s*(absent|negative|not seen)\b", after)
+
+    predicted: set[str] = set()
+    for canonical, keywords in expected_groups.items():
+        if any(_keyword_hit(keyword, haystack) for keyword in keywords):
+            predicted.add(canonical)
+
+    for candidate in _SCORABLE_CONCEPTS:
+        if _keyword_hit(candidate, haystack):
+            predicted.add(_canonical_concept(candidate))
+
+    # An abnormal structured finding is an asserted prediction even when its
+    # label is outside the controlled vocabulary. Do not double-count a label
+    # when its full finding text already maps to an expected/known concept.
+    for finding in result.findings:
+        if finding.severity not in _ABNORMAL:
+            continue
+        finding_text = _normalize_lexical(f"{finding.label} {finding.detail}")
+        label = _normalize_lexical(finding.label)
+        if not label or label in _GENERIC_FINDING_LABELS:
+            continue
+        if _LEADING_NON_ASSERTION.search(finding_text):
+            continue
+        if any(
+            _keyword_hit(keyword, finding_text)
+            for keywords in expected_groups.values()
+            for keyword in keywords
+        ):
+            continue
+        if any(
+            _keyword_hit(candidate, finding_text) for candidate in _SCORABLE_CONCEPTS
+        ):
+            continue
+        predicted.add(_canonical_concept(label))
+
+    expected = set(expected_groups)
+    hits = sorted(expected & predicted)
+    misses = sorted(expected - predicted)
+    false_positives = (
+        sorted(predicted - expected) if score_false_positives else []
+    )
+
+    precision_predictions = predicted if score_false_positives else predicted & expected
+    if precision_predictions:
+        precision = len(hits) / len(precision_predictions)
+    else:
+        precision = 1.0 if not expected else 0.0
+    recall = len(hits) / len(expected) if expected else 1.0
+    f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
+    penalty = len(false_positives) / len(predicted) if predicted else 0.0
+    return _ConceptMetrics(
+        hits=hits,
+        misses=misses,
+        false_positives=false_positives,
+        precision=round(precision, 3),
+        recall=round(recall, 3),
+        f1=round(f1, 3),
+        false_positive_penalty=round(penalty, 3),
     )
 
 
@@ -514,9 +892,7 @@ def _negative_hit(needle: str, haystack: str) -> bool:
     # "No consolidation, pleural effusion, pneumothorax."  Treat each item in
     # that local clause as negated so the scorer does not require awkward
     # repeated phrasing ("no X, no Y, no Z").
-    for match in re.finditer(
-        r"\b(no|without|absent|negative for|free of)\b", haystack
-    ):
+    for match in re.finditer(r"\b(no|without|absent|negative for|free of)\b", haystack):
         window = haystack[match.end() : match.end() + 160]
         clause = re.split(r"[.;:]", window, maxsplit=1)[0]
         if target in clause:
@@ -527,6 +903,8 @@ def _negative_hit(needle: str, haystack: str) -> bool:
 def _bbox_in_bounds(result: AnalysisResult) -> bool:
     for finding in result.findings:
         for box in finding.bboxes:
+            if box.w <= 0.0 or box.h <= 0.0:
+                return False
             if box.x + box.w > 1.0 + 1e-6 or box.y + box.h > 1.0 + 1e-6:
                 return False
     return True
@@ -544,8 +922,8 @@ def _schema_check(case: EvalCase, result: AnalysisResult) -> tuple[bool, str]:
         validated = validator.post_analyze(request, result)
     except HookError as exc:
         return False, str(exc)
-    if validated.incomplete:
-        return False, "; ".join(validated.incomplete_reasons)
+    if validated.validation_warnings:
+        return False, "; ".join(validated.validation_warnings)
     return True, ""
 
 
@@ -569,9 +947,140 @@ def _cant_miss_check(
     haystack = _haystack(result)
     missed: list[str] = []
     for label in case.cant_miss:
-        if not abnormal_match or not _keyword_hit(label, haystack):
+        folded = _normalize_lexical(label)
+        if folded == "stemi":
+            # STEMI is only caught by a critical read with an affirmative
+            # diagnosis. Warning-level early repolarization or a phrase such as
+            # "without/cannot exclude STEMI" is not a can't-miss success.
+            severity_ok = result.severity is Severity.CRITICAL
+            narrative = _narrative_haystack(result)
+            phrase_ok = _keyword_hit("stemi", narrative) or _keyword_hit(
+                "acute myocardial infarction", narrative
+            )
+            narrative_mentions_stemi = bool(
+                re.search(
+                    r"\b(?:stemi|acute myocardial infarction|acute mi)\b",
+                    narrative,
+                )
+            )
+            checklist_item = result.checklist.get("stemi_pattern")
+            checklist_ok = bool(
+                checklist_item
+                and checklist_item.status is Severity.CRITICAL
+                and _checklist_value_is_affirmative(checklist_item.value)
+            )
+            caught = severity_ok and (
+                phrase_ok or (checklist_ok and not narrative_mentions_stemi)
+            )
+        else:
+            caught = abnormal_match and _keyword_hit(label, haystack)
+        if not caught:
             missed.append(label)
     return (not missed), missed
+
+
+_URGENT_CONCERN_ALIASES: dict[str, tuple[str, ...]] = {
+    "stemi": (
+        "stemi",
+        "st elevation myocardial infarction",
+        "acute st elevation mi",
+        "hyperacute ischemia",
+        "hyperacute ischemic t wave",
+    ),
+    "acute mi": (
+        "acute mi",
+        "acute myocardial infarction",
+        "acute infarction",
+        "acute infarct",
+        "acute anterior infarct",
+        "acute inferior infarct",
+        "acute lateral infarct",
+        "acute septal infarct",
+        "acute anteroseptal infarct",
+        "acute anterolateral infarct",
+    ),
+    "long qt": ("long qt", "prolonged qt", "qtc prolongation"),
+}
+_URGENT_NEGATED_PREFIX = re.compile(
+    r"\b(?:no|not|without|neither|absent|negative for|free of|"
+    r"excluded|ruled out)\b[^.;:]{0,64}$"
+)
+_URGENT_UNCERTAINTY_CUE = re.compile(
+    r"\b(?:possible|possibly|probable|probably|suspected|consider|"
+    r"concern(?:ing)? for|rule out|cannot exclude|can not exclude|"
+    r"unable to exclude|questionable|equivocal)\b"
+)
+
+
+def _concern_forms(label: str) -> tuple[str, ...]:
+    folded = _normalize_lexical(label)
+    return _URGENT_CONCERN_ALIASES.get(folded, (folded,))
+
+
+def _concern_occurrences(
+    phrase: str,
+    haystack: str,
+) -> list[tuple[str, str]]:
+    needle = _normalize_lexical(phrase)
+    pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+    occurrences: list[tuple[str, str]] = []
+    for match in pattern.finditer(haystack):
+        before = haystack[max(0, match.start() - 96) : match.start()]
+        after = haystack[match.end() : match.end() + 80]
+        before = re.split(r"\b(?:but|however|although|yet)\b", before)[-1]
+        if _URGENT_NEGATED_PREFIX.search(before) or _NEGATED_SUFFIX.search(after):
+            continue
+        occurrences.append((before, after))
+    return occurrences
+
+
+def _non_negated_concern_hit(label: str, haystack: str) -> bool:
+    return any(_concern_occurrences(form, haystack) for form in _concern_forms(label))
+
+
+def _uncertainty_contract_for_concern(
+    label: str,
+    result: AnalysisResult,
+) -> bool:
+    narrative = _narrative_haystack(result)
+    for form in _concern_forms(label):
+        for before, after in _concern_occurrences(form, narrative):
+            local = f"{before[-64:]} {after[:64]}"
+            if (
+                _UNCERTAIN_PREFIX.search(before)
+                or _UNCERTAIN_SUFFIX.search(after)
+                or _URGENT_UNCERTAINTY_CUE.search(local)
+            ):
+                return True
+    for finding in result.findings:
+        finding_text = _normalize_lexical(f"{finding.label} {finding.detail}")
+        if (
+            _non_negated_concern_hit(label, finding_text)
+            and finding.confidence == "low"
+            and finding.question.strip()
+        ):
+            return True
+    return False
+
+
+def _urgent_concern_check(
+    case: EvalCase,
+    result: AnalysisResult,
+) -> tuple[list[str], list[str], float]:
+    """Score urgent uncertain differentials without forcing a diagnosis."""
+    if not case.urgent_concerns:
+        return [], [], 1.0
+    narrative = _narrative_haystack(result)
+    hits: list[str] = []
+    misses: list[str] = []
+    for label in case.urgent_concerns:
+        surfaced = (
+            result.severity is Severity.CRITICAL
+            and _non_negated_concern_hit(label, narrative)
+            and _uncertainty_contract_for_concern(label, result)
+        )
+        (hits if surfaced else misses).append(label)
+    return hits, misses, round(len(hits) / len(case.urgent_concerns), 3)
 
 
 def compute_axis_coverage(
@@ -623,41 +1132,70 @@ def compute_axis_coverage(
 
 def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseScore:
     """Score a single structured result against the case ground truth."""
-    hits, misses, recall = _recall(case.expected_keywords, _haystack(result))
+    haystack = _haystack(result)
+    hits, misses, recall = _recall(case.expected_keywords, haystack)
+    false_positive_scorable = case.label_status == "asserted"
+    concept = _concept_metrics(
+        case.expected_keywords,
+        case.expected_severity,
+        result,
+        haystack,
+        score_false_positives=false_positive_scorable,
+    )
     neg_hits, neg_misses, neg_recall = _negative_recall(
         case.expected_negatives, _negative_haystack(result)
     )
 
     schema_ok, schema_issue = _schema_check(case, result)
 
-    abnormal_match = (
-        _severity_group(result.severity)
-        == _severity_group(case.expected_severity)
+    severity_scorable = case.expected_severity is not Severity.INFO
+    clinical_scorable = severity_scorable or bool(
+        case.expected_keywords
+        or case.expected_negatives
+        or case.cant_miss
+        or case.urgent_concerns
+    )
+    abnormal_match = _severity_group(result.severity) == _severity_group(
+        case.expected_severity
     )
     severity_match = result.severity == case.expected_severity
-    cant_miss_caught, cant_miss_missed = _cant_miss_check(
-        case, result, abnormal_match
+    severity_credit_match = not severity_scorable or _strict_severity_values(
+        expected=case.expected_severity,
+        actual=result.severity,
+        exact_match=severity_match,
+        abnormal_match=abnormal_match,
     )
+    cant_miss_caught, cant_miss_missed = _cant_miss_check(case, result, abnormal_match)
+    urgent_hits, urgent_missed, urgent_recall = _urgent_concern_check(case, result)
     partial_credit, partial_breakdown = _partial_credit(
-        severity_exact=severity_match,
+        severity_exact=severity_credit_match,
         severity_abnormal=abnormal_match,
         keyword_recall=recall,
+        concept_precision=concept.precision,
+        concept_recall=concept.recall,
+        concept_f1=concept.f1,
+        false_positive_penalty=concept.false_positive_penalty,
+        false_positive_scorable=false_positive_scorable,
         negative_recall=neg_recall,
+        has_expected_keywords=bool(case.expected_keywords),
         has_expected_negatives=bool(case.expected_negatives),
+        severity_scorable=severity_scorable,
+        clinical_scorable=clinical_scorable,
         cant_miss_missed=bool(cant_miss_missed),
+        urgent_concern_recall=urgent_recall,
+        has_urgent_concerns=bool(case.urgent_concerns),
+        urgent_concern_missed=bool(urgent_missed),
     )
+    bbox_in_bounds = _bbox_in_bounds(result)
     strict_pass = (
-        _strict_severity_values(
-            expected=case.expected_severity,
-            actual=result.severity,
-            exact_match=severity_match,
-            abnormal_match=abnormal_match,
-        )
+        severity_credit_match
         and not misses
         and not neg_misses
+        and not concept.false_positives
         and schema_ok
-        and _bbox_in_bounds(result)
+        and bbox_in_bounds
         and not cant_miss_missed
+        and not urgent_missed
     )
 
     return CaseScore(
@@ -676,9 +1214,15 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         negative_recall=neg_recall,
         schema_ok=schema_ok,
         schema_issue=schema_issue,
-        bbox_in_bounds=_bbox_in_bounds(result),
+        bbox_in_bounds=bbox_in_bounds,
         finding_count=len(result.findings),
         latency_ms=latency_ms,
+        clinical_scorable=clinical_scorable,
+        severity_scorable=severity_scorable,
+        false_positive_scorable=false_positive_scorable,
+        label_status=case.label_status,
+        reference_uncertain_concepts=list(case.uncertain_concepts),
+        reference_ungradable_reasons=list(case.ungradable_reasons),
         strict_pass=strict_pass,
         partial_credit=partial_credit,
         partial_credit_breakdown=partial_breakdown,
@@ -686,10 +1230,28 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         cant_miss=list(case.cant_miss),
         cant_miss_caught=cant_miss_caught,
         cant_miss_missed=cant_miss_missed,
+        urgent_concerns=list(case.urgent_concerns),
+        urgent_concern_hits=urgent_hits,
+        urgent_concern_missed=urgent_missed,
+        urgent_concern_recall=urgent_recall,
+        concept_hits=concept.hits,
+        concept_misses=concept.misses,
+        concept_false_positives=concept.false_positives,
+        concept_precision=concept.precision,
+        concept_recall=concept.recall,
+        concept_f1=concept.f1,
+        false_positive_penalty=concept.false_positive_penalty,
     )
 
 
 def _error_score(case: EvalCase, message: str) -> CaseScore:
+    severity_scorable = case.expected_severity is not Severity.INFO
+    clinical_scorable = severity_scorable or bool(
+        case.expected_keywords
+        or case.expected_negatives
+        or case.cant_miss
+        or case.urgent_concerns
+    )
     return CaseScore(
         case_label=case.label or case.image_path.name,
         image=case.image_path.name,
@@ -709,19 +1271,51 @@ def _error_score(case: EvalCase, message: str) -> CaseScore:
         bbox_in_bounds=False,
         finding_count=0,
         latency_ms=0,
+        clinical_scorable=clinical_scorable,
+        severity_scorable=severity_scorable,
+        false_positive_scorable=case.label_status == "asserted",
+        label_status=case.label_status,
+        reference_uncertain_concepts=list(case.uncertain_concepts),
+        reference_ungradable_reasons=list(case.ungradable_reasons),
         error=message,
         target_axes=list(case.target_axes),
         cant_miss=list(case.cant_miss),
         cant_miss_caught=not case.cant_miss,
         cant_miss_missed=list(case.cant_miss),
+        urgent_concerns=list(case.urgent_concerns),
+        urgent_concern_missed=list(case.urgent_concerns),
+        urgent_concern_recall=0.0 if case.urgent_concerns else 1.0,
+        concept_misses=sorted(
+            {
+                _canonical_concept(keyword)
+                for keyword in case.expected_keywords
+                if not _is_negative_expectation(keyword)
+            }
+        ),
+        concept_precision=0.0,
+        concept_recall=0.0,
+        concept_f1=0.0,
     )
 
 
 def _aggregate_partial_breakdown(scores: list[CaseScore]) -> dict[str, float]:
     if not scores:
-        return dict.fromkeys(_PARTIAL_CREDIT_WEIGHTS, 0.0)
+        return {
+            **dict.fromkeys(_PARTIAL_CREDIT_WEIGHTS, 0.0),
+            "concept_precision": 0.0,
+            "concept_recall": 0.0,
+            "false_positive_penalty": 0.0,
+            "urgent_concern_recall": 0.0,
+        }
     output: dict[str, float] = {}
-    for name in _PARTIAL_CREDIT_WEIGHTS:
+    names = (
+        *_PARTIAL_CREDIT_WEIGHTS,
+        "concept_precision",
+        "concept_recall",
+        "false_positive_penalty",
+        "urgent_concern_recall",
+    )
+    for name in names:
         output[name] = round(
             sum(s.partial_credit_breakdown.get(name, 0.0) for s in scores)
             / len(scores),
@@ -754,6 +1348,13 @@ def _target_axis_performance(scores: list[CaseScore]) -> dict[str, Any]:
             "mean_negative_recall": round(
                 sum(s.negative_recall for s in axis_scores) / count, 3
             ),
+            "mean_concept_precision": round(
+                sum(s.concept_precision for s in axis_scores) / count, 3
+            ),
+            "mean_concept_recall": round(
+                sum(s.concept_recall for s in axis_scores) / count, 3
+            ),
+            "mean_concept_f1": round(sum(s.concept_f1 for s in axis_scores) / count, 3),
         }
     return performance
 
@@ -771,36 +1372,90 @@ def _aggregate(
     errors = len(scores) - len(scored)
     n = len(scored)
 
-    def _rate(predicate: Any) -> float:
-        if n == 0:
+    def _rate(items: list[CaseScore], predicate: Any) -> float:
+        if not items:
             return 0.0
-        return round(sum(1 for s in scored if predicate(s)) / n, 3)
+        return round(sum(1 for s in items if predicate(s)) / len(items), 3)
 
-    severity_acc = _rate(lambda s: s.severity_match)
-    abnormal_acc = _rate(lambda s: s.severity_abnormal_match)
-    schema_rate = _rate(lambda s: s.schema_ok)
-    bbox_rate = _rate(lambda s: s.bbox_in_bounds)
+    clinical_scored = [s for s in scored if s.clinical_scorable]
+    clinical_all = [s for s in scores if s.clinical_scorable]
+    severity_scored = [s for s in scored if s.severity_scorable]
+    keyword_scored = [s for s in scored if s.keyword_hits or s.keyword_misses]
+    negative_scored = [s for s in scored if s.negative_hits or s.negative_misses]
+    false_positive_scored = [
+        s for s in clinical_scored if s.false_positive_scorable
+    ]
+
+    severity_acc = _rate(severity_scored, lambda s: s.severity_match)
+    abnormal_acc = _rate(severity_scored, lambda s: s.severity_abnormal_match)
+    schema_rate = _rate(scored, lambda s: s.schema_ok)
+    bbox_rate = _rate(scored, lambda s: s.bbox_in_bounds)
     mean_recall = (
-        round(sum(s.keyword_recall for s in scored) / n, 3) if n else 0.0
+        round(sum(s.keyword_recall for s in keyword_scored) / len(keyword_scored), 3)
+        if keyword_scored
+        else 1.0
     )
     mean_neg_recall = (
-        round(sum(s.negative_recall for s in scored) / n, 3) if n else 0.0
+        round(
+            sum(s.negative_recall for s in negative_scored) / len(negative_scored),
+            3,
+        )
+        if negative_scored
+        else 1.0
     )
-    mean_latency = (
-        round(sum(s.latency_ms for s in scored) / n, 1) if n else 0.0
+    mean_concept_precision = (
+        round(
+            sum(s.concept_precision for s in false_positive_scored)
+            / len(false_positive_scored),
+            3,
+        )
+        if false_positive_scored
+        else 0.0
     )
-    total_n = len(scores)
+    mean_concept_recall = (
+        round(
+            sum(s.concept_recall for s in clinical_scored) / len(clinical_scored),
+            3,
+        )
+        if clinical_scored
+        else 0.0
+    )
+    mean_concept_f1 = (
+        round(
+            sum(s.concept_f1 for s in false_positive_scored)
+            / len(false_positive_scored),
+            3,
+        )
+        if false_positive_scored
+        else 0.0
+    )
+    mean_false_positive_penalty = (
+        round(
+            sum(s.false_positive_penalty for s in false_positive_scored)
+            / len(false_positive_scored),
+            3,
+        )
+        if false_positive_scored
+        else 0.0
+    )
+    mean_latency = round(sum(s.latency_ms for s in scored) / n, 1) if n else 0.0
     strict_pass_rate = (
-        round(sum(1 for s in scores if s.strict_pass) / total_n, 3)
-        if total_n
+        round(
+            sum(1 for s in clinical_all if s.strict_pass) / len(clinical_all),
+            3,
+        )
+        if clinical_all
         else 0.0
     )
     mean_partial_credit = (
-        round(sum(s.partial_credit for s in scores) / total_n, 3)
-        if total_n
+        round(
+            sum(s.partial_credit for s in clinical_all) / len(clinical_all),
+            3,
+        )
+        if clinical_all
         else 0.0
     )
-    partial_breakdown = _aggregate_partial_breakdown(scores)
+    partial_breakdown = _aggregate_partial_breakdown(clinical_scored)
 
     # Can't-miss hard gate: aggregate across every scored case. A can't-miss
     # diagnosis carried by a case that the read failed to catch is recorded as
@@ -811,6 +1466,14 @@ def _aggregate(
         for label in s.cant_miss_missed:
             cant_miss_missed.append(f"{s.case_label}: {label}")
     cant_miss_caught_count = cant_miss_total - len(cant_miss_missed)
+
+    urgent_concern_total = sum(len(s.urgent_concerns) for s in scores)
+    urgent_concern_missed: list[str] = []
+    for score in scores:
+        urgent_concern_missed.extend(
+            f"{score.case_label}: {label}" for label in score.urgent_concern_missed
+        )
+    urgent_concern_caught_count = urgent_concern_total - len(urgent_concern_missed)
 
     coverage = compute_axis_coverage(cases, registry)
     axis_performance = _target_axis_performance(scores)
@@ -843,6 +1506,18 @@ def _aggregate(
         aborted_reason=aborted_reason,
         updated_at=datetime.now(UTC).isoformat(),
         cases=scores,
+        mean_concept_precision=mean_concept_precision,
+        mean_concept_recall=mean_concept_recall,
+        mean_concept_f1=mean_concept_f1,
+        mean_false_positive_penalty=mean_false_positive_penalty,
+        clinical_scorable_count=len(clinical_all),
+        severity_scorable_count=len(severity_scored),
+        keyword_scorable_count=len(keyword_scored),
+        negative_scorable_count=len(negative_scored),
+        false_positive_scorable_count=len(false_positive_scored),
+        urgent_concern_total=urgent_concern_total,
+        urgent_concern_caught_count=urgent_concern_caught_count,
+        urgent_concern_missed=urgent_concern_missed,
     )
 
 
@@ -879,9 +1554,14 @@ async def run_evaluation(
         try:
             result = await analyze(case)
         except Exception as exc:
+            metadata = case_metadata(case) if case_metadata else None
             score = _error_score(case, f"{type(exc).__name__}: {exc}")
             scores.append(score)
-            _write_error_result(results_dir, score)
+            _write_error_result(
+                results_dir,
+                score,
+                case_metadata=metadata,
+            )
             if _is_infrastructure_error(exc):
                 consecutive_infra_errors += 1
             else:
@@ -996,7 +1676,17 @@ def _write_raw_result(
         "modality": result.modality.value,
         "summary": result.summary,
         "severity": result.severity.value,
+        "analysis_time_ms": result.analysis_time_ms,
         "model_used": result.model_used,
+        "image_quality": result.image_quality,
+        "next_steps": list(result.next_steps),
+        "incomplete": result.incomplete,
+        "incomplete_reasons": list(result.incomplete_reasons),
+        "validation_warnings": list(result.validation_warnings),
+        "review_required": result.review_required,
+        "review_reasons": list(result.review_reasons),
+        "layout": dict(result.layout),
+        "analysis_trace": list(result.analysis_trace),
         "findings": [
             {
                 "id": f.id,
@@ -1004,9 +1694,10 @@ def _write_raw_result(
                 "detail": f.detail,
                 "severity": f.severity.value,
                 "regions": f.regions,
-                "bboxes": [
-                    {"x": b.x, "y": b.y, "w": b.w, "h": b.h} for b in f.bboxes
-                ],
+                "bboxes": [{"x": b.x, "y": b.y, "w": b.w, "h": b.h} for b in f.bboxes],
+                "notes": list(f.notes),
+                "confidence": f.confidence,
+                "question": f.question,
             }
             for f in result.findings
         ],
@@ -1025,20 +1716,37 @@ def _write_raw_result(
     )
 
 
-def _write_error_result(results_dir: Path, score: CaseScore) -> None:
+def _write_error_result(
+    results_dir: Path,
+    score: CaseScore,
+    *,
+    case_metadata: dict[str, Any] | None = None,
+) -> None:
     raw = {
         "case": score.case_label,
         "image": score.image,
         "modality": score.modality,
         "summary": "",
         "severity": "(error)",
+        "analysis_time_ms": 0,
         "model_used": "",
+        "image_quality": "",
+        "next_steps": [],
+        "incomplete": True,
+        "incomplete_reasons": [score.error],
+        "validation_warnings": [],
+        "review_required": True,
+        "review_reasons": [score.error],
+        "layout": {},
+        "analysis_trace": [],
         "findings": [],
         "checklist": {},
         "zoom_hints": [],
         "error": score.error,
         "score": asdict(score),
     }
+    if case_metadata:
+        raw.update(case_metadata)
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in score.case_label)
     (results_dir / f"{safe}.json").write_text(
         json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"

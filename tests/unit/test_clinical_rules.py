@@ -74,10 +74,58 @@ class TestRuleCondition:
         )
         assert cond.matches(_result()) is False
 
-    def test_not_contains_any(self):
+    @pytest.mark.parametrize(
+        ("summary", "expected"),
+        [
+            ("Definite anterior STEMI", True),
+            ("No ischemia, but definite anterior STEMI", True),
+            ("No STEMI pattern", False),
+            ("STEMI cannot be excluded", False),
+            ("Possible STEMI", False),
+            ("NSTEMI", False),
+        ],
+    )
+    def test_contains_any_asserted_respects_assertion_scope(
+        self, summary: str, expected: bool
+    ):
         cond = RuleCondition(
-            field="summary", op="not_contains_any", values=("stemi",)
+            field="summary", op="contains_any_asserted", values=("stemi",)
         )
+        assert cond.matches(_result(summary=summary)) is expected
+
+    @pytest.mark.parametrize(
+        ("summary", "expected"),
+        [
+            ("Possible hyperacute ischemia", True),
+            ("Hyperacute ischemia cannot be excluded", True),
+            ("No hyperacute ischemia", False),
+            ("No ischemia, but possible hyperacute ischemia", True),
+        ],
+    )
+    def test_contains_any_non_negated_preserves_uncertain_triage(
+        self, summary: str, expected: bool
+    ):
+        cond = RuleCondition(
+            field="summary",
+            op="contains_any_non_negated",
+            values=("hyperacute ischemia",),
+        )
+        assert cond.matches(_result(summary=summary)) is expected
+
+    def test_checklist_status_condition(self):
+        cond = RuleCondition(
+            field="checklist.st_segment.status",
+            op="severity_at_least",
+            value="info",
+        )
+        assert cond.matches(
+            _result(checklist={"st_segment": _item("elevation", Severity.INFO)})
+        )
+        assert not cond.matches(_result(checklist={"st_segment": _item("isoelectric")}))
+        assert not cond.matches(_result())
+
+    def test_not_contains_any(self):
+        cond = RuleCondition(field="summary", op="not_contains_any", values=("stemi",))
         assert cond.matches(_result(summary="benign")) is True
         assert cond.matches(_result(summary="STEMI suspected")) is False
 
@@ -106,9 +154,7 @@ class TestRuleCondition:
         assert cond.matches(_result(severity=Severity.WARNING)) is False
 
     def test_severity_at_least(self):
-        cond = RuleCondition(
-            field="severity", op="severity_at_least", value="warning"
-        )
+        cond = RuleCondition(field="severity", op="severity_at_least", value="warning")
         assert cond.matches(_result(severity=Severity.CRITICAL)) is True
         assert cond.matches(_result(severity=Severity.NORMAL)) is False
 
@@ -247,12 +293,77 @@ class TestBuiltinRules:
         res = _result(
             modality=Modality.EKG,
             severity=Severity.NORMAL,
-            summary="unremarkable",
-            checklist={"st_segment": _item("ST elevation in anterior leads")},
+            summary="Definite anterior STEMI",
+            checklist={
+                "st_segment": _item("ST elevation in anterior leads", Severity.CRITICAL)
+            },
         )
         engine.apply(res)
         assert res.severity is Severity.CRITICAL
         assert res.review_required is True
+
+    def test_ambiguous_st_elevation_is_review_only(self):
+        engine = default_engine()
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.INFO,
+            summary="Mild concave elevation, likely benign early repolarization",
+            checklist={
+                "st_segment": _item(
+                    "mild concave ST elevation; possible early repolarization",
+                    Severity.INFO,
+                )
+            },
+        )
+        violations = engine.apply(res)
+        assert [item.rule.id for item in violations] == ["ekg-st-elevation-not-flagged"]
+        assert res.severity is Severity.INFO
+        assert res.review_required is True
+
+    @pytest.mark.parametrize(
+        "summary",
+        ["No STEMI pattern", "Cannot exclude STEMI", "Possible anterior STEMI"],
+    )
+    def test_non_asserted_stemi_does_not_force_critical(self, summary: str):
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.INFO,
+            summary=summary,
+        )
+        default_engine().apply(res)
+        assert res.severity is Severity.INFO
+        assert res.review_required is False
+
+    def test_possible_hyperacute_ischemia_escalates_triage_not_diagnosis(self):
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.WARNING,
+            summary=(
+                "Tall T waves may reflect hyperacute ischemia or benign "
+                "repolarization; no definite STEMI is established."
+            ),
+        )
+
+        violations = default_engine().apply(res)
+
+        assert [item.rule.id for item in violations] == [
+            "ekg-possible-hyperacute-ischemia-triage"
+        ]
+        assert res.severity is Severity.CRITICAL
+        assert res.review_required is True
+        assert "STEMI" not in res.summary.replace("no definite STEMI", "")
+
+    def test_negated_hyperacute_ischemia_does_not_escalate(self):
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.WARNING,
+            summary="Tall T waves are present, with no hyperacute ischemia.",
+        )
+
+        default_engine().apply(res)
+
+        assert res.severity is Severity.WARNING
+        assert res.review_required is False
 
     def test_builtin_pneumothorax_undercall_escalates(self):
         engine = default_engine()
@@ -264,6 +375,16 @@ class TestBuiltinRules:
         engine.apply(res)
         assert res.severity is Severity.CRITICAL
         assert res.review_required is True
+
+    def test_negated_pneumothorax_does_not_escalate(self):
+        res = _result(
+            modality=Modality.CXR,
+            severity=Severity.NORMAL,
+            summary="No focal airspace disease, pleural effusion, or pneumothorax.",
+        )
+        default_engine().apply(res)
+        assert res.severity is Severity.NORMAL
+        assert res.review_required is False
 
     def test_builtin_does_not_flag_clean_ekg(self):
         engine = default_engine()
@@ -386,7 +507,7 @@ rules:
         res = _result(
             modality=Modality.EKG,
             severity=Severity.NORMAL,
-            checklist={"st_segment": _item("ST elevation")},
+            checklist={"st_segment": _item("ST elevation", Severity.INFO)},
         )
         engine.apply(res)
         assert res.review_required is True
@@ -419,7 +540,8 @@ class TestClinicalConsistencyHook:
         res = _result(
             modality=Modality.EKG,
             severity=Severity.NORMAL,
-            checklist={"st_segment": _item("ST elevation")},
+            summary="Definite STEMI",
+            checklist={"st_segment": _item("ST elevation", Severity.CRITICAL)},
         )
         out = hook.post_analyze(self._request(), res)
         assert out.severity is Severity.CRITICAL

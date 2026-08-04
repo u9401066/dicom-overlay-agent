@@ -13,7 +13,12 @@ import websockets
 from PIL import Image, ImageDraw, ImageFont
 
 from dicom_overlay.application.overlay_agent import OverlayAgent
-from dicom_overlay.domain.entities import AppConfig, TriggerMode, WindowRect
+from dicom_overlay.domain.entities import (
+    AppConfig,
+    DisplayFrame,
+    TriggerMode,
+    WindowRect,
+)
 from dicom_overlay.domain.services import ScreenMonitorService
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.openclaw_runtime import build_harness_manifest
@@ -44,6 +49,9 @@ class _HarnessScreenMonitor(ScreenMonitorService):
 
     def find_target_window(self, _keywords: list[str]) -> WindowRect | None:
         return self._window
+
+    def display_for_window(self, _window: WindowRect) -> DisplayFrame | None:
+        return DisplayFrame(physical_rect=self._window, is_primary=True)
 
     def capture_region(self, _rect: WindowRect) -> bytes:
         return self._image_bytes
@@ -159,6 +167,7 @@ async def run_image_harness_smoke(
             "ok": not errors,
             "summary": result.summary,
             "severity": result.severity.value,
+            "layout": dict(result.layout),
             "findings": [
                 {
                     "id": finding.id,

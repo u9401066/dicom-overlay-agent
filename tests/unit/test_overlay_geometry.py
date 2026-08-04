@@ -4,6 +4,8 @@ import pytest
 
 from dicom_overlay.domain.entities import RegionRect, WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
+    LogicalRect,
+    OverlayCoordinateFrame,
     project_bbox_to_overlay_highlight,
 )
 
@@ -76,3 +78,49 @@ def test_project_bbox_rejects_non_positive_dpr() -> None:
             severity="warning",
             label="bad",
         )
+
+
+def test_secondary_display_frame_maps_absolute_physical_to_overlay_local() -> None:
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=-1920, top=0, width=1920, height=1080),
+        logical_screen=WindowRect(left=-1536, top=0, width=1536, height=864),
+    )
+    capture = WindowRect(left=-1800, top=100, width=1600, height=800)
+
+    local = frame.physical_rect_to_local(capture)
+
+    assert local == LogicalRect(x=96, y=80, w=1280, h=640)
+    assert frame.physical_rect_to_global_logical(capture) == WindowRect(
+        left=-1440,
+        top=80,
+        width=1280,
+        height=640,
+    )
+    roundtrip = frame.local_rect_to_physical_edges(local)
+    expected = (capture.left, capture.top, capture.right, capture.bottom)
+    assert max(abs(a - b) for a, b in zip(roundtrip, expected, strict=True)) <= 1
+
+
+def test_bbox_projection_uses_target_display_frame_and_local_origin() -> None:
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=-1920, top=0, width=1920, height=1080),
+        logical_screen=WindowRect(left=-1536, top=0, width=1536, height=864),
+    )
+
+    projected = project_bbox_to_overlay_highlight(
+        bbox=RegionRect(x=0.1, y=0.2, w=0.3, h=0.4),
+        image_rect=WindowRect(left=-1800, top=100, width=1600, height=800),
+        coordinate_frame=frame,
+        severity="warning",
+        label="secondary display",
+    )
+
+    assert projected.highlight == (
+        224,
+        208,
+        384,
+        256,
+        "warning",
+        "secondary display",
+    )
+    assert projected.calibration.ok is True

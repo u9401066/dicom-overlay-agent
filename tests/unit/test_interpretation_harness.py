@@ -34,6 +34,22 @@ def test_initial_analysis_prompt_contains_structured_interpretation_protocol():
     assert "Return a single JSON object only" in prompt
 
 
+def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
+    prompt = build_initial_analysis_prompt(
+        modality=Modality.EKG,
+        valid_regions=["lead_I"],
+        skill_name="dicom-ekg-analysis",
+        skill_prompt="EKG skill instructions",
+        waveform_artifact_id="wf-opaque-123",
+        waveform_lead_mode="12_lead",
+    )
+
+    assert "ecg_founder_analyze_waveform exactly once" in prompt
+    assert "artifact_id='wf-opaque-123'" in prompt
+    assert "uncalibrated_score is neither a positive nor a negative" in prompt
+    assert "has no image localization" in prompt
+
+
 def test_followup_prompt_carries_image_context_and_prior_result():
     result = AnalysisResult(
         modality=Modality.EKG,

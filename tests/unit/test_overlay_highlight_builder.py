@@ -57,3 +57,26 @@ def test_ai_bbox_highlight_builder_does_not_draw_failed_drift_calibration() -> N
     assert row.calibration.ok is False
     assert row.to_dict()["drawn"] is False
     assert row.to_dict()["max_edge_drift_px"] > 0
+
+
+def test_ai_bbox_highlight_builder_draws_info_box_for_uncertainty_review() -> None:
+    finding = Finding(
+        id="uncertain-1",
+        regions=[],
+        label="Review possible ST change",
+        detail="Uncertain area requires reviewer confirmation",
+        severity=Severity.INFO,
+        bboxes=[RegionRect(x=0.2, y=0.3, w=0.2, h=0.1)],
+        question="Is this true ST depression or artifact?",
+    )
+
+    result = build_ai_bbox_highlights(
+        findings=[finding],
+        image_rect=WindowRect(left=0, top=0, width=1000, height=800),
+        dpr=1.0,
+    )
+
+    assert result.highlights == [
+        (200, 240, 200, 80, "info", "Review possible ST change")
+    ]
+    assert result.audit_rows[0].drawn is True

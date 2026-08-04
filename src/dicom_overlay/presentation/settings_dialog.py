@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -35,6 +37,7 @@ class SettingsDialog(QDialog):
     """GUI control panel for the OpenClaw settings this app owns."""
 
     trigger_mode_saved = pyqtSignal(object)
+    analysis_settings_saved = pyqtSignal(bool, int)
     vision_test_requested = pyqtSignal(object)
     roi_setup_requested = pyqtSignal()
 
@@ -43,18 +46,31 @@ class SettingsDialog(QDialog):
         repo_root: Path,
         *,
         current_mode: TriggerMode = TriggerMode.HYBRID,
+        multi_pass_enabled: bool = True,
+        multi_pass_max_zoom_targets: int = 2,
+        config_path: Path | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("DICOM Overlay Settings")
         self.setMinimumWidth(560)
 
-        self._store = DesktopSettingsStore(repo_root=repo_root)
+        self._store = DesktopSettingsStore(
+            repo_root=repo_root,
+            config_path=config_path,
+        )
         self._profiles = default_provider_profiles()
 
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
         tabs.addTab(self._build_mode_tab(current_mode), "Trigger")
+        tabs.addTab(
+            self._build_analysis_tab(
+                multi_pass_enabled,
+                multi_pass_max_zoom_targets,
+            ),
+            "Analysis",
+        )
         tabs.addTab(self._build_provider_tab(), "AI Provider")
         layout.addWidget(tabs)
 
@@ -149,6 +165,26 @@ class SettingsDialog(QDialog):
         layout.addLayout(button_row)
         return tab
 
+    def _build_analysis_tab(
+        self, multi_pass_enabled: bool, max_zoom_targets: int
+    ) -> QWidget:
+        tab = QWidget()
+        form = QFormLayout(tab)
+
+        self._multi_pass_check = QCheckBox("Crop/refine abnormal regions")
+        self._multi_pass_check.setChecked(multi_pass_enabled)
+        form.addRow("Multi-pass", self._multi_pass_check)
+
+        self._max_zoom_targets = QSpinBox()
+        self._max_zoom_targets.setRange(1, 5)
+        self._max_zoom_targets.setValue(max(1, min(5, max_zoom_targets)))
+        form.addRow("Refine targets", self._max_zoom_targets)
+
+        save_btn = QPushButton("Save analysis")
+        save_btn.clicked.connect(self._save_analysis_settings)
+        form.addRow("", save_btn)
+        return tab
+
     def _on_provider_changed(self) -> None:
         self._load_profile_fields(
             cast("ProviderProfile", self._provider_combo.currentData())
@@ -165,6 +201,16 @@ class SettingsDialog(QDialog):
         self._store.save_trigger_mode(mode)
         self.trigger_mode_saved.emit(mode)
         QMessageBox.information(self, "Settings", "Trigger mode saved.")
+
+    def _save_analysis_settings(self) -> None:
+        enabled = self._multi_pass_check.isChecked()
+        max_targets = self._max_zoom_targets.value()
+        self._store.save_analysis_settings(
+            multi_pass_enabled=enabled,
+            max_zoom_targets=max_targets,
+        )
+        self.analysis_settings_saved.emit(enabled, max_targets)
+        QMessageBox.information(self, "Settings", "Analysis settings applied.")
 
     def _save_provider_profile(self) -> None:
         profile = self.selected_profile()

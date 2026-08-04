@@ -20,6 +20,7 @@ import pytest
 import websockets
 
 from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
+from dicom_overlay.application.multi_pass import RefinementResult
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import (
     AgentState,
@@ -28,6 +29,7 @@ from dicom_overlay.domain.entities import (
     ChecklistItem,
     Finding,
     Modality,
+    RegionRect,
     Severity,
     TriggerMode,
     WindowRect,
@@ -68,6 +70,110 @@ class TestParseResult:
         client._gateway_token = "test-token"
         return client
 
+    @pytest.mark.asyncio
+    async def test_analysis_retries_one_malformed_json_turn(self):
+        client = self._make_client()
+        client._last_parse_retry_count = 0
+        calls = 0
+        expected = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Sinus rhythm.",
+            severity=Severity.NORMAL,
+            findings=[],
+            checklist={},
+        )
+
+        async def fake_analyze(*_args: object) -> AnalysisResult:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise json.JSONDecodeError("missing bracket", "{", 1)
+            return expected
+
+        client._do_analyze = fake_analyze  # type: ignore[method-assign]
+
+        result = await client._analyze_with_parse_retry(
+            "image",
+            Modality.EKG,
+            ["lead_I"],
+        )
+
+        assert result is expected
+        assert calls == 2
+        assert client._last_parse_retry_count == 1
+
+    @pytest.mark.asyncio
+    async def test_refinement_retries_one_malformed_json_turn(self):
+        client = self._make_client()
+        client._last_parse_retry_count = 0
+        calls = 0
+        expected = RefinementResult()
+
+        async def fake_refine(*_args: object, **_kwargs: object) -> RefinementResult:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise json.JSONDecodeError("missing bracket", "{", 1)
+            return expected
+
+        client._do_refine = fake_refine  # type: ignore[method-assign]
+
+        result = await client._refine_with_parse_retry(
+            "image",
+            Modality.EKG,
+            ["lead_I"],
+            hypothesis=None,
+            crop_region=RegionRect(0.1, 0.2, 0.3, 0.2),
+        )
+
+        assert result is expected
+        assert calls == 2
+        assert client._last_parse_retry_count == 1
+
+    @pytest.mark.asyncio
+    async def test_finalization_retries_one_malformed_json_turn(self):
+        client = self._make_client()
+        client._last_parse_retry_count = 0
+        calls = 0
+        draft = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Draft.",
+            severity=Severity.NORMAL,
+            findings=[],
+            checklist={},
+        )
+        expected = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Final.",
+            severity=Severity.NORMAL,
+            findings=[],
+            checklist={},
+        )
+
+        async def fake_finalize(
+            *_args: object,
+            **_kwargs: object,
+        ) -> AnalysisResult:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise json.JSONDecodeError("missing bracket", "{", 1)
+            return expected
+
+        client._do_finalize = fake_finalize  # type: ignore[method-assign]
+
+        result = await client._finalize_with_parse_retry(
+            "image",
+            Modality.EKG,
+            ["lead_I"],
+            draft=draft,
+            refinement_trace=[],
+        )
+
+        assert result is expected
+        assert calls == 2
+        assert client._last_parse_retry_count == 1
+
     def test_full_result_parsing(self):
         client = self._make_client()
         payload = {
@@ -76,6 +182,14 @@ class TestParseResult:
             "severity": "normal",
             "model_used": "gpt-5-mini",
             "analysis_time_ms": 123,
+            "image_quality": {
+                "adequacy": "limited",
+                "issues": ["compression"],
+                "detail": "Waveforms remain readable.",
+            },
+            "next_steps": ["Review lead II at source resolution."],
+            "incomplete": True,
+            "incomplete_reasons": ["Lead V6 label is cropped."],
             "findings": [
                 {
                     "id": "f1",
@@ -83,6 +197,8 @@ class TestParseResult:
                     "label": "ST Elevation",
                     "detail": "Mild elevation in leads I, II",
                     "severity": "warning",
+                    "confidence": "low",
+                    "question": "Is the lead II baseline stable in the source?",
                 }
             ],
             "checklist": {
@@ -98,6 +214,10 @@ class TestParseResult:
         assert result.severity == Severity.NORMAL
         assert result.model_used == "gpt-5-mini"
         assert result.analysis_time_ms == 123  # from payload, not elapsed
+        assert result.image_quality["adequacy"] == "limited"
+        assert result.next_steps == ["Review lead II at source resolution."]
+        assert result.incomplete is True
+        assert result.incomplete_reasons == ["Lead V6 label is cropped."]
         assert len(result.findings) == 1
 
         f = result.findings[0]
@@ -105,6 +225,8 @@ class TestParseResult:
         assert f.regions == ["lead_I", "lead_II"]
         assert f.label == "ST Elevation"
         assert f.severity == Severity.WARNING
+        assert f.confidence == "low"
+        assert f.question.startswith("Is the lead II")
 
         assert len(result.checklist) == 3
         assert result.checklist["rate"].value == "72 bpm"
@@ -119,6 +241,31 @@ class TestParseResult:
         assert result.findings == []
         assert result.checklist == {}
         assert result.analysis_time_ms == 200  # fallback to elapsed
+
+    def test_invalid_bbox_is_dropped_and_marks_result_incomplete(self):
+        client = self._make_client()
+        result = client._parse_result(
+            {
+                "findings": [
+                    {
+                        "id": "f1",
+                        "label": "Candidate",
+                        "regions": ["lead_II"],
+                        "severity": "info",
+                        "bboxes": [
+                            {"x": 0.9, "y": 0.2, "w": 0.2, "h": 0.2},
+                            {"x": 0.2, "y": 0.2, "w": 0.0, "h": 0.2},
+                        ],
+                    }
+                ]
+            },
+            elapsed_ms=0,
+        )
+
+        assert result.findings[0].bboxes == []
+        assert result.incomplete is True
+        assert result.incomplete_reasons == ["Dropped invalid bbox for finding f1"]
+        assert result.validation_warnings == ["Dropped invalid bbox for finding f1"]
 
     def test_unknown_modality_defaults_ekg(self):
         client = self._make_client()
@@ -603,6 +750,62 @@ class TestHookedVisionAnalyzer:
         assert hook2.pre_count == 1
         assert hook1.post_count == 1
         assert hook2.post_count == 1
+
+    @pytest.mark.asyncio
+    async def test_source_aware_analysis_is_delegated_and_final_hooks_run(self):
+        class SourceAwareInner(MockInnerAnalyzer):
+            def __init__(self):
+                super().__init__()
+                self.source_call = None
+
+            async def analyze_with_source_size(
+                self,
+                image_base64,
+                modality,
+                valid_regions,
+                *,
+                source_size_px,
+                source_image_base64=None,
+                local_candidate_regions=None,
+            ):
+                self.source_call = {
+                    "source_size_px": source_size_px,
+                    "source_image_base64": source_image_base64,
+                    "local_candidate_regions": local_candidate_regions,
+                }
+                return await self.analyze(image_base64, modality, valid_regions)
+
+        inner = SourceAwareInner()
+
+        class SourceRecordingHook(CountingHook):
+            source_image_base64 = None
+
+            def post_analyze(self, request, result):
+                self.source_image_base64 = request.metadata.get("source_image_base64")
+                return super().post_analyze(request, result)
+
+        hook = SourceRecordingHook()
+        hooked = HookedVisionAnalyzer(inner=inner, hooks=[hook])
+        candidate = RegionRect(0.1, 0.2, 0.3, 0.4)
+
+        result = await hooked.analyze_with_source_size(
+            "coarse",
+            Modality.EKG,
+            ["lead_I"],
+            source_size_px=(2000, 1200),
+            source_image_base64="source",
+            local_candidate_regions=[candidate],
+        )
+
+        assert result.summary == "Mock analysis"
+        assert inner.source_call == {
+            "source_size_px": (2000, 1200),
+            "source_image_base64": "source",
+            "local_candidate_regions": [candidate],
+        }
+        assert hook.pre_count == 1
+        assert hook.post_count == 1
+        assert hook.source_image_base64 == "source"
 
     @pytest.mark.asyncio
     async def test_pre_hook_rejection_blocks_analyze(self):

@@ -251,6 +251,20 @@ class TestHighlightConstruction:
         assert "build_ai_bbox_highlights" in source
         assert "bbox_projection_calibrated" in source
 
+    def test_main_keeps_guardrails_when_multi_pass_setting_changes(self):
+        main_path = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "dicom_overlay"
+            / "__main__.py"
+        )
+        source = main_path.read_text(encoding="utf-8")
+
+        assert "def build_multi_pass_analyzer" in source
+        assert "-> HookedVisionAnalyzer" in source
+        assert "include_bbox_calibration=False" in source
+        assert "agent.set_vision_analyzer(multi_pass_analyzer" in source
+
 
 # ── Humanize helpers ──
 
@@ -300,16 +314,32 @@ class TestSmartDisplayPartition:
         checklist = {
             k: ChecklistItem(value="normal", status=Severity.NORMAL)
             for k in [
-                "heart_rate", "rhythm", "regularity", "axis",
-                "p_wave", "pr_interval", "qrs_duration", "qrs_morphology",
-                "st_segment", "t_wave", "qtc_interval", "chamber_enlargement",
-                "conduction", "av_block", "stemi_pattern", "ischemia",
+                "heart_rate",
+                "rhythm",
+                "regularity",
+                "axis",
+                "p_wave",
+                "pr_interval",
+                "qrs_duration",
+                "qrs_morphology",
+                "st_segment",
+                "t_wave",
+                "qtc_interval",
+                "chamber_enlargement",
+                "conduction",
+                "av_block",
+                "stemi_pattern",
+                "ischemia",
             ]
         }
-        abnormal = [(k, v) for k, v in checklist.items()
-                     if v.status in (Severity.CRITICAL, Severity.WARNING)]
+        abnormal = [
+            (k, v)
+            for k, v in checklist.items()
+            if v.status in (Severity.CRITICAL, Severity.WARNING)
+        ]
         normal_count = sum(
-            1 for v in checklist.values()
+            1
+            for v in checklist.values()
             if v.status not in (Severity.CRITICAL, Severity.WARNING)
         )
         assert len(abnormal) == 0
@@ -325,10 +355,14 @@ class TestSmartDisplayPartition:
             "stemi_pattern": ChecklistItem(value="anterior", status=Severity.CRITICAL),
             "axis": ChecklistItem(value="normal", status=Severity.INFO),
         }
-        abnormal = [(k, v) for k, v in checklist.items()
-                     if v.status in (Severity.CRITICAL, Severity.WARNING)]
+        abnormal = [
+            (k, v)
+            for k, v in checklist.items()
+            if v.status in (Severity.CRITICAL, Severity.WARNING)
+        ]
         normal_count = sum(
-            1 for v in checklist.values()
+            1
+            for v in checklist.values()
             if v.status not in (Severity.CRITICAL, Severity.WARNING)
         )
         assert len(abnormal) == 2

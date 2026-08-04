@@ -66,13 +66,34 @@ def build_comparison(
     baseline = _load_scorecard(baseline_scorecard_path)
     candidate = _load_scorecard(candidate_scorecard_path)
     baseline_health = _scorecard_health(baseline, baseline_dir, baseline_scorecard_path)
-    candidate_health = _scorecard_health(candidate, candidate_dir, candidate_scorecard_path)
+    candidate_health = _scorecard_health(
+        candidate, candidate_dir, candidate_scorecard_path
+    )
     if not allow_incomplete:
         _require_complete("baseline", baseline_health)
         _require_complete("candidate", candidate_health)
     baseline_cases = _cases_by_label(baseline, include_errors=allow_incomplete)
     candidate_cases = _cases_by_label(candidate, include_errors=allow_incomplete)
     labels = sorted(set(baseline_cases) & set(candidate_cases))
+    for label in labels:
+        if _reference_signature(baseline_cases[label]) != _reference_signature(
+            candidate_cases[label]
+        ):
+            raise ValueError(
+                f"case {label!r} uses different reference labels between runs; "
+                "re-run both protocols against the same manifest"
+            )
+
+    baseline_manifest = _protocol_manifest_identity(baseline_dir)
+    candidate_manifest = _protocol_manifest_identity(candidate_dir)
+    if (
+        baseline_manifest is not None
+        and candidate_manifest is not None
+        and baseline_manifest != candidate_manifest
+    ):
+        raise ValueError(
+            "baseline and candidate protocol fingerprints use different manifests"
+        )
 
     rows = [
         _compare_case(
@@ -95,6 +116,8 @@ def build_comparison(
         "allow_incomplete": allow_incomplete,
         "baseline_health": baseline_health,
         "candidate_health": candidate_health,
+        "baseline_manifest": baseline_manifest,
+        "candidate_manifest": candidate_manifest,
         "baseline_only_cases": sorted(set(baseline_cases) - set(candidate_cases)),
         "candidate_only_cases": sorted(set(candidate_cases) - set(baseline_cases)),
         "headline": _headline(baseline, candidate, rows),
@@ -136,6 +159,35 @@ def _cases_by_label(
             continue
         cases[str(case["case_label"])] = case
     return cases
+
+
+def _reference_signature(case: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        case.get("expected_severity"),
+        case.get("label_status", "asserted"),
+        tuple(sorted((*case.get("keyword_hits", []), *case.get("keyword_misses", [])))),
+        tuple(
+            sorted((*case.get("negative_hits", []), *case.get("negative_misses", [])))
+        ),
+        tuple(sorted(case.get("cant_miss", []))),
+        tuple(sorted(case.get("urgent_concerns", []))),
+        tuple(sorted(case.get("target_axes", []))),
+    )
+
+
+def _protocol_manifest_identity(eval_dir: Path) -> dict[str, Any] | None:
+    path = eval_dir / "protocol-fingerprint.json"
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    protocol = payload.get("protocol")
+    manifest = protocol.get("manifest") if isinstance(protocol, dict) else None
+    if not isinstance(manifest, dict):
+        return None
+    return {
+        "sha256": str(manifest.get("sha256") or ""),
+        "selected_case_count": _int(manifest.get("selected_case_count")),
+    }
 
 
 def _scorecard_health(
@@ -236,16 +288,20 @@ def _compare_case(
         "candidate_negative_recall": _float(candidate.get("negative_recall")),
         "baseline_latency_ms": _int(baseline.get("latency_ms")),
         "candidate_latency_ms": _int(candidate.get("latency_ms")),
-        "target_axes": candidate.get("target_axes") or baseline.get("target_axes") or [],
+        "target_axes": candidate.get("target_axes")
+        or baseline.get("target_axes")
+        or [],
         "baseline_misses": {
             "keywords": baseline.get("keyword_misses", []),
             "negatives": baseline.get("negative_misses", []),
             "cant_miss": baseline.get("cant_miss_missed", []),
+            "urgent_concerns": baseline.get("urgent_concern_missed", []),
         },
         "candidate_misses": {
             "keywords": candidate.get("keyword_misses", []),
             "negatives": candidate.get("negative_misses", []),
             "cant_miss": candidate.get("cant_miss_missed", []),
+            "urgent_concerns": candidate.get("urgent_concern_missed", []),
         },
     }
 
@@ -284,6 +340,12 @@ def _headline(
         ),
         "baseline_cant_miss_missed": list(baseline.get("cant_miss_missed", [])),
         "candidate_cant_miss_missed": list(candidate.get("cant_miss_missed", [])),
+        "baseline_urgent_concern_missed": list(
+            baseline.get("urgent_concern_missed", [])
+        ),
+        "candidate_urgent_concern_missed": list(
+            candidate.get("urgent_concern_missed", [])
+        ),
     }
 
 

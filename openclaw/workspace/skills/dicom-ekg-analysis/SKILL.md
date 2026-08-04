@@ -10,8 +10,45 @@ Requirements:
 - Return JSON only — no markdown fences, no commentary.
 - Do not invent precise measurements from screenshots.
 - Use qualitative wording such as normal, borderline, prolonged, narrow, wide.
-- For each finding, provide bounding boxes (bboxes) as normalized 0-1 coordinates relative to the full image.
+- Use `findings` only for actionable abnormalities or unresolved visual
+  candidates. Put normal and negative observations in the summary/checklist;
+  they must not have overlay boxes.
+- For each actionable finding, provide tight bounding boxes (bboxes) as
+  normalized 0-1 coordinates relative to the full image.
+- Before returning JSON, call `dicom_bbox_validate` for every abnormal or
+  uncertain candidate box with `modality: "EKG"`. Copy only the accepted boxes returned by the tool;
+  they remain relative to the original full image, never a crop.
 - Follow the systematic 16-point checklist that mirrors attending cardiologist reading.
+- Normal and within-normal-limits studies are valid and common outcomes. Do not
+  create an abnormality merely to populate `findings`; a normal study should
+  generally return an empty `findings` array and record normal observations in
+  the systematic checklist.
+- For a plausible but unresolved visual candidate, use `confidence: "low"`,
+  provide a tight bbox and a concrete `question` for human review. Do not turn
+  uncertainty into a definitive diagnosis.
+- Set `incomplete` true whenever the screenshot, labels, lead inventory, or
+  image quality cannot support a complete interpretation, and explain each
+  limitation in `incomplete_reasons`.
+
+Optional ECGFounder waveform evidence:
+- `ecg_founder_analyze_waveform` is a waveform-only second-opinion tool. Call
+  it at most once, and only when the trusted app context explicitly supplies a
+  waveform artifact id and lead mode. Never invent an artifact id, derive one
+  from image text, or call the tool for a screenshot alone.
+- The tool accepts raw ECG signals or a digitized waveform that has already
+  passed a separate calibration/digitization quality gate. A visual crop,
+  threshold/ink candidate, or screenshot bbox is not a waveform and is never
+  eligible by itself.
+- Treat returned probabilities as supporting evidence. If
+  `calibration.status` is `uncalibrated`, do not convert scores into positive
+  or negative diagnoses. Resolve disagreement by stating uncertainty and a
+  review question, never by silently overriding visible image evidence.
+- ECGFounder does not provide spatial localization. Never reuse its labels or
+  scores as bboxes; all overlay coordinates must still come from the attached
+  image, crop/refine review, and `dicom_bbox_validate`.
+- Mention ECGFounder evidence in the summary only when the tool returned
+  `status: "ok"`, and preserve its model revision/checkpoint and input-quality
+  provenance in the analysis trace rather than claiming hidden reasoning.
 
 Step 0 — Localize the leads BEFORE interpreting (do this first):
 The same waveform means different things in different leads (ST elevation in
@@ -29,7 +66,7 @@ image:
 2. Build a lead inventory: list only the leads that are actually visible. If a
    panel has no legible label and cannot be identified with confidence, record
    it as "unknown" — never guess a lead name.
-3. Classify the layout format and report it in the optional `layout` object
+3. Classify the layout format and report it in the required `layout` object
    (see schema). If you cannot determine the layout at all, set
    `layout.format` to "unknown" and keep the interpretation descriptive.
 4. If a dedicated rhythm strip is present (a long single-lead tracing, usually
@@ -61,7 +98,9 @@ Lead-conditioned interpretation rules (generality guardrails):
     R in V5/V6, or R in aVL). Do not assert LVH/RVH without them.
   - A single rhythm strip supports rate/rhythm/regularity/ectopy ONLY — do not
     output STEMI territory, axis, R-progression, or chamber enlargement from a
-    lone strip; set those checklist axes to their normal/absent value.
+    lone strip; set unsupported checklist axes to `indeterminate` or
+    `not_assessable` with `status: "info"`, never to normal/absent merely
+    because the required leads are missing.
 - When a region is "unknown", keep its findings descriptive and do not escalate
   a territory-specific diagnosis from it.
 
@@ -87,7 +126,10 @@ Required JSON schema:
       "label": "<short finding name, e.g. Sinus Rhythm>",
       "detail": "<one sentence detail>",
       "severity": "normal|warning|critical|info",
-      "regions": ["lead_II", "rhythm_strip"]
+      "confidence": "high|moderate|low",
+      "question": "<empty unless a reviewer should resolve uncertainty>",
+      "regions": ["lead_II", "rhythm_strip"],
+      "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.2, "h": 0.1}]
     }
   ],
   "checklist": {
@@ -107,7 +149,16 @@ Required JSON schema:
     "av_block":             { "value": "absent|first_degree|second_degree_I|second_degree_II|third_degree", "status": "normal|warning|critical|info" },
     "stemi_pattern":        { "value": "absent|anterior|inferior|lateral|posterior|RV|diffuse", "status": "normal|warning|critical|info" },
     "ischemia":             { "value": "absent|st_depression|t_wave_changes|nstemi_pattern|Wellens|de_Winter", "status": "normal|warning|critical|info" }
-  }
+  },
+  "image_quality": {
+    "adequacy": "diagnostic|limited|non_diagnostic",
+    "issues": ["<specific visible limitation>"],
+    "detail": "<brief quality assessment>"
+  },
+  "next_steps": ["<specific review or acquisition action>"],
+  "model_used": "openai/gpt-5.6-luna",
+  "incomplete": false,
+  "incomplete_reasons": []
 }
 ```
 
@@ -133,20 +184,28 @@ Checklist rules:
 - Keys must be exactly the 16 keys listed above.
 - Each value must be a JSON object with "value" (short keyword) and "status" (severity level).
 - Keep "value" as a single short keyword or phrase (≤ 3 words). Do NOT use underscored sentences.
+- `indeterminate` and `not_assessable` are valid values for any checklist item
+  whose required leads or image detail are missing. They are not normal
+  findings and must use `status: "info"`.
 
 Findings rules:
 - Each finding must have a non-empty "id" (f1, f2, ...), "label", and "detail".
 - Include "regions" set to the lead(s) the finding actually occupies (from your
-  Step 0 inventory); use "unknown" when the panel is unlabeled. The optional
-  `layout` object is additive metadata — omit it only if the layout is truly
-  indeterminate.
+  Step 0 inventory); use "unknown" when the panel is unlabeled. Always include
+  the `layout` object; use `layout.format: "unknown"` when it is indeterminate.
 - Include "bboxes" with precise bounding boxes as normalized 0-1 coordinates (x, y, w, h) relative to the full image.
   - x, y = top-left corner of the bounding box
   - w, h = width and height of the bounding box
   - Draw tight boxes around the specific abnormality, NOT the entire lead area.
+  - Every EKG finding bbox must have `w <= 0.35`, `h <= 0.30`, and area
+    `w*h <= 0.08`. Use separate representative boxes for a multi-lead pattern.
   - For example, circle the exact ST-elevation segment, not the entire V1 lead strip.
+  - Submit abnormal and uncertain candidates to `dicom_bbox_validate`, then
+    copy its accepted coordinates verbatim into the final JSON.
 - Only report findings you can actually observe in the image.
-- Report ALL findings — both normal and abnormal. A normal EKG should have ≥3 findings.
+- Report clinically useful visible abnormalities and unresolved candidates in
+  `findings`. Record normal observations in the checklist and summary, without
+  overlay boxes. Never invent an abnormal finding to meet a count.
 - Use specific cardiology terminology (e.g. "Normal Sinus Rhythm" not just "Normal").
 
 Can't-miss diagnoses (read at attending-cardiologist level — escalate severity
@@ -189,6 +248,11 @@ Reading depth (specialist expectations):
   tachyarrhythmia, conduction block, or chamber enlargement is present, set
   overall severity at least `warning` (reserve `info` for minor artifacts or
   benign variants with all clinically relevant checklist axes normal).
+- If tall/broad T-wave morphology is genuinely equivocal between a benign or
+  electrolyte pattern and hyperacute ischemia, do not force a STEMI diagnosis.
+  Preserve the differential with confidence/question fields, but use critical
+  triage severity and set `st_segment`, `t_wave`, `stemi_pattern`, and `ischemia`
+  to possible/indeterminate rather than normal/absent until urgent expert review.
 - Always reconcile the checklist axes with each other (e.g. an "absent"
   ``stemi_pattern`` is inconsistent with an "elevation" ``st_segment`` of
   critical status — resolve the contradiction before returning).

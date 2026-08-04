@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -12,7 +13,9 @@ import structlog
 from dicom_overlay.domain.entities import (
     AgentState,
     AnalysisResult,
+    DisplayFrame,
     Modality,
+    RegionRect,
     TriggerMode,
     WindowRect,
 )
@@ -73,6 +76,8 @@ class OverlayAgent:
         # (0, 0); mss.grab needs absolute virtual-desktop coordinates.
         self._screen_left = screen_left
         self._screen_top = screen_top
+        self._display_frame: DisplayFrame | None = None
+        self._last_capture_rect: WindowRect | None = None
 
         self._state = AgentState.INIT
         self._current_modality = Modality.EKG
@@ -122,6 +127,14 @@ class OverlayAgent:
     def target_window(self) -> WindowRect | None:
         return self._target_window
 
+    @property
+    def display_frame(self) -> DisplayFrame | None:
+        return self._display_frame
+
+    @property
+    def last_capture_rect(self) -> WindowRect | None:
+        return self._last_capture_rect
+
     def set_modality(self, modality: Modality) -> None:
         self._current_modality = modality
         logger.info("Modality set to %s", modality.value)
@@ -132,6 +145,11 @@ class OverlayAgent:
         if mode == TriggerMode.AUTO:
             self._pending_analysis = False
         logger.info("Trigger mode set to %s", mode.value)
+
+    def set_vision_analyzer(self, analyzer: VisionAnalyzerService) -> None:
+        """Use ``analyzer`` for subsequent reads without resetting app state."""
+        self._analyzer = analyzer
+        logger.info("Vision analyzer set to %s", type(analyzer).__name__)
 
     def _transition(self, new_state: AgentState) -> None:
         old = self._state
@@ -206,7 +224,7 @@ class OverlayAgent:
             self._config.monitor.window_title_keywords
         )
         if window:
-            self._target_window = window
+            self._set_target_window(window)
             self._transition(AgentState.MONITORING)
             logger.info(
                 "Found viewer: %dx%d at (%d, %d)",
@@ -224,12 +242,46 @@ class OverlayAgent:
         ``mss.grab`` on multi-monitor layouts).
         """
         roi = self._config.phi_roi
+        width = self._screen_width - roi.left - roi.right
+        height = self._screen_height - roi.top - roi.bottom
+        if width <= 0 or height <= 0:
+            raise ValueError(
+                "ROI crop margins exceed the target display dimensions"
+            )
         return WindowRect(
             left=self._screen_left + roi.left,
             top=self._screen_top + roi.top,
-            width=self._screen_width - roi.left - roi.right,
-            height=self._screen_height - roi.top - roi.bottom,
+            width=width,
+            height=height,
         )
+
+    def _set_target_window(self, window: WindowRect | None) -> None:
+        self._target_window = window
+        if window is not None:
+            self._sync_capture_display(window)
+
+    def _sync_capture_display(self, window: WindowRect) -> None:
+        display = self._monitor.display_for_window(window)
+        if display is None:
+            return
+        physical = display.physical_rect
+        changed = display != self._display_frame
+        self._display_frame = display
+        self._screen_left = physical.left
+        self._screen_top = physical.top
+        self._screen_width = physical.width
+        self._screen_height = physical.height
+        if changed:
+            logger.info(
+                "Capture display: %s index=%d primary=%s rect=(%d,%d,%dx%d)",
+                display.device_name or "unknown",
+                display.monitor_index,
+                display.is_primary,
+                physical.left,
+                physical.top,
+                physical.width,
+                physical.height,
+            )
 
     async def _tick_displaying(self) -> None:
         """While results are shown, keep monitoring for image changes.
@@ -242,10 +294,10 @@ class OverlayAgent:
             self._config.monitor.window_title_keywords
         )
         if not window:
-            self._target_window = None
+            self._set_target_window(None)
             self._transition(AgentState.WAITING)
             return
-        self._target_window = window
+        self._set_target_window(window)
 
         # Settling period: overlay needs time to render on screen.
         # Skip hash monitoring until overlay is fully visible (~2s).
@@ -285,10 +337,10 @@ class OverlayAgent:
             self._config.monitor.window_title_keywords
         )
         if not window:
-            self._target_window = None
+            self._set_target_window(None)
             self._transition(AgentState.WAITING)
             return
-        self._target_window = window
+        self._set_target_window(window)
 
         # Capture ROI area (same region used for analysis) and compute hash
         try:
@@ -363,23 +415,32 @@ class OverlayAgent:
 
         # Capture the screen area defined by ROI (screen-relative margins).
         # ROI margins and screen dimensions are both in physical pixels.
-        roi = self._config.phi_roi
         if self._target_window is None:
             logger.warning("No target window for capture")
             self._transition(AgentState.WAITING)
             return
-        capture_rect = WindowRect(
-            left=self._screen_left + roi.left,
-            top=self._screen_top + roi.top,
-            width=self._screen_width - roi.left - roi.right,
-            height=self._screen_height - roi.top - roi.bottom,
-        )
+        self._sync_capture_display(self._target_window)
+        roi = self._config.phi_roi
+        try:
+            capture_rect = self._get_roi_rect()
+        except ValueError:
+            logger.exception("ROI does not fit the target display")
+            self._transition(AgentState.ERROR)
+            if self.on_error:
+                self.on_error("ROI 設定超出目前螢幕, 請重新設定")
+            return
         logger.info(
             "ROI capture: screen=%dx%d roi=(%d,%d,%d,%d) → rect=(%d,%d,%dx%d)",
-            self._screen_width, self._screen_height,
-            roi.top, roi.bottom, roi.left, roi.right,
-            capture_rect.left, capture_rect.top,
-            capture_rect.width, capture_rect.height,
+            self._screen_width,
+            self._screen_height,
+            roi.top,
+            roi.bottom,
+            roi.left,
+            roi.right,
+            capture_rect.left,
+            capture_rect.top,
+            capture_rect.width,
+            capture_rect.height,
         )
         try:
             screenshot = self._monitor.capture_region(capture_rect)
@@ -387,14 +448,20 @@ class OverlayAgent:
             logger.exception("ROI capture failed")
             self._transition(AgentState.ERROR)
             return
+        self._last_capture_rect = capture_rect
         logger.debug("Captured %d bytes", len(screenshot))
+        source_screenshot = screenshot
+        source_size_px = self._processor.image_size(source_screenshot)
+        source_image_b64 = self._processor.to_base64(source_screenshot)
+        local_candidate_regions = self._local_candidate_regions(source_screenshot)
         # Guard image size before sending: oversized ROI PNGs can hit gateway
         # limits and add latency. Shrink the longest edge if configured.
         max_edge = self._config.openclaw.max_image_edge_px
         screenshot = self._processor.downscale_to_max_edge(screenshot, max_edge)
-        source_size_px = self._processor.image_size(screenshot)
         image_b64 = self._processor.to_base64(screenshot)
-        self._last_image_base64 = image_b64
+        # Follow-up QA and review exports must use the same original ROI frame
+        # that all normalized overlay coordinates reference.
+        self._last_image_base64 = source_image_b64
 
         # Analyze
         self._transition(AgentState.ANALYZING)
@@ -417,9 +484,13 @@ class OverlayAgent:
                 modality,
                 valid_regions,
                 source_size_px=source_size_px,
+                source_image_base64=source_image_b64,
+                local_candidate_regions=local_candidate_regions,
             )
             if self._state != AgentState.ANALYZING:
-                logger.info("Analysis result discarded (state changed to %s)", self._state.name)
+                logger.info(
+                    "Analysis result discarded (state changed to %s)", self._state.name
+                )
                 return
             self._last_result = result
             self._transition(AgentState.DISPLAYING)
@@ -450,6 +521,8 @@ class OverlayAgent:
         valid_regions: list[str],
         *,
         source_size_px: tuple[int, int] | None = None,
+        source_image_base64: str | None = None,
+        local_candidate_regions: list[RegionRect] | None = None,
     ) -> AnalysisResult:
         """Run analyze with a single backoff retry on transient timeout.
 
@@ -466,11 +539,25 @@ class OverlayAgent:
                     self._analyzer, "analyze_with_source_size", None
                 )
                 if callable(analyze_with_source_size):
+                    parameters = inspect.signature(
+                        analyze_with_source_size
+                    ).parameters.values()
+                    names = {parameter.name for parameter in parameters}
+                    accepts_extra = any(
+                        parameter.kind is inspect.Parameter.VAR_KEYWORD
+                        for parameter in parameters
+                    )
+                    extra: dict[str, object] = {}
+                    if accepts_extra or "source_image_base64" in names:
+                        extra["source_image_base64"] = source_image_base64
+                    if accepts_extra or "local_candidate_regions" in names:
+                        extra["local_candidate_regions"] = local_candidate_regions
                     return await analyze_with_source_size(
                         image_b64,
                         modality,
                         valid_regions,
                         source_size_px=source_size_px,
+                        **extra,
                     )
                 return await self._analyzer.analyze(image_b64, modality, valid_regions)
             except TimeoutError:
@@ -485,6 +572,39 @@ class OverlayAgent:
                 )
                 await asyncio.sleep(backoff)
 
+    def _local_candidate_regions(self, image_data: bytes) -> list[RegionRect]:
+        """Convert deterministic image-assist proposals into safe ROI boxes."""
+        candidate_method = getattr(self._processor, "local_signal_candidates", None)
+        if not callable(candidate_method):
+            return []
+        try:
+            payload = candidate_method(image_data)
+        except Exception:
+            logger.warning("Local image-assist candidate extraction failed")
+            return []
+        raw_candidates = payload.get("candidates", []) if isinstance(payload, dict) else []
+        regions: list[RegionRect] = []
+        for raw in raw_candidates:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                region = RegionRect(
+                    x=float(raw["x"]),
+                    y=float(raw["y"]),
+                    w=float(raw["w"]),
+                    h=float(raw["h"]),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            if region.w <= 0.0 or region.h <= 0.0:
+                continue
+            regions.append(region)
+        logger.info(
+            "Local image-assist candidates prepared",
+            candidate_count=len(regions),
+        )
+        return regions
+
     async def _tick_error(self) -> None:
         """Auto-recover from ERROR state after a cooldown period (5 seconds)."""
         elapsed = time.monotonic() - self._error_time
@@ -496,17 +616,20 @@ class OverlayAgent:
             self._config.monitor.window_title_keywords
         )
         if window:
-            self._target_window = window
+            self._set_target_window(window)
             logger.info("Error recovery: viewer found, resuming monitoring")
             self._transition(AgentState.MONITORING)
         else:
-            self._target_window = None
+            self._set_target_window(None)
             logger.info("Error recovery: viewer lost, returning to waiting")
             self._transition(AgentState.WAITING)
 
     async def _tick_reconnecting(self) -> None:
         now = time.monotonic()
-        if now - self._last_reconnect_attempt < self._config.openclaw.reconnect_interval_sec:
+        if (
+            now - self._last_reconnect_attempt
+            < self._config.openclaw.reconnect_interval_sec
+        ):
             return  # Throttle: skip this tick, don't block the event loop
         self._last_reconnect_attempt = now
 

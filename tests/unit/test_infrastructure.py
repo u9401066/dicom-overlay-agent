@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -127,10 +128,31 @@ class TestOpenClawSettings:
         assert config["agents"]["defaults"]["model"]["primary"] == (
             "openrouter/minimax/minimax-m3"
         )
-        assert "openrouter/minimax/minimax-m3" in (
-            config["agents"]["defaults"]["models"]
+        assert (
+            "openrouter/minimax/minimax-m3" in (config["agents"]["defaults"]["models"])
         )
-        assert config["agents"]["defaults"]["imageMaxDimensionPx"] == 1200
+        assert config["agents"]["defaults"]["imageMaxDimensionPx"] == 1568
+        assert provider["timeoutSeconds"] == 165
+        assert config["agents"]["defaults"]["timeoutSeconds"] == 175
+
+    def test_luna_profile_declares_native_image_and_responses_capabilities(self):
+        profile = next(
+            item
+            for item in default_provider_profiles()
+            if item.key == "openai-vision"
+        )
+
+        config = build_openclaw_config(profile)
+        provider = config["models"]["providers"]["openai"]
+        model = provider["models"][0]
+
+        assert provider["api"] == "openai-responses"
+        assert model["id"] == "gpt-5.6-luna"
+        assert model["input"] == ["text", "image"]
+        assert model["contextWindow"] == 1_050_000
+        assert model["maxTokens"] == 128_000
+        assert model["agentRuntime"] == {"id": "openclaw"}
+        assert config["tools"] == {"allow": ["dicom_bbox_validate"]}
 
 
 class TestOpenClawRuntimeCompatibility:
@@ -173,6 +195,11 @@ class TestOpenClawRuntimeCompatibility:
         ]
         assert manifest["capabilities"]["bboxCropReanalysis"] is True
         assert manifest["capabilities"]["coordinateDriftCalibration"] is True
+        assert manifest["capabilities"]["ecgFounderWaveformAssist"] is True
+        assert manifest["capabilities"]["noScreenshotToWaveformInference"] is True
+        assert "ecg_founder_analyze_waveform" in manifest["capabilities"][
+            "openClawTools"
+        ]
         assert manifest["capabilities"]["gatewayOnlyDesktopBoundary"] is True
         assert "plugin-sdk" not in yaml.safe_dump(manifest)
 
@@ -215,9 +242,7 @@ class TestOpenClawRuntimeCompatibility:
 
         assert manager._gateway_script() == script
 
-    def test_find_node_prefers_bundled_runtime_over_path(
-        self, monkeypatch, tmp_path
-    ):
+    def test_find_node_prefers_bundled_runtime_over_path(self, monkeypatch, tmp_path):
         bundled = tmp_path / "_internal"
         node_dir = bundled / "node"
         node_dir.mkdir(parents=True)
@@ -260,9 +285,7 @@ class TestOpenClawRuntimeCompatibility:
         with pytest.raises(FileNotFoundError, match="fetch-node"):
             manager._find_node()
 
-    def test_gateway_manager_takes_repo_local_launch_lock(
-        self, monkeypatch, tmp_path
-    ):
+    def test_gateway_manager_takes_repo_local_launch_lock(self, monkeypatch, tmp_path):
         monkeypatch.setenv("DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS", "1")
 
         class FakeProcess:
@@ -358,10 +381,69 @@ class TestOpenClawRuntimeCompatibility:
 
         assert not (tmp_path / "data" / "tmp" / "openclaw-gateway.lock").exists()
 
+    def test_gateway_manager_seeds_vision_model_and_native_plugin(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        monkeypatch.delenv("DICOM_ECGFOUNDER_ENDPOINT", raising=False)
+        monkeypatch.delenv("DICOM_ECGFOUNDER_TOKEN", raising=False)
+        manager = GatewayManager(repo_root=tmp_path)
+
+        path = manager._ensure_openclaw_config()
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["gateway"]["mode"] == "local"
+        assert "auth" not in payload["gateway"]
+        assert payload["agents"]["defaults"]["model"]["primary"] == (
+            "openai/gpt-5.6-luna"
+        )
+        assert payload["models"]["providers"]["openai"]["apiKey"]["id"] == (
+            "OPENAI_API_KEY"
+        )
+        assert payload["models"]["providers"]["openai"]["timeoutSeconds"] == 165
+        assert payload["agents"]["defaults"]["timeoutSeconds"] == 175
+        plugin_path = str(
+            (
+                tmp_path / "openclaw-home/.openclaw/workspace/plugins/"
+                "dicom-overlay-agent-harness"
+            ).resolve()
+        )
+        assert plugin_path in payload["plugins"]["load"]["paths"]
+        assert payload["plugins"]["entries"]["dicom-overlay-agent-harness"] == {
+            "enabled": True
+        }
+        assert payload["plugins"]["allow"] == ["dicom-overlay-agent-harness"]
+        assert payload["tools"] == {"allow": ["dicom_bbox_validate"]}
+
+    def test_gateway_manager_enables_ecg_founder_only_with_endpoint_and_token(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv(
+            "DICOM_ECGFOUNDER_ENDPOINT",
+            "http://127.0.0.1:18790/v1/analyze",
+        )
+        monkeypatch.delenv("DICOM_ECGFOUNDER_TOKEN", raising=False)
+        manager = GatewayManager(repo_root=tmp_path)
+
+        path = manager._ensure_openclaw_config()
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["tools"] == {"allow": ["dicom_bbox_validate"]}
+
+        monkeypatch.setenv("DICOM_ECGFOUNDER_TOKEN", "test-only-token")
+        path = manager._ensure_openclaw_config()
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["tools"] == {
+            "allow": [
+                "dicom_bbox_validate",
+                "ecg_founder_analyze_waveform",
+            ]
+        }
+
     def test_pyinstaller_spec_uses_staged_openclaw_runtime(self):
         spec = Path("dicom-overlay-agent.spec").read_text(encoding="utf-8")
 
         assert "build/openclaw-runtime/openclaw" in spec
+        assert 'optional_tree("clinical_rules", "clinical_rules")' in spec
         assert 'optional_tree("openclaw/node_modules/openclaw"' not in spec
 
     def test_pyinstaller_spec_bundles_portable_node_and_prunes_qt(self):
@@ -382,9 +464,7 @@ class TestAppBaseDir:
         other_cwd = tmp_path / "somewhere" / "else"
         other_cwd.mkdir(parents=True)
 
-        base = resolve_app_base_dir(
-            frozen=True, executable=str(exe), cwd=other_cwd
-        )
+        base = resolve_app_base_dir(frozen=True, executable=str(exe), cwd=other_cwd)
 
         # Portable USB rule: anchored to the exe folder, NOT the launch cwd.
         assert base == exe.parent.resolve()
@@ -471,6 +551,32 @@ class TestDesktopSettingsStore:
         assert raw["phi_roi"]["top"] == 12
         assert raw["phi_roi"]["bottom"] == 34
 
+    def test_save_analysis_settings_preserves_other_analysis_values(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "analysis": {"trigger_mode": "hybrid"},
+                    "phi_roi": {"top": 12},
+                }
+            ),
+            encoding="utf-8",
+        )
+        store = DesktopSettingsStore(repo_root=tmp_path, config_path=config_path)
+
+        store.save_analysis_settings(
+            multi_pass_enabled=True,
+            max_zoom_targets=2,
+        )
+
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        assert raw["analysis"] == {
+            "trigger_mode": "hybrid",
+            "multi_pass_enabled": True,
+            "multi_pass_max_zoom_targets": 2,
+        }
+        assert raw["phi_roi"]["top"] == 12
+
     def test_read_env_file_ignores_comments_and_preserves_values(self, tmp_path):
         env_path = tmp_path / ".env"
         env_path.write_text(
@@ -528,6 +634,47 @@ class TestScreenMonitorHashing:
         monitor = ScreenMonitor("ahash")
 
         assert monitor.has_changed("not-hex", "0", threshold=64)
+
+    def test_display_for_window_returns_physical_monitor_frame(self, monkeypatch):
+        from dicom_overlay.infrastructure import screen_monitor
+
+        class FakeWin32Api:
+            @staticmethod
+            def MonitorFromRect(rect, default):
+                assert rect == (-1800, 100, -200, 900)
+                assert default == 2
+                return "secondary"
+
+            @staticmethod
+            def GetMonitorInfo(handle):
+                assert handle == "secondary"
+                return {
+                    "Monitor": (-1920, 0, 0, 1080),
+                    "Device": r"\\.\DISPLAY2",
+                    "Flags": 0,
+                }
+
+            @staticmethod
+            def EnumDisplayMonitors(_hdc, _clip):
+                return [("primary", None, None), ("secondary", None, None)]
+
+        class FakeWin32Con:
+            MONITOR_DEFAULTTONEAREST = 2
+            MONITORINFOF_PRIMARY = 1
+
+        monkeypatch.setattr(screen_monitor, "HAS_WIN32", True)
+        monkeypatch.setattr(screen_monitor, "win32api", FakeWin32Api)
+        monkeypatch.setattr(screen_monitor, "win32con", FakeWin32Con)
+
+        frame = ScreenMonitor().display_for_window(
+            WindowRect(left=-1800, top=100, width=1600, height=800)
+        )
+
+        assert frame is not None
+        assert frame.physical_rect == WindowRect(-1920, 0, 1920, 1080)
+        assert frame.monitor_index == 1
+        assert frame.device_name == r"\\.\DISPLAY2"
+        assert frame.is_primary is False
 
 
 class TestVisionSmokeTester:

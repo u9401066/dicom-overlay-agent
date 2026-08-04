@@ -23,6 +23,7 @@ Design constraints (see AGENTS.md four cores):
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import TYPE_CHECKING
 
 import structlog
@@ -71,6 +72,8 @@ def resolve_rhythm_strip_region(result: AnalysisResult) -> RegionRect | None:
     try:
         x, y, w, h = float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])
     except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(value) for value in (x, y, w, h)):
         return None
     x = min(max(x, 0.0), 1.0)
     y = min(max(y, 0.0), 1.0)
@@ -157,6 +160,7 @@ async def refine_rhythm_strip(
     cropper: Callable[[str, RegionRect], str],
     valid_regions: list[str],
     padding: float = 0.05,
+    retry_attempts: int = 1,
 ) -> AnalysisResult:
     """Crop the declared rhythm strip, re-read it, and merge rhythm findings.
 
@@ -165,6 +169,8 @@ async def refine_rhythm_strip(
     That keeps non-standard / partial / single-strip captures safe: the pass
     only fires when a dedicated strip was explicitly localized by Step 0.
     """
+    if retry_attempts < 0:
+        raise ValueError("retry_attempts must be >= 0")
     if result.modality != Modality.EKG:
         return result
     region = resolve_rhythm_strip_region(result)
@@ -173,8 +179,24 @@ async def refine_rhythm_strip(
     crop_region = pad_region(region, padding)
     try:
         crop_b64 = cropper(image_base64, crop_region)
-        strip = await analyze_fn(crop_b64, Modality.EKG, valid_regions)
     except Exception:
-        logger.warning("rhythm_strip_pass_failed")
+        logger.warning("rhythm_strip_crop_failed")
+        return result
+    strip: AnalysisResult | None = None
+    for attempt in range(retry_attempts + 1):
+        try:
+            strip = await analyze_fn(crop_b64, Modality.EKG, valid_regions)
+            if strip.summary.strip() or strip.findings:
+                break
+        except Exception:
+            strip = None
+        if attempt < retry_attempts:
+            logger.warning(
+                "rhythm_strip_analysis_retry",
+                attempt=attempt + 1,
+                max_retries=retry_attempts,
+            )
+    if strip is None or (not strip.summary.strip() and not strip.findings):
+        logger.warning("rhythm_strip_analysis_failed")
         return result
     return merge_rhythm_strip(result, strip, crop_region)

@@ -9,13 +9,22 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
 import structlog
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_runtime import (
     ensure_openclaw_runtime_supported,
+)
+from dicom_overlay.infrastructure.openclaw_settings import (
+    DEFAULT_INFERENCE_TIMEOUT_SEC,
+    build_openclaw_config,
+    default_provider_profiles,
+    derive_openclaw_timeout_budget,
 )
 
 logger = structlog.get_logger(__name__)
@@ -26,7 +35,19 @@ _OPENCLAW_CONFIG = Path("openclaw/openclaw.json")
 _OPENCLAW_HOME = Path("openclaw-home")
 _SRC_SKILLS = Path("openclaw/workspace/skills")
 _DST_SKILLS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "skills"
+_SRC_PLUGINS = Path("openclaw/workspace/plugins")
+_DST_PLUGINS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "plugins"
+_HARNESS_PLUGIN = "dicom-overlay-agent-harness"
+_ECG_FOUNDER_TOOL = "ecg_founder_analyze_waveform"
 _GATEWAY_LAUNCH_LOCK = Path("data/tmp/openclaw-gateway.lock")
+
+
+def ecg_founder_tool_enabled(environment: Mapping[str, str]) -> bool:
+    """Return whether the authenticated loopback sidecar is configured."""
+    return bool(
+        environment.get("DICOM_ECGFOUNDER_ENDPOINT", "").strip()
+        and environment.get("DICOM_ECGFOUNDER_TOKEN", "").strip()
+    )
 
 
 class GatewayManager:
@@ -69,6 +90,10 @@ class GatewayManager:
             raise FileNotFoundError(msg)
         logger.info("Using system Node.js runtime: %s", node)
         return node
+
+    def node_executable(self) -> str:
+        """Return the Node.js binary this app would use for OpenClaw."""
+        return self._find_node()
 
     def _resource_root(self) -> Path:
         """Return bundled read-only resource root or repo root in dev mode."""
@@ -114,6 +139,54 @@ class GatewayManager:
         except (FileNotFoundError, RuntimeError) as exc:
             rows.append(("openclaw", False, str(exc)))
 
+        package_root = self._resource_root() / "openclaw" / "node_modules" / "openclaw"
+        bundled_skills = package_root / "skills"
+        skill_count = sum(1 for _ in bundled_skills.glob("*/SKILL.md"))
+        rows.append(
+            (
+                "openclaw_bundled_skills",
+                skill_count > 0,
+                f"{bundled_skills} ({skill_count} skill(s))",
+            )
+        )
+        surface_dirs = (
+            package_root / "dist" / "extensions",
+            package_root / "dist" / "plugins",
+            package_root / "dist" / "plugin-sdk",
+        )
+        missing_surfaces = [str(path) for path in surface_dirs if not path.is_dir()]
+        rows.append(
+            (
+                "openclaw_plugin_surfaces",
+                not missing_surfaces,
+                (
+                    str(package_root / "dist")
+                    if not missing_surfaces
+                    else f"missing: {', '.join(missing_surfaces)}"
+                ),
+            )
+        )
+        harness_root = self._resource_root() / _SRC_PLUGINS / _HARNESS_PLUGIN
+        harness_files = (
+            harness_root / "package.json",
+            harness_root / "openclaw.plugin.json",
+            harness_root / "index.js",
+        )
+        missing_harness_files = [
+            str(path) for path in harness_files if not path.is_file()
+        ]
+        rows.append(
+            (
+                "harness_native_plugin",
+                not missing_harness_files,
+                (
+                    str(harness_root)
+                    if not missing_harness_files
+                    else f"missing: {', '.join(missing_harness_files)}"
+                ),
+            )
+        )
+
         home = self._repo_root / _OPENCLAW_HOME
         try:
             (home / ".openclaw" / "workspace").mkdir(parents=True, exist_ok=True)
@@ -127,33 +200,226 @@ class GatewayManager:
         return rows
 
     def _sync_skills(self) -> None:
-        """Sync workspace skills to openclaw-home (mirrors sync-openclaw-workspace.bat)."""
-        src = self._resource_root() / _SRC_SKILLS
-        dst = self._repo_root / _DST_SKILLS
-        if not src.exists():
-            logger.warning("Skill source not found: %s", src)
-            return
-        dst.mkdir(parents=True, exist_ok=True)
+        """Mirror app-owned skills and the native harness plugin into state."""
+        self._sync_skills_to(self._repo_root / _OPENCLAW_HOME)
 
-        # Mirror sync: copy all files, remove extras in dst
-        if sys.platform == "win32":
-            subprocess.run(
-                ["robocopy", str(src), str(dst), "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP"],
-                capture_output=True,
-                check=False,  # robocopy returns 0-7 for success
+    def _sync_skills_to(self, state_home: Path) -> None:
+        workspace = state_home / ".openclaw" / "workspace"
+        skills_dst = workspace / "skills"
+        plugins_dst = workspace / "plugins"
+        roots = (
+            (self._resource_root() / _SRC_SKILLS, skills_dst),
+            (self._resource_root() / _SRC_PLUGINS, plugins_dst),
+        )
+        for src, dst in roots:
+            if not src.is_dir():
+                raise FileNotFoundError(f"OpenClaw workspace source not found: {src}")
+            dst.mkdir(parents=True, exist_ok=True)
+            if sys.platform == "win32":
+                result = subprocess.run(
+                    [
+                        "robocopy",
+                        str(src),
+                        str(dst),
+                        "/MIR",
+                        "/NFL",
+                        "/NDL",
+                        "/NJH",
+                        "/NJS",
+                        "/NP",
+                    ],
+                    capture_output=True,
+                    check=False,
+                )
+                if result.returncode >= 8:
+                    raise RuntimeError(
+                        f"robocopy failed ({result.returncode}) syncing {src}"
+                    )
+            else:
+                subprocess.run(
+                    ["rsync", "-a", "--delete", f"{src}/", f"{dst}/"],
+                    capture_output=True,
+                    check=True,
+                )
+            logger.info("Synced OpenClaw workspace assets to %s", dst)
+
+        required = [
+            skills_dst / name / filename
+            for name in (
+                "dicom-ekg-analysis",
+                "dicom-cxr-analysis",
+                "dicom-ct-brain-analysis",
             )
-        else:
-            subprocess.run(
-                ["rsync", "-a", "--delete", f"{src}/", f"{dst}/"],
-                capture_output=True,
-                check=True,
+            for filename in ("SKILL.md", "schema.json")
+        ]
+        required.extend(
+            plugins_dst / _HARNESS_PLUGIN / filename
+            for filename in ("package.json", "openclaw.plugin.json", "index.js")
+        )
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            raise RuntimeError(
+                "OpenClaw workspace sync incomplete: " + ", ".join(missing)
             )
-        logger.info("Synced workspace skills to %s", dst)
 
     def _ensure_dirs(self) -> None:
         """Ensure openclaw-home directory structure exists."""
         home = self._repo_root / _OPENCLAW_HOME
         (home / ".openclaw" / "workspace").mkdir(parents=True, exist_ok=True)
+
+    def prepare_workspace(self, *, state_home: Path | None = None) -> None:
+        """Materialize the exact app-owned skills/plugins used by a Gateway.
+
+        Experiment runners call this public boundary before launching their own
+        Gateway process so they cannot accidentally evaluate stale state from a
+        previous desktop session.
+        """
+        if state_home is None:
+            self._ensure_dirs()
+            self._sync_skills()
+            return
+        state_home = Path(state_home).resolve()
+        (state_home / ".openclaw" / "workspace").mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        self._sync_skills_to(state_home)
+
+    def _ensure_openclaw_config(self) -> Path:
+        """Seed a secret-free vision profile and activate the bundled plugin."""
+        config_path = self._repo_root / _OPENCLAW_CONFIG
+        if config_path.exists():
+            try:
+                payload = json.loads(config_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"Invalid OpenClaw config: {config_path}") from exc
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Invalid OpenClaw config root: {config_path}")
+        else:
+            profile = next(
+                item
+                for item in default_provider_profiles()
+                if item.key == "openai-vision"
+            )
+            payload = build_openclaw_config(profile)
+
+        gateway = payload.get("gateway")
+        if not isinstance(gateway, dict):
+            gateway = {}
+            payload["gateway"] = gateway
+        gateway.setdefault("mode", "local")
+
+        env_values = {
+            **read_env_file(self._repo_root / ".env"),
+            **os.environ,
+        }
+        if env_values.get("OPENCLAW_GATEWAY_TOKEN", "").strip():
+            auth = gateway.setdefault("auth", {})
+            if isinstance(auth, dict):
+                auth.setdefault("token", "${OPENCLAW_GATEWAY_TOKEN}")
+        elif (
+            isinstance(gateway.get("auth"), dict)
+            and gateway["auth"].get("token") == "${OPENCLAW_GATEWAY_TOKEN}"
+        ):
+            gateway.pop("auth", None)
+
+        agents = payload.setdefault("agents", {})
+        if not isinstance(agents, dict):
+            agents = {}
+            payload["agents"] = agents
+        defaults = agents.setdefault("defaults", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+            agents["defaults"] = defaults
+        primary = defaults.get("model")
+        configured_primary = (
+            primary.get("primary") if isinstance(primary, dict) else primary
+        )
+        if not isinstance(configured_primary, str) or not configured_primary.strip():
+            profile = next(
+                item
+                for item in default_provider_profiles()
+                if item.key == "openai-vision"
+            )
+            managed = build_openclaw_config(profile)
+            defaults.update(managed["agents"]["defaults"])
+            models = payload.setdefault("models", {})
+            if not isinstance(models, dict):
+                models = {}
+                payload["models"] = models
+            providers = models.setdefault("providers", {})
+            if not isinstance(providers, dict):
+                providers = {}
+                models["providers"] = providers
+            providers.setdefault(
+                profile.provider_id,
+                managed["models"]["providers"][profile.provider_id],
+            )
+
+        provider_timeout_sec, agent_timeout_sec = derive_openclaw_timeout_budget(
+            DEFAULT_INFERENCE_TIMEOUT_SEC
+        )
+        defaults.setdefault("timeoutSeconds", agent_timeout_sec)
+        primary = defaults.get("model")
+        configured_primary = (
+            primary.get("primary", "") if isinstance(primary, dict) else primary
+        )
+        if isinstance(configured_primary, str):
+            provider_id = configured_primary.partition("/")[0]
+            models = payload.get("models", {})
+            providers = models.get("providers", {}) if isinstance(models, dict) else {}
+            provider = (
+                providers.get(provider_id) if isinstance(providers, dict) else None
+            )
+            if isinstance(provider, dict):
+                provider.setdefault("timeoutSeconds", provider_timeout_sec)
+
+        plugin_path = (self._repo_root / _DST_PLUGINS / _HARNESS_PLUGIN).resolve()
+        plugins = payload.setdefault("plugins", {})
+        if not isinstance(plugins, dict):
+            plugins = {}
+            payload["plugins"] = plugins
+        allow = plugins.setdefault("allow", [])
+        if not isinstance(allow, list):
+            allow = []
+            plugins["allow"] = allow
+        if _HARNESS_PLUGIN not in allow:
+            allow.append(_HARNESS_PLUGIN)
+        load = plugins.setdefault("load", {})
+        if not isinstance(load, dict):
+            load = {}
+            plugins["load"] = load
+        paths = load.setdefault("paths", [])
+        if not isinstance(paths, list):
+            paths = []
+            load["paths"] = paths
+        plugin_path_text = str(plugin_path)
+        if plugin_path_text not in paths:
+            paths.append(plugin_path_text)
+        entries = plugins.setdefault("entries", {})
+        if not isinstance(entries, dict):
+            entries = {}
+            plugins["entries"] = entries
+        entry = entries.setdefault(_HARNESS_PLUGIN, {})
+        if not isinstance(entry, dict):
+            entry = {}
+            entries[_HARNESS_PLUGIN] = entry
+        entry["enabled"] = True
+
+        # Keep the model tool surface bounded. ECGFounder is exposed only when
+        # an authenticated loopback sidecar is explicitly configured; normal
+        # screenshot-only runs retain the single bbox validation tool.
+        allowed_tools = ["dicom_bbox_validate"]
+        if ecg_founder_tool_enabled(env_values):
+            allowed_tools.append(_ECG_FOUNDER_TOOL)
+        payload["tools"] = {"allow": allowed_tools}
+
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        return config_path
 
     def _acquire_launch_lock(self) -> Path:
         """Take a repo-local lock so only one OpenClaw Gateway is spawned."""
@@ -218,7 +484,9 @@ class GatewayManager:
                 pids = result.stdout.strip().split()
                 for pid_str in pids:
                     pid = int(pid_str)
-                    logger.warning("Killing process %d occupying port %d", pid, self._port)
+                    logger.warning(
+                        "Killing process %d occupying port %d", pid, self._port
+                    )
                     os.kill(pid, 15)  # SIGTERM
             except (FileNotFoundError, ValueError):
                 pass
@@ -276,22 +544,10 @@ class GatewayManager:
             node = self._find_node()
             script = self._gateway_script()
 
-            self._ensure_dirs()
-            self._sync_skills()
+            self.prepare_workspace()
 
             home = self._repo_root / _OPENCLAW_HOME
-            config = self._repo_root / _OPENCLAW_CONFIG
-            if not config.exists():
-                # OpenClaw 2026.5.x refuses to start when gateway.mode is missing
-                # ("Gateway start blocked: existing config is missing gateway.mode").
-                # A bare "{}" placeholder is therefore not enough — seed the minimal
-                # valid local-gateway shape so a first run before the user has saved
-                # a provider profile still boots instead of hard-failing.
-                config.parent.mkdir(parents=True, exist_ok=True)
-                config.write_text(
-                    json.dumps({"gateway": {"mode": "local"}}, indent=2),
-                    encoding="utf-8",
-                )
+            config = self._ensure_openclaw_config()
             env = {
                 **os.environ,
                 **read_env_file(self._repo_root / ".env"),
@@ -299,7 +555,22 @@ class GatewayManager:
                 "OPENCLAW_CONFIG_PATH": str(config),
                 "HOME": str(home),
                 "USERPROFILE": str(home),
+                "DICOM_BBOX_AUDIT_PATH": str(
+                    self._repo_root / "data" / "tmp" / "bbox-tool-audit.jsonl"
+                ),
             }
+            env.setdefault(
+                "DICOM_ECGFOUNDER_AUDIT_PATH",
+                str(self._repo_root / "data" / "tmp" / "ecgfounder-tool-audit.jsonl"),
+            )
+            Path(env["DICOM_BBOX_AUDIT_PATH"]).parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            Path(env["DICOM_ECGFOUNDER_AUDIT_PATH"]).parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
             # Do NOT disable bundled plugins by default: the agent harness depends
             # on OpenClaw's bundled plugin surfaces (e.g. speech-core/runtime-api),
             # and disabling them makes every agent run fail with
@@ -341,7 +612,9 @@ class GatewayManager:
         while asyncio.get_event_loop().time() < deadline:
             # Check subprocess hasn't crashed
             if self._process is not None and self._process.poll() is not None:
-                logger.error("Gateway process exited with code %d", self._process.returncode)
+                logger.error(
+                    "Gateway process exited with code %d", self._process.returncode
+                )
                 return False
             try:
                 _, writer = await asyncio.wait_for(

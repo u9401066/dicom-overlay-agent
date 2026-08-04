@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image
 
 from dicom_overlay.infrastructure.eval_artifact_validator import (
     verify_eval_artifacts,
@@ -11,6 +15,11 @@ from dicom_overlay.infrastructure.eval_artifact_validator import (
 
 
 def _write_manifest(path: Path, count: int) -> None:
+    image_dir = path.parent / "cxr"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    buffer = BytesIO()
+    Image.new("RGB", (2, 2), "white").save(buffer, format="PNG")
+    image_bytes = buffer.getvalue()
     cases = [
         {
             "image": f"cxr/{i:04d}.png",
@@ -34,11 +43,54 @@ def _write_manifest(path: Path, count: int) -> None:
         ),
         encoding="utf-8",
     )
+    for index in range(count):
+        (image_dir / f"{index:04d}.png").write_bytes(image_bytes)
 
 
 def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
+    manifest_path = eval_dir.parent / "manifest.json"
+    image_path = manifest_path.parent / "cxr" / "0000.png"
+    image_sha256 = hashlib.sha256(image_path.read_bytes()).hexdigest()
+    image_size = image_path.stat().st_size
+    protocol = {
+        "source": {
+            "commit": "abc123",
+            "dirty": False,
+            "tracked_diff_sha256": hashlib.sha256(b"").hexdigest(),
+        },
+        "model": {
+            "id": "mock-eval-gateway",
+            "openclaw": {"version": "test"},
+        },
+        "prompts": [{"path": "prompt.py", "sha256": "0" * 64}],
+        "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
+        "flags": {"multi_pass": False},
+        "manifest": {
+            "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "selected_case_count": count,
+            "cases": [
+                {
+                    "case": f"public_cxr_{index:04d}",
+                    "image": f"cxr/{index:04d}.png",
+                    "image_name": f"{index:04d}.png",
+                    "size_bytes": image_size,
+                    "sha256": image_sha256,
+                }
+                for index in range(count)
+            ],
+        },
+    }
+    protocol_digest = hashlib.sha256(
+        json.dumps(
+            protocol,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
     payload = {
         "gateway_mode": "mock",
+        "scorecard_kind": "full_rebuild",
         "total": count,
         "scored": count,
         "error_count": 0,
@@ -49,6 +101,13 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
         "manifest_total": count,
         "result_count": count,
         "is_partial": False,
+        "missing_cases": [],
+        "protocol_digest": protocol_digest,
+        "protocol_comparability": {
+            "status": "comparable",
+            "comparable": True,
+            "reasons": [],
+        },
         "cases": [
             {
                 "case_label": f"public_cxr_{i:04d}",
@@ -61,6 +120,22 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
     }
     payload.update(overrides)
     eval_dir.mkdir(parents=True)
+    (eval_dir / "protocol-fingerprint.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "protocol_scope": "entire_run",
+                "protocol_digest": protocol_digest,
+                "comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
+                "protocol": protocol,
+            }
+        ),
+        encoding="utf-8",
+    )
     (eval_dir / "scorecard.json").write_text(
         json.dumps(payload, indent=2), encoding="utf-8"
     )
@@ -71,6 +146,10 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
             json.dumps(
                 {
                     "case": f"public_cxr_{i:04d}",
+                    "image": f"{i:04d}.png",
+                    "protocol_digest": protocol_digest,
+                    "source_image_sha256": image_sha256,
+                    "findings": [],
                     "local_image_quality": {"low_signal": False},
                     "local_signal_candidates": {
                         "candidate_count": 1,
@@ -92,8 +171,22 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
     review = eval_dir / "review"
     review.mkdir()
     (review / "index.html").write_text("<html></html>", encoding="utf-8")
+    review_png = (manifest_path.parent / "cxr" / "0000.png").read_bytes()
+    for index in range(count):
+        (review / f"public_cxr_{index:04d}.review.png").write_bytes(review_png)
     (review / "bbox-audit.jsonl").write_text(
-        "\n".join(json.dumps({"case": f"public_cxr_{i:04d}"}) for i in range(count))
+        "\n".join(
+            json.dumps(
+                {
+                    "audit_type": "case",
+                    "case": f"public_cxr_{i:04d}",
+                    "bbox_count": 0,
+                    "finding_count": 0,
+                    "review_image": f"public_cxr_{i:04d}.review.png",
+                }
+            )
+            for i in range(count)
+        )
         + "\n",
         encoding="utf-8",
     )
@@ -140,17 +233,37 @@ def test_verify_eval_artifacts_rejects_partial_large_run(tmp_path: Path) -> None
     assert any("result_count" in failure for failure in verification.failures)
 
 
+def test_verify_eval_artifacts_rejects_missed_urgent_concern(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 5)
+    _write_scorecard(
+        eval_dir,
+        5,
+        urgent_concern_missed=["public_cxr_0000: tension pneumothorax"],
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        min_cases=5,
+    )
+
+    assert not verification.ok
+    assert any("urgent_concern_gate" in item for item in verification.failures)
+
+
 def test_verify_eval_artifacts_rejects_missing_review_audit(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
-    _write_manifest(manifest, 1000)
-    _write_scorecard(eval_dir, 1000)
+    _write_manifest(manifest, 5)
+    _write_scorecard(eval_dir, 5)
     (eval_dir / "review" / "bbox-audit.jsonl").unlink()
 
     verification = verify_eval_artifacts(
         eval_dir=eval_dir,
         manifest_path=manifest,
-        min_cases=1000,
+        min_cases=5,
     )
 
     assert not verification.ok
@@ -162,8 +275,8 @@ def test_verify_eval_artifacts_rejects_missing_local_preflight(
 ) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
-    _write_manifest(manifest, 1000)
-    _write_scorecard(eval_dir, 1000)
+    _write_manifest(manifest, 5)
+    _write_scorecard(eval_dir, 5)
     (eval_dir / "results" / "public_cxr_0000.json").write_text(
         json.dumps({"case": "public_cxr_0000"}),
         encoding="utf-8",
@@ -172,7 +285,7 @@ def test_verify_eval_artifacts_rejects_missing_local_preflight(
     verification = verify_eval_artifacts(
         eval_dir=eval_dir,
         manifest_path=manifest,
-        min_cases=1000,
+        min_cases=5,
     )
 
     assert not verification.ok
@@ -184,8 +297,8 @@ def test_verify_eval_artifacts_rejects_missing_local_signal_candidates(
 ) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
-    _write_manifest(manifest, 1000)
-    _write_scorecard(eval_dir, 1000)
+    _write_manifest(manifest, 5)
+    _write_scorecard(eval_dir, 5)
     (eval_dir / "results" / "public_cxr_0000.json").write_text(
         json.dumps(
             {
@@ -199,7 +312,7 @@ def test_verify_eval_artifacts_rejects_missing_local_signal_candidates(
     verification = verify_eval_artifacts(
         eval_dir=eval_dir,
         manifest_path=manifest,
-        min_cases=1000,
+        min_cases=5,
     )
 
     assert not verification.ok
@@ -211,22 +324,24 @@ def test_verify_eval_artifacts_rejects_missing_local_signal_candidates(
 def test_verify_eval_artifacts_requires_unique_reviewed_cases(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
-    _write_manifest(manifest, 1000)
-    _write_scorecard(eval_dir, 1000)
+    _write_manifest(manifest, 5)
+    _write_scorecard(eval_dir, 5)
     (eval_dir / "review" / "bbox-audit.jsonl").write_text(
-        "\n".join(json.dumps({"case": "public_cxr_0000"}) for _ in range(1000))
-        + "\n",
+        "\n".join(json.dumps({"case": "public_cxr_0000"}) for _ in range(5)) + "\n",
         encoding="utf-8",
     )
 
     verification = verify_eval_artifacts(
         eval_dir=eval_dir,
         manifest_path=manifest,
-        min_cases=1000,
+        min_cases=5,
     )
 
     assert not verification.ok
-    assert any("unique reviewed cases" in failure for failure in verification.failures)
+    assert any(
+        "bbox audit case set is not exact" in failure
+        for failure in verification.failures
+    )
 
 
 def test_verify_eval_artifacts_cli_returns_zero_for_complete_run(
@@ -234,9 +349,11 @@ def test_verify_eval_artifacts_cli_returns_zero_for_complete_run(
 ) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
-    _write_manifest(manifest, 1000)
-    _write_scorecard(eval_dir, 1000)
-    script = Path(__file__).resolve().parents[2] / "scripts" / "verify-eval-artifacts.py"
+    _write_manifest(manifest, 5)
+    _write_scorecard(eval_dir, 5)
+    script = (
+        Path(__file__).resolve().parents[2] / "scripts" / "verify-eval-artifacts.py"
+    )
 
     proc = subprocess.run(
         [
@@ -247,7 +364,7 @@ def test_verify_eval_artifacts_cli_returns_zero_for_complete_run(
             "--manifest",
             str(manifest),
             "--min-cases",
-            "1000",
+            "5",
         ],
         capture_output=True,
         text=True,
@@ -263,9 +380,11 @@ def test_verify_eval_artifacts_cli_can_require_multipass_trace(
 ) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"
-    _write_manifest(manifest, 1000)
-    _write_scorecard(eval_dir, 1000)
-    script = Path(__file__).resolve().parents[2] / "scripts" / "verify-eval-artifacts.py"
+    _write_manifest(manifest, 5)
+    _write_scorecard(eval_dir, 5)
+    script = (
+        Path(__file__).resolve().parents[2] / "scripts" / "verify-eval-artifacts.py"
+    )
 
     proc = subprocess.run(
         [
@@ -276,7 +395,7 @@ def test_verify_eval_artifacts_cli_can_require_multipass_trace(
             "--manifest",
             str(manifest),
             "--min-cases",
-            "1000",
+            "5",
             "--require-multipass-trace",
         ],
         capture_output=True,
@@ -286,6 +405,7 @@ def test_verify_eval_artifacts_cli_can_require_multipass_trace(
     assert proc.returncode == 1
     payload = json.loads(proc.stdout)
     assert payload["ok"] is False
-    assert "multipass_trace_artifacts: missing multipass-trace.jsonl" in payload[
-        "failures"
-    ]
+    assert (
+        "multipass_trace_artifacts: missing multipass-trace.jsonl"
+        in payload["failures"]
+    )

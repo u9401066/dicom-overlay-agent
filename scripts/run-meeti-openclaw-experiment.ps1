@@ -1,5 +1,5 @@
 param(
-    [string]$ModelId = "openai/gpt-5.5",
+    [string]$ModelId = "openai/gpt-5.6-luna",
     [string]$ManifestPath = "",
     [string]$ProviderProfile = "",
     [int]$TimeoutSec = 90,
@@ -305,7 +305,7 @@ if ($modelListExitCode -eq 0 -and $modelListOutput -notmatch [regex]::Escape($Mo
         reason = "requested model id is not exposed by the local OpenClaw catalog"
         requested_model = $ModelId
         provider_profile = $effectiveProviderProfile
-        suggested_models = @("openai/gpt-5.4-mini", "openai/gpt-5.5", "openai/gpt-5.5-pro")
+        suggested_models = @("openai/gpt-5.6-luna", "openai/gpt-5.6-terra", "openai/gpt-5.6-sol", "openai/gpt-5.5")
         openclaw_config = $configPath
         config_builder = $configBuilderPath
         config_generation_log = $configGenerationPath

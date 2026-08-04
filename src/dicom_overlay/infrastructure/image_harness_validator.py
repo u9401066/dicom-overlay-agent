@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -115,29 +116,46 @@ def _image_payload_proof_ok(log_text: str) -> bool:
 
 
 def _overlay_annotation_contract_ok(result: dict[str, Any]) -> bool:
+    boundary_epsilon = 1e-9
     findings = result.get("findings")
     if not isinstance(findings, list) or not findings:
         return False
-    first = findings[0]
-    if not isinstance(first, dict):
-        return False
-    if not all(isinstance(first.get(key), str) and first[key] for key in ("label", "detail")):
-        return False
-    regions = first.get("regions")
-    if not isinstance(regions, list) or not all(isinstance(item, str) for item in regions):
-        return False
-    bboxes = first.get("bboxes")
-    if not isinstance(bboxes, list) or not bboxes:
-        return False
-    bbox = bboxes[0]
-    if not isinstance(bbox, dict):
-        return False
-    if not all(
-        isinstance(bbox.get(key), int | float) and 0 <= bbox[key] <= 1
-        for key in ("x", "y", "w", "h")
-    ):
-        return False
-    return bbox["x"] + bbox["w"] <= 1 and bbox["y"] + bbox["h"] <= 1
+    for finding in findings:
+        if not isinstance(finding, dict):
+            return False
+        if not all(
+            isinstance(finding.get(key), str) and finding[key]
+            for key in ("label", "detail")
+        ):
+            return False
+        regions = finding.get("regions")
+        if not isinstance(regions, list) or not all(
+            isinstance(item, str) for item in regions
+        ):
+            return False
+        bboxes = finding.get("bboxes")
+        if not isinstance(bboxes, list) or not bboxes:
+            return False
+        for bbox in bboxes:
+            if not isinstance(bbox, dict):
+                return False
+            if not all(_is_normalized_number(bbox.get(key)) for key in ("x", "y", "w", "h")):
+                return False
+            if not bool(
+                bbox["x"] + bbox["w"] <= 1.0 + boundary_epsilon
+                and bbox["y"] + bbox["h"] <= 1.0 + boundary_epsilon
+            ):
+                return False
+    return True
+
+
+def _is_normalized_number(value: Any) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and 0.0 <= float(value) <= 1.0
+    )
 
 
 def _manifest_contract_ok(result: dict[str, Any]) -> bool:

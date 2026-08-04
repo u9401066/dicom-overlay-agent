@@ -11,6 +11,8 @@ Covers the hardening fixes for the OpenClaw interpretation harness:
 from __future__ import annotations
 
 import io
+import json
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -19,14 +21,22 @@ from dicom_overlay.domain.entities import (
     AnalysisResult,
     AppConfig,
     ChecklistItem,
+    Finding,
     Modality,
+    RegionRect,
     Severity,
 )
 from dicom_overlay.domain.hooks import AnalyzeRequest
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import (
     OpenClawClient,
+    _build_finalization_prompt,
+    _build_refinement_prompt,
     _extract_first_json_object,
+    _extract_tool_names,
+    _load_gateway_token,
+    _load_skill_prompt,
+    _parse_refinement_result,
     _payload_from_chat_event,
 )
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
@@ -62,6 +72,7 @@ def _bare_client() -> OpenClawClient:
     client._connected = False
     client._request_counter = 0
     client._gateway_token = "test-token"
+    client._base_dir = Path.cwd()
     return client
 
 
@@ -98,6 +109,38 @@ async def test_openclaw_client_disables_keepalive_during_long_inference(
 
     assert captured["ping_interval"] is None
     assert captured["ping_timeout"] is None
+
+
+def test_openclaw_waveform_artifact_context_is_scoped_and_reset(tmp_path: Path) -> None:
+    client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+
+    assert client._waveform_artifact_context.get() is None
+    with client.use_waveform_artifact("wf-opaque-123", lead_mode="12_lead"):
+        assert client._waveform_artifact_context.get() == (
+            "wf-opaque-123",
+            "12_lead",
+        )
+    assert client._waveform_artifact_context.get() is None
+
+
+def test_runtime_assets_resolve_from_bundle_base_not_process_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bundle = tmp_path / "bundle"
+    skill = bundle / "openclaw/workspace/skills/test-skill/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: test-skill\n---\nPrompt body", encoding="utf-8")
+    (bundle / ".env").write_text(
+        "OPENCLAW_GATEWAY_TOKEN=bundle-token\n",
+        encoding="utf-8",
+    )
+    foreign_cwd = tmp_path / "foreign"
+    foreign_cwd.mkdir()
+    monkeypatch.chdir(foreign_cwd)
+    monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+
+    assert _load_skill_prompt("test-skill", base_dir=bundle) == "Prompt body"
+    assert _load_gateway_token(bundle) == "bundle-token"
 
 
 # ── Item 3: prose JSON fallback ──────────────────────────────────────
@@ -151,11 +194,166 @@ class TestProseJsonFallback:
         assert data["findings"][0]["bboxes"][0]["x"] == 0.17
 
     def test_payload_from_chat_event_raises_without_json(self):
-        payload = {
-            "message": {"content": [{"type": "text", "text": "no json at all"}]}
-        }
+        payload = {"message": {"content": [{"type": "text", "text": "no json at all"}]}}
         with pytest.raises(RuntimeError):
             _payload_from_chat_event(payload)
+
+
+class TestHypothesisAwareRefinement:
+    def test_finalization_prompt_locks_grounded_findings_and_original_coordinates(
+        self,
+    ):
+        finding = Finding(
+            id="f1",
+            regions=["lead_V2"],
+            label="ST depression",
+            detail="confirmed on source crop",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.3, 0.1, 0.1)],
+        )
+        draft = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Coarse narrative.",
+            severity=Severity.WARNING,
+            findings=[finding],
+            checklist={},
+            layout={"format": "partial"},
+        )
+
+        prompt = _build_finalization_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V2"],
+            draft=draft,
+            refinement_trace=[
+                {
+                    "target_id": "f1",
+                    "hypothesis": "ST depression",
+                    "crop_source": "original_roi",
+                    "decisions": [{"action": "confirm"}],
+                }
+            ],
+        )
+
+        assert '"id": "f1"' in prompt
+        assert '"x": 0.2' in prompt
+        assert "Do not add a diagnosis, finding, or bbox" in prompt
+        assert "relative to the attached original image" in prompt
+        assert "dicom_bbox_validate" in prompt
+
+    def test_prompt_carries_hypothesis_and_crop_coordinate_contract(self):
+        finding = Finding(
+            id="f1",
+            regions=["lead_V2"],
+            label="ST elevation",
+            detail="coarse",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.3, 0.2, 0.1)],
+        )
+
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V2"],
+            hypothesis=finding,
+            crop_region=RegionRect(0.15, 0.25, 0.3, 0.2),
+        )
+
+        assert '"id": "f1"' in prompt
+        assert "confirm|revise|retract|add" in prompt
+        assert "normalized to the attached crop" in prompt
+        assert "dicom_bbox_validate" in prompt
+        assert "modality=EKG" in prompt
+        assert "w<=0.35" in prompt
+
+    def test_ekg_safety_probe_requests_systematic_visible_lead_search(self):
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_I", "lead_II", "lead_V1"],
+            hypothesis=None,
+            crop_region=RegionRect(0.0, 0.0, 1.0, 0.5),
+        )
+
+        assert '"probe_kind": "systematic_discovery"' in prompt
+        assert "ST elevation/depression" in prompt
+        assert "reciprocal change" in prompt
+        assert "ask a concrete reviewer question" in prompt
+
+    def test_refinement_parser_keeps_explicit_retract_and_revise(self):
+        parsed = _parse_refinement_result(
+            {
+                "deltas": [
+                    {
+                        "action": "retract",
+                        "target_id": "f1",
+                        "rationale": "baseline artifact only",
+                    },
+                    {
+                        "action": "add",
+                        "target_id": "",
+                        "rationale": "new visible ectopy",
+                        "finding": {
+                            "id": "f2",
+                            "regions": ["lead_II"],
+                            "label": "PVC",
+                            "detail": "wide premature complex",
+                            "severity": "warning",
+                            "bboxes": [
+                                {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.2}
+                            ],
+                        },
+                    },
+                ]
+            }
+        )
+
+        assert [delta.action.value for delta in parsed.deltas] == [
+            "retract",
+            "add",
+        ]
+        assert parsed.deltas[1].finding is not None
+        assert parsed.deltas[1].finding.bboxes == [
+            RegionRect(0.1, 0.2, 0.3, 0.2)
+        ]
+
+    def test_refinement_parser_retracts_boxed_nonfinding_limitation(self):
+        parsed = _parse_refinement_result(
+            {
+                "deltas": [
+                    {
+                        "action": "revise",
+                        "target_id": "f1",
+                        "rationale": "V2-V6 are outside the crop.",
+                        "finding": {
+                            "id": "f1",
+                            "regions": ["lead_V1"],
+                            "label": "R-wave progression cannot be assessed",
+                            "detail": "Required leads are unavailable.",
+                            "severity": "info",
+                            "bboxes": [
+                                {"x": 0.1, "y": 0.2, "w": 0.2, "h": 0.1}
+                            ],
+                        },
+                    }
+                ]
+            }
+        )
+
+        assert len(parsed.deltas) == 1
+        assert parsed.deltas[0].action.value == "retract"
+        assert parsed.deltas[0].target_id == "f1"
+        assert parsed.deltas[0].finding is None
+
+    def test_tool_trace_extracts_explicit_gateway_tool_events_only(self):
+        frame = {
+            "payload": {
+                "event": {
+                    "type": "tool_call",
+                    "name": "dicom_bbox_validate",
+                },
+                "finding": {"name": "not_a_tool"},
+            }
+        }
+
+        assert _extract_tool_names(frame) == ["dicom_bbox_validate"]
 
 
 # ── Item 6: out-of-bounds bbox dropped, not crashed ──────────────────
@@ -244,9 +442,22 @@ def _make_request() -> AnalyzeRequest:
 
 def _full_ekg_checklist() -> dict[str, ChecklistItem]:
     keys = [
-        "heart_rate", "rhythm", "regularity", "axis", "p_wave", "pr_interval",
-        "qrs_duration", "qrs_morphology", "st_segment", "t_wave", "qtc_interval",
-        "chamber_enlargement", "conduction", "av_block", "stemi_pattern", "ischemia",
+        "heart_rate",
+        "rhythm",
+        "regularity",
+        "axis",
+        "p_wave",
+        "pr_interval",
+        "qrs_duration",
+        "qrs_morphology",
+        "st_segment",
+        "t_wave",
+        "qtc_interval",
+        "chamber_enlargement",
+        "conduction",
+        "av_block",
+        "stemi_pattern",
+        "ischemia",
     ]
     return {k: ChecklistItem(value="normal", status=Severity.NORMAL) for k in keys}
 
@@ -277,6 +488,154 @@ class TestIncompleteFlag:
         validated = validator.post_analyze(_make_request(), result)
         assert validated.incomplete is False
         assert validated.incomplete_reasons == []
+
+    def test_normal_observation_boxes_are_removed_from_overlay(self):
+        validator = OutputValidator(strict=False)
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="normal-qrs",
+                regions=["lead_II"],
+                label="Narrow QRS",
+                detail="No bundle branch block morphology.",
+                severity=Severity.NORMAL,
+                bboxes=[RegionRect(0.1, 0.1, 0.2, 0.2)],
+            )
+        ]
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        assert validated.findings[0].bboxes == []
+        assert validated.incomplete is True
+        assert "normal/negative observation" in validated.validation_warnings[0]
+
+    def test_uncertain_box_requires_low_confidence_reviewer_question(self):
+        validator = OutputValidator(strict=False)
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="candidate",
+                regions=["lead_II"],
+                label="Possible ectopic beat",
+                detail="Candidate morphology is not resolved.",
+                severity=Severity.INFO,
+                bboxes=[RegionRect(0.1, 0.1, 0.2, 0.2)],
+                confidence="",
+                question="",
+            )
+        ]
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        assert validated.incomplete is True
+        assert "reviewer question" in validated.validation_warnings[0]
+
+    def test_moderate_confidence_benign_info_box_does_not_require_question(self):
+        validator = OutputValidator(strict=False)
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="benign",
+                regions=["lead_II"],
+                label="Early repolarization",
+                detail="Mild concave J-point elevation.",
+                severity=Severity.INFO,
+                bboxes=[RegionRect(0.1, 0.1, 0.2, 0.2)],
+                confidence="moderate",
+                question="",
+            )
+        ]
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        assert validated.incomplete is False
+        assert validated.validation_warnings == []
+
+    def test_broad_ekg_lead_strip_box_is_not_exposed_as_a_finding(self):
+        validator = OutputValidator(strict=False)
+        result = _make_result()
+        result.severity = Severity.WARNING
+        result.findings = [
+            Finding(
+                id="broad",
+                regions=["lead_II"],
+                label="Sinus bradycardia",
+                detail="Representative rhythm evidence.",
+                severity=Severity.WARNING,
+                bboxes=[RegionRect(0.02, 0.08, 0.96, 0.08)],
+            )
+        ]
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        assert validated.findings[0].bboxes == []
+        assert any("lead-strip" in item for item in validated.validation_warnings)
+        assert any("no accepted tight bbox" in item for item in validated.validation_warnings)
+
+
+class TestNativeToolAuditTrace:
+    def test_reads_only_records_appended_during_current_turn(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        stale = {
+            "schema_version": 1,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "stale-call",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "details_sha256": "a" * 64,
+        }
+        audit_path.write_text(f"{json.dumps(stale)}\n", encoding="utf-8")
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+
+        client._begin_run_trace("analysis-current")
+        current = stale | {
+            "tool_call_id": "current-call",
+            "details_sha256": "b" * 64,
+        }
+        with audit_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{json.dumps(current)}\n")
+            handle.write('{"tool":"invalid"}\n')
+
+        trace = client.last_run_trace()
+
+        assert trace["tools"] == ["dicom_bbox_validate"]
+        assert [row["tool_call_id"] for row in trace["tool_audit"]] == [
+            "current-call"
+        ]
+
+    def test_reads_phi_free_ecg_founder_receipt_from_current_turn(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "ecgfounder-audit.jsonl"
+        monkeypatch.setenv("DICOM_ECGFOUNDER_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+
+        client._begin_run_trace("analysis-ecg-founder")
+        receipt = {
+            "schema_version": 1,
+            "tool": "ecg_founder_analyze_waveform",
+            "tool_call_id": "ecg-call-1",
+            "status": "ok",
+            "artifact_id_sha256": "a" * 64,
+            "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+            "checkpoint_sha256": "b" * 64,
+            "calibration_status": "uncalibrated",
+            "prediction_count": 10,
+        }
+        audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+
+        trace = client.last_run_trace()
+
+        assert trace["tools"] == ["ecg_founder_analyze_waveform"]
+        assert trace["tool_audit"] == [receipt]
+        assert "artifact_id" not in trace["tool_audit"][0]
 
 
 # ── Item 5: image size guard ─────────────────────────────────────────
@@ -343,6 +702,22 @@ class TestImageDownscale:
         assert profile["candidate_count"] == 0
         assert profile["candidates"] == []
         assert profile["low_signal"] is True
+
+    def test_uniform_full_page_signal_does_not_create_arbitrary_zoom_tiles(self):
+        image = Image.new("RGB", (400, 300), "white")
+        pixels = image.load()
+        for y in range(5, 296, 10):
+            for x in range(400):
+                pixels[x, y] = (0, 0, 0)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+
+        profile = ImageProcessor().local_signal_candidates(buffer.getvalue())
+
+        assert profile["candidate_count"] == 0
+        assert profile["suppressed_candidate_count"] > 0
+        assert profile["selection_rule"] == "localized_density_outlier"
+        assert profile["low_signal"] is False
 
 
 # ── Multi-pass cropper (ImageCropper protocol) ───────────────────────

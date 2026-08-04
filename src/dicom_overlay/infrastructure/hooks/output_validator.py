@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import structlog
 
 from dicom_overlay.domain.entities import AnalysisResult, Severity
@@ -14,6 +16,9 @@ from dicom_overlay.domain.modality_profile import (
 logger = structlog.get_logger(__name__)
 
 _VALID_SEVERITIES = frozenset(s.value for s in Severity)
+_EKG_MAX_BOX_WIDTH = 0.35
+_EKG_MAX_BOX_HEIGHT = 0.30
+_EKG_MAX_BOX_AREA = 0.08
 
 
 class OutputValidator(AnalyzeHook):
@@ -59,6 +64,50 @@ class OutputValidator(AnalyzeHook):
                         f"Finding[{i}] region '{region}' "
                         f"not in valid regions"
                     )
+            if finding.severity is Severity.NORMAL and finding.bboxes:
+                finding = dataclasses.replace(finding, bboxes=[])
+                result.findings[i] = finding
+                warnings.append(
+                    f"Finding[{i}] normal/negative observation had overlay boxes; "
+                    "boxes removed"
+                )
+            if request.modality.value == "EKG" and finding.bboxes:
+                accepted_boxes = [
+                    box
+                    for box in finding.bboxes
+                    if box.w <= _EKG_MAX_BOX_WIDTH
+                    and box.h <= _EKG_MAX_BOX_HEIGHT
+                    and box.w * box.h <= _EKG_MAX_BOX_AREA
+                ]
+                if len(accepted_boxes) != len(finding.bboxes):
+                    finding = dataclasses.replace(finding, bboxes=accepted_boxes)
+                    result.findings[i] = finding
+                    warnings.append(
+                        f"Finding[{i}] broad EKG lead-strip boxes were removed"
+                    )
+            if (
+                finding.severity is Severity.INFO
+                and finding.bboxes
+                and (
+                    not finding.confidence
+                    or (
+                        finding.confidence == "low"
+                        and not finding.question.strip()
+                    )
+                )
+            ):
+                warnings.append(
+                    f"Finding[{i}] boxed info finding must declare confidence; "
+                    "low confidence requires a reviewer question"
+                )
+            if (
+                request.modality.value == "EKG"
+                and finding.severity in {Severity.WARNING, Severity.CRITICAL}
+                and not finding.bboxes
+            ):
+                warnings.append(
+                    f"Finding[{i}] actionable EKG finding has no accepted tight bbox"
+                )
 
         # 4. Checklist completeness (modality-specific)
         required = self._registry.resolve(request.modality.value).checklist_keys
@@ -84,7 +133,12 @@ class OutputValidator(AnalyzeHook):
         # "all normal".
         if warnings:
             result.incomplete = True
-            result.incomplete_reasons = list(warnings)
+            result.incomplete_reasons = list(
+                dict.fromkeys([*result.incomplete_reasons, *warnings])
+            )
+            result.validation_warnings = list(
+                dict.fromkeys([*result.validation_warnings, *warnings])
+            )
 
         # In strict mode, warnings become errors
         if self._strict:

@@ -12,13 +12,16 @@ unacceptable:
 2. **Can't-miss under-call** — a can't-miss pattern term appears anywhere in the
    structured output but the severity is below a clinically required floor.
 
-When a rule fires the engine only ever:
+When a rule fires the engine may:
 
-* **escalates** severity toward the rule's floor (it *never* downgrades), and
-* **flags the result for human review**, attaching the guideline citation.
+* **escalate** severity toward an optional rule floor (it *never* downgrades),
+  and/or
+* **flag the result for human review**, attaching the guideline citation.
 
-The physician always keeps the final diagnostic call (project charter). This is
-the conservative, fail-safe direction: surface more, hide nothing.
+The physician always keeps the final diagnostic call (project charter).
+Review-only rules preserve uncertainty instead of manufacturing an abnormal
+diagnosis from ambiguous language; explicit can't-miss under-calls may still be
+escalated. The original evidence always remains visible to the reviewer.
 
 **Why this is not just a hard-coded rule.** Every rule is *data*: it carries a
 guideline citation, version, and effective date, and is expressed declaratively
@@ -32,6 +35,7 @@ Domain layer — pure, no I/O, no GUI, no YAML. Loading lives in infrastructure.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -64,7 +68,15 @@ class ConditionError(ValueError):
 
 # Supported declarative operators. Kept tiny and side-effect free so a rule pack
 # can never execute arbitrary code — conditions are data, not expressions.
-_TEXT_OPS = frozenset({"contains_any", "not_contains_any", "equals"})
+_TEXT_OPS = frozenset(
+    {
+        "contains_any",
+        "contains_any_asserted",
+        "contains_any_non_negated",
+        "not_contains_any",
+        "equals",
+    }
+)
 _SEVERITY_OPS = frozenset({"severity_at_most", "severity_at_least", "equals"})
 
 # Human-readable labels used by the audit catalogue (``explain()`` / ``catalogue()``)
@@ -76,6 +88,8 @@ _FIELD_LABELS: dict[str, str] = {
 }
 _OP_LABELS: dict[str, str] = {
     "contains_any": "包含任一",
+    "contains_any_asserted": "明確肯定任一",
+    "contains_any_non_negated": "未否定任一（可保留不確定性）",
     "not_contains_any": "不包含任何",
     "equals": "等於",
     "severity_at_most": "不高於",
@@ -95,11 +109,15 @@ class RuleCondition:
     * ``"severity"`` — the overall result severity (compared by urgency).
     * ``"summary"`` — the free-text summary.
     * ``"checklist.<key>"`` — the text value of one checklist item ("" if absent).
+    * ``"checklist.<key>.status"`` — that item's severity (no match if absent).
     * ``"all_text"`` — summary + every finding label/detail + every checklist
       value, concatenated (the broadest haystack).
 
     Supported ``op`` (text fields): ``contains_any`` / ``not_contains_any``
-    (case-insensitive substring against ``values``) and ``equals``.
+    (case-insensitive substring against ``values``), ``contains_any_asserted``
+    (whole clinical phrase, excluding nearby negation/uncertainty),
+    ``contains_any_non_negated`` (whole phrase, allowing uncertainty but excluding
+    negation), and ``equals``.
     Supported ``op`` (severity field): ``severity_at_most`` /
     ``severity_at_least`` (against ``value``) and ``equals``.
     """
@@ -118,8 +136,9 @@ class RuleCondition:
             )
 
     def matches(self, result: AnalysisResult) -> bool:
-        if self.field == "severity":
-            return self._match_severity(result.severity)
+        if self.field == "severity" or self.field.endswith(".status"):
+            severity = _resolve_severity(self.field, result)
+            return severity is not None and self._match_severity(severity)
         text = _resolve_text(self.field, result)
         return self._match_text(text)
 
@@ -130,21 +149,31 @@ class RuleCondition:
         a human reviewer can see *which* word in the AI's own output triggered
         the rule. Empty for severity comparisons and non-``contains_any`` ops.
         """
-        if self.field == "severity" or self.op != "contains_any":
+        if self.field == "severity" or self.field.endswith(".status"):
             return ()
-        hay = _resolve_text(self.field, result).lower()
-        return tuple(v for v in self.values if v.lower() in hay)
+        hay = _resolve_text(self.field, result)
+        if self.op == "contains_any":
+            lowered = hay.lower()
+            return tuple(v for v in self.values if v.lower() in lowered)
+        if self.op == "contains_any_asserted":
+            return tuple(v for v in self.values if _has_asserted_term(hay, v))
+        if self.op == "contains_any_non_negated":
+            return tuple(v for v in self.values if _has_non_negated_term(hay, v))
+        return ()
 
     def explain(self) -> str:
         """Plain-language description of this predicate for the audit catalogue."""
         label = self._field_label()
         op_label = _OP_LABELS.get(self.op, self.op)
-        if self.field == "severity":
+        if self.field == "severity" or self.field.endswith(".status"):
             return f"{label} {op_label} {self.value}"
         operand = " / ".join(self.values) if self.values else self.value
         return f"{label} {op_label}：{operand}"
 
     def _field_label(self) -> str:
+        if self.field.startswith("checklist.") and self.field.endswith(".status"):
+            key = self.field.removeprefix("checklist.").removesuffix(".status")
+            return f"檢核項目「{key}」狀態"
         if self.field.startswith("checklist."):
             return f"檢核項目「{self.field.split('.', 1)[1]}」"
         return _FIELD_LABELS.get(self.field, self.field)
@@ -163,9 +192,103 @@ class RuleCondition:
         needles = [v.lower() for v in self.values]
         if self.op == "contains_any":
             return any(n in hay for n in needles)
+        if self.op == "contains_any_asserted":
+            return any(_has_asserted_term(text, value) for value in self.values)
+        if self.op == "contains_any_non_negated":
+            return any(_has_non_negated_term(text, value) for value in self.values)
         if self.op == "not_contains_any":
             return all(n not in hay for n in needles)
         return hay.strip() == self.value.lower().strip()  # equals
+
+
+_ASSERTION_NEGATED_PREFIX = re.compile(
+    r"\b(?:no|not|without|neither|absent|negative for|free of|lack of|"
+    r"lacks|ruled out|rule out|excluded)\b[^.;:\n]{0,56}$"
+)
+_ASSERTION_NEGATED_SUFFIX = re.compile(
+    r"^\s*(?:is|was|are|were|has been)?\s*"
+    r"(?:absent|negative|not seen|not present|excluded|ruled out)\b"
+)
+_ASSERTION_UNCERTAIN_PREFIX = re.compile(
+    r"\b(?:possible|possibly|probable|probably|suspected|suspicious for|"
+    r"suggestive of|may(?: be| represent)?|might(?: be| represent)?|"
+    r"could(?: be| represent)?|cannot exclude|can not exclude|"
+    r"unable to exclude|questionable|equivocal|likely)\b[^.;:\n]{0,64}$"
+)
+_ASSERTION_UNCERTAIN_SUFFIX = re.compile(
+    r"^\s*(?:is|was|are|were|remains|pattern)?\s*"
+    r"(?:possible|probable|suspected|questionable|equivocal|uncertain|likely|"
+    r"cannot be excluded|can not be excluded|is not confirmed|not confirmed|"
+    r"versus|vs\b)"
+)
+
+
+def _normalize_assertion_text(value: str) -> str:
+    lowered = value.lower()
+    separated = re.sub(r"[-_/]+", " ", lowered)
+    return re.sub(r"\s+", " ", separated).strip()
+
+
+def _has_asserted_term(text: str, term: str) -> bool:
+    """Return whether ``term`` is asserted, not negated or merely uncertain.
+
+    The bounded local assertion scope avoids false alarms such as ``no STEMI``
+    and ``cannot exclude STEMI`` while still accepting a later contrasted
+    assertion such as ``no ischemia, but definite STEMI``. This is deliberately
+    lexical: the engine audits the model's own claim and does not infer one.
+    """
+    haystack = _normalize_assertion_text(text)
+    needle = _normalize_assertion_text(term)
+    if not haystack or not needle:
+        return False
+
+    if needle.isascii() and needle[0].isalnum() and needle[-1].isalnum():
+        pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+    else:
+        pattern = re.compile(re.escape(needle))
+
+    for match in pattern.finditer(haystack):
+        before = haystack[max(0, match.start() - 96) : match.start()]
+        after = haystack[match.end() : match.end() + 80]
+        before = re.split(r"\b(?:but|however|although|yet)\b", before)[-1]
+        if (
+            _ASSERTION_NEGATED_PREFIX.search(before)
+            or _ASSERTION_NEGATED_SUFFIX.search(after)
+            or _ASSERTION_UNCERTAIN_PREFIX.search(before)
+            or _ASSERTION_UNCERTAIN_SUFFIX.search(after)
+        ):
+            continue
+        return True
+    return False
+
+
+def _has_non_negated_term(text: str, term: str) -> bool:
+    """Return whether ``term`` is present and not locally negated.
+
+    Unlike ``_has_asserted_term``, uncertainty is retained. This is for urgent
+    rule-out rules where an equivocal emergency differential should alter
+    triage without being converted into a confirmed diagnosis.
+    """
+    haystack = _normalize_assertion_text(text)
+    needle = _normalize_assertion_text(term)
+    if not haystack or not needle:
+        return False
+
+    if needle.isascii() and needle[0].isalnum() and needle[-1].isalnum():
+        pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+    else:
+        pattern = re.compile(re.escape(needle))
+
+    for match in pattern.finditer(haystack):
+        before = haystack[max(0, match.start() - 96) : match.start()]
+        after = haystack[match.end() : match.end() + 80]
+        before = re.split(r"\b(?:but|however|although|yet)\b", before)[-1]
+        if _ASSERTION_NEGATED_PREFIX.search(before) or _ASSERTION_NEGATED_SUFFIX.search(
+            after
+        ):
+            continue
+        return True
+    return False
 
 
 def _parse_severity(value: str) -> Severity:
@@ -187,6 +310,16 @@ def _resolve_text(field_name: str, result: AnalysisResult) -> str:
     raise ConditionError(f"unknown field '{field_name}'")
 
 
+def _resolve_severity(field_name: str, result: AnalysisResult) -> Severity | None:
+    if field_name == "severity":
+        return result.severity
+    match = re.fullmatch(r"checklist\.([^.]+)\.status", field_name)
+    if match:
+        item = result.checklist.get(match.group(1))
+        return item.status if item else None
+    raise ConditionError(f"unknown severity field '{field_name}'")
+
+
 def _all_text(result: AnalysisResult) -> str:
     parts: list[str] = [result.summary or ""]
     for finding in result.findings:
@@ -204,10 +337,10 @@ def _all_text(result: AnalysisResult) -> str:
 class ClinicalRule:
     """A single guideline-grounded consistency rule (data, not code).
 
-    A rule fires when **all** ``conditions`` hold for a result. On firing it
-    escalates severity toward ``escalate_to`` (never downgrades) and, when
-    ``require_review`` is set, flags the result for human review with a message
-    that cites the originating guideline.
+    A rule fires when **all** ``conditions`` hold for a result. On firing it may
+    escalate severity toward optional ``escalate_to`` (never downgrades) and,
+    when ``require_review`` is set, flag the result for human review with a
+    message that cites the originating guideline.
     """
 
     id: str
@@ -223,9 +356,7 @@ class ClinicalRule:
     require_review: bool = True
 
     def fires(self, result: AnalysisResult) -> bool:
-        return bool(self.conditions) and all(
-            c.matches(result) for c in self.conditions
-        )
+        return bool(self.conditions) and all(c.matches(result) for c in self.conditions)
 
     def evidence(self, result: AnalysisResult) -> tuple[str, ...]:
         """Concrete terms from the AI's own output that triggered this rule.
@@ -272,10 +403,12 @@ class ClinicalRule:
             return ""
         bits = [self.guideline]
         meta = ", ".join(
-            b for b in (
+            b
+            for b in (
                 f"v{self.guideline_version}" if self.guideline_version else "",
                 self.effective_date,
-            ) if b
+            )
+            if b
         )
         if meta:
             bits.append(f"({meta})")
@@ -292,7 +425,11 @@ class RuleViolation:
     def reason(self) -> str:
         """Physician-facing line: the message plus its guideline citation."""
         citation = self.rule.citation()
-        return f"{self.rule.message}（依據：{citation}）" if citation else self.rule.message
+        return (
+            f"{self.rule.message}（依據：{citation}）"
+            if citation
+            else self.rule.message
+        )
 
     def audit_line(self) -> str:
         """Full audit line incl. the matched evidence terms (for logs/review).
@@ -387,8 +524,9 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
         id="ekg-st-elevation-not-flagged",
         modality="EKG",
         description=(
-            "ST elevation is described in the ST-segment axis but the study is "
-            "rated normal/benign and STEMI is not flagged."
+            "A non-normal ST-segment axis describes elevation while the overall "
+            "study remains normal/benign. This is review-only because benign or "
+            "uncertain ST elevation is not itself a STEMI diagnosis."
         ),
         conditions=(
             RuleCondition(
@@ -396,9 +534,45 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
                 op="contains_any",
                 values=("elevat", "ste ", "st elevation", "抬高", "上升"),
             ),
+            RuleCondition(
+                field="checklist.st_segment.status",
+                op="severity_at_least",
+                value="info",
+            ),
             RuleCondition(field="severity", op="severity_at_most", value="info"),
         ),
-        message="ST 段疑似抬高卻評為非異常 — 需人工排除急性 STEMI",
+        message="ST 段有抬高描述但整體嚴重度偏低，請人工確認是否為良性變異或急性缺血",
+        guideline="Fourth Universal Definition of MI; ACC/AHA STEMI",
+        guideline_version="2018",
+        effective_date="2018-08-25",
+        escalate_to=None,
+    ),
+    ClinicalRule(
+        id="ekg-explicit-stemi-undercall",
+        modality="EKG",
+        description=(
+            "An explicit, affirmative STEMI or acute myocardial-injury claim is "
+            "present, but the overall study is rated normal/benign. Negated and "
+            "uncertain mentions do not trigger escalation."
+        ),
+        conditions=(
+            RuleCondition(
+                field="all_text",
+                op="contains_any_asserted",
+                values=(
+                    "stemi",
+                    "st elevation myocardial infarction",
+                    "acute myocardial infarction",
+                    "acute mi",
+                    "acute myocardial injury",
+                    "acute injury pattern",
+                    "急性心肌梗塞",
+                    "急性心肌損傷",
+                ),
+            ),
+            RuleCondition(field="severity", op="severity_at_most", value="info"),
+        ),
+        message="判讀明確宣稱急性心肌梗塞/損傷卻評為非異常，需立即人工複核",
         guideline="Fourth Universal Definition of MI; ACC/AHA STEMI",
         guideline_version="2018",
         effective_date="2018-08-25",
@@ -414,7 +588,7 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
         conditions=(
             RuleCondition(
                 field="checklist.t_wave",
-                op="contains_any",
+                op="contains_any_asserted",
                 values=("peaked", "tented", "tall t", "高尖", "帳篷"),
             ),
             RuleCondition(field="severity", op="severity_at_most", value="info"),
@@ -426,6 +600,34 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
         escalate_to=Severity.WARNING,
     ),
     ClinicalRule(
+        id="ekg-possible-hyperacute-ischemia-triage",
+        modality="EKG",
+        description=(
+            "A hyperacute ischemic T-wave differential is present but triage "
+            "remains below critical. The rule preserves diagnostic uncertainty "
+            "while escalating urgent expert review."
+        ),
+        conditions=(
+            RuleCondition(
+                field="all_text",
+                op="contains_any_non_negated",
+                values=("hyperacute ischemia", "hyperacute ischemic t wave"),
+            ),
+            RuleCondition(field="severity", op="severity_at_most", value="warning"),
+        ),
+        message=(
+            "判讀未排除超急性缺血性 T 波，維持不確定診斷但升級為急症人工複核"
+        ),
+        guideline="2023 ESC ACS; 2022 ACC Expert Consensus Acute Chest Pain",
+        guideline_version="2023/2022",
+        effective_date="2023-08-25",
+        source_url=(
+            "https://www.escardio.org/guidelines/clinical-practice-guidelines/"
+            "all-esc-practice-guidelines/acute-coronary-syndromes/"
+        ),
+        escalate_to=Severity.CRITICAL,
+    ),
+    ClinicalRule(
         id="cxr-pneumothorax-undercall",
         modality="CXR",
         description=(
@@ -435,7 +637,7 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
         conditions=(
             RuleCondition(
                 field="all_text",
-                op="contains_any",
+                op="contains_any_asserted",
                 values=("pneumothorax", "氣胸"),
             ),
             RuleCondition(field="severity", op="severity_at_most", value="info"),
@@ -456,7 +658,7 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
         conditions=(
             RuleCondition(
                 field="all_text",
-                op="contains_any",
+                op="contains_any_asserted",
                 values=(
                     "widened mediastinum",
                     "mediastinal widening",

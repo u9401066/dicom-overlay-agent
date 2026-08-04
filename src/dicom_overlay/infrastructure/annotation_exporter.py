@@ -9,6 +9,7 @@ content and never widens any ROI; it only reads already-saved eval artifacts.
 from __future__ import annotations
 
 import json
+import math
 import textwrap
 from dataclasses import dataclass
 from html import escape
@@ -78,10 +79,12 @@ class BboxAudit:
     projection_was_clamped: bool
     projection_back_projected_bbox: dict[str, float]
     crop: str
+    review_image: str
 
     def to_json(self) -> dict[str, Any]:
         """Return a stable JSONL payload."""
         return {
+            "audit_type": "bbox",
             "case": self.case_label,
             "finding_index": self.finding_index,
             "bbox_index": self.bbox_index,
@@ -98,12 +101,11 @@ class BboxAudit:
             "was_clamped": self.was_clamped,
             "invalid_reason": self.invalid_reason,
             "projection_ok": self.projection_ok,
-            "projection_max_edge_drift_px": round(
-                self.projection_max_edge_drift_px, 6
-            ),
+            "projection_max_edge_drift_px": round(self.projection_max_edge_drift_px, 6),
             "projection_was_clamped": self.projection_was_clamped,
             "projection_back_projected_bbox": self.projection_back_projected_bbox,
             "crop": self.crop,
+            "review_image": self.review_image,
         }
 
 
@@ -142,7 +144,7 @@ def export_eval_annotations(
         result_paths = result_paths[:limit]
 
     exported: list[ExportedAnnotation] = []
-    audit_records: list[BboxAudit] = []
+    audit_records: list[Any] = []
     for result_path in result_paths:
         result = json.loads(result_path.read_text(encoding="utf-8"))
         image_path = _resolve_image_path(result, image_index)
@@ -218,7 +220,7 @@ def _render_annotated_result_with_audit(
     output_path: Path,
     case_label: str,
     crops_dir: Path | None,
-) -> tuple[Path, list[BboxAudit]]:
+) -> tuple[Path, list[BboxAudit | dict[str, Any]]]:
     """Draw review image and return per-bbox audit records."""
     source = Image.open(image_path).convert("RGB")
     canvas = Image.new("RGB", (source.width + _PANEL_WIDTH, source.height), "white")
@@ -229,13 +231,27 @@ def _render_annotated_result_with_audit(
     title = _load_font(17)
 
     findings = list(result.get("findings") or [])
-    audit_records: list[BboxAudit] = []
+    audit_records: list[BboxAudit | dict[str, Any]] = []
     audits_by_finding: dict[int, list[BboxAudit]] = {}
     for index, finding in enumerate(findings, start=1):
         color = _color_for(str(finding.get("severity") or result.get("severity")))
         for bbox_index, bbox in enumerate(finding.get("bboxes") or [], start=1):
-            mapping = _bbox_pixels(bbox, source.width, source.height)
+            mapping = (
+                _bbox_pixels(bbox, source.width, source.height)
+                if isinstance(bbox, dict)
+                else None
+            )
             if mapping is None:
+                audit_records.append(
+                    _invalid_bbox_audit(
+                        bbox,
+                        case_label=case_label,
+                        finding=finding,
+                        finding_index=index,
+                        bbox_index=bbox_index,
+                        review_image=output_path.name,
+                    )
+                )
                 continue
             box = mapping.pixels
             crop_rel = ""
@@ -255,6 +271,7 @@ def _render_annotated_result_with_audit(
                 finding_index=index,
                 bbox_index=bbox_index,
                 crop_rel=crop_rel,
+                review_image=output_path.name,
             )
             audit_records.append(audit)
             audits_by_finding.setdefault(index, []).append(audit)
@@ -287,7 +304,7 @@ def _load_manifest_image_index(manifest_path: Path) -> dict[str, Path]:
     for case in data.get("cases", []):
         rel = Path(str(case["image"]))
         path = root / rel
-        label = str(case.get("label") or rel.stem)
+        label = str(case.get("label") or rel.name)
         for key in {rel.name, rel.stem, label}:
             index[key] = path
     return index
@@ -318,6 +335,8 @@ def _bbox_pixels(
         w = float(bbox["w"])
         h = float(bbox["h"])
     except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(value) for value in (x, y, w, h)) or w <= 0 or h <= 0:
         return None
     x_start = _clamp(x)
     y_start = _clamp(y)
@@ -359,6 +378,7 @@ def _audit_bbox(
     finding_index: int,
     bbox_index: int,
     crop_rel: str,
+    review_image: str,
 ) -> BboxAudit:
     box = mapping.pixels
     x0, y0, x1, y1 = box
@@ -383,7 +403,12 @@ def _audit_bbox(
         low_signal=ink_ratio < _LOW_SIGNAL_MIN_INK_RATIO,
         was_clamped=mapping.was_clamped,
         invalid_reason=mapping.invalid_reason,
-        projection_ok=mapping.projection.ok,
+        projection_ok=(
+            mapping.projection.ok
+            and not mapping.projection.was_clamped
+            and not mapping.was_clamped
+            and not mapping.invalid_reason
+        ),
         projection_max_edge_drift_px=mapping.projection.max_edge_drift_px,
         projection_was_clamped=mapping.projection.was_clamped,
         projection_back_projected_bbox=_normalized_payload(
@@ -393,7 +418,65 @@ def _audit_bbox(
             mapping.projection.back_projected_bbox.h,
         ),
         crop=crop_rel,
+        review_image=review_image,
     )
+
+
+def _invalid_bbox_audit(
+    bbox: Any,
+    *,
+    case_label: str,
+    finding: dict[str, Any],
+    finding_index: int,
+    bbox_index: int,
+    review_image: str,
+) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    reason = "bbox_not_an_object"
+    if isinstance(bbox, dict):
+        normalized = {key: bbox.get(key) for key in ("x", "y", "w", "h") if key in bbox}
+        try:
+            x = float(bbox["x"])
+            y = float(bbox["y"])
+            w = float(bbox["w"])
+            h = float(bbox["h"])
+        except (KeyError, TypeError, ValueError):
+            reason = "bbox_non_numeric_or_missing_coordinate"
+        else:
+            if not all(math.isfinite(value) for value in (x, y, w, h)):
+                normalized = {}
+                reason = "bbox_non_finite_coordinate"
+            else:
+                normalized = _normalized_payload(x, y, w, h)
+                reason = (
+                    "bbox_degenerate"
+                    if w <= 0.0 or h <= 0.0
+                    else "bbox_out_of_bounds_or_subpixel"
+                )
+    return {
+        "audit_type": "bbox",
+        "case": case_label,
+        "finding_index": finding_index,
+        "bbox_index": bbox_index,
+        "finding_id": str(finding.get("id") or ""),
+        "label": str(finding.get("label") or "finding"),
+        "severity": str(finding.get("severity") or ""),
+        "normalized": normalized,
+        "clamped_normalized": {},
+        "pixels": {},
+        "width_px": 0,
+        "height_px": 0,
+        "ink_pixel_ratio": 0.0,
+        "low_signal": True,
+        "was_clamped": False,
+        "invalid_reason": reason,
+        "projection_ok": False,
+        "projection_max_edge_drift_px": 0.0,
+        "projection_was_clamped": False,
+        "projection_back_projected_bbox": {},
+        "crop": "",
+        "review_image": review_image,
+    }
 
 
 def _project_bbox_for_review(
@@ -599,14 +682,14 @@ def _write_index(output_dir: Path, exported: list[ExportedAnnotation]) -> None:
     rows = "\n".join(
         "<tr>"
         f"<td>{escape(item.case_label)}</td>"
-        f"<td><a href=\"{escape(item.output_path.name)}\">"
+        f'<td><a href="{escape(item.output_path.name)}">'
         f"{escape(item.output_path.name)}</a></td>"
         f"<td>{escape(str(item.result_path))}</td>"
         "</tr>"
         for item in exported
     )
     html = (
-        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        '<!doctype html><html><head><meta charset="utf-8">'
         "<title>Eval Annotation Review</title>"
         "<style>body{font-family:Arial,sans-serif;margin:24px}"
         "table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px}"
@@ -615,7 +698,7 @@ def _write_index(output_dir: Path, exported: list[ExportedAnnotation]) -> None:
         "<table><thead><tr><th>Case</th><th>Annotated PNG</th>"
         "<th>Raw Result</th></tr></thead><tbody>"
         f"{rows}</tbody></table>"
-        "<p><a href=\"bbox-audit.jsonl\">bbox-audit.jsonl</a> stores pixel "
+        '<p><a href="bbox-audit.jsonl">bbox-audit.jsonl</a> stores pixel '
         "coordinates, crop paths, and low-signal flags for every box.</p>"
         "</body></html>"
     )

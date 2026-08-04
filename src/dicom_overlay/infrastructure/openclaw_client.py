@@ -8,16 +8,26 @@ import os
 import platform
 import re
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import structlog
 import websockets
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
 from dicom_overlay.application.interpretation_harness import (
     build_initial_analysis_prompt,
+)
+from dicom_overlay.application.multi_pass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
 )
 from dicom_overlay.domain.entities import (
     AnalysisResult,
@@ -51,6 +61,7 @@ _DEFAULT_SCOPES = [
     "operator.approvals",
     "operator.pairing",
 ]
+_WAVEFORM_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 # Skill resolution is driven by the modality registry (single source of truth).
 # A modality's OpenClaw skill folder name comes from its ``ModalityProfile``;
@@ -77,6 +88,7 @@ class OpenClawClient(VisionAnalyzerService):
         connect_timeout_sec: int | None = None,
         inference_timeout_sec: int | None = None,
         registry: ModalityRegistry | None = None,
+        base_dir: Path | None = None,
     ) -> None:
         self._url = gateway_url
         self._timeout = timeout_sec
@@ -85,17 +97,57 @@ class OpenClawClient(VisionAnalyzerService):
         self._inference_timeout = inference_timeout_sec or timeout_sec
         self._reconnect_interval = reconnect_interval_sec
         self._registry = registry or get_active_registry()
+        self._base_dir = (base_dir or Path.cwd()).resolve()
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
         self._gateway_token = (
             gateway_token.strip() if gateway_token else None
-        ) or _load_gateway_token()
+        ) or _load_gateway_token(self._base_dir)
         if not self._gateway_token:
             logger.warning(
                 "No OpenClaw gateway token configured; connect() will proceed without auth"
             )
         self._ws_lock = asyncio.Lock()  # Serialize all WebSocket send+recv sequences
+        self._last_run_id = ""
+        self._last_session_key = ""
+        self._last_run_tools: list[str] = []
+        self._last_parse_retry_count = 0
+        self._tool_audit_path = _resolve_bbox_tool_audit_path(self._base_dir)
+        self._tool_audit_offset = _file_size(self._tool_audit_path)
+        self._ecg_founder_tool_audit_path = _resolve_ecg_founder_tool_audit_path(
+            self._base_dir
+        )
+        self._ecg_founder_tool_audit_offset = _file_size(
+            self._ecg_founder_tool_audit_path
+        )
+        self._last_tool_audit_records: list[dict[str, object]] = []
+        self._waveform_artifact_context: ContextVar[tuple[str, str] | None] = (
+            ContextVar(
+                f"openclaw_waveform_artifact_{id(self)}",
+                default=None,
+            )
+        )
+
+    @contextmanager
+    def use_waveform_artifact(
+        self,
+        artifact_id: str,
+        *,
+        lead_mode: str = "12_lead",
+    ) -> Iterator[None]:
+        """Bind one opaque waveform artifact to the current async analysis task."""
+
+        clean_id = artifact_id.strip()
+        if not _WAVEFORM_ARTIFACT_ID.fullmatch(clean_id):
+            raise ValueError("invalid waveform artifact id")
+        if lead_mode not in {"12_lead", "single_lead"}:
+            raise ValueError("invalid waveform lead mode")
+        token = self._waveform_artifact_context.set((clean_id, lead_mode))
+        try:
+            yield
+        finally:
+            self._waveform_artifact_context.reset(token)
 
     async def connect(self) -> None:
         try:
@@ -138,7 +190,11 @@ class OpenClawClient(VisionAnalyzerService):
         """Analyze with auto-reconnect on connection loss."""
         async with self._ws_lock:
             try:
-                return await self._do_analyze(image_base64, modality, valid_regions)
+                return await self._analyze_with_parse_retry(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                )
             except (
                 websockets.ConnectionClosed,
                 websockets.exceptions.ConcurrencyError,
@@ -147,7 +203,11 @@ class OpenClawClient(VisionAnalyzerService):
                 self._connected = False
                 try:
                     await self.connect()
-                    return await self._do_analyze(image_base64, modality, valid_regions)
+                    return await self._analyze_with_parse_retry(
+                        image_base64,
+                        modality,
+                        valid_regions,
+                    )
                 except websockets.ConnectionClosed:
                     self._connected = False
                     raise ConnectionError(
@@ -158,6 +218,171 @@ class OpenClawClient(VisionAnalyzerService):
                 except Exception as exc:
                     self._connected = False
                     raise ConnectionError(f"Reconnect failed: {exc}") from None
+
+    async def refine(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        hypothesis: Finding | None,
+        crop_region: RegionRect,
+    ) -> RefinementResult:
+        """Re-read one crop while explicitly testing the coarse hypothesis."""
+        async with self._ws_lock:
+            try:
+                return await self._refine_with_parse_retry(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                    hypothesis=hypothesis,
+                    crop_region=crop_region,
+                )
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
+                logger.warning("Connection lost during refinement, reconnecting...")
+                self._connected = False
+                try:
+                    await self.connect()
+                    return await self._refine_with_parse_retry(
+                        image_base64,
+                        modality,
+                        valid_regions,
+                        hypothesis=hypothesis,
+                        crop_region=crop_region,
+                    )
+                except websockets.ConnectionClosed:
+                    self._connected = False
+                    raise ConnectionError(
+                        "Gateway connection lost after reconnect"
+                    ) from None
+                except ConnectionError:
+                    raise
+                except Exception as exc:
+                    self._connected = False
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+
+    async def finalize(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        draft: AnalysisResult,
+        refinement_trace: list[dict[str, object]],
+    ) -> AnalysisResult:
+        """Reconcile the complete report against final grounded findings."""
+        async with self._ws_lock:
+            try:
+                return await self._finalize_with_parse_retry(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                    draft=draft,
+                    refinement_trace=refinement_trace,
+                )
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
+                logger.warning("Connection lost during finalization, reconnecting...")
+                self._connected = False
+                try:
+                    await self.connect()
+                    return await self._finalize_with_parse_retry(
+                        image_base64,
+                        modality,
+                        valid_regions,
+                        draft=draft,
+                        refinement_trace=refinement_trace,
+                    )
+                except websockets.ConnectionClosed:
+                    self._connected = False
+                    raise ConnectionError(
+                        "Gateway connection lost after reconnect"
+                    ) from None
+                except ConnectionError:
+                    raise
+                except Exception as exc:
+                    self._connected = False
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+
+    async def _analyze_with_parse_retry(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        for attempt in range(2):
+            try:
+                result = await self._do_analyze(image_base64, modality, valid_regions)
+            except json.JSONDecodeError:
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                logger.warning("Malformed analysis JSON; retrying once with a new turn")
+                continue
+            self._last_parse_retry_count = attempt
+            return result
+        raise AssertionError("unreachable")
+
+    async def _refine_with_parse_retry(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        hypothesis: Finding | None,
+        crop_region: RegionRect,
+    ) -> RefinementResult:
+        for attempt in range(2):
+            try:
+                result = await self._do_refine(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                    hypothesis=hypothesis,
+                    crop_region=crop_region,
+                )
+            except json.JSONDecodeError:
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                logger.warning("Malformed refinement JSON; retrying once with a new turn")
+                continue
+            self._last_parse_retry_count = attempt
+            return result
+        raise AssertionError("unreachable")
+
+    async def _finalize_with_parse_retry(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        draft: AnalysisResult,
+        refinement_trace: list[dict[str, object]],
+    ) -> AnalysisResult:
+        for attempt in range(2):
+            try:
+                result = await self._do_finalize(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                    draft=draft,
+                    refinement_trace=refinement_trace,
+                )
+            except json.JSONDecodeError:
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                logger.warning("Malformed final report JSON; retrying once")
+                continue
+            self._last_parse_retry_count = attempt
+            return result
+        raise AssertionError("unreachable")
 
     async def _do_analyze(
         self,
@@ -171,10 +396,19 @@ class OpenClawClient(VisionAnalyzerService):
         assert self._ws is not None
 
         skill = self._registry.resolve(modality.value).resolved_skill_name()
-        prompt = _build_analysis_prompt(modality, valid_regions, skill)
+        waveform_context = self._waveform_artifact_context.get()
+        prompt = _build_analysis_prompt(
+            modality,
+            valid_regions,
+            skill,
+            base_dir=self._base_dir,
+            waveform_artifact_id=(waveform_context or ("", ""))[0],
+            waveform_lead_mode=(waveform_context or ("", ""))[1],
+        )
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
         session_key = f"analysis-{idempotency_key}"
+        self._begin_run_trace(session_key)
 
         message = build_openclaw_chat_frame(
             request_id=request_id,
@@ -197,6 +431,122 @@ class OpenClawClient(VisionAnalyzerService):
         response = await self._wait_for_chat_result(request_id)
         elapsed_ms = int((time.monotonic() - start) * 1000)
         return self._parse_result(response, elapsed_ms, modality)
+
+    async def _do_refine(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        hypothesis: Finding | None,
+        crop_region: RegionRect,
+    ) -> RefinementResult:
+        if not self.is_connected():
+            raise ConnectionError("Not connected to OpenClaw Gateway")
+        if not image_base64.strip():
+            raise ValueError("image_base64 is required for refinement")
+
+        assert self._ws is not None
+        request_id = self._next_request_id("refine")
+        idempotency_key = str(uuid4())
+        session_key = f"refine-{idempotency_key}"
+        self._begin_run_trace(session_key)
+        prompt = _build_refinement_prompt(
+            modality=modality,
+            valid_regions=valid_regions,
+            hypothesis=hypothesis,
+            crop_region=crop_region,
+        )
+        frame = build_openclaw_chat_frame(
+            request_id=request_id,
+            session_key=session_key,
+            message=prompt,
+            idempotency_key=idempotency_key,
+            image_base64=image_base64,
+        )
+        await self._ws.send(json.dumps(frame))
+        response = await self._wait_for_chat_result(request_id)
+        return _parse_refinement_result(response)
+
+    async def _do_finalize(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        draft: AnalysisResult,
+        refinement_trace: list[dict[str, object]],
+    ) -> AnalysisResult:
+        if not self.is_connected():
+            raise ConnectionError("Not connected to OpenClaw Gateway")
+        if not image_base64.strip():
+            raise ValueError("image_base64 is required for finalization")
+
+        assert self._ws is not None
+        request_id = self._next_request_id("finalize")
+        idempotency_key = str(uuid4())
+        session_key = f"finalize-{idempotency_key}"
+        self._begin_run_trace(session_key)
+        prompt = _build_finalization_prompt(
+            modality=modality,
+            valid_regions=valid_regions,
+            draft=draft,
+            refinement_trace=refinement_trace,
+        )
+        frame = build_openclaw_chat_frame(
+            request_id=request_id,
+            session_key=session_key,
+            message=prompt,
+            idempotency_key=idempotency_key,
+            image_base64=image_base64,
+        )
+        start = time.monotonic()
+        await self._ws.send(json.dumps(frame))
+        response = await self._wait_for_chat_result(request_id)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return self._parse_result(response, elapsed_ms, modality)
+
+    def _begin_run_trace(self, session_key: str) -> None:
+        self._last_session_key = session_key
+        self._last_run_id = ""
+        self._last_run_tools = []
+        self._last_parse_retry_count = 0
+        self._tool_audit_offset = _file_size(self._tool_audit_path)
+        self._ecg_founder_tool_audit_offset = _file_size(
+            self._ecg_founder_tool_audit_path
+        )
+        self._last_tool_audit_records = []
+
+    def last_run_trace(self) -> dict[str, object]:
+        """Return auditable runtime facts, never hidden chain-of-thought."""
+        self._refresh_tool_audit()
+        return {
+            "session_key": self._last_session_key,
+            "run_id": self._last_run_id,
+            "tools": list(self._last_run_tools),
+            "tool_audit": list(self._last_tool_audit_records),
+            "parse_retry_count": self._last_parse_retry_count,
+        }
+
+    def _refresh_tool_audit(self) -> None:
+        """Read native-plugin evidence appended since this model turn began."""
+        self._tool_audit_offset, bbox_records = _read_new_tool_audit_records(
+            self._tool_audit_path,
+            self._tool_audit_offset,
+            _valid_bbox_tool_audit_record,
+        )
+        self._ecg_founder_tool_audit_offset, ecg_records = (
+            _read_new_tool_audit_records(
+                self._ecg_founder_tool_audit_path,
+                self._ecg_founder_tool_audit_offset,
+                _valid_ecg_founder_tool_audit_record,
+            )
+        )
+        for record in [*bbox_records, *ecg_records]:
+            self._last_tool_audit_records.append(record)
+            tool = record["tool"]
+            if isinstance(tool, str) and tool not in self._last_run_tools:
+                self._last_run_tools.append(tool)
 
     async def chat(self, message: str) -> str:
         """Send a free-text question with auto-reconnect on connection loss."""
@@ -317,14 +667,19 @@ class OpenClawClient(VisionAnalyzerService):
         run_id: str | None = None
         while True:
             try:
-                raw = await asyncio.wait_for(self._ws.recv(), timeout=self._timeout)
+                raw = await asyncio.wait_for(
+                    self._ws.recv(), timeout=self._inference_timeout
+                )
             except TimeoutError:
-                raise TimeoutError(f"Chat timeout after {self._timeout}s") from None
+                raise TimeoutError(
+                    f"Chat timeout after {self._inference_timeout}s"
+                ) from None
             except websockets.ConnectionClosed as exc:
                 self._connected = False
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
 
             frame = json.loads(raw)
+            self._record_tool_events(frame)
             frame_type = frame.get("type")
 
             if frame_type == "res" and frame.get("id") == request_id:
@@ -336,6 +691,7 @@ class OpenClawClient(VisionAnalyzerService):
                 payload = frame.get("payload", {})
                 if payload.get("runId"):
                     run_id = payload["runId"]
+                    self._last_run_id = str(run_id)
                 if payload.get("status") == "accepted":
                     continue
                 # Direct text result in res frame
@@ -429,6 +785,7 @@ class OpenClawClient(VisionAnalyzerService):
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
 
             frame = json.loads(raw)
+            self._record_tool_events(frame)
             frame_type = frame.get("type")
             # Only log non-event frames to avoid flooding logs
             # (Gateway pushes dozens of event frames per request)
@@ -451,6 +808,7 @@ class OpenClawClient(VisionAnalyzerService):
                 status = payload.get("status")
                 if payload.get("runId"):
                     run_id = payload["runId"]
+                    self._last_run_id = str(run_id)
                 if status == "accepted":
                     continue
 
@@ -482,6 +840,11 @@ class OpenClawClient(VisionAnalyzerService):
                 if state == "final":
                     return _payload_from_chat_event(payload)
 
+    def _record_tool_events(self, frame: object) -> None:
+        for tool_name in _extract_tool_names(frame):
+            if tool_name not in self._last_run_tools:
+                self._last_run_tools.append(tool_name)
+
     def _next_request_id(self, prefix: str) -> str:
         self._request_counter += 1
         return f"{prefix}-{self._request_counter}"
@@ -495,11 +858,13 @@ class OpenClawClient(VisionAnalyzerService):
         payload = response.get("payload", response)
 
         findings = []
+        parse_warnings: list[str] = []
         for f in payload.get("findings", []):
             # The LLM occasionally emits a bare string/number for a finding
             # instead of an object; skip anything we cannot treat as a dict.
             if not isinstance(f, dict):
                 logger.warning("Dropping non-object finding: %r", f)
+                parse_warnings.append("Dropped a malformed non-object finding")
                 continue
             # Parse AI-provided bounding boxes (normalized 0-1 coords)
             bboxes: list[RegionRect] = []
@@ -518,12 +883,17 @@ class OpenClawClient(VisionAnalyzerService):
                         x, y, w, h = b[0], b[1], b[2], b[3]
                     else:
                         raise TypeError(f"unsupported bbox shape: {type(b).__name__}")
+                    x, y, w, h = (float(value) for value in (x, y, w, h))
+                    if w <= 0.0 or h <= 0.0:
+                        raise ValueError("bbox width and height must be positive")
+                    if x < 0.0 or y < 0.0 or x + w > 1.0 or y + h > 1.0:
+                        raise ValueError("bbox must fit within normalized image bounds")
                     bboxes.append(
                         RegionRect(
-                            x=float(x),
-                            y=float(y),
-                            w=float(w),
-                            h=float(h),
+                            x=x,
+                            y=y,
+                            w=w,
+                            h=h,
                         )
                     )
                 except (ValueError, TypeError) as exc:
@@ -535,6 +905,9 @@ class OpenClawClient(VisionAnalyzerService):
                         b,
                         exc,
                     )
+                    parse_warnings.append(
+                        f"Dropped invalid bbox for finding {f.get('id', '') or '(unnamed)'}"
+                    )
             findings.append(
                 Finding(
                     id=f.get("id", ""),
@@ -543,6 +916,8 @@ class OpenClawClient(VisionAnalyzerService):
                     detail=f.get("detail", ""),
                     severity=_parse_severity(f.get("severity", "info")),
                     bboxes=bboxes,
+                    confidence=_parse_confidence(f.get("confidence", "")),
+                    question=str(f.get("question", "") or "").strip(),
                 )
             )
 
@@ -574,6 +949,27 @@ class OpenClawClient(VisionAnalyzerService):
                 modality = request_modality
 
         layout = payload.get("layout")
+        raw_image_quality = payload.get("image_quality", "")
+        image_quality: str | dict[str, object]
+        if isinstance(raw_image_quality, dict):
+            image_quality = dict(raw_image_quality)
+        elif isinstance(raw_image_quality, str):
+            image_quality = raw_image_quality.strip()
+        else:
+            image_quality = ""
+            if raw_image_quality not in (None, ""):
+                parse_warnings.append("Dropped malformed image_quality metadata")
+
+        parse_warnings = list(dict.fromkeys(parse_warnings))
+        incomplete_reasons = _coerce_string_list(
+            payload.get("incomplete_reasons", [])
+        )
+        for warning in parse_warnings:
+            if warning not in incomplete_reasons:
+                incomplete_reasons.append(warning)
+        incomplete = bool(payload.get("incomplete", False)) or bool(
+            incomplete_reasons or parse_warnings
+        )
         return AnalysisResult(
             modality=modality,
             summary=payload.get("summary", ""),
@@ -581,7 +977,12 @@ class OpenClawClient(VisionAnalyzerService):
             findings=findings,
             checklist=checklist,
             analysis_time_ms=payload.get("analysis_time_ms", elapsed_ms),
-            model_used=payload.get("model_used", ""),
+            model_used=str(payload.get("model_used", "") or "").strip(),
+            image_quality=image_quality,
+            next_steps=_coerce_string_list(payload.get("next_steps", [])),
+            incomplete=incomplete,
+            incomplete_reasons=incomplete_reasons,
+            validation_warnings=parse_warnings,
             layout=layout if isinstance(layout, dict) else {},
         )
 
@@ -591,6 +992,26 @@ def _parse_severity(s: str) -> Severity:
         return Severity(s.lower())
     except ValueError:
         return Severity.INFO
+
+
+def _parse_confidence(value: object) -> str:
+    confidence = str(value or "").strip().lower()
+    return confidence if confidence in {"high", "moderate", "low"} else ""
+
+
+def _coerce_string_list(raw: object) -> list[str]:
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, (list, tuple)):
+        values = raw
+    else:
+        return []
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result
 
 
 def _iter_checklist(raw: object) -> list[tuple[str, object]]:
@@ -625,13 +1046,19 @@ def _build_analysis_prompt(
     modality: Modality,
     valid_regions: list[str],
     skill_name: str,
+    *,
+    base_dir: Path | None = None,
+    waveform_artifact_id: str = "",
+    waveform_lead_mode: str = "",
 ) -> str:
-    skill_prompt = _load_skill_prompt(skill_name)
+    skill_prompt = _load_skill_prompt(skill_name, base_dir=base_dir)
     return build_initial_analysis_prompt(
         modality=modality,
         valid_regions=valid_regions,
         skill_name=skill_name,
         skill_prompt=skill_prompt,
+        waveform_artifact_id=waveform_artifact_id,
+        waveform_lead_mode=waveform_lead_mode,
     )
 
 
@@ -650,9 +1077,276 @@ def _build_image_followup_prompt(*, message: str, context: str) -> str:
     )
 
 
-def _load_skill_prompt(skill_name: str) -> str:
+def _analysis_result_prompt_payload(result: AnalysisResult) -> dict[str, object]:
+    return {
+        "modality": result.modality.value,
+        "summary": result.summary,
+        "severity": result.severity.value,
+        "findings": [
+            {
+                "id": finding.id,
+                "label": finding.label,
+                "detail": finding.detail,
+                "severity": finding.severity.value,
+                "confidence": finding.confidence,
+                "question": finding.question,
+                "regions": list(finding.regions),
+                "bboxes": [
+                    {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
+                    for box in finding.bboxes
+                ],
+                "notes": list(finding.notes),
+            }
+            for finding in result.findings
+        ],
+        "checklist": {
+            key: {"value": item.value, "status": item.status.value}
+            for key, item in result.checklist.items()
+        },
+        "layout": dict(result.layout),
+        "image_quality": result.image_quality,
+        "next_steps": list(result.next_steps),
+        "model_used": result.model_used,
+        "incomplete": result.incomplete,
+        "incomplete_reasons": list(result.incomplete_reasons),
+        "review_required": result.review_required,
+        "review_reasons": list(result.review_reasons),
+    }
+
+
+def _build_finalization_prompt(
+    *,
+    modality: Modality,
+    valid_regions: list[str],
+    draft: AnalysisResult,
+    refinement_trace: list[dict[str, object]],
+) -> str:
+    safe_trace = [
+        {
+            "target_id": event.get("target_id", ""),
+            "hypothesis": event.get("hypothesis", ""),
+            "crop_source": event.get("crop_source", ""),
+            "decisions": event.get("decisions", []),
+        }
+        for event in refinement_trace
+    ]
+    context = {
+        "modality": modality.value,
+        "allowed_regions": valid_regions,
+        "final_grounded_draft": _analysis_result_prompt_payload(draft),
+        "refinement_decisions": safe_trace,
+    }
+    return (
+        "This is the final report-reconciliation turn for the attached original "
+        "medical image. Crop verification has already produced the grounded draft "
+        "below. Rewrite the complete report so summary, checklist, image quality, "
+        "limitations, and next steps agree with the final finding set and all "
+        "retractions/revisions. Return one JSON object only, with the same complete "
+        "top-level shape as final_grounded_draft.\n\n"
+        f"Context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
+        "Hard provenance rules:\n"
+        "- Keep every final finding id, label, severity, confidence, question, "
+        "regions, and full-image bbox exactly as supplied in final_grounded_draft. "
+        "Do not add a diagnosis, finding, or bbox in this turn.\n"
+        "- Do not mention a retracted hypothesis as a present abnormality. Normal "
+        "and negative observations belong in summary/checklist without boxes.\n"
+        "- Reconcile every checklist axis with the retained findings. Use "
+        "indeterminate/not_assessable with info status when screenshot detail or "
+        "lead coverage is insufficient; normal/WNL is valid when supported.\n"
+        "- If a retained finding keeps a potentially time-critical differential "
+        "such as hyperacute ischemia, related checklist axes must not say normal "
+        "or absent. Use indeterminate/possible with warning or critical status; "
+        "do not convert the differential into a confirmed diagnosis.\n"
+        "- Preserve clinically honest incomplete reasons and cautious language. "
+        "Do not invent precise measurements from a screenshot.\n"
+        f"- Call dicom_bbox_validate with modality={modality.value} for all retained "
+        "boxes and copy only accepted coordinates. These coordinates are relative "
+        "to the attached original image, never a crop.\n"
+        "- Output concise auditable conclusions only; never output hidden "
+        "chain-of-thought or markdown."
+    )
+
+
+def _build_refinement_prompt(
+    *,
+    modality: Modality,
+    valid_regions: list[str],
+    hypothesis: Finding | None,
+    crop_region: RegionRect,
+) -> str:
+    hypothesis_payload: dict[str, object] | None = None
+    if hypothesis is not None:
+        hypothesis_payload = {
+            "id": hypothesis.id,
+            "label": hypothesis.label,
+            "detail": hypothesis.detail,
+            "severity": hypothesis.severity.value,
+            "regions": hypothesis.regions,
+            "full_image_bboxes": [
+                {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
+                for box in hypothesis.bboxes
+            ],
+        }
+    context = {
+        "modality": modality.value,
+        "allowed_regions": valid_regions,
+        "crop_in_original_image": {
+            "x": crop_region.x,
+            "y": crop_region.y,
+            "w": crop_region.w,
+            "h": crop_region.h,
+        },
+        "coarse_hypothesis": hypothesis_payload,
+        "probe_kind": (
+            "hypothesis_verification"
+            if hypothesis_payload is not None
+            else "systematic_discovery"
+        ),
+    }
+    ekg_safety_guidance = ""
+    if hypothesis is None and modality is Modality.EKG:
+        ekg_safety_guidance = (
+            " For an EKG systematic-discovery crop, inspect every visible lead "
+            "for rhythm, conduction, ST elevation/depression, reciprocal change, "
+            "hyperacute or inverted T waves, and screenshot/lead limitations. "
+            "Add only morphology visible in this crop; preserve uncertainty and "
+            "ask a concrete reviewer question when an acute pattern cannot be "
+            "confirmed from the screenshot. An unresolved hyperacute ischemic "
+            "pattern is critical for triage even when it remains an uncertain "
+            "differential; do not call it a confirmed STEMI."
+        )
+    return (
+        "Re-examine the attached medical-image crop as a verification turn. "
+        "Test the supplied coarse hypothesis against visible evidence; do not "
+        "force an abnormal result. A normal or artifactual crop may retract the "
+        "hypothesis. This is an auditable decision summary, not hidden reasoning.\n\n"
+        f"Context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
+        "Return JSON only with this shape: "
+        '{"deltas":[{"action":"confirm|revise|retract|add",'
+        '"target_id":"coarse id or empty for add",'
+        '"rationale":"brief visible-evidence explanation",'
+        '"finding":{"id":"...","regions":["..."],"label":"...",'
+        '"detail":"...","severity":"normal|info|warning|critical",'
+        '"confidence":"high|moderate|low","question":"...",'
+        '"bboxes":[{"x":0.0,"y":0.0,"w":0.1,"h":0.1}]}}]}.\n'
+        "Use confirm only when label and severity remain unchanged. Use revise "
+        "for a corrected label, severity, detail, or localization. Use retract "
+        "when the target is not supported. Use add only for a distinct finding "
+        "actually visible in this crop. For a safety probe with no hypothesis, "
+        "return an empty deltas array when no abnormality is visible."
+        f"{ekg_safety_guidance} "
+        "If evidence is insufficient but the candidate remains useful for human "
+        "review, revise it to severity info with confidence low and a concrete "
+        "question; otherwise retract it. Never leave an info candidate without "
+        "that uncertainty contract. A statement such as 'cannot assess' or "
+        "'required leads are outside this crop' is a limitation, not a boxed "
+        "finding: retract the hypothesis instead of revising it into a limitation. "
+        "All finding "
+        "bboxes are normalized to the attached crop, not the original image. "
+        f"Call dicom_bbox_validate with modality={modality.value}. For EKG, each "
+        "box must have w<=0.35, h<=0.30, and area<=0.08; use multiple local "
+        "boxes instead of an entire lead row. Copy the tool's accepted "
+        "attached-image coordinates verbatim. Keep rationale concise and based "
+        "on observable morphology; do not output chain-of-thought."
+    )
+
+
+def _parse_refinement_finding(raw: object) -> Finding | None:
+    if not isinstance(raw, dict):
+        return None
+    boxes: list[RegionRect] = []
+    for candidate in raw.get("bboxes", []):
+        try:
+            if isinstance(candidate, dict):
+                values = (
+                    candidate.get("x"),
+                    candidate.get("y"),
+                    candidate.get("w"),
+                    candidate.get("h"),
+                )
+            elif isinstance(candidate, (list, tuple)) and len(candidate) >= 4:
+                values = candidate[:4]
+            else:
+                continue
+            x, y, w, h = (float(value) for value in values)
+            if w <= 0.0 or h <= 0.0:
+                continue
+            boxes.append(RegionRect(x=x, y=y, w=w, h=h))
+        except (TypeError, ValueError):
+            continue
+    raw_regions = raw.get("regions", [])
+    regions = (
+        [str(value) for value in raw_regions]
+        if isinstance(raw_regions, list)
+        else []
+    )
+    return Finding(
+        id=str(raw.get("id", "")).strip(),
+        regions=regions,
+        label=str(raw.get("label", "")).strip(),
+        detail=str(raw.get("detail", "")).strip(),
+        severity=_parse_severity(str(raw.get("severity", "info"))),
+        bboxes=boxes,
+        confidence=_parse_confidence(raw.get("confidence", "")),
+        question=str(raw.get("question", "") or "").strip(),
+    )
+
+
+def _parse_refinement_result(response: dict[str, Any]) -> RefinementResult:
+    payload = _coerce_result_payload(response)
+    raw_deltas = payload.get("deltas", [])
+    if not isinstance(raw_deltas, list):
+        raise RuntimeError("OpenClaw refinement response has no deltas array")
+    deltas: list[RefinementDelta] = []
+    for raw in raw_deltas:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            action = RefinementAction(str(raw.get("action", "")).lower())
+            target_id = str(raw.get("target_id", "")).strip()
+            finding = _parse_refinement_finding(raw.get("finding"))
+            rationale = str(raw.get("rationale", "")).strip()
+            if finding is not None and _is_nonfinding_limitation(finding):
+                if not target_id:
+                    continue
+                action = RefinementAction.RETRACT
+                finding = None
+                rationale = (
+                    rationale
+                    or "Crop lacks the evidence required to retain this hypothesis."
+                )
+            delta = RefinementDelta(
+                action=action,
+                target_id=target_id,
+                finding=finding,
+                rationale=rationale,
+            )
+        except ValueError:
+            logger.warning("Dropping invalid refinement delta", delta=raw)
+            continue
+        deltas.append(delta)
+    return RefinementResult(tuple(deltas))
+
+
+def _is_nonfinding_limitation(finding: Finding) -> bool:
+    text = f"{finding.label} {finding.detail}".lower()
+    return any(
+        phrase in text
+        for phrase in (
+            "cannot be assessed",
+            "cannot be assess",
+            "cannot assess",
+            "not assessable",
+            "unable to assess",
+            "insufficient to assess",
+        )
+    )
+
+
+def _load_skill_prompt(skill_name: str, *, base_dir: Path | None = None) -> str:
+    root = (base_dir or Path.cwd()).resolve()
     for base in _SKILL_BASE_DIRS:
-        path = Path(base) / skill_name / "SKILL.md"
+        path = root / base / skill_name / "SKILL.md"
         if path.exists():
             raw = path.read_text(encoding="utf-8")
             return _strip_frontmatter(raw).strip()
@@ -783,19 +1477,159 @@ def _extract_text_from_payload(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _load_gateway_token() -> str | None:
+def _extract_tool_names(value: object) -> list[str]:
+    """Collect explicit tool-call names from Gateway event payloads."""
+    found: list[str] = []
+
+    def visit(item: object) -> None:
+        if isinstance(item, dict):
+            event_type = str(item.get("type", "")).lower().replace("_", "")
+            if event_type in {
+                "toolcall",
+                "tooluse",
+                "toolresult",
+                "toolstart",
+                "toolend",
+            }:
+                name = item.get("name") or item.get("toolName") or item.get(
+                    "tool_name"
+                )
+                if isinstance(name, str) and name.strip():
+                    found.append(name.strip())
+            for key in ("toolName", "tool_name"):
+                name = item.get(key)
+                if isinstance(name, str) and name.strip():
+                    found.append(name.strip())
+            for nested in item.values():
+                visit(nested)
+        elif isinstance(item, list):
+            for nested in item:
+                visit(nested)
+
+    visit(value)
+    return list(dict.fromkeys(found))
+
+
+def _resolve_bbox_tool_audit_path(base_dir: Path) -> Path:
+    configured = os.getenv("DICOM_BBOX_AUDIT_PATH", "").strip()
+    if configured:
+        path = Path(configured)
+        return path if path.is_absolute() else (base_dir / path).resolve()
+    return (base_dir / "data" / "tmp" / "bbox-tool-audit.jsonl").resolve()
+
+
+def _resolve_ecg_founder_tool_audit_path(base_dir: Path) -> Path:
+    configured = os.getenv("DICOM_ECGFOUNDER_AUDIT_PATH", "").strip()
+    if configured:
+        path = Path(configured)
+        return path if path.is_absolute() else (base_dir / path).resolve()
+    return (base_dir / "data" / "tmp" / "ecgfounder-tool-audit.jsonl").resolve()
+
+
+def _read_new_tool_audit_records(
+    path: Path,
+    offset: int,
+    validator: Callable[[object], bool],
+) -> tuple[int, list[dict[str, object]]]:
+    """Read and validate JSONL receipts appended after ``offset``."""
+    try:
+        size = path.stat().st_size
+        if size < offset:
+            offset = 0
+        if size == offset:
+            return offset, []
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            payload = handle.read()
+            offset = handle.tell()
+    except OSError:
+        return offset, []
+
+    records: list[dict[str, object]] = []
+    for line in payload.splitlines():
+        try:
+            record = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if validator(record) and isinstance(record, dict):
+            records.append(record)
+    return offset, records
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _valid_bbox_tool_audit_record(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    digest = value.get("details_sha256")
+    accepted = value.get("accepted_count")
+    rejected = value.get("rejected_count")
+    return (
+        value.get("schema_version") == 1
+        and value.get("tool") == "dicom_bbox_validate"
+        and isinstance(value.get("tool_call_id"), str)
+        and bool(value["tool_call_id"])
+        and isinstance(accepted, int)
+        and not isinstance(accepted, bool)
+        and accepted >= 0
+        and isinstance(rejected, int)
+        and not isinstance(rejected, bool)
+        and rejected >= 0
+        and isinstance(digest, str)
+        and len(digest) == 64
+        and all(char in "0123456789abcdef" for char in digest.lower())
+    )
+
+
+def _valid_ecg_founder_tool_audit_record(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    artifact_digest = value.get("artifact_id_sha256")
+    checkpoint_digest = value.get("checkpoint_sha256")
+    prediction_count = value.get("prediction_count")
+    status = value.get("status")
+    return (
+        value.get("schema_version") == 1
+        and value.get("tool") == "ecg_founder_analyze_waveform"
+        and isinstance(value.get("tool_call_id"), str)
+        and bool(value["tool_call_id"])
+        and status in {"ok", "ineligible", "unavailable", "error"}
+        and isinstance(prediction_count, int)
+        and not isinstance(prediction_count, bool)
+        and 0 <= prediction_count <= 150
+        and _is_sha256(artifact_digest)
+        and (status != "ok" or _is_sha256(checkpoint_digest))
+    )
+
+
+def _is_sha256(value: object) -> bool:
+    return bool(
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdef" for char in value.lower())
+    )
+
+
+def _load_gateway_token(base_dir: Path | None = None) -> str | None:
+    root = (base_dir or Path.cwd()).resolve()
     env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN", "").strip()
     if env_token:
         return env_token
 
-    dotenv_token = read_env_file(Path(".env")).get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+    env_path = root / ".env"
+    dotenv_token = read_env_file(env_path).get("OPENCLAW_GATEWAY_TOKEN", "").strip()
     if dotenv_token:
         return dotenv_token
 
     candidates = [
-        Path("openclaw/openclaw.json"),
-        Path("openclaw/openclaw.valid.json"),
-        Path("openclaw/openclaw.portable.json"),
+        root / "openclaw/openclaw.json",
+        root / "openclaw/openclaw.valid.json",
+        root / "openclaw/openclaw.portable.json",
     ]
     for path in candidates:
         if not path.exists():
@@ -807,9 +1641,10 @@ def _load_gateway_token() -> str | None:
         token = raw.get("gateway", {}).get("auth", {}).get("token", "")
         if isinstance(token, str) and token.startswith("${") and token.endswith("}"):
             env_name = token[2:-1].strip()
-            env_value = os.getenv(env_name, "").strip() or read_env_file(Path(".env")).get(
-                env_name, ""
-            ).strip()
+            env_value = (
+                os.getenv(env_name, "").strip()
+                or read_env_file(env_path).get(env_name, "").strip()
+            )
             if env_value:
                 return env_value
         if isinstance(token, str) and token.strip():

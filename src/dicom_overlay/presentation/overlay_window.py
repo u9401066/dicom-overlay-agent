@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import structlog
@@ -10,6 +11,7 @@ from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
 from PyQt6.QtWidgets import (
     QLabel,
     QScrollArea,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -18,8 +20,10 @@ if TYPE_CHECKING:
     from dicom_overlay.domain.entities import (
         AnalysisResult,
         ChecklistItem,
+        DisplayFrame,
         WindowRect,
     )
+    from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
 
 logger = structlog.get_logger(__name__)
 
@@ -72,12 +76,12 @@ class _DraggableWindowMixin:
 
 
 class SummaryPanel(_DraggableWindowMixin, QWidget):
-    """Draggable side panel showing analysis checklist (spec §3.4 Element B)."""
+    """Draggable report panel with findings, checklist, and run provenance."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._init_draggable_window()
-        self.setFixedWidth(320)
+        self.setFixedWidth(430)
         self.setStyleSheet(
             "background-color: rgba(20, 20, 30, 220); "
             "border-radius: 8px; "
@@ -88,31 +92,41 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._layout.setContentsMargins(12, 12, 12, 12)
         self._layout.setSpacing(4)
 
-        # Drag handle hint
-        drag_hint = QLabel("⠿ 拖曳移動")
+        drag_hint = QLabel("Drag")
         drag_hint.setFont(QFont("Segoe UI", 8))
         drag_hint.setStyleSheet("color: #666; padding: 0;")
         drag_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._layout.addWidget(drag_hint)
 
-        self._title_label = QLabel("📊 Analysis")
+        self._title_label = QLabel("Clinical Review")
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self._title_label.setStyleSheet("color: white; padding-bottom: 4px;")
         self._layout.addWidget(self._title_label)
 
-        self._separator = QLabel("─" * 30)
-        self._separator.setStyleSheet("color: #555;")
-        self._layout.addWidget(self._separator)
-
-        self._content_layout = QVBoxLayout()
-        self._content_layout.setSpacing(2)
-        self._layout.addLayout(self._content_layout)
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid #444; border-radius: 4px; }"
+            "QTabBar::tab { color: #bbb; background: #2b2b36; padding: 6px 12px; }"
+            "QTabBar::tab:selected { color: white; background: #3d4655; }"
+        )
+        report_page, self._report_layout = self._scroll_page()
+        checklist_page, self._checklist_layout = self._scroll_page()
+        process_page, self._process_layout = self._scroll_page()
+        self._content_layout = self._checklist_layout
+        self._tabs.addTab(report_page, "Report")
+        self._tabs.addTab(checklist_page, "Checklist")
+        self._tabs.addTab(process_page, "Process")
+        self._layout.addWidget(self._tabs, stretch=1)
 
         self._summary_label = QLabel("")
         self._summary_label.setWordWrap(True)
         self._summary_label.setFont(QFont("Segoe UI", 10))
-        self._summary_label.setStyleSheet("color: #ccc; padding-top: 8px;")
-        self._layout.addWidget(self._summary_label)
+        self._summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._summary_label.setStyleSheet("color: #ddd; padding: 4px 0 8px 0;")
+        self._report_layout.addWidget(self._summary_label)
 
         # Degradation badge: shown when the result failed schema checks
         # (partial JSON, missing checklist keys) so the physician never reads
@@ -124,7 +138,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             "color: #ffb000; padding-top: 6px;"
         )
         self._incomplete_label.setVisible(False)
-        self._layout.addWidget(self._incomplete_label)
+        self._report_layout.addWidget(self._incomplete_label)
 
         # Manual-zoom hint: shown when a lesion is too small in the screen
         # capture to resolve further by digital crop, so the user is asked to
@@ -136,7 +150,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             "color: #4ea1ff; padding-top: 6px;"
         )
         self._zoom_hint_label.setVisible(False)
-        self._layout.addWidget(self._zoom_hint_label)
+        self._report_layout.addWidget(self._zoom_hint_label)
 
         # Clinical review flag: shown when the data-driven consistency engine
         # escalated a result whose structured read contradicts itself (e.g. ST
@@ -150,9 +164,43 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             "color: #ff5252; padding-top: 6px;"
         )
         self._review_label.setVisible(False)
-        self._layout.addWidget(self._review_label)
+        self._report_layout.addWidget(self._review_label)
 
-        self._layout.addStretch()
+        findings_heading = QLabel("Findings")
+        findings_heading.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        findings_heading.setStyleSheet("color: white; padding-top: 10px;")
+        self._report_layout.addWidget(findings_heading)
+        self._findings_layout = QVBoxLayout()
+        self._findings_layout.setSpacing(8)
+        self._report_layout.addLayout(self._findings_layout)
+
+    @staticmethod
+    def _scroll_page() -> tuple[QScrollArea, QVBoxLayout]:
+        body = QWidget()
+        body.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(body)
+        scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollBar:vertical { width: 7px; background: transparent; }"
+            "QScrollBar::handle:vertical { background: #666; border-radius: 3px; }"
+        )
+        return scroll, layout
+
+    @staticmethod
+    def _clear_layout(layout: QVBoxLayout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                break
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
     def update_result(self, result: AnalysisResult) -> None:
         """Update panel with new analysis result."""
@@ -164,37 +212,29 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             f"{profile.icon} {profile.resolved_display_name()} Analysis"
         )
 
-        # Clear old content
-        while self._content_layout.count():
-            layout_item = self._content_layout.takeAt(0)
-            if layout_item is None:
-                break
-            widget = layout_item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        self._clear_layout(self._findings_layout)
+        self._clear_layout(self._checklist_layout)
+        self._clear_layout(self._process_layout)
 
-        # Partition checklist: abnormal items first, then normal summary
-        abnormal_items: list[tuple[str, ChecklistItem]] = []
-        normal_count = 0
-        for key, checklist_item in result.checklist.items():
-            if checklist_item.status in (Severity.CRITICAL, Severity.WARNING):
-                abnormal_items.append((key, checklist_item))
-            else:
-                normal_count += 1
-
-        # Show abnormal items prominently
-        for key, checklist_item in abnormal_items:
-            item = checklist_item
-            status_icon = {
-                Severity.WARNING: "⚠️",
-                Severity.CRITICAL: "🔴",
-            }.get(item.status, "⚠️")
-
+        severity_rank = {
+            Severity.CRITICAL: 0,
+            Severity.WARNING: 1,
+            Severity.INFO: 2,
+            Severity.NORMAL: 3,
+        }
+        checklist_rows: list[tuple[str, ChecklistItem]] = sorted(
+            result.checklist.items(),
+            key=lambda row: (severity_rank[row[1].status], row[0]),
+        )
+        for key, checklist_item in checklist_rows:
             display_key = _humanize_checklist_key(key)
             display_val = _humanize_checklist_value(checklist_item.value)
-            label = QLabel(f"{status_icon} {display_key}: {display_val}")
+            label = QLabel(
+                f"{checklist_item.status.value.upper()}  "
+                f"{display_key}: {display_val}"
+            )
             label.setWordWrap(True)
-            label.setFont(QFont("Segoe UI", 10))
+            label.setFont(QFont("Segoe UI", 9))
             color = SEVERITY_COLORS.get(
                 checklist_item.status.value, SEVERITY_COLORS["info"]
             )
@@ -204,31 +244,129 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             )
             self._content_layout.addWidget(label)
 
-        # Collapse normal items into a single summary line
-        if normal_count > 0:
-            normal_label = QLabel(f"✅ {normal_count} items normal")
-            normal_label.setFont(QFont("Segoe UI", 9))
-            normal_label.setStyleSheet(
-                f"color: rgb({SEVERITY_COLORS['normal'].red()}, "
-                f"{SEVERITY_COLORS['normal'].green()}, "
-                f"{SEVERITY_COLORS['normal'].blue()}); "
-                "padding: 2px 0px;"
+        metadata = " | ".join(
+            value
+            for value in (
+                result.model_used.strip(),
+                f"{result.analysis_time_ms} ms" if result.analysis_time_ms else "",
             )
-            self._content_layout.addWidget(normal_label)
-
-        # Summary
-        sev_icon = {"critical": "🔴", "warning": "⚠️", "normal": "🟢"}.get(
-            result.severity.value, "[i]"
+            if value
         )
-        self._summary_label.setText(f"{sev_icon} {result.summary}")
+        self._summary_label.setText(
+            f"{result.severity.value.upper()}\n{result.summary}"
+            + (f"\n{metadata}" if metadata else "")
+        )
+
+        if result.findings:
+            for index, finding in enumerate(result.findings, start=1):
+                regions = ", ".join(finding.regions) or "unlocalized"
+                lines = [
+                    f"{index}. {finding.label} [{finding.severity.value}]",
+                    finding.detail or "No detail provided.",
+                    f"Regions: {regions} | Boxes: {len(finding.bboxes)}",
+                ]
+                if finding.confidence:
+                    lines.append(f"Confidence: {finding.confidence}")
+                if finding.question:
+                    lines.append(f"Question for review: {finding.question}")
+                lines.extend(f"Note: {note}" for note in finding.notes)
+                finding_label = QLabel("\n".join(lines))
+                finding_label.setWordWrap(True)
+                finding_label.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                )
+                finding_label.setFont(QFont("Segoe UI", 9))
+                color = SEVERITY_COLORS.get(
+                    finding.severity.value,
+                    SEVERITY_COLORS["info"],
+                )
+                finding_label.setStyleSheet(
+                    f"color: rgb({color.red()}, {color.green()}, {color.blue()}); "
+                    "padding: 3px 0; border-bottom: 1px solid #3f3f49;"
+                )
+                self._findings_layout.addWidget(finding_label)
+        else:
+            empty = QLabel("No focal findings reported.")
+            empty.setStyleSheet("color: #aaa;")
+            self._findings_layout.addWidget(empty)
+
+        if result.image_quality:
+            quality = (
+                json.dumps(result.image_quality, ensure_ascii=False)
+                if isinstance(result.image_quality, dict)
+                else result.image_quality
+            )
+            quality_label = QLabel(f"Image quality: {quality}")
+            quality_label.setWordWrap(True)
+            quality_label.setStyleSheet("color: #c8ced9; padding: 4px 0;")
+            self._findings_layout.addWidget(quality_label)
+        if result.next_steps:
+            next_label = QLabel(
+                "Next steps:\n"
+                + "\n".join(
+                    f"{index}. {step}"
+                    for index, step in enumerate(result.next_steps, 1)
+                )
+            )
+            next_label.setWordWrap(True)
+            next_label.setStyleSheet("color: #c8ced9; padding: 4px 0;")
+            self._findings_layout.addWidget(next_label)
+
+        for index, entry in enumerate(result.analysis_trace, start=1):
+            stage = str(entry.get("stage", "step")).replace("_", " ").title()
+            status = str(entry.get("status", ""))
+            details: list[str] = []
+            tool = str(entry.get("tool", ""))
+            tools = entry.get("tools", [])
+            if tool:
+                details.append(f"Internal: {tool}")
+            if isinstance(tools, list) and tools:
+                details.append(f"OpenClaw tools: {', '.join(map(str, tools))}")
+            if entry.get("target_id"):
+                details.append(f"Target: {entry['target_id']}")
+            if entry.get("hypothesis"):
+                details.append(f"Hypothesis: {entry['hypothesis']}")
+            crop = entry.get("crop_region")
+            if isinstance(crop, dict):
+                details.append(
+                    "Crop: "
+                    + ", ".join(
+                        f"{key}={float(crop.get(key, 0.0)):.4f}"
+                        for key in ("x", "y", "w", "h")
+                    )
+                )
+            decisions = entry.get("decisions")
+            if isinstance(decisions, list):
+                for decision in decisions:
+                    if not isinstance(decision, dict):
+                        continue
+                    action = str(decision.get("action", "decision")).upper()
+                    rationale = str(decision.get("rationale", "")).strip()
+                    details.append(f"{action}: {rationale}".rstrip(": "))
+            process_label = QLabel(
+                f"{index}. {stage} [{status}]"
+                + ("\n" + "\n".join(details) if details else "")
+            )
+            process_label.setWordWrap(True)
+            process_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            process_label.setFont(QFont("Segoe UI", 9))
+            process_label.setStyleSheet(
+                "color: #ccd3df; padding: 4px 0; border-bottom: 1px solid #3f3f49;"
+            )
+            self._process_layout.addWidget(process_label)
+
+        if not result.analysis_trace:
+            no_trace = QLabel("No process record available.")
+            no_trace.setStyleSheet("color: #aaa;")
+            self._process_layout.addWidget(no_trace)
 
         # Incomplete / degraded badge
         if getattr(result, "incomplete", False):
             reasons = getattr(result, "incomplete_reasons", []) or []
             detail = f"（{reasons[0]}）" if reasons else ""
-            self._incomplete_label.setText(
-                f"⚠ 結果不完整，請以原圖為準{detail}"
-            )
+            self._incomplete_label.setText(f"結果不完整，請以原圖為準{detail}")
             self._incomplete_label.setVisible(True)
         else:
             self._incomplete_label.setText("")
@@ -247,22 +385,18 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         if getattr(result, "review_required", False):
             reasons = getattr(result, "review_reasons", []) or []
             body = "\n".join(f"• {r}" for r in reasons)
-            self._review_label.setText(f"🚨 需人工複核\n{body}".rstrip())
+            self._review_label.setText(f"需人工複核\n{body}".rstrip())
             self._review_label.setVisible(True)
         else:
             self._review_label.setText("")
             self._review_label.setVisible(False)
 
     def clear(self) -> None:
-        while self._content_layout.count():
-            item = self._content_layout.takeAt(0)
-            if item is None:
-                break
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        self._clear_layout(self._findings_layout)
+        self._clear_layout(self._checklist_layout)
+        self._clear_layout(self._process_layout)
         self._summary_label.setText("")
-        self._title_label.setText("📊 Waiting...")
+        self._title_label.setText("Waiting")
 
 class ChatPanel(_DraggableWindowMixin, QWidget):
     """Draggable panel for displaying chat Q&A."""
@@ -346,6 +480,8 @@ class OverlayWindow(QWidget):
     """
 
     display_expired = pyqtSignal()
+    highlight_selected = pyqtSignal(str, float, float, float, float)
+    user_region_created = pyqtSignal(float, float, float, float)
 
     def __init__(self) -> None:
         super().__init__()
@@ -376,9 +512,41 @@ class OverlayWindow(QWidget):
         self._display_duration_sec = 30
         self._critical_persist = True
         self._current_severity = "normal"
+        self._interaction_mode = "passive"
+        self._content_rect: tuple[int, int, int, int] | None = None
+        self._coordinate_frame: OverlayCoordinateFrame | None = None
+        self._selection_start: QPoint | None = None
+        self._draft_rect: tuple[int, int, int, int] | None = None
+        self._user_regions: list[tuple[float, float, float, float]] = []
 
         # Region highlights to draw
         self._highlights: list[tuple[int, int, int, int, str, str]] = []  # x, y, w, h, severity, label
+
+    def set_interaction_mode(self, mode: str) -> None:
+        """Switch between click-through, AI-box inspection, and user marking."""
+        if mode not in {"passive", "inspect", "annotate"}:
+            raise ValueError(f"Unknown overlay interaction mode: {mode}")
+        self._interaction_mode = mode
+        self._selection_start = None
+        self._draft_rect = None
+        self.setWindowFlag(
+            Qt.WindowType.WindowTransparentForInput,
+            mode == "passive",
+        )
+        self.setCursor(
+            Qt.CursorShape.CrossCursor
+            if mode == "annotate"
+            else Qt.CursorShape.PointingHandCursor
+            if mode == "inspect"
+            else Qt.CursorShape.ArrowCursor
+        )
+        if self.isVisible():
+            self.show()
+        self.update()
+
+    @property
+    def user_regions(self) -> list[tuple[float, float, float, float]]:
+        return list(self._user_regions)
 
     def configure(
         self,
@@ -388,37 +556,66 @@ class OverlayWindow(QWidget):
         self._display_duration_sec = display_duration_sec
         self._critical_persist = critical_persist
 
-    def position_over_window(self, rect: WindowRect) -> None:
-        """Position overlay to cover the full screen.
+    @property
+    def coordinate_frame(self) -> OverlayCoordinateFrame | None:
+        return self._coordinate_frame
 
-        The overlay spans the entire primary screen so that the summary panel,
+    def position_over_window(
+        self,
+        rect: WindowRect,
+        display_frame: DisplayFrame | None = None,
+    ) -> OverlayCoordinateFrame:
+        """Position the overlay over the display containing the viewer.
+
+        The overlay spans the entire target screen so that the summary panel,
         chat panel, and region highlights are not clipped by the viewer window
-        boundaries.  ``rect`` is kept for reference but no longer constrains
-        the overlay size.
+        boundaries. The returned frame maps Win32 physical capture pixels to
+        this widget's local Qt logical coordinates.
         """
         from PyQt6.QtWidgets import QApplication
 
-        screen = QApplication.primaryScreen()
+        from dicom_overlay.infrastructure.overlay_geometry import (
+            OverlayCoordinateFrame,
+        )
+        from dicom_overlay.presentation.screen_selection import (
+            coordinate_frame_for_screen,
+            select_qt_screen,
+        )
+
+        app = QApplication.instance()
+        screen = select_qt_screen(app, display_frame) if app is not None else None
         if screen is None:
-            # Fallback: use viewer window bounds (should not happen)
             from dicom_overlay.infrastructure.dpi import physical_to_logical
 
             logical = physical_to_logical(rect)
             self.setGeometry(logical.left, logical.top, logical.width, logical.height)
-            sw, sh = logical.width, logical.height
+            frame = OverlayCoordinateFrame(
+                physical_screen=rect,
+                logical_screen=logical,
+            )
         else:
-            geo = screen.geometry()
-            self.setGeometry(geo.x(), geo.y(), geo.width(), geo.height())
-            sw, sh = geo.width(), geo.height()
+            frame = coordinate_frame_for_screen(screen, display_frame)
+            logical = frame.logical_screen
+            self.setGeometry(
+                logical.left,
+                logical.top,
+                logical.width,
+                logical.height,
+            )
+
+        self._coordinate_frame = frame
+        sw, sh = logical.width, logical.height
+        screen_x, screen_y = logical.left, logical.top
 
         # Place summary panel on right side of screen
-        panel_x = sw - self.summary_panel.width() - 10
-        self.summary_panel.move(panel_x, 10)
+        panel_x = screen_x + sw - self.summary_panel.width() - 10
+        self.summary_panel.move(panel_x, screen_y + 10)
         self.summary_panel.setFixedHeight(sh - 70)
 
         # Place chat panel on left side of screen
-        self.chat_panel.move(10, 10)
+        self.chat_panel.move(screen_x + 10, screen_y + 10)
         self.chat_panel.setFixedHeight(sh - 70)
+        return frame
 
     def show_result(
         self,
@@ -426,6 +623,7 @@ class OverlayWindow(QWidget):
         highlights: list[tuple[int, int, int, int, str, str]] | None = None,
         *,
         append: bool = False,
+        content_rect: tuple[int, int, int, int] | None = None,
     ) -> None:
         """Show analysis result on overlay.
 
@@ -438,6 +636,8 @@ class OverlayWindow(QWidget):
         self.summary_panel.update_result(result)
         self.summary_panel.setVisible(True)
         self._current_severity = result.severity.value
+        if content_rect is not None:
+            self._content_rect = content_rect
         if append:
             self._highlights = [*self._highlights, *(highlights or [])]
         else:
@@ -453,6 +653,8 @@ class OverlayWindow(QWidget):
     def clear_result(self) -> None:
         self.summary_panel.clear()
         self._highlights.clear()
+        self._user_regions.clear()
+        self._content_rect = None
         self.update()
 
     def show_chat_waiting(self, question: str) -> None:
@@ -474,6 +676,9 @@ class OverlayWindow(QWidget):
         self.summary_panel.setVisible(False)
         self.chat_panel.clear()
         self._highlights.clear()
+        self._user_regions.clear()
+        self._content_rect = None
+        self.set_interaction_mode("passive")
         self.update()
         self.display_expired.emit()
 
@@ -481,10 +686,99 @@ class OverlayWindow(QWidget):
         self._display_timer.stop()
         self._fade_out()
 
+    def _point_in_content(self, point: QPoint) -> bool:
+        if self._content_rect is None:
+            return False
+        x, y, width, height = self._content_rect
+        return x <= point.x() <= x + width and y <= point.y() <= y + height
+
+    def _normalized_rect(
+        self,
+        rect: tuple[int, int, int, int],
+    ) -> tuple[float, float, float, float] | None:
+        if self._content_rect is None:
+            return None
+        content_x, content_y, content_w, content_h = self._content_rect
+        if content_w <= 0 or content_h <= 0:
+            return None
+        x, y, width, height = rect
+        left = max(content_x, min(content_x + content_w, x))
+        top = max(content_y, min(content_y + content_h, y))
+        right = max(content_x, min(content_x + content_w, x + width))
+        bottom = max(content_y, min(content_y + content_h, y + height))
+        if right - left < 2 or bottom - top < 2:
+            return None
+        return (
+            (left - content_x) / content_w,
+            (top - content_y) / content_h,
+            (right - left) / content_w,
+            (bottom - top) / content_h,
+        )
+
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+        if event is None or event.button() != Qt.MouseButton.LeftButton:
+            return
+        point = event.position().toPoint()
+        if self._interaction_mode == "inspect":
+            for highlight in reversed(self._highlights):
+                x, y, width, height, _severity, label = highlight
+                if x <= point.x() <= x + width and y <= point.y() <= y + height:
+                    normalized = self._normalized_rect((x, y, width, height))
+                    if normalized is not None:
+                        self.highlight_selected.emit(label, *normalized)
+                    event.accept()
+                    return
+        if self._interaction_mode == "annotate" and self._point_in_content(point):
+            self._selection_start = point
+            self._draft_rect = (point.x(), point.y(), 0, 0)
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
+        if event is None or self._selection_start is None:
+            return
+        point = event.position().toPoint()
+        x0 = min(self._selection_start.x(), point.x())
+        y0 = min(self._selection_start.y(), point.y())
+        x1 = max(self._selection_start.x(), point.x())
+        y1 = max(self._selection_start.y(), point.y())
+        self._draft_rect = (x0, y0, x1 - x0, y1 - y0)
+        self.update()
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+        if event is None or self._selection_start is None:
+            return
+        draft = self._draft_rect
+        self._selection_start = None
+        self._draft_rect = None
+        if draft is not None:
+            normalized = self._normalized_rect(draft)
+            if normalized is not None:
+                content_x, content_y, content_w, content_h = self._content_rect or (
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+                nx, ny, nw, nh = normalized
+                clipped = (
+                    round(content_x + nx * content_w),
+                    round(content_y + ny * content_h),
+                    round(nw * content_w),
+                    round(nh * content_h),
+                    "info",
+                    "User region",
+                )
+                self._highlights.append(clipped)
+                self._user_regions.append(normalized)
+                self.user_region_created.emit(*normalized)
+        self.update()
+        event.accept()
+
     def paintEvent(self, a0: object) -> None:
         """Draw region highlights with labels (spec §3.4)."""
         del a0
-        if not self._highlights:
+        if not self._highlights and self._draft_rect is None:
             return
 
         painter = QPainter(self)
@@ -504,19 +798,30 @@ class OverlayWindow(QWidget):
             if label:
                 font = QFont("Segoe UI", 9, QFont.Weight.Bold)
                 painter.setFont(font)
-                # Background for readability
                 bg = QColor(0, 0, 0, 180)
-                text_x = x + 4
-                text_y = y - 2
                 metrics = painter.fontMetrics()
-                text_rect = metrics.boundingRect(label)
+                available = max(80, min(320, self.width() - x - 8))
+                visible_label = metrics.elidedText(
+                    label,
+                    Qt.TextElideMode.ElideRight,
+                    available,
+                )
+                text_rect = metrics.boundingRect(visible_label)
+                text_x = max(2, min(x + 4, self.width() - text_rect.width() - 6))
+                text_y = max(text_rect.height() + 2, y - 2)
                 painter.fillRect(
                     text_x - 2, text_y - text_rect.height(),
                     text_rect.width() + 6, text_rect.height() + 4,
                     bg,
                 )
                 painter.setPen(QPen(color, 1))
-                painter.drawText(text_x, text_y, label)
+                painter.drawText(text_x, text_y, visible_label)
+
+        if self._draft_rect is not None:
+            x, y, width, height = self._draft_rect
+            draft_pen = QPen(QColor(84, 199, 255, 230), 2, Qt.PenStyle.DashLine)
+            painter.setPen(draft_pen)
+            painter.drawRect(x, y, width, height)
 
         painter.end()
 

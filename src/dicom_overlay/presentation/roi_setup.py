@@ -13,12 +13,10 @@ from dicom_overlay.application.roi import (
     compute_roi_crop_from_safe_rect,
     normalize_selection,
 )
-from dicom_overlay.domain.entities import ROICrop, WindowRect
-from dicom_overlay.infrastructure.dpi import (
-    get_dpi_scale,
-    logical_to_physical_roi,
-    physical_to_logical,
-    physical_to_logical_roi,
+from dicom_overlay.domain.entities import DisplayFrame, ROICrop, WindowRect
+from dicom_overlay.presentation.screen_selection import (
+    coordinate_frame_for_screen,
+    select_qt_screen,
 )
 
 logger = structlog.get_logger(__name__)
@@ -269,6 +267,7 @@ def run_roi_setup(
     app: QApplication,
     target_rect: WindowRect | None = None,
     existing_roi: ROICrop | None = None,
+    display_frame: DisplayFrame | None = None,
 ) -> ROICrop | None:
     """Launch ROI setup dialog and return selected crop margins.
 
@@ -276,9 +275,10 @@ def run_roi_setup(
     to Qt logical pixels for the dialog, then convert the result back.
     ``existing_roi`` is also in physical pixels.
     """
-    screen = app.primaryScreen()
+    screen = select_qt_screen(app, display_frame)
     if screen is None:
         return None
+    coordinate_frame = coordinate_frame_for_screen(screen, display_frame)
 
     # Always use fullscreen for the dialog so user can see the full context
     geo = screen.geometry()
@@ -290,17 +290,19 @@ def run_roi_setup(
     )
     screenshot = screen.grabWindow(cast("Any", 0))
 
-    # Convert Win32 physical-pixel coords to Qt logical coords
-    logical_target = physical_to_logical(target_rect) if target_rect else None
+    # Convert Win32 physical pixels into this screen's Qt logical frame.
+    logical_target = (
+        coordinate_frame.physical_rect_to_global_logical(target_rect)
+        if target_rect
+        else None
+    )
 
     # Convert existing ROI margins (physical) to logical for display
-    logical_roi = existing_roi
-    if existing_roi and get_dpi_scale() != 1.0:
-        lt, lb, ll, lr = physical_to_logical_roi(
-            existing_roi.top, existing_roi.bottom,
-            existing_roi.left, existing_roi.right,
-        )
-        logical_roi = ROICrop(top=lt, bottom=lb, left=ll, right=lr)
+    logical_roi = (
+        coordinate_frame.physical_roi_to_logical(existing_roi)
+        if existing_roi
+        else None
+    )
 
     dialog = ROISetupDialog(
         base_rect=base_rect,
@@ -310,10 +312,5 @@ def run_roi_setup(
     )
     result = dialog.exec()
     if result == QDialog.DialogCode.Accepted and dialog.selected_crop:
-        crop = dialog.selected_crop
-        # Convert logical-pixel margins back to physical pixels
-        pt, pb, pl, pr = logical_to_physical_roi(
-            crop.top, crop.bottom, crop.left, crop.right,
-        )
-        return ROICrop(top=pt, bottom=pb, left=pl, right=pr)
+        return coordinate_frame.logical_roi_to_physical(dialog.selected_crop)
     return None

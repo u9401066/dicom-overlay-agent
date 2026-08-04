@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import (
         AnalysisResult,
+        DisplayFrame,
         Modality,
         RegionRect,
         WindowRect,
@@ -24,6 +25,15 @@ class ScreenMonitorService(ABC):
     @abstractmethod
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         """Find the DICOM viewer window by title keywords."""
+
+    def display_for_window(self, window: WindowRect) -> DisplayFrame | None:
+        """Return the physical display containing ``window`` when available.
+
+        This has a concrete fallback so test and third-party monitor adapters
+        written before per-display coordinate support remain compatible.
+        """
+        del window
+        return None
 
     @abstractmethod
     def capture_region(self, rect: WindowRect) -> bytes:
