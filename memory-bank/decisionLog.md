@@ -36,6 +36,11 @@
 | 2026-04-10 | CI 以「可安裝 + 可測試」為主 | 先修正跨平台安裝與 mock token 問題，再讓 workflow 真正阻擋失敗 |
 | 2026-07-05 | 真模型供應商改走 OpenAI 直連（gpt-5.5） | 本網路防火牆 reset openrouter.ai / api.anthropic.com；api.openai.com 可通且 key 有效，單題實測 strict_pass 1.0。Copilot 訂閱模型（MAI Flash）為 OAuth token 流，無法作 API 供應商 |
 | 2026-07-05 | EKG harness 採「宣告，不要假設」lead-awareness | 25 題 strict_pass 0.24，漏題全是 lead-dependent。不硬塞 config standard_4x3 座標（會在非標準/局部/單導極圖災難性錯歸極）；改由模型讀印刷導極標籤建 inventory，結論鎖在實際導極上，保持通用。config standard_4x3 降級為可選先驗 |
+| 2026-08-04 | ECGFounder 採條件式 loopback sidecar tool，不進主 bundle | 官方模型吃 500 Hz/10 秒 waveform、checkpoint 約 370 MB 且需要 Torch；MEETI 圖片有相符 raw waveform，可做明確配對。主 plugin 只傳 opaque artifact id，要求 hash/preprocessing/calibration provenance，禁止 screenshot-only 與 bbox 推導，保住封裝尺寸、OOM 與臨床可追溯性。 |
+| 2026-08-04 | ECGFounder 未校準輸出只作 supporting evidence | 官方驗證程式會從有標註資料動態求各類 threshold，沒有發布可直接部署的固定 threshold；真實 canary 也出現與影像急性 ST concern 強烈分歧。因此分數只能做排序與分歧提示，不得覆寫影像結論或自行宣告陰性。 |
+| 2026-08-04 | Overlay 座標改用 monitor-bound physical/logical frame | Win32/mss 與 Qt 使用不同座標系，primary DPR 無法處理負座標或 mixed-DPI。保存實際 `last_capture_rect`，以完整 Win32/Qt display bounds 做 X/Y edge 映射及 round-trip audit；bbox、static region、點框 QA、人工框選共用同一 original ROI frame。 |
+| 2026-08-04 | 公開網站只用 synthetic ECG 與已驗證數字 | 不把 MEETI 病例衍生圖直接發布，也不以未完成的 MLLM JSON 宣稱準確率。GitHub Pages 明列 quota blocker、ECGFounder 未校準邊界與人工最終決策。 |
+| 2026-08-04 | 現行 bundle 不宣稱 Windows 7 相容 | Python 3.13、PyQt6、Node 24 與最新 OpenClaw 無可信 Windows 7 支援路徑。Win7 若成為硬需求，必須是獨立 legacy runtime/bundle 與安全維護策略，不能假裝目前 EXE 已驗證。 |
 
 ---
 

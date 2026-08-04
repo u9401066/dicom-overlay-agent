@@ -1,5 +1,74 @@
 # Active Context
 
+## Session Update (2026-08-04, coordinate-safe desktop + Pages + rebuild)
+
+- Fixed a real primary-screen-only defect across the capture-to-overlay path.
+  `ScreenMonitor` now resolves a physical `DisplayFrame`; `OverlayAgent` syncs
+  the viewer display and saves the exact successful `last_capture_rect`;
+  `OverlayCoordinateFrame` maps physical edges into target-screen Qt-local
+  coordinates with independent X/Y ratios and negative-origin support.
+- ROI setup, AI bbox projection, static region fallback, top-level report/chat
+  placement, click QA, and manual annotation now share that display frame.
+  `Severity.INFO` bboxes are intentionally drawn for uncertainty review.
+- Focused tests passed 87/87. Full OOM-safe suite is now 647 passed with one
+  release-only bundle skip; OpenClaw overlay integration is 54/54. A real Qt +
+  Win32 probe found a `1222x836` window and an exactly matching `1222x836` mss
+  capture on the current 150% display.
+- Added a synthetic-only GitHub Pages site under `site/` and a current official
+  Pages workflow. Playwright passed at 1440x900 and 390x844 with no overflow,
+  missing media, or console errors; mobile menu and evidence navigation work.
+- Rebuilt the portable app after the coordinate fix. Fresh SHA-256:
+  `C44DA431AA5D1BFC72D943B3835BFC6A403BD426B483F9661B5FA17266383F66`.
+  Bundle verifier status is `ok`; OpenClaw `2026.7.1-2`, Node `v24.18.0`, 51
+  skills, total 363.86 MiB. Real frozen-EXE opt-in smoke passed 2/2.
+- The bundle includes no Torch, ECGFounder checkpoint/runtime, MEETI assets,
+  secrets, or sidecar. npm audit debt remains 7 moderate / 4 high / 0 critical.
+- Current Windows 11 build is verified. Windows 10 needs clean-machine testing;
+  Windows 7 is not credibly supported by Python 3.13/PyQt6/Node 24/OpenClaw.
+- Full new `openai/gpt-5.4-mini` three-arm MLLM accuracy comparison remains
+  blocked by `credit_balance_exhausted` / `insufficient_quota`; do not claim an
+  accuracy gain from the completed waveform-only arm.
+
+## Session Update (2026-08-04, ECGFounder paired waveform arm)
+
+- ECGFounder is now implemented as an optional OpenClaw native tool backed by a
+  bearer-authenticated loopback sidecar. The agent receives only an opaque
+  waveform artifact id and sanitized evidence; it cannot send paths, use a PNG
+  as waveform input, or derive image bboxes from the model.
+- The full MEETI archive contains matching raw MATLAB waveforms. The rebuilt
+  `data/eval-datasets/meeti-1000-all` cohort has 1,000 images, 1,000 exact
+  12x5000/500 Hz/10 s waveforms, and a hash-protected one-to-one registry.
+- The official 12-lead checkpoint was downloaded and verified at SHA-256
+  `ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997`.
+  Loading is `weights_only=True`; the temporary Torch safe-global allowlist is
+  cleared after load and there is no unsafe pickle fallback.
+- Real standalone inference completed 1,000/1,000 cases at
+  `data/eval-runs/ecgfounder-meeti-1000-20260804`: zero failures, 691.182 s,
+  median 756.491 ms, p95 794.734 ms, protocol fingerprint
+  `2b79fb8caffed0eabe1467fa3aba4c5a8287e753d7dcdcae1fa308fc7ca2d933`.
+  Every score remains explicitly uncalibrated.
+- A real Node/OpenClaw plugin -> HTTP sidecar -> Torch checkpoint smoke passed
+  and wrote a PHI-free tool receipt. One urgent canary disagreed strongly
+  (image/reference ST concern vs waveform model `NORMAL SINUS RHYTHM` 0.9992),
+  proving the sidecar must stay supporting evidence rather than an override.
+- `run-eval.py --ecgfounder-waveform-evidence` binds the exact artifact only in
+  an explicit paired arm. The intended comparison remains single-pass image vs
+  MultiPass crop/refine vs MultiPass + ECGFounder.
+- A new full OpenClaw `openai/gpt-5.4-mini` paired run is currently blocked by
+  the configured OpenAI account's `credit_balance_exhausted` /
+  `insufficient_quota` response. This is an external experiment blocker, not a
+  model miss; the waveform-only 1,000-case run is complete.
+- Final verification: the OOM-safe suite completed 636 passed / 1 default
+  bundle-smoke skip; the opt-in real EXE bundle smoke passed 2/2. The rebuilt
+  `dist/DICOMOverlayAgent/DICOMOverlayAgent.exe` passed packaged self-check and
+  runtime plugin inspection with OpenClaw `2026.7.1-2` and Node `v24.18.0`.
+  Total bundle size is 363.86 MiB; Torch/checkpoint/sidecar/MEETI assets are
+  confirmed absent and remain separately installed optional evidence tooling.
+- Residual packaging risk: `npm audit --omit=dev` reports 11 advisories in the
+  pinned OpenClaw production tree (7 moderate, 4 high, 0 critical). No
+  `audit fix --force` was applied because that would silently diverge from the
+  tested `2026.7.1-2` lock; address in a separate dependency-upgrade cycle.
+
 ## Session Update (2026-07-05)
 
 - **Real-model path proven**: `api.openai.com` is reachable on this network
@@ -335,3 +404,25 @@
 
 ---
 *Last updated: 2026-05-30*
+
+## 2026-08-04 ECGFounder 外部工具狀態
+
+- 官方 `PKUDigitalHealth/ECGFounder` 是 ECG waveform classifier，不是 PNG
+  影像模型。12-lead 合約為 500 Hz、10 秒、每導聯 5000 點，輸出 150 類
+  sigmoid score；官方 live threshold 表未隨 checkpoint 發布。
+- `dicom-overlay-agent-harness` 已新增 opt-in native tool
+  `ecg_founder_analyze_waveform`。只有 `DICOM_ECGFOUNDER_ENDPOINT` 與
+  `DICOM_ECGFOUNDER_TOKEN` 同時存在時，Gateway 才註冊並 allow 此 tool。
+- Tool 只接受 app 提供的不透明 waveform artifact id，endpoint 強制 loopback，
+  response 強制 checkpoint/input/preprocessing/calibration provenance；未校準
+  score 不會轉成陽性/陰性，且永遠標示無 spatial localization。
+- OpenClaw `plugins inspect --runtime --json` 實測：plugin `loaded`，
+  `dicom_bbox_validate` 與 `ecg_founder_analyze_waveform` 都出現在 runtime，
+  diagnostics 0。未設定 sidecar 時 screenshot-only allowlist 維持只有 bbox tool。
+- 目前沒有把 Torch 或 370 MB checkpoint 塞入主 EXE，也還沒有可供 MEETI PNG
+  使用的合格 waveform。若只有截圖，必須先有獨立、經校正品質 gate 驗證的
+  waveform digitizer；現有 threshold/ink bbox 輔助不等於波形數位化。
+- 完整契約：`docs/ecgfounder-tool.md`。新增/相關測試目前 86 passed，Ruff 通過。
+- 系統化 MultiPass urgent canary 已完成但不是改善證據：2 案中 1 案 timeout，
+  可評分案 partial 0.4、urgent concern 0/2。不能用此小樣本宣稱提升，需先處理
+  多輪 timeout/成本並重新做 paired run。

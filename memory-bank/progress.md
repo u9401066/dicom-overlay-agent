@@ -1,6 +1,56 @@
-# Progress (Updated: 2026-07-05)
+# Progress (Updated: 2026-08-04)
 
 ## Done
+
+- **Monitor-bound coordinates, GitHub Pages, and fresh desktop bundle**
+  (2026-08-04):
+  - Replaced primary-screen DPR assumptions with Win32 physical display lookup,
+    target Qt screen selection, saved successful capture rects, per-axis frame
+    mapping, and physical-edge round-trip calibration.
+  - Fixed uncertain `INFO` bbox suppression; uncertain reviewer questions can
+    now remain visible and clickable while normal findings stay report-only.
+  - Verified focused coordinate/UI paths 87/87, default unit+smoke 647 passed,
+    OpenClaw integration 54/54, and frozen bundle smoke 2/2.
+  - Real GUI probe: Win32 viewer `1222x836`, mss PNG `1222x836`, display
+    physical `2560x1600`, Qt logical `1707x1067`.
+  - Added `site/`, synthetic ECG media, Pages deployment workflow, and four site
+    smoke assertions. Playwright desktop/mobile QA passed with zero console
+    errors or horizontal overflow.
+  - Fresh bundle: SHA-256
+    `C44DA431AA5D1BFC72D943B3835BFC6A403BD426B483F9661B5FA17266383F66`;
+    launcher 6.90 MiB, app 94.58 MiB, OpenClaw 181.03 MiB, Node 88.25 MiB,
+    total 363.86 MiB. Manifest status `ok`.
+  - Explicit platform boundary: Windows 11 verified, Windows 10 pending clean
+    machine, Windows 7 unsupported by the current modern runtime stack.
+
+- **ECGFounder external waveform tool + full MEETI waveform arm** (2026-08-04):
+  - Added a loopback-only sidecar with trusted artifact registry, bearer token,
+    source/checkpoint hash verification, exact official lead reorder and
+    preprocessing, lazy serial CPU inference, bounded output, and explicit
+    calibration/provenance limitations.
+  - Rebuilt the 1,000-case MEETI cohort with one matched raw waveform per image;
+    all inputs satisfy 12 leads x 5,000 points at 500 Hz for 10 seconds.
+  - Added the conditional OpenClaw `ecg_founder_analyze_waveform` tool and an
+    explicit paired-arm prompt/context in `run-eval.py`; uncalibrated scores are
+    never converted to decisions and the tool can never supply image bboxes.
+  - Added isolated setup/start scripts and a resume-safe batch runner with
+    immutable protocol fingerprint, JSONL rows, atomic summary, and no emitted
+    filesystem paths.
+  - Official checkpoint real run: 1,000/1,000 `ok`, zero failures, 691.182 s,
+    median 756.491 ms, p95 794.734 ms. A real native-plugin HTTP bridge smoke
+    also passed and wrote a PHI-free audit receipt.
+  - Rebuilt the portable desktop bundle after fixing calendar-version handling,
+    stale PyInstaller launcher use, PyInstaller 6.19 contents placement, and the
+    bounded cold plugin-inspection timeout. Packaged verifier is `ok`, real EXE
+    self-check smoke is 2/2, OpenClaw is `2026.7.1-2`, Node is `v24.18.0`, and
+    total size is 363.86 MiB. No Torch/checkpoint/sidecar/MEETI files are bundled.
+  - Final OOM-safe suite: 47 isolated batches, 636 passed and 1 default-skipped
+    opt-in bundle smoke (run separately and passed). All 76 changed Python files
+    pass Ruff; full-repo Ruff still exposes 26 unrelated pre-existing findings
+    in old dataset/hook/input-guard files.
+  - New end-to-end OpenClaw image experiments remain blocked by OpenAI account
+    credits; provider quota failure is recorded as blocked, never scored as an
+    image-model answer.
 
 - **Harness 槓桿 1+2：rhythm-strip 二次 crop + empty-summary retry**（2026-07-05）:
   - 槓桿 2（empty-summary retry）：`eval_harness.is_empty_read()` 判定空讀
@@ -509,3 +559,28 @@
 - 測試真實 MCP server 連接（如 pubmed-search-mcp via stdio）
 - 實機跑 fetch-node + build-exe 驗證 portable node 內嵌後 Gateway 可零安裝啟動
 - Live 測試 AI bbox 精確度與 phash 偵測靈敏度
+
+## Done (recent) - 2026-08-04
+
+- **ECGFounder opt-in tool bridge**：
+  - native plugin 新增 `ecg_founder_analyze_waveform`，endpoint 只允許 loopback
+    HTTP，使用 bearer token，不接受路徑或 screenshot source。
+  - response sanitizer 強制官方 500 Hz/10 秒/5000 點 input proof、lead count、
+    model revision、checkpoint/source SHA-256、preprocessing 與 calibration
+    provenance。
+  - 未校準 threshold 一律降為 `uncalibrated_score`；輸出固定
+    `supporting_evidence_only` 與 `spatial_localization: not_provided`。
+  - Gateway allowlist 只有 endpoint+token 齊全時才加入工具，既有 MEETI
+    screenshot baseline protocol 不受影響。
+  - OpenClaw runtime inspect 實測 loaded、兩工具皆註冊、diagnostics 0。
+  - OpenClawClient 會合併 PHI-free ECGFounder receipt 到 `analysis_trace`。
+  - 文件：`docs/ecgfounder-tool.md`，README/README.zh-TW/ARCHITECTURE/skill 已同步。
+  - 驗證：相關 pytest 86 passed、Node syntax/plugin smoke passed、Ruff passed。
+
+## Next (current)
+
+- 若要讓 ECGFounder 真正參與資料集實驗，先取得 matched raw waveform，或建立
+  通過 lead label、紙速、電壓刻度、grid 與 trace continuity gate 的 digitizer。
+- 將 Torch/checkpoint 放在獨立 sidecar 環境，核對 checkpoint SHA-256，並用
+  獨立 calibration cohort 產生部署 threshold；不得從測試集現算 threshold。
+- 修正系統化 MultiPass urgent canary 的 90 秒 timeout/多輪成本後重新 paired run。

@@ -55,3 +55,48 @@
 3. 載入相關 Skill 定義
 4. 結合 Memory Bank 上下文
 5. 執行操作並更新文檔
+
+## 執行時醫療工具邊界
+
+桌面程式只透過 OpenClaw Gateway 的公開 `connect` / `chat.send` 協定溝通。
+Gateway 內的 `dicom-overlay-agent-harness` native plugin 提供受限工具面：
+
+- `dicom_bbox_validate` 永遠啟用，負責裁切與正規化全圖座標。
+- `ecg_founder_analyze_waveform` 只有在含 bearer token 的 loopback sidecar
+  已設定時才啟用。它只處理 app 建立的不透明 waveform artifact id，沒有
+  檔案系統權限，也不接受 screenshot-only 請求。
+
+ECGFounder 的 Torch runtime 與 checkpoint 位於獨立程序，不進入 PyInstaller
+主 bundle。它輸出的是波形分類證據，不是影像定位；畫布 bbox 仍須由影像
+lead inventory、MultiPass crop/refine、座標校正與 `dicom_bbox_validate` 共同
+建立。詳細輸入、provenance、校準與實驗契約見
+[`docs/ecgfounder-tool.md`](docs/ecgfounder-tool.md)。
+
+MEETI 的 paired build 會為每張圖片建立一個 hash-derived waveform artifact
+id；只有顯式啟用第三實驗組時，該 id 才綁進單一 case 的 OpenClaw context。
+比較必須保持三組分離：single-pass image、MultiPass image、MultiPass 加
+ECGFounder waveform evidence，避免把 crop/refine 的收益誤算成外部模型收益。
+
+## 桌面截圖與 Overlay 座標邊界
+
+截圖與 Qt overlay 不共用同一個原生座標系：Win32 / `mss` 使用 virtual
+desktop 的實體像素，Qt widget 使用每一個 `QScreen` 的邏輯像素。因此所有
+醫師可見的框都走下列單一資料流：
+
+1. `ScreenMonitor.display_for_window()` 用 `MonitorFromRect` 找出 viewer 所在的
+   Win32 monitor，保存實體 `DisplayFrame`、device id、index 與 primary flag。
+2. `OverlayAgent` 在每次 viewer refresh 與正式 capture 前同步該 display，並把
+   成功分析的絕對實體 `last_capture_rect` 保存為後續唯一影像 frame。
+3. `presentation.screen_selection` 以 primary、device name、實體尺寸、index 與
+   topology 選出對應 Qt `QScreen`。
+4. `OverlayCoordinateFrame` 用完整 physical/logical display bounds 分別計算 X/Y
+   比例；先扣除實體螢幕原點，再轉成 overlay-local logical edge。負座標螢幕與
+   mixed-DPI 不使用 cached primary DPR。
+5. AI bbox 與 static region 都投影到同一 frame，並在真正繪製前做 logical →
+   physical edge round-trip。超過允許 drift 的框只留下 PHI-free audit row，
+   不進入 overlay。
+6. 點框 QA、人工框選與 desktop review export 都以同一個 `content_rect` 正規化
+   回原始 ROI，避免畫面與匯出結果使用不同座標基準。
+
+ECGFounder 只提供波形分類證據，沒有影像定位能力，因此不會進入這條 bbox
+投影路徑。

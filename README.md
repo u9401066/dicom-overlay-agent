@@ -6,6 +6,8 @@
 
 🌐 [繁體中文](README.zh-TW.md)
 
+Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
+
 The agent never replaces the physician. It acts as a systematic *second-check*
 to reduce omissions caused by fatigue, workload, or distraction. It cannot reach
 the HIS API, so the screen is the only input: the user defines a screenshot ROI
@@ -22,7 +24,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.75 MB) plus a lean, portable, zero-install bundle |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.90 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -90,6 +92,12 @@ The physician reads the original image; the agent annotates *on top* of it.
   which records PHI-free projection audit rows and withholds any dynamic bbox
   whose round-trip drift calibration fails before it reaches the physician
   overlay.
+  The capture/display path is monitor-bound: Win32 supplies the exact physical
+  display frame, Qt supplies that display's logical frame, and
+  [`overlay_geometry.py`](src/dicom_overlay/infrastructure/overlay_geometry.py)
+  converts physical edges into overlay-local coordinates. Negative monitor
+  origins and mixed-DPI layouts therefore use the same saved capture rectangle
+  for drawing, click QA, user annotation, and review export.
 - **Content** — a draggable [`SummaryPanel`](src/dicom_overlay/presentation/overlay_window.py)
   shows a systematic checklist (16 keys for EKG, a 10-axis read for CXR);
   abnormal items surface first, normal ones collapse. A
@@ -264,7 +272,7 @@ portable across OpenClaw releases.
   manifest / chat frame against the documented schema (protocol `3`, image in
   `params.attachments[]` with `type` / `mimeType` / `content`).
 - [`openclaw/package.json`](openclaw/package.json) tracks the runtime version
-  (locally validated against `openclaw ^2026.6.11`) and the minimum-safe floor.
+  (packaged and validated as `openclaw 2026.7.1-2`) and the minimum-safe floor.
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   declares the plugin compatibility window.
 - The OpenClaw-side specialization is intentionally plugin-shaped:
@@ -273,6 +281,17 @@ portable across OpenClaw releases.
   capabilities. The desktop app still treats it as a Gateway-only integration,
   so compatibility is tested through `connect` / `chat.send` artifacts instead
   of private OpenClaw plugin SDK imports.
+- The same native plugin has an opt-in
+  `ecg_founder_analyze_waveform` bridge for
+  [PKUDigitalHealth/ECGFounder](https://huggingface.co/PKUDigitalHealth/ECGFounder).
+  It is registered only when an authenticated loopback sidecar is configured,
+  accepts opaque waveform artifact ids rather than paths, and never treats a
+  screenshot as a waveform or its class scores as image bboxes. Torch and the
+  370 MB checkpoint stay outside the portable app. See
+  [the external tool contract](docs/ecgfounder-tool.md).
+  The paired MEETI build now includes 1,000 matched raw 12-lead waveforms; a
+  real pinned-checkpoint batch completed all 1,000 and records each result as
+  uncalibrated supporting evidence.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
@@ -316,6 +335,13 @@ portable across OpenClaw releases.
   (the `-mini` id is absent from the OpenAI catalog). Copilot subscription
   models (e.g. MAI Flash) remain unusable as an API provider because they use
   an OAuth device-token flow, not an API key.
+- Current experiment status (2026-08-04): the new paired
+  `openai/gpt-5.4-mini` image comparison was attempted but is blocked by
+  `credit_balance_exhausted` / `insufficient_quota`. No full single-pass versus
+  MultiPass versus MultiPass+ECGFounder accuracy claim is made until that run
+  completes. The independently reproducible ECGFounder waveform arm did finish
+  1,000/1,000 paired cases. See
+  [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md).
 
 ### Core 4 — Minimal packaged executable
 
@@ -348,12 +374,14 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 
 | Artifact | Budget | Current |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` launcher | < 50 MB | **6.75 MB** ✅ |
-| App + Python/Qt layer (no vendored OpenClaw) | < 100 MB | **~89 MB** ✅ |
-| Full bundle incl. vendored OpenClaw runtime | — | **~205 MB** |
-| + opt-in portable Node.js | — | + ~30 MB |
+| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **6.90 MiB** |
+| App + Python/Qt layer | < 100 MiB | **94.58 MiB** |
+| Slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
+| Portable Node.js `v24.18.0` | - | **88.25 MiB** |
+| Full zero-install bundle | < 650 MiB | **363.86 MiB** |
 
-The vendored OpenClaw runtime (~114 MB) is kept intact on purpose: pruning its
+The staged OpenClaw runtime (181.03 MiB in this build) keeps its required dist
+and plugin surfaces intact on purpose: pruning those
 internal `dist` chunks would couple the app to OpenClaw internals and break
 **Core 3** across releases. We trim everything *around* it instead.
 
@@ -366,6 +394,9 @@ internal `dist` chunks would couple the app to OpenClaw internals and break
 - [Roadmap](ROADMAP.md) - Feature planning
 - [Real Test Runbook](REAL_TEST_RUNBOOK.md) - Live stack testing
 - [AGENTS.md](AGENTS.md) - AI maintenance guardrails for the four cores
+- [ECGFounder Tool Contract](docs/ecgfounder-tool.md) - External waveform evidence boundary
+- [2026-08-04 Verification Record](docs/verification-2026-08-04.md) - Tests, experiments, bundle hash, and open blockers
+- [GitHub Pages source](site/index.html) - Public product/evidence site
 
 ## 🎯 Copilot Custom Agents
 

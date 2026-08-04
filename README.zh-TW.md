@@ -6,6 +6,23 @@
 
 🌐 [English](README.md)
 
+網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
+
+## 2026-08-04 最新驗證狀態
+
+- Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
+  負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
+- OOM-safe unit + smoke suite 為 647 passed；OpenClaw overlay integration 為
+  54 passed；重建後真實 EXE bundle smoke 為 2 passed。
+- 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
+  全部仍標記為 uncalibrated supporting evidence，不會產生影像 bbox。
+- 新的 `openai/gpt-5.4-mini` 三組影像對照被 provider
+  `credit_balance_exhausted` / `insufficient_quota` 阻擋；在真正完成前不宣稱
+  single-pass、MultiPass、MultiPass+ECGFounder 的完整準確率。
+- 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
+  363.86 MiB。詳見
+  [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md)。
+
 ## 2026-07-02 real-model smoke 狀態
 
 - `scripts/check-real-model-readiness.cmd --dotenv .env` 會讀取 repo-local
@@ -136,7 +153,7 @@ Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲�
 | 1 | **影像判讀圖層互動**（位置 + 內容） | AI 發現出現在正確的 *位置*（bbox/region 疊在原圖上），並提供可讀的 *內容*（checklist + 追問 chat） |
 | 2 | **OpenClaw 判讀完整 harness** | 一個可執行、CI 可驗證的合約，證明截圖 → 分析 → 疊加的迴圈確實可用 |
 | 3 | **OpenClaw plugin 兼容性** | 只透過穩定的公開 Gateway 協定溝通，能跨 OpenClaw 版本存活 |
-| 4 | **最小化執行檔封裝** | 極小的 `.exe` 啟動器（<50 MB，現為 6.75 MB）加上精簡、可攜帶、零安裝 bundle |
+| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB，現為 6.90 MiB）加上含固定 Node/OpenClaw 的已驗證可攜 bundle |
 
 每個核心詳見下方 [核心詳解](#-核心詳解)。
 
@@ -245,9 +262,20 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   建立 harness manifest / chat frame（protocol `3`，image 在
   `params.attachments[]`，含 `type` / `mimeType` / `content`）。
 - [`openclaw/package.json`](openclaw/package.json) 追蹤 runtime 版本
-  （`openclaw ^2026.5.27`）與最低安全版本下限。
+  （封裝並驗證為 `openclaw 2026.7.1-2`）與最低安全版本下限。
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   宣告 plugin 兼容區間。
+- 同一個 native plugin 提供條件式
+  `ecg_founder_analyze_waveform` 橋接，可把
+  [PKUDigitalHealth/ECGFounder](https://huggingface.co/PKUDigitalHealth/ECGFounder)
+  當成波形第二意見工具。只有設定含 token 的 loopback sidecar 時才會註冊；
+  tool 只接收不透明的 waveform artifact id，不接任意路徑，也不會把 PNG
+  當波形或把 150 類分數當作影像 bbox。Torch 與約 370 MB checkpoint 不會
+  塞進可攜式主程式，完整契約見
+  [`docs/ecgfounder-tool.md`](docs/ecgfounder-tool.md)。
+  MEETI paired build 已保留 1,000 筆相符的原始 12 導程波形；固定官方
+  checkpoint 的真實批次已完成 1,000/1,000，所有結果都明確標記為未校準的
+  supporting evidence。
 - **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema 與 image
   attachment 格式未變；只有發現真正不兼容時才拉高下限。
 
@@ -280,12 +308,14 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 | 產物 | 預算 | 現況 |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` 啟動器 | < 50 MB | **6.75 MB** ✅ |
-| App + Python/Qt 層（不含 vendored OpenClaw） | < 100 MB | **~89 MB** ✅ |
-| 含 vendored OpenClaw runtime 的完整 bundle | — | **~205 MB** |
-| + opt-in 可攜帶 Node.js | — | + ~30 MB |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **6.90 MiB** |
+| App + Python/Qt 層 | < 100 MiB | **94.58 MiB** |
+| slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
+| 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
+| 完整零安裝 bundle | < 650 MiB | **363.86 MiB** |
 
-vendored OpenClaw runtime（~114 MB）刻意保持完整：修剪其內部 `dist`
+本次 staged OpenClaw runtime 為 181.03 MiB，所需 `dist` 與 plugin surfaces
+刻意保持完整：修剪其內部 `dist`
 chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們只修剪它
 *周圍* 的一切。
 
@@ -298,6 +328,9 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 - [路線圖](ROADMAP.md) - 功能規劃
 - [真實測試 Runbook](REAL_TEST_RUNBOOK.md) - Live stack 測試
 - [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
+- [ECGFounder 工具契約](docs/ecgfounder-tool.md) - 外部波形證據邊界
+- [2026-08-04 驗證紀錄](docs/verification-2026-08-04.md) - 測試、實驗、bundle hash 與阻擋項
+- [GitHub Pages 原始碼](site/index.html) - 公開產品與證據網站
 
 ## 🎯 Copilot 自訂 Agents
 
