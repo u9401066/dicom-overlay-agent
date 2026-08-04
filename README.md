@@ -400,7 +400,7 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 | App + Python/Qt layer | < 100 MiB | **94.58 MiB** |
 | Slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
 | Portable Node.js `v24.18.0` | - | **88.25 MiB** |
-| Full zero-install bundle | < 650 MiB | **363.86 MiB** |
+| Full zero-install bundle | < 650 MiB | **363.87 MiB** |
 
 The staged OpenClaw runtime (181.03 MiB in this build) keeps its required dist
 and plugin surfaces intact on purpose: pruning those

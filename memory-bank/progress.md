@@ -19,6 +19,10 @@
   - Settings/Process UI exposes actual model and secret-free external waveform
     evidence provenance. OOM-safe unit+smoke now passes 680 tests plus one
     release-only skip; OpenClaw integration remains 55/55.
+  - Rebuilt and verified the portable bundle: manifest `ok`, frozen smoke 2/2,
+    363.87 MiB / 15,225 files, OpenClaw `2026.7.1-2`, Node `v24.18.0`, EXE
+    SHA-256 `3FFE577B3562965E34360BC765811F150BDA594AFA4E5BA7147E8575A4320D48`.
+    Frozen PYZ contains all Luna defaults; external-model/sensitive scan is empty.
 
 - **Systematic MultiPass harness, GPT-5.4 Mini canary, and final bundle**
   (2026-08-04):

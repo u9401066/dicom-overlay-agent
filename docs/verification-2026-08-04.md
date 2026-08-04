@@ -185,16 +185,18 @@ Fresh artifact:
 
 - Path: `dist/DICOMOverlayAgent/DICOMOverlayAgent.exe`
 - SHA-256:
-  `B3066A365EB72F705EC49F4EFFB3E2B93A1C32D52BA218EB0C531F03F3B0B8D8`
-- Launcher: 6.90 MiB
-- App/Python/Qt layer: 94.58 MiB
+  `3FFE577B3562965E34360BC765811F150BDA594AFA4E5BA7147E8575A4320D48`
+- Launcher: 6.91 MiB
+- App/Python/Qt layer: 94.59 MiB
 - OpenClaw: 181.03 MiB, version `2026.7.1-2`
 - Node.js: 88.25 MiB, version `v24.18.0`
-- Total: 363.86 MiB, 15,225 files
+- Total: 363.87 MiB, 15,225 files
 - Manifest: `dist/DICOMOverlayAgent/bundle-manifest.json`, status `ok`
 - Frozen module proof: PyInstaller `PYZ-00.toc` contains
   `dicom_overlay.presentation.screen_selection` and
-  `dicom_overlay.infrastructure.overlay_geometry`.
+  `dicom_overlay.infrastructure.overlay_geometry`. Direct PYZ inspection also
+  found all four Luna default constants (`openai-luna`, model ref, model id,
+  and UI label) in the frozen `openclaw_settings` module.
 
 Bundled surfaces include the executable, config, portable Node, slim pinned
 OpenClaw runtime, native harness plugin, EKG/CXR/CT skills, and clinical rules.

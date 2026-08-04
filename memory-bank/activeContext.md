@@ -27,6 +27,12 @@
 - UI now shows secret-free waveform-assist configuration and records ECGFounder
   status, prediction count, and calibration state in the Process tab. OOM-safe
   unit+smoke is 680 passed plus one release-only skip; integration is 55/55.
+- Fresh portable bundle is manifest `ok`, frozen smoke 2/2, 15,225 files and
+  363.87 MiB with OpenClaw `2026.7.1-2` and Node `v24.18.0`. EXE SHA-256 is
+  `3FFE577B3562965E34360BC765811F150BDA594AFA4E5BA7147E8575A4320D48`.
+  Frozen PYZ inspection proves the Luna defaults are present; sensitive/external
+  model filename scan found zero `.env`, Torch/checkpoint, MEETI, waveform,
+  SQLite, or sidecar artifacts.
 
 ## Session Update (2026-08-04, systematic harness + GPT-5.4 Mini + final bundle)
 

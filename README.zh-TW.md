@@ -28,8 +28,8 @@
   `credit_balance_exhausted` / `insufficient_quota` 阻擋。在真正完成前不宣稱
   single-pass、MultiPass、MultiPass+ECGFounder 的完整準確率。
 - 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
-  363.86 MiB，EXE SHA-256 為
-  `B3066A365EB72F705EC49F4EFFB3E2B93A1C32D52BA218EB0C531F03F3B0B8D8`。
+  363.87 MiB，EXE SHA-256 為
+  `3FFE577B3562965E34360BC765811F150BDA594AFA4E5BA7147E8575A4320D48`。
   封裝掃描確認沒有 `.env*`、Torch、checkpoint、MEETI、sidecar 或實驗資料。詳見
   [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md)。
 
@@ -324,7 +324,7 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 | App + Python/Qt 層 | < 100 MiB | **94.58 MiB** |
 | slim pinned OpenClaw runtime | < 500 MiB | **181.03 MiB** |
 | 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
-| 完整零安裝 bundle | < 650 MiB | **363.86 MiB** |
+| 完整零安裝 bundle | < 650 MiB | **363.87 MiB** |
 
 本次 staged OpenClaw runtime 為 181.03 MiB，所需 `dist` 與 plugin surfaces
 刻意保持完整：修剪其內部 `dist`
