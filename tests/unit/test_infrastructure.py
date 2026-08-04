@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -373,6 +375,14 @@ class TestOpenClawRuntimeCompatibility:
         with pytest.raises(RuntimeError, match="OpenClaw Gateway launch lock"):
             manager.start()
 
+    def test_gateway_pid_check_rejects_a_reaped_child_process(self, tmp_path):
+        manager = GatewayManager(repo_root=tmp_path)
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait(timeout=5)
+
+        assert manager._pid_is_running(os.getpid()) is True
+        assert manager._pid_is_running(child.pid) is False
+
     def test_gateway_manager_refuses_real_start_in_oom_safe_tests(
         self, monkeypatch, tmp_path
     ):
@@ -406,7 +416,7 @@ class TestOpenClawRuntimeCompatibility:
         assert payload["gateway"]["mode"] == "local"
         assert "auth" not in payload["gateway"]
         assert payload["agents"]["defaults"]["model"]["primary"] == (
-            "openai/gpt-5.4-mini"
+            "openai/gpt-5.6-luna"
         )
         assert payload["models"]["providers"]["openai"]["apiKey"]["id"] == (
             "OPENAI_API_KEY"
@@ -490,6 +500,42 @@ class TestAppBaseDir:
 
 
 class TestDesktopSettingsStore:
+    def test_load_model_ref_reads_active_primary_without_credentials(self, tmp_path):
+        config_path = tmp_path / "openclaw" / "openclaw.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {
+                    "agents": {
+                        "defaults": {
+                            "model": {"primary": "openai/gpt-5.6-luna"}
+                        }
+                    },
+                    "models": {"providers": {"openai": {"apiKey": "secret"}}},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        store = DesktopSettingsStore(repo_root=tmp_path)
+
+        assert store.load_model_ref() == "openai/gpt-5.6-luna"
+
+    def test_ecg_founder_configuration_requires_endpoint_and_token(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.delenv("DICOM_ECGFOUNDER_ENDPOINT", raising=False)
+        monkeypatch.delenv("DICOM_ECGFOUNDER_TOKEN", raising=False)
+        store = DesktopSettingsStore(repo_root=tmp_path)
+
+        assert store.ecg_founder_configured() is False
+        (tmp_path / ".env").write_text(
+            "DICOM_ECGFOUNDER_ENDPOINT=http://127.0.0.1:18790/v1/analyze\n"
+            "DICOM_ECGFOUNDER_TOKEN=test-only-token\n",
+            encoding="utf-8",
+        )
+        assert store.ecg_founder_configured() is True
+
     def test_save_provider_profile_writes_env_and_openclaw_config(self, tmp_path):
         profile = ProviderProfile(
             key="openrouter",

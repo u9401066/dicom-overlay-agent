@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 from dicom_overlay.domain.entities import TriggerMode
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.openclaw_settings import (
+    DEFAULT_VISION_PROFILE_KEY,
     ProviderProfile,
     default_provider_profiles,
 )
@@ -163,7 +164,19 @@ class SettingsDialog(QDialog):
 
         button_row.addStretch()
         layout.addLayout(button_row)
+        self._select_initial_provider()
         return tab
+
+    def _select_initial_provider(self) -> None:
+        active_model = self._store.load_model_ref().lower()
+        preferred_index = 0
+        for index, profile in enumerate(self._profiles):
+            if profile.key == DEFAULT_VISION_PROFILE_KEY:
+                preferred_index = index
+            if active_model and profile.model_ref.lower() == active_model:
+                preferred_index = index
+                break
+        self._provider_combo.setCurrentIndex(preferred_index)
 
     def _build_analysis_tab(
         self, multi_pass_enabled: bool, max_zoom_targets: int
@@ -185,6 +198,21 @@ class SettingsDialog(QDialog):
             "Total crop budget shared by finding verification and discovery probes"
         )
         form.addRow("Pass budget", self._max_zoom_targets)
+
+        waveform_configured = self._store.ecg_founder_configured()
+        self._waveform_assist_status = QLabel(
+            "Configured (paired waveform studies)"
+            if waveform_configured
+            else "Not configured"
+        )
+        self._waveform_assist_status.setStyleSheet(
+            "color: #287a3f;" if waveform_configured else "color: #666;"
+        )
+        self._waveform_assist_status.setToolTip(
+            "ECGFounder is optional supporting evidence for an app-supplied "
+            "raw-waveform artifact; screenshot-only reads do not invoke it."
+        )
+        form.addRow("Waveform assist", self._waveform_assist_status)
 
         save_btn = QPushButton("Save analysis")
         save_btn.clicked.connect(self._save_analysis_settings)

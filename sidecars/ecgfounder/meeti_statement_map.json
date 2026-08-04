@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "name": "meeti-concept-to-ecgfounder-statement-map",
+  "source_ontology": "dicom_overlay.infrastructure.meeti_dataset.classify_report",
+  "target_vocabulary": "PKUDigitalHealth/ECGFounder 150 statements",
+  "note": "Exact semantic mappings for research evaluation. Unmapped concepts remain unscored rather than being guessed.",
+  "concepts": {
+    "stemi": {
+      "control_group": "explicit_normal",
+      "statements": ["ACUTE MI / STEMI", "ACUTE MI"]
+    },
+    "acute_mi": {
+      "control_group": "explicit_normal",
+      "statements": ["ACUTE MI", "ACUTE MI / STEMI"]
+    },
+    "complete_heart_block": {
+      "control_group": "explicit_normal",
+      "statements": ["WITH COMPLETE HEART BLOCK"]
+    },
+    "vtach": {
+      "control_group": "explicit_normal",
+      "statements": ["VENTRICULAR TACHYCARDIA", "WIDE QRS TACHYCARDIA"]
+    },
+    "st_elevation": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "ST ELEVATION NOW PRESENT IN",
+        "ST MORE ELEVATED IN",
+        "ST LESS ELEVATED IN"
+      ]
+    },
+    "old_infarct": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "SEPTAL INFARCT",
+        "ANTERIOR INFARCT",
+        "LATERAL INFARCT",
+        "ANTEROSEPTAL INFARCT",
+        "ANTEROLATERAL INFARCT",
+        "INFERIOR INFARCT",
+        "INFERIOR-POSTERIOR INFARCT",
+        "POSTERIOR INFARCT"
+      ]
+    },
+    "infarct": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "SEPTAL INFARCT",
+        "ANTERIOR INFARCT",
+        "LATERAL INFARCT",
+        "ANTEROSEPTAL INFARCT",
+        "ANTEROLATERAL INFARCT",
+        "INFERIOR INFARCT",
+        "INFERIOR-POSTERIOR INFARCT",
+        "POSTERIOR INFARCT"
+      ]
+    },
+    "av_dissociation": {
+      "control_group": "explicit_normal",
+      "statements": ["WITH AV DISSOCIATION"]
+    },
+    "st_depression": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "ST NOW DEPRESSED IN",
+        "ST MORE DEPRESSED IN",
+        "ST LESS DEPRESSED IN"
+      ]
+    },
+    "t_wave_abnormality": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "NONSPECIFIC T WAVE ABNORMALITY",
+        "NONSPECIFIC T WAVE ABNORMALITY NOW EVIDENT IN",
+        "T WAVE INVERSION NOW EVIDENT IN",
+        "T WAVE INVERSION MORE EVIDENT IN",
+        "T WAVE INVERSION LESS EVIDENT IN",
+        "INVERTED T WAVES HAVE REPLACED NONSPECIFIC T WAVE ABNORMALITY IN",
+        "NONSPECIFIC T WAVE ABNORMALITY HAS REPLACED INVERTED T WAVES IN",
+        "WITH REPOLARIZATION ABNORMALITY"
+      ]
+    },
+    "afib": {
+      "control_group": "explicit_normal",
+      "statements": ["ATRIAL FIBRILLATION"]
+    },
+    "aflutter": {
+      "control_group": "explicit_normal",
+      "statements": ["ATRIAL FLUTTER"]
+    },
+    "svt": {
+      "control_group": "explicit_normal",
+      "statements": ["SUPRAVENTRICULAR TACHYCARDIA"]
+    },
+    "second_degree_block": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "WITH 2ND DEGREE AV BLOCK MOBITZ I",
+        "WITH 2:1 AV CONDUCTION"
+      ]
+    },
+    "first_degree_block": {
+      "control_group": "explicit_normal",
+      "statements": ["WITH 1ST DEGREE AV BLOCK", "WITH PROLONGED AV CONDUCTION"]
+    },
+    "lbbb": {
+      "control_group": "explicit_normal",
+      "statements": ["LEFT BUNDLE BRANCH BLOCK", "INCOMPLETE LEFT BUNDLE BRANCH BLOCK"]
+    },
+    "rbbb": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "RIGHT BUNDLE BRANCH BLOCK",
+        "INCOMPLETE RIGHT BUNDLE BRANCH BLOCK",
+        "RBBB AND LEFT ANTERIOR FASCICULAR BLOCK",
+        "RBBB AND LEFT POSTERIOR FASCICULAR BLOCK"
+      ]
+    },
+    "fascicular_block": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "LEFT ANTERIOR FASCICULAR BLOCK",
+        "LEFT POSTERIOR FASCICULAR BLOCK",
+        "BIFASCICULAR BLOCK",
+        "RBBB AND LEFT ANTERIOR FASCICULAR BLOCK",
+        "RBBB AND LEFT POSTERIOR FASCICULAR BLOCK"
+      ]
+    },
+    "lvh": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "LEFT VENTRICULAR HYPERTROPHY",
+        "VOLTAGE CRITERIA FOR LEFT VENTRICULAR HYPERTROPHY"
+      ]
+    },
+    "rvh": {
+      "control_group": "explicit_normal",
+      "statements": ["RIGHT VENTRICULAR HYPERTROPHY"]
+    },
+    "atrial_abnormality": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "LEFT ATRIAL ENLARGEMENT",
+        "RIGHT ATRIAL ENLARGEMENT",
+        "BIATRIAL ENLARGEMENT"
+      ]
+    },
+    "pvc": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "PREMATURE VENTRICULAR COMPLEXES",
+        "PREMATURE VENTRICULAR AND FUSION COMPLEXES",
+        "IN A PATTERN OF BIGEMINY",
+        "WITH PREMATURE VENTRICULAR OR ABERRANTLY CONDUCTED COMPLEXES"
+      ]
+    },
+    "pac": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "PREMATURE ATRIAL COMPLEXES",
+        "PREMATURE SUPRAVENTRICULAR COMPLEXES",
+        "SUPRAVENTRICULAR COMPLEXES"
+      ]
+    },
+    "brady": {
+      "control_group": "explicit_normal",
+      "statements": ["SINUS BRADYCARDIA", "MARKED SINUS BRADYCARDIA", "JUNCTIONAL BRADYCARDIA"]
+    },
+    "tachy": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "SINUS TACHYCARDIA",
+        "SUPRAVENTRICULAR TACHYCARDIA",
+        "VENTRICULAR TACHYCARDIA",
+        "WIDE QRS TACHYCARDIA",
+        "MULTIFOCAL ATRIAL TACHYCARDIA"
+      ]
+    },
+    "preexcitation": {
+      "control_group": "explicit_normal",
+      "statements": ["WOLFF-PARKINSON-WHITE"]
+    },
+    "paced": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "ELECTRONIC ATRIAL PACEMAKER",
+        "ELECTRONIC VENTRICULAR PACEMAKER",
+        "VENTRICULAR-PACED RHYTHM",
+        "ATRIAL-PACED RHYTHM",
+        "ATRIAL-SENSED VENTRICULAR-PACED RHYTHM",
+        "AV SEQUENTIAL OR DUAL CHAMBER ELECTRONIC PACEMAKER",
+        "AV DUAL-PACED RHYTHM",
+        "VENTRICULAR-PACED COMPLEXES",
+        "ELECTRONIC DEMAND PACING",
+        "BIVENTRICULAR PACEMAKER DETECTED",
+        "AV DUAL-PACED COMPLEXES",
+        "ATRIAL-PACED COMPLEXES"
+      ]
+    },
+    "axis_deviation": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "LEFT AXIS DEVIATION",
+        "RIGHT AXIS DEVIATION",
+        "RIGHTWARD AXIS",
+        "LEFTWARD AXIS",
+        "RIGHT SUPERIOR AXIS DEVIATION",
+        "ABNORMAL LEFT AXIS DEVIATION",
+        "ABNORMAL RIGHT AXIS DEVIATION"
+      ]
+    },
+    "low_voltage": {
+      "control_group": "explicit_normal",
+      "statements": ["LOW VOLTAGE QRS"]
+    },
+    "nonspecific_stt": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "NONSPECIFIC T WAVE ABNORMALITY",
+        "NONSPECIFIC ST ABNORMALITY",
+        "NONSPECIFIC ST AND T WAVE ABNORMALITY",
+        "NON-SPECIFIC CHANGE IN ST SEGMENT IN"
+      ]
+    },
+    "iv_conduction_delay": {
+      "control_group": "explicit_normal",
+      "statements": [
+        "NONSPECIFIC INTRAVENTRICULAR CONDUCTION DELAY",
+        "NONSPECIFIC INTRAVENTRICULAR BLOCK"
+      ]
+    },
+    "junctional_rhythm": {
+      "control_group": "explicit_normal",
+      "statements": ["JUNCTIONAL RHYTHM"]
+    },
+    "ectopic_atrial_rhythm": {
+      "control_group": "explicit_normal",
+      "statements": ["ECTOPIC ATRIAL RHYTHM", "MULTIFOCAL ATRIAL TACHYCARDIA"]
+    },
+    "sinus_arrhythmia": {
+      "control_group": "explicit_normal",
+      "statements": ["WITH SINUS ARRHYTHMIA", "WITH MARKED SINUS ARRHYTHMIA"]
+    },
+    "qt_short": {
+      "control_group": "explicit_normal",
+      "statements": ["QT HAS SHORTENED"]
+    },
+    "early_repol": {
+      "control_group": "explicit_normal",
+      "statements": ["EARLY REPOLARIZATION"]
+    },
+    "normal": {
+      "control_group": "asserted_abnormal",
+      "statements": ["NORMAL ECG", "NORMAL SINUS RHYTHM", "otherwise normal ecg"]
+    },
+    "sinus": {
+      "control_group": "positive_ranking_only",
+      "statements": [
+        "SINUS RHYTHM",
+        "NORMAL SINUS RHYTHM",
+        "SINUS BRADYCARDIA",
+        "MARKED SINUS BRADYCARDIA",
+        "SINUS TACHYCARDIA",
+        "WITH SINUS ARRHYTHMIA",
+        "WITH MARKED SINUS ARRHYTHMIA"
+      ]
+    },
+    "long_qt": {
+      "control_group": "explicit_normal",
+      "statements": ["PROLONGED QT", "QT HAS LENGTHENED"]
+    }
+  }
+}

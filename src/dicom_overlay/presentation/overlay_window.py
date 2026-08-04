@@ -365,6 +365,15 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                         counts.append(f"accepted={accepted}")
                     if isinstance(rejected, int):
                         counts.append(f"rejected={rejected}")
+                    receipt_status = receipt.get("status")
+                    if isinstance(receipt_status, str) and receipt_status:
+                        counts.append(f"status={receipt_status}")
+                    prediction_count = receipt.get("prediction_count")
+                    if isinstance(prediction_count, int):
+                        counts.append(f"predictions={prediction_count}")
+                    calibration_status = receipt.get("calibration_status")
+                    if isinstance(calibration_status, str) and calibration_status:
+                        counts.append(f"calibration={calibration_status}")
                     details.append(
                         f"Tool receipt: {receipt_tool}"
                         + (f" ({', '.join(counts)})" if counts else "")

@@ -18,9 +18,11 @@ from typing import Any
 from dicom_overlay.infrastructure.gateway_manager import (
     GatewayManager,
     ecg_founder_tool_enabled,
+    pid_is_running,
 )
 from dicom_overlay.infrastructure.openclaw_settings import (
     DEFAULT_INFERENCE_TIMEOUT_SEC,
+    DEFAULT_VISION_MODEL_REF,
     ProviderProfile,
     build_openclaw_config,
     default_provider_profiles,
@@ -429,7 +431,7 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model-id", default="openai/gpt-5.4-mini")
+    parser.add_argument("--model-id", default=DEFAULT_VISION_MODEL_REF)
     parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--provider-profile", default="")
     parser.add_argument(
@@ -793,20 +795,6 @@ def read_lock_pid(lock_dir: Path) -> int | None:
         return int((lock_dir / "pid").read_text(encoding="utf-8").strip())
     except (FileNotFoundError, OSError, ValueError):
         return None
-
-
-def pid_is_running(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def run_eval_with_gateway_retry(

@@ -289,7 +289,7 @@ def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
                     "gateway": {"mode": "local"},
                     "agents": {
                         "defaults": {
-                            "model": {"primary": "openai/gpt-5.4-mini"}
+                            "model": {"primary": "openai/gpt-5.6-luna"}
                         }
                     },
                     "plugins": {

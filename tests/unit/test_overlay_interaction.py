@@ -80,6 +80,12 @@ def _result() -> AnalysisResult:
                         "tool": "dicom_bbox_validate",
                         "accepted_count": 2,
                         "rejected_count": 0,
+                    },
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "prediction_count": 10,
+                        "calibration_status": "uncalibrated",
                     }
                 ],
             },
@@ -110,6 +116,9 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     assert refined is not None
     assert "Source: original_roi" in refined.text()
     assert "accepted=2" in refined.text()
+    assert "ecg_founder_analyze_waveform" in refined.text()
+    assert "predictions=10" in refined.text()
+    assert "calibration=uncalibrated" in refined.text()
     panel.close()
 
 

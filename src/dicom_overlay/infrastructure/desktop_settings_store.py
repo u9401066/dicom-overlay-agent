@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 from typing import TYPE_CHECKING, Any
 
@@ -94,6 +95,27 @@ class DesktopSettingsStore:
         self._openclaw_config_path.write_text(
             json.dumps(merged, indent=2, ensure_ascii=False),
             encoding="utf-8",
+        )
+
+    def load_model_ref(self) -> str:
+        """Return the active OpenClaw model without exposing credentials."""
+        payload = self._read_openclaw_config()
+        agents = payload.get("agents")
+        if not isinstance(agents, dict):
+            return ""
+        defaults = agents.get("defaults")
+        if not isinstance(defaults, dict):
+            return ""
+        model = defaults.get("model")
+        primary = model.get("primary") if isinstance(model, dict) else model
+        return primary.strip() if isinstance(primary, str) else ""
+
+    def ecg_founder_configured(self) -> bool:
+        """Report configuration presence without probing or exposing secrets."""
+        environment = {**self._read_env_map(), **os.environ}
+        return bool(
+            environment.get("DICOM_ECGFOUNDER_ENDPOINT", "").strip()
+            and environment.get("DICOM_ECGFOUNDER_TOKEN", "").strip()
         )
 
     def _read_openclaw_config(self) -> dict[str, Any]:

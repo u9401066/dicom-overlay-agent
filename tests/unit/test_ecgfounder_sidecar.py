@@ -129,6 +129,33 @@ def test_service_resolves_only_registered_opaque_artifact(tmp_path: Path) -> Non
     assert found["max_predictions_seen"] == server.MAX_PREDICTIONS
 
 
+def test_offline_analysis_can_retain_all_scores_without_expanding_tool_payload(
+    tmp_path: Path,
+) -> None:
+    registry_path, artifact_id = _registry_payload(tmp_path)
+    record = server.load_registry(registry_path)[artifact_id]
+    runtime = _FakeRuntime()
+
+    result = server.analyze_record(
+        runtime,  # type: ignore[arg-type]
+        record,
+        max_predictions=batch.MAX_OFFLINE_PREDICTIONS,
+    )
+
+    assert result["status"] == "ok"
+    assert result["max_predictions_seen"] == 150
+
+
+def test_batch_parser_accepts_full_scores_but_rejects_more_than_task_count() -> None:
+    parser = batch.build_parser()
+
+    args = parser.parse_args(["--max-predictions", "150"])
+
+    assert args.max_predictions == 150
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--max-predictions", "151"])
+
+
 def test_http_endpoint_requires_bearer_token(tmp_path: Path) -> None:
     registry_path, artifact_id = _registry_payload(tmp_path)
     service = server.ECGFounderService(
@@ -198,6 +225,8 @@ def test_batch_loader_requires_one_registered_waveform_per_case(tmp_path: Path) 
                         "expected_severity": "info",
                         "label_status": "confirmed",
                         "concepts": ["sinus_rhythm"],
+                        "uncertain_concepts": ["st_elevation"],
+                        "ungradable_reasons": ["lead_quality"],
                     }
                 ]
             }
@@ -212,6 +241,8 @@ def test_batch_loader_requires_one_registered_waveform_per_case(tmp_path: Path) 
     assert cases[0]["reference_report_sha256"] == hashlib.sha256(
         b"Sinus rhythm."
     ).hexdigest()
+    assert cases[0]["uncertain_concepts"] == ["st_elevation"]
+    assert cases[0]["ungradable_reasons"] == ["lead_quality"]
     assert "report" not in cases[0]
 
 

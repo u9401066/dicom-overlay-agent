@@ -18,13 +18,15 @@ from sidecars.ecgfounder.server import (
     MODEL_ID,
     MODEL_REVISION,
     ECGFounderRuntime,
-    ECGFounderService,
+    analyze_record,
     load_registry,
     preprocessing_revision,
     sha256_file,
 )
 
 SCHEMA_VERSION = 1
+MAX_OFFLINE_PREDICTIONS = 150
+RUNNER_ID = "ecgfounder-meeti-batch-v3"
 DEFAULT_REGISTRY = Path("data/eval-datasets/meeti-1000-all/waveform-registry.json")
 DEFAULT_MANIFEST = Path("data/eval-datasets/meeti-1000-all/manifest.json")
 DEFAULT_CHECKPOINT = Path(
@@ -82,6 +84,16 @@ def load_paired_cases(
                     for item in raw_case.get("concepts", [])
                     if isinstance(item, str)
                 ],
+                "uncertain_concepts": [
+                    str(item)
+                    for item in raw_case.get("uncertain_concepts", [])
+                    if isinstance(item, str)
+                ],
+                "ungradable_reasons": [
+                    str(item)
+                    for item in raw_case.get("ungradable_reasons", [])
+                    if isinstance(item, str)
+                ],
                 "urgent_concerns": [
                     str(item)
                     for item in raw_case.get("urgent_concerns", [])
@@ -109,7 +121,8 @@ def build_protocol(
     sidecar_dir = Path(__file__).resolve().parent
     protocol: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "runner": "ecgfounder-meeti-batch-v1",
+        "runner": RUNNER_ID,
+        "runner_revision": sha256_file(Path(__file__).resolve()),
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
         "checkpoint_sha256": sha256_file(checkpoint_path),
@@ -248,6 +261,10 @@ def run_batch(
     resume: bool = False,
     progress_every: int = 25,
 ) -> int:
+    if not 1 <= max_predictions <= MAX_OFFLINE_PREDICTIONS:
+        raise ValueError(
+            f"max_predictions must be in 1..{MAX_OFFLINE_PREDICTIONS}"
+        )
     registry_path = registry_path.resolve()
     manifest_path = manifest_path.resolve()
     checkpoint_path = checkpoint_path.resolve()
@@ -296,20 +313,16 @@ def run_batch(
         tasks_path=Path(__file__).resolve().parent / "tasks.txt",
         calibration_path=calibration_path,
     )
-    service = ECGFounderService(registry=registry, runtime=runtime)
     started_at = datetime.now(UTC).isoformat()
     invocation_started = time.perf_counter()
     pending = [case for case in cases if case["artifact_id"] not in completed]
     with results_path.open("a", encoding="utf-8", buffering=1) as stream:
         for offset, case in enumerate(pending, start=1):
             case_started = time.perf_counter()
-            result = service.analyze(
-                {
-                    "schema_version": SCHEMA_VERSION,
-                    "artifact_id": case["artifact_id"],
-                    "lead_mode": case["lead_mode"],
-                    "max_predictions": max_predictions,
-                }
+            result = analyze_record(
+                runtime,
+                registry[case["artifact_id"]],
+                max_predictions=max_predictions,
             )
             elapsed_ms = round((time.perf_counter() - case_started) * 1000, 3)
             row = {
@@ -375,7 +388,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--calibration", type=Path)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--max-cases", type=int, default=0)
-    parser.add_argument("--max-predictions", type=int, default=20, choices=range(1, 21))
+    parser.add_argument(
+        "--max-predictions",
+        type=int,
+        default=20,
+        choices=range(1, MAX_OFFLINE_PREDICTIONS + 1),
+        help="Ranked scores to persist offline (1-150); HTTP tool responses stay capped at 20.",
+    )
     parser.add_argument("--progress-every", type=int, default=25)
     parser.add_argument("--resume", action="store_true")
     return parser

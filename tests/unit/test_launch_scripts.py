@@ -51,7 +51,7 @@ def test_meeti_experiment_script_records_model_and_artifacts() -> None:
         encoding="utf-8"
     )
 
-    assert '[string]$ModelId = "openai/gpt-5.4-mini"' in script
+    assert '[string]$ModelId = "openai/gpt-5.6-luna"' in script
     assert '[string]$ManifestPath = ""' in script
     assert '[string]$ProviderProfile = ""' in script
     assert "openclaw-models-list.txt" in script

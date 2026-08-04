@@ -511,14 +511,28 @@ class ECGFounderService:
         except (TypeError, ValueError):
             return _status_payload("ineligible", "invalid_max_predictions")
         max_predictions = min(MAX_PREDICTIONS, max(1, requested_max))
-        try:
-            return self._runtime.analyze(record, max_predictions=max_predictions)
-        except ArtifactIneligible as exc:
-            return _status_payload("ineligible", str(exc))
-        except RuntimeUnavailable as exc:
-            return _status_payload("unavailable", str(exc))
-        except Exception:
-            return _status_payload("error", "sidecar_inference_failed")
+        return analyze_record(
+            self._runtime,
+            record,
+            max_predictions=max_predictions,
+        )
+
+
+def analyze_record(
+    runtime: ECGFounderRuntime,
+    record: ArtifactRecord,
+    *,
+    max_predictions: int,
+) -> dict[str, Any]:
+    """Run one trusted record with caller-owned output-size policy."""
+    try:
+        return runtime.analyze(record, max_predictions=max_predictions)
+    except ArtifactIneligible as exc:
+        return _status_payload("ineligible", str(exc))
+    except RuntimeUnavailable as exc:
+        return _status_payload("unavailable", str(exc))
+    except Exception:
+        return _status_payload("error", "sidecar_inference_failed")
 
 
 def _status_payload(status: str, reason: str) -> dict[str, Any]:

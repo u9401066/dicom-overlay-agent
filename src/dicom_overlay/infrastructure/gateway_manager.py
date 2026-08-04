@@ -22,6 +22,7 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
 )
 from dicom_overlay.infrastructure.openclaw_settings import (
     DEFAULT_INFERENCE_TIMEOUT_SEC,
+    DEFAULT_VISION_PROFILE_KEY,
     build_openclaw_config,
     default_provider_profiles,
     derive_openclaw_timeout_budget,
@@ -48,6 +49,51 @@ def ecg_founder_tool_enabled(environment: Mapping[str, str]) -> bool:
         environment.get("DICOM_ECGFOUNDER_ENDPOINT", "").strip()
         and environment.get("DICOM_ECGFOUNDER_TOKEN", "").strip()
     )
+
+
+def _windows_pid_is_running(pid: int) -> bool:
+    """Check process liveness without Windows' unreliable ``os.kill(pid, 0)``."""
+    import ctypes
+    from ctypes import wintypes
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+    access_denied = 5
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, wintypes.LPDWORD]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        return ctypes.get_last_error() == access_denied
+    exit_code = wintypes.DWORD()
+    try:
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return True
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def pid_is_running(pid: int) -> bool:
+    """Return whether a process is alive on the current platform."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        return _windows_pid_is_running(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 class GatewayManager:
@@ -299,7 +345,7 @@ class GatewayManager:
             profile = next(
                 item
                 for item in default_provider_profiles()
-                if item.key == "openai-vision"
+                if item.key == DEFAULT_VISION_PROFILE_KEY
             )
             payload = build_openclaw_config(profile)
 
@@ -339,7 +385,7 @@ class GatewayManager:
             profile = next(
                 item
                 for item in default_provider_profiles()
-                if item.key == "openai-vision"
+                if item.key == DEFAULT_VISION_PROFILE_KEY
             )
             managed = build_openclaw_config(profile)
             defaults.update(managed["agents"]["defaults"])
@@ -454,17 +500,7 @@ class GatewayManager:
             return None
 
     def _pid_is_running(self, pid: int) -> bool:
-        if pid <= 0:
-            return False
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        except OSError:
-            return False
-        return True
+        return pid_is_running(pid)
 
     def _kill_port_occupant(self) -> None:
         """Kill any process occupying the Gateway port.
