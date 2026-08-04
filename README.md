@@ -103,8 +103,10 @@ The physician reads the original image; the agent annotates *on top* of it.
   abnormal items surface first, normal ones collapse. A
   [`ChatPanel`](src/dicom_overlay/presentation/overlay_window.py)
   lets the physician ask follow-up questions about the same image.
-- **Multi-pass zoom** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
-  re-reads abnormal regions at full ROI resolution to refine bboxes. Because the
+- **Multi-pass review** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
+  re-reads abnormal regions at full ROI resolution and reserves part of the
+  bounded crop budget for layout-derived EKG limb/precordial discovery probes,
+  so later turns can find an omission that had no coarse-pass bbox. Because the
   only input is a screen capture (≤4K), a region too small in captured pixels
   cannot be digitally enlarged usefully; instead it surfaces a `zoom_hints`
   prompt asking the physician to zoom in the DICOM viewer and re-capture.
@@ -219,11 +221,14 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   read is non-normal but omitted bboxes, so bbox crop re-analysis no longer
   depends entirely on the model's first-pass coordinates. The
   `multipass-trace.jsonl` artifact records `local_candidate_count` and
-  normalized `local_candidate_regions` per case for audit. When that trace
+  normalized `local_candidate_regions`, EKG systematic probe targets, and
+  planned/completed counts per case for audit. When that trace
   exists, `scripts/verify-eval-artifacts.py` validates those fields via
   `multipass_trace_artifacts`; production multi-pass runs should add
   `--require-multipass-trace` so missing crop re-analysis trace artifacts fail
-  the gate.
+  the gate. Current EKG experiments also use
+  `--require-ekg-systematic-probes`, which rejects legacy runs that only refine
+  findings already proposed by the coarse pass.
 - [`scripts/check-real-model-readiness.cmd`](scripts/check-real-model-readiness.cmd)
   is the OOM-safe readiness launcher that bridges the mock artifact gate to
   real-model benchmarking. It calls the existing uv-managed
@@ -251,7 +256,9 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   underlying eval command exits 0. It also runs
   `scripts/verify-eval-artifacts.py` after review export; bounded smoke runs use
   `--limit` as the verification minimum, full runs default to 1000 cases, and
-  `--multi-pass` automatically adds `--require-multipass-trace`.
+  `--multi-pass` automatically adds `--require-multipass-trace`,
+  `--require-multipass-refinement`, and
+  `--require-ekg-systematic-probes`.
 - Latest OOM-fix verification:
   `data/eval/meeti-1000-mock-oomfix-20260702` ran 1000/1000 MEETI cases,
   exported review artifacts, and passed `scripts/verify-eval-artifacts.py
@@ -295,12 +302,13 @@ portable across OpenClaw releases.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
-- The desktop Settings dialog exposes AI Provider profiles, including
-  OpenRouter (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`) with
-  MiniMax M3 as the default OpenRouter model
-  (`openrouter/minimax/minimax-m3`). Saving a profile writes only the
-  app-managed OpenClaw provider/model sections and keeps secrets in environment
-  variables or `.env`, not in git.
+- The desktop Settings dialog exposes AI Provider profiles. The primary
+  `openai-vision` profile registers `openai/gpt-5.4-mini` as `text+image` over
+  the Responses API with its 400,000-token context; `openai-luna` remains an
+  explicit alternate profile. OpenRouter is also available through
+  `OPENROUTER_API_KEY` and `https://openrouter.ai/api/v1`. Saving a profile
+  writes only app-managed OpenClaw provider/model sections and keeps secrets in
+  environment variables or `.env`, not in git or experiment logs.
 - Long medical-image inference uses the app's explicit inference timeout rather
   than client-side WebSocket keepalive pings, preventing false 1011/keepalive
   failures while OpenClaw is waiting on a model response.
@@ -326,21 +334,23 @@ portable across OpenClaw releases.
   still has the key, OpenClaw runtime, 1000-case manifest, and mock artifacts
   ready, but blocks before Gateway startup with WinError 10013 socket permission
   denial.
-- Real-model update (2026-07-05): on a network where OpenRouter and Anthropic
+- Historical real-model evidence (2026-07-05): on a network where OpenRouter and Anthropic
   are firewall-reset, `api.openai.com` is reachable and `OPENAI_API_KEY` is
   valid. A MEETI single-case real run with `openai/gpt-5.5` + the
   `openai-vision` provider profile reached Gateway `connect` + `chat.send`,
   returned a schema-valid read, and passed strict/schema/bbox at 1.0
-  (`gateway_mode: real`). The runner default model is `openai/gpt-5.5`
-  (the `-mini` id is absent from the OpenAI catalog). Copilot subscription
-  models (e.g. MAI Flash) remain unusable as an API provider because they use
-  an OAuth device-token flow, not an API key.
+  (`gateway_mode: real`). That dated run used the then-current model profile;
+  the runner and Settings default are now `openai/gpt-5.4-mini`. Copilot
+  subscription models (e.g. MAI Flash) remain unusable as an API provider
+  because they use an OAuth device-token flow, not an API key.
 - Current experiment status (2026-08-04): the new paired
-  `openai/gpt-5.4-mini` image comparison was attempted but is blocked by
-  `credit_balance_exhausted` / `insufficient_quota`. No full single-pass versus
-  MultiPass versus MultiPass+ECGFounder accuracy claim is made until that run
-  completes. The independently reproducible ECGFounder waveform arm did finish
-  1,000/1,000 paired cases. See
+  `openai/gpt-5.4-mini` canary parsed an image-capable OpenClaw catalog row,
+  started the Gateway, attached one MEETI image (`promptImages=1`), and reached
+  OpenAI's `/v1/responses` endpoint. The provider then returned
+  `credit_balance_exhausted` / `insufficient_quota`, so no answer was scored.
+  No full single-pass versus MultiPass versus MultiPass+ECGFounder accuracy
+  claim is made until that paired run completes. The independently
+  reproducible ECGFounder waveform arm did finish 1,000/1,000 paired cases. See
   [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md).
 
 ### Core 4 — Minimal packaged executable
@@ -355,7 +365,9 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
   data), enables UPX, and builds a windowed (`console=False`) app.
 - [`scripts/stage-openclaw-runtime.ps1`](scripts/stage-openclaw-runtime.ps1)
   stages a *slim* OpenClaw runtime, dropping non-Windows native payloads and the
-  disabled UI / browser / voice plugins so only the Gateway surface ships.
+  disabled UI / browser / voice plugins so only the Gateway surface ships. It
+  also removes npm-package `.env*` development files; the packaged verifier
+  rejects any environment file that reaches the final bundle.
 - [`scripts/fetch-node.ps1`](scripts/fetch-node.ps1) downloads a portable
   `node\node.exe`; when present it is bundled and
   [`gateway_manager.py`](src/dicom_overlay/infrastructure/gateway_manager.py)

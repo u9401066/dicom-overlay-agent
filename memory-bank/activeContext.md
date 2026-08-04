@@ -1,5 +1,33 @@
 # Active Context
 
+## Session Update (2026-08-04, systematic harness + GPT-5.4 Mini + final bundle)
+
+- MultiPass now reserves bounded original-ROI EKG discovery turns for limb and
+  precordial regions, even when the coarse model emits no bbox. Trace artifacts
+  record planned/completed probe ids, crop source, tool receipts, and protocol
+  data; the production artifact gate rejects a MultiPass EKG run without both
+  completed probes. Current mock protocol digest is
+  `3083822c30d5e5c3f9efb36303b74edc595fd8c9001a81b8346293d812e887a0`.
+- Partial-credit aggregation now uses component-specific denominators and the
+  comparison report includes safety deltas plus paired sign tests. The current
+  six-case guardrail replay improves recorded MultiPass partial credit
+  0.596->0.678 and urgent recall 0/2->1/2, but n=6 and p=1.0 do not establish
+  significance. Raw model JSON is never mutated.
+- `openai-vision` now registers `openai/gpt-5.4-mini` as `text+image` over the
+  Responses API (400k context); Luna remains `openai-luna`. The transactional
+  canary reached a ready Gateway in 16.078 s, attached one MEETI image
+  (`promptImages=1`), and reached `/v1/responses`, then stopped on provider
+  `credit_balance_exhausted` / `insufficient_quota`. Static readiness explicitly
+  says `provider_transaction_tested=false`.
+- Final verification: full Ruff passed; OOM-safe unit+smoke is 666 passed with
+  one release-only skip; OpenClaw integration is 55/55; frozen bundle smoke is
+  2/2. Fresh EXE SHA-256 is
+  `B3066A365EB72F705EC49F4EFFB3E2B93A1C32D52BA218EB0C531F03F3B0B8D8`.
+- The 363.86 MiB bundle contains OpenClaw `2026.7.1-2`, Node `v24.18.0`, 51
+  skills, and runtime-loaded bbox/ECGFounder tools. Staging strips `.env*`, and
+  recursive scans found no environment file, Torch, checkpoint, MEETI,
+  waveform, sidecar, or experiment database content.
+
 ## Session Update (2026-08-04, coordinate-safe desktop + Pages + rebuild)
 
 - Fixed a real primary-screen-only defect across the capture-to-overlay path.
@@ -10,14 +38,14 @@
 - ROI setup, AI bbox projection, static region fallback, top-level report/chat
   placement, click QA, and manual annotation now share that display frame.
   `Severity.INFO` bboxes are intentionally drawn for uncertainty review.
-- Focused tests passed 87/87. Full OOM-safe suite is now 647 passed with one
-  release-only bundle skip; OpenClaw overlay integration is 54/54. A real Qt +
+- Focused tests passed 87/87. The then-current OOM-safe suite was 647 passed with
+  one release-only bundle skip; OpenClaw overlay integration was 54/54. A real Qt +
   Win32 probe found a `1222x836` window and an exactly matching `1222x836` mss
   capture on the current 150% display.
 - Added a synthetic-only GitHub Pages site under `site/` and a current official
   Pages workflow. Playwright passed at 1440x900 and 390x844 with no overflow,
   missing media, or console errors; mobile menu and evidence navigation work.
-- Rebuilt the portable app after the coordinate fix. Fresh SHA-256:
+- Rebuilt the portable app after the coordinate fix. Superseded SHA-256:
   `C44DA431AA5D1BFC72D943B3835BFC6A403BD426B483F9661B5FA17266383F66`.
   Bundle verifier status is `ok`; OpenClaw `2026.7.1-2`, Node `v24.18.0`, 51
   skills, total 363.86 MiB. Real frozen-EXE opt-in smoke passed 2/2.

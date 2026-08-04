@@ -2,6 +2,26 @@
 
 ## Done
 
+- **Systematic MultiPass harness, GPT-5.4 Mini canary, and final bundle**
+  (2026-08-04):
+  - Added mandatory, bounded original-ROI EKG limb/precordial discovery probes,
+    trace/provenance fields, artifact gates, and UI process-trace visibility.
+  - Corrected component-specific partial-credit denominators, safety comparison
+    metrics, paired sign tests, and derived guardrail replay provenance. The
+    six-case replay moves partial credit 0.596->0.678 and urgent recall
+    0/2->1/2, but p=1.0 remains explicitly non-significant.
+  - Registered `openai/gpt-5.4-mini` as an image-capable Responses API profile.
+    A real one-image canary reached the provider with `promptImages=1`, then was
+    correctly recorded as blocked by exhausted provider credits; no answer or
+    full three-arm accuracy claim was fabricated.
+  - Full repository Ruff passed. OOM-safe unit+smoke: 666 passed plus one
+    release-only skip. OpenClaw integration: 55 passed. Frozen bundle: 2 passed.
+  - Final portable EXE SHA-256:
+    `B3066A365EB72F705EC49F4EFFB3E2B93A1C32D52BA218EB0C531F03F3B0B8D8`;
+    manifest `ok`, 363.86 MiB, OpenClaw `2026.7.1-2`, Node `v24.18.0`, both
+    native tools runtime-loaded. Build staging now strips `.env*`; recursive
+    sensitive-content scan is empty.
+
 - **Monitor-bound coordinates, GitHub Pages, and fresh desktop bundle**
   (2026-08-04):
   - Replaced primary-screen DPR assumptions with Win32 physical display lookup,
@@ -9,14 +29,14 @@
     mapping, and physical-edge round-trip calibration.
   - Fixed uncertain `INFO` bbox suppression; uncertain reviewer questions can
     now remain visible and clickable while normal findings stay report-only.
-  - Verified focused coordinate/UI paths 87/87, default unit+smoke 647 passed,
-    OpenClaw integration 54/54, and frozen bundle smoke 2/2.
+  - Verified focused coordinate/UI paths 87/87, then-current unit+smoke 647,
+    then-current OpenClaw integration 54/54, and frozen bundle smoke 2/2.
   - Real GUI probe: Win32 viewer `1222x836`, mss PNG `1222x836`, display
     physical `2560x1600`, Qt logical `1707x1067`.
   - Added `site/`, synthetic ECG media, Pages deployment workflow, and four site
     smoke assertions. Playwright desktop/mobile QA passed with zero console
     errors or horizontal overflow.
-  - Fresh bundle: SHA-256
+  - Superseded bundle from the coordinate-only checkpoint: SHA-256
     `C44DA431AA5D1BFC72D943B3835BFC6A403BD426B483F9661B5FA17266383F66`;
     launcher 6.90 MiB, app 94.58 MiB, OpenClaw 181.03 MiB, Node 88.25 MiB,
     total 363.86 MiB. Manifest status `ok`.
@@ -44,10 +64,10 @@
     bounded cold plugin-inspection timeout. Packaged verifier is `ok`, real EXE
     self-check smoke is 2/2, OpenClaw is `2026.7.1-2`, Node is `v24.18.0`, and
     total size is 363.86 MiB. No Torch/checkpoint/sidecar/MEETI files are bundled.
-  - Final OOM-safe suite: 47 isolated batches, 636 passed and 1 default-skipped
+  - Then-current OOM-safe suite: 47 isolated batches, 636 passed and 1 default-skipped
     opt-in bundle smoke (run separately and passed). All 76 changed Python files
-    pass Ruff; full-repo Ruff still exposes 26 unrelated pre-existing findings
-    in old dataset/hook/input-guard files.
+    passed changed-file Ruff; the 26 pre-existing full-repo findings were later
+    cleaned up by the final 2026-08-04 verification pass.
   - New end-to-end OpenClaw image experiments remain blocked by OpenAI account
     credits; provider quota failure is recorded as blocked, never scored as an
     image-model answer.

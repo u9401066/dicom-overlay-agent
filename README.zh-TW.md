@@ -12,15 +12,20 @@
 
 - Win32 實體像素與 Qt 目標螢幕邏輯像素已改用同一個 per-display frame；
   負座標副螢幕、mixed-DPI、實際 capture rect 保存與 bbox edge round-trip 都有測試。
-- OOM-safe unit + smoke suite 為 647 passed；OpenClaw overlay integration 為
-  54 passed；重建後真實 EXE bundle smoke 為 2 passed。
+- OOM-safe unit + smoke suite 為 666 passed（另 1 個 release-only skip）；
+  OpenClaw overlay integration 為 55 passed；重建後真實 EXE bundle smoke
+  為 2 passed，整個 repo 的 Ruff 也已全數通過。
 - 官方 checkpoint 的 ECGFounder paired waveform arm 已完成 MEETI 1,000/1,000；
   全部仍標記為 uncalibrated supporting evidence，不會產生影像 bbox。
-- 新的 `openai/gpt-5.4-mini` 三組影像對照被 provider
-  `credit_balance_exhausted` / `insufficient_quota` 阻擋；在真正完成前不宣稱
+- `openai/gpt-5.4-mini` 已在 OpenClaw catalog 登記為 `text+image`；真實
+  canary 成功啟動 Gateway、附上一張 MEETI 圖（`promptImages=1`）並抵達
+  OpenAI Responses API，之後才被 provider 的
+  `credit_balance_exhausted` / `insufficient_quota` 阻擋。在真正完成前不宣稱
   single-pass、MultiPass、MultiPass+ECGFounder 的完整準確率。
 - 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
-  363.86 MiB。詳見
+  363.86 MiB，EXE SHA-256 為
+  `B3066A365EB72F705EC49F4EFFB3E2B93A1C32D52BA218EB0C531F03F3B0B8D8`。
+  封裝掃描確認沒有 `.env*`、Torch、checkpoint、MEETI、sidecar 或實驗資料。詳見
   [`docs/verification-2026-08-04.md`](docs/verification-2026-08-04.md)。
 
 ## 2026-07-02 real-model smoke 狀態
@@ -55,13 +60,14 @@
   OpenClaw 無法取得 OpenRouter model capabilities/pricing 或呼叫
   `minimax/minimax-m3`，所以 experiment 正確標為 `completed_with_failures`、
   exit 1。這不是 bbox/schema harness 通過，而是環境網路出口待處理。
-- 2026-07-05 real-model 更新：在 OpenRouter 與 Anthropic 被防火牆 reset 的
+- 2026-07-05 歷史 real-model 證據：在 OpenRouter 與 Anthropic 被防火牆 reset 的
   網路下，`api.openai.com` 可通且 `OPENAI_API_KEY` 有效。以 `openai/gpt-5.5`
   ＋ `openai-vision` provider profile 跑 MEETI 單題真實批次，走到 Gateway
   `connect` + `chat.send`、回傳 schema-valid 判讀，strict/schema/bbox 皆
-  1.0（`gateway_mode: real`）。runner 預設模型改為 `openai/gpt-5.5`
-  （`-mini` id 不在 OpenAI catalog）。Copilot 訂閱模型（如 MAI Flash）走
-  OAuth device-token，不是 API key，無法當 API provider。
+  1.0（`gateway_mode: real`）。該次使用當時的模型設定；目前 runner 與
+  Settings 的 `openai-vision` 預設已改為 image-capable
+  `openai/gpt-5.4-mini`，另保留 `openai-luna` 作為明確選項。Copilot 訂閱模型
+  （如 MAI Flash）走 OAuth device-token，不是 API key，無法當 API provider。
 - 2026-07-05 臨床準確度強化：EKG skill 新增 **Step 0 導極定位**（保持通用，
   「宣告不假設」：讀印在圖上的導極標籤、只登記實際可見的導極、無標籤標
   `unknown`），並把 lead-dependent 結論（STEMI 定位／axis／R 波進展／腔室
@@ -110,7 +116,8 @@
 
 ## 2026-07-02 維護狀態
 
-- 本機 OpenClaw runtime 已更新並驗證到 `2026.6.11`；仍只透過 Gateway
+- 2026-07-02 當時的本機 OpenClaw runtime 已驗證到 `2026.6.11`；目前封裝版為
+  `2026.7.1-2`，仍只透過 Gateway
   `connect` + `chat.send` 與 OpenClaw 溝通，不匯入 OpenClaw plugin SDK
   內部 API。
 - 桌面版 Settings 的 AI Provider 分頁支援 OpenRouter：

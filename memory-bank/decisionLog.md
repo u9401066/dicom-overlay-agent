@@ -41,6 +41,9 @@
 | 2026-08-04 | Overlay 座標改用 monitor-bound physical/logical frame | Win32/mss 與 Qt 使用不同座標系，primary DPR 無法處理負座標或 mixed-DPI。保存實際 `last_capture_rect`，以完整 Win32/Qt display bounds 做 X/Y edge 映射及 round-trip audit；bbox、static region、點框 QA、人工框選共用同一 original ROI frame。 |
 | 2026-08-04 | 公開網站只用 synthetic ECG 與已驗證數字 | 不把 MEETI 病例衍生圖直接發布，也不以未完成的 MLLM JSON 宣稱準確率。GitHub Pages 明列 quota blocker、ECGFounder 未校準邊界與人工最終決策。 |
 | 2026-08-04 | 現行 bundle 不宣稱 Windows 7 相容 | Python 3.13、PyQt6、Node 24 與最新 OpenClaw 無可信 Windows 7 支援路徑。Win7 若成為硬需求，必須是獨立 legacy runtime/bundle 與安全維護策略，不能假裝目前 EXE 已驗證。 |
+| 2026-08-04 | MultiPass EKG 必須保留系統化 discovery turns | 只 crop coarse pass 已找到的 bbox 無法改善漏診；在 bounded budget 內固定從 original ROI 探查 limb/precordial 區，並以 trace/artifact gate 證明實際有跑，才符合 repo 的多輪核心。 |
+| 2026-08-04 | GPT-5.4 Mini readiness 與 provider transaction 分開記錄 | model metadata/key/manifest 可證明可設定，但不能證明付費 API 真能回答。`openai-vision` 明確宣告 `text+image`；只有送出真圖並取得 provider response 才算 canary，額度失敗必須標 blocked。 |
+| 2026-08-04 | Portable build 剔除並禁止所有 `.env*` | npm 相依可能夾帶開發用環境檔；即使內容無 secret 也不應出貨。staging 主動移除，packaged verifier 再 fail-closed，避免使用人工清單判斷。 |
 
 ---
 
