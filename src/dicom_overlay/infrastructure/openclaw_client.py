@@ -967,7 +967,7 @@ class OpenClawClient(VisionAnalyzerService):
         for warning in parse_warnings:
             if warning not in incomplete_reasons:
                 incomplete_reasons.append(warning)
-        incomplete = bool(payload.get("incomplete", False)) or bool(
+        incomplete = _coerce_bool(payload.get("incomplete", False)) or bool(
             incomplete_reasons or parse_warnings
         )
         return AnalysisResult(
@@ -983,6 +983,9 @@ class OpenClawClient(VisionAnalyzerService):
             incomplete=incomplete,
             incomplete_reasons=incomplete_reasons,
             validation_warnings=parse_warnings,
+            zoom_hints=_coerce_string_list(payload.get("zoom_hints", [])),
+            review_required=_coerce_bool(payload.get("review_required", False)),
+            review_reasons=_coerce_string_list(payload.get("review_reasons", [])),
             layout=layout if isinstance(layout, dict) else {},
         )
 
@@ -997,6 +1000,20 @@ def _parse_severity(s: str) -> Severity:
 def _parse_confidence(value: object) -> str:
     confidence = str(value or "").strip().lower()
     return confidence if confidence in {"high", "moderate", "low"} else ""
+
+
+def _coerce_bool(raw: object) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, int) and raw in {0, 1}:
+        return bool(raw)
+    if isinstance(raw, str):
+        normalized = raw.strip().lower()
+        if normalized in {"true", "yes", "1"}:
+            return True
+        if normalized in {"false", "no", "0", ""}:
+            return False
+    return False
 
 
 def _coerce_string_list(raw: object) -> list[str]:

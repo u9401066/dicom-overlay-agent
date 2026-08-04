@@ -57,6 +57,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--require-ekg-systematic-probes",
+        action="store_true",
+        help=(
+            "Require every EKG result to record a planned and completed "
+            "layout-derived discovery crop from the original ROI."
+        ),
+    )
+    parser.add_argument(
         "--require-projection-audit",
         action="store_true",
         help=(
@@ -74,6 +82,7 @@ def main() -> int:
         require_perfect_mock=not args.allow_nonperfect_real,
         require_multipass_trace=args.require_multipass_trace,
         require_multipass_refinement=args.require_multipass_refinement,
+        require_ekg_systematic_probes=args.require_ekg_systematic_probes,
         require_projection_audit=args.require_projection_audit,
     )
     print(verification.to_json())

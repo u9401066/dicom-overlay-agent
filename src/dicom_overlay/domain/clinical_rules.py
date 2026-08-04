@@ -628,6 +628,54 @@ _BUILTIN_RULES: tuple[ClinicalRule, ...] = (
         escalate_to=Severity.CRITICAL,
     ),
     ClinicalRule(
+        id="ekg-uncertain-acute-injury-with-st-elevation-triage",
+        modality="EKG",
+        description=(
+            "A non-normal ST-elevation axis and an unresolved acute ischemic or "
+            "myocardial-injury differential are both present while triage remains "
+            "below critical. Diagnostic uncertainty is preserved while urgent "
+            "expert review is required."
+        ),
+        conditions=(
+            RuleCondition(
+                field="checklist.st_segment",
+                op="contains_any",
+                values=("elevat", "ste ", "st elevation", "抬高", "上升"),
+            ),
+            RuleCondition(
+                field="checklist.st_segment.status",
+                op="severity_at_least",
+                value="warning",
+            ),
+            RuleCondition(
+                field="all_text",
+                op="contains_any_non_negated",
+                values=(
+                    "acute anterior injury",
+                    "acute myocardial injury",
+                    "acute injury pattern",
+                    "acute ischemia",
+                    "acute coronary occlusion",
+                    "急性心肌損傷",
+                    "急性缺血",
+                ),
+            ),
+            RuleCondition(field="severity", op="severity_at_most", value="warning"),
+        ),
+        message=(
+            "異常 ST 段抬高且未排除急性缺血/心肌損傷，保留不確定診斷並升級為急症人工複核"
+        ),
+        guideline="2025 ACC/AHA ACS; 2023 ESC ACS",
+        guideline_version="2025/2023",
+        effective_date="2025-02-27",
+        source_url=(
+            "https://professional.heart.org/en/science-news/"
+            "2025-guideline-for-the-management-of-patients-with-"
+            "acute-coronary-syndromes"
+        ),
+        escalate_to=Severity.CRITICAL,
+    ),
+    ClinicalRule(
         id="cxr-pneumothorax-undercall",
         modality="CXR",
         description=(

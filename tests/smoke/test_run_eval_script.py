@@ -648,6 +648,7 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     ]
     assert protocol["flags"]["single_pass_bbox_calibrator"] == ("calibrate_ekg_bboxes")
     assert protocol["flags"]["multi_pass_bbox_calibrator"] == ("calibrate_ekg_bboxes")
+    assert protocol["flags"]["multi_pass_max_ekg_systematic_probes"] == 2
     assert protocol["flags"]["refinement_crop_source"] == "original_roi"
     assert protocol["flags"]["rhythm_strip_pass"] is False
     assert result["protocol_digest"] == fingerprint["protocol_digest"]

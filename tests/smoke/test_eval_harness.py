@@ -354,7 +354,10 @@ def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
     assert raw["incomplete_reasons"] == ["Calibration marker is not visible."]
     assert raw["validation_warnings"] == ["Synthetic validator warning"]
     assert raw["review_required"] is True
-    assert raw["review_reasons"] == ["Low-confidence rhythm classification."]
+    assert raw["review_reasons"] == [
+        "Low-confidence rhythm classification.",
+        "Incomplete analysis requires human review",
+    ]
     assert raw["analysis_trace"][0]["tool"] == "crop_region_base64"
 
 
@@ -768,19 +771,34 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert report.mean_partial_credit == 1.0
     assert report.partial_credit_breakdown["keyword_recall"] == 1.0
     assert report.partial_credit_breakdown["negative_recall"] == 1.0
+    assert report.partial_credit_component_counts == {
+        "severity_abnormal": 2,
+        "severity_exact": 2,
+        "keyword_recall": 1,
+        "concept_f1": 2,
+        "negative_recall": 0,
+        "concept_precision": 2,
+        "concept_recall": 1,
+        "false_positive_penalty": 2,
+        "urgent_concern_recall": 0,
+    }
     assert (
         report.partial_credit_breakdown["negative_recall"]
         == report.mean_negative_recall
     )
     assert report.mean_concept_precision == 1.0
     assert report.mean_concept_recall == 1.0
+    assert report.concept_recall_scorable_count == 1
     assert report.mean_concept_f1 == 1.0
     scorecard = json.loads((out / "scorecard.json").read_text(encoding="utf-8"))
     assert scorecard["gateway_mode"] == "mock"
     assert "mean_negative_recall" in scorecard
     assert scorecard["mean_concept_precision"] == 1.0
     assert scorecard["mean_concept_recall"] == 1.0
+    assert scorecard["concept_recall_scorable_count"] == 1
     assert scorecard["mean_concept_f1"] == 1.0
+    assert scorecard["partial_credit_component_counts"]["keyword_recall"] == 1
+    assert scorecard["partial_credit_component_counts"]["negative_recall"] == 0
     assert scorecard["mean_false_positive_penalty"] == 0.0
     assert scorecard["cases"][0]["concept_false_positives"] == []
     assert scorecard["cases"][0]["concept_f1"] == 1.0
@@ -795,6 +813,59 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert partial["manifest_total"] == 2
     assert partial["result_count"] == 2
     assert partial["is_partial"] is False
+
+
+async def test_component_aggregates_exclude_unscorable_reference_dimensions(
+    tmp_path: Path,
+) -> None:
+    asserted_normal = _case(
+        tmp_path,
+        Severity.NORMAL,
+        (),
+        negatives=("no ischemia",),
+        name="asserted_normal",
+    )
+    unlabeled_abnormal = EvalCase(
+        image_path=tmp_path / "unlabeled_abnormal.png",
+        modality=Modality.EKG,
+        expected_severity=Severity.WARNING,
+        expected_keywords=(),
+        label_status="asserted",
+        label="unlabeled_abnormal",
+    )
+    unlabeled_abnormal.image_path.write_bytes(b"\x89PNG\r\n")
+    answers = {
+        asserted_normal.image_path: _complete_result(
+            Severity.NORMAL,
+            summary="No ischemia.",
+        ),
+        unlabeled_abnormal.image_path: _complete_result(
+            Severity.CRITICAL,
+            summary="Abnormal tracing.",
+        ),
+    }
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        return answers[case.image_path]
+
+    report = await run_evaluation(
+        [asserted_normal, unlabeled_abnormal],
+        analyze,
+        output_dir=tmp_path / "component_counts",
+        gateway_mode="mock",
+    )
+
+    abnormal_score = next(
+        score for score in report.cases if score.case_label == "unlabeled_abnormal"
+    )
+    assert abnormal_score.false_positive_scorable is False
+    assert abnormal_score.partial_credit == 0.6
+    assert report.partial_credit_component_counts["concept_f1"] == 1
+    assert report.partial_credit_component_counts["concept_recall"] == 0
+    assert report.concept_recall_scorable_count == 0
+    assert report.mean_concept_recall == 0.0
+    assert report.partial_credit_component_counts["negative_recall"] == 1
+    assert report.partial_credit_breakdown["negative_recall"] == 1.0
 
 
 async def test_run_evaluation_collects_case_metadata_after_analysis(
@@ -1189,6 +1260,101 @@ def test_urgent_stemi_concern_accepts_critical_hyperacute_ischemia(
     assert score.urgent_concern_hits == ["STEMI"]
     assert score.urgent_concern_missed == []
     assert score.urgent_concern_recall == 1.0
+
+
+def test_urgent_stemi_concern_accepts_uncertain_injury_with_st_elevation(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_acute_injury",
+        urgent_concerns=("STEMI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Anterior precordial ST-T abnormality requires urgent review.",
+        checklist={
+            "st_segment": ChecklistItem(
+                value="ST elevation in V2-V4",
+                status=Severity.WARNING,
+            ),
+            "stemi_pattern": ChecklistItem(
+                value="absent",
+                status=Severity.NORMAL,
+            ),
+        },
+    )
+    result.findings = [
+        Finding(
+            id="f1",
+            regions=["lead_V2", "lead_V3", "lead_V4"],
+            label="Anterior precordial ST-T abnormality",
+            detail=(
+                "Early repolarization versus acute anterior injury cannot be "
+                "resolved from the screenshot alone."
+            ),
+            severity=Severity.WARNING,
+            confidence="low",
+            question="Can acute injury be excluded on the source ECG?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == ["STEMI"]
+    assert score.urgent_concern_missed == []
+    assert score.urgent_concern_recall == 1.0
+
+
+def test_urgent_injury_phrase_requires_structured_st_elevation(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_injury_without_st_elevation",
+        urgent_concerns=("STEMI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible acute myocardial injury requires correlation.",
+        checklist={
+            "st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)
+        },
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == []
+    assert score.urgent_concern_missed == ["STEMI"]
+
+
+def test_urgent_injury_phrase_rejects_negated_injury(tmp_path: Path) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="negated_urgent_injury",
+        urgent_concerns=("STEMI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="ST elevation is present with no acute myocardial injury.",
+        checklist={
+            "st_segment": ChecklistItem(
+                value="ST elevation in V2-V4",
+                status=Severity.WARNING,
+            )
+        },
+    )
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == []
+    assert score.urgent_concern_missed == ["STEMI"]
 
 
 def test_urgent_concern_rejects_negation_and_unqualified_certainty(

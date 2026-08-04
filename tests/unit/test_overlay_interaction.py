@@ -57,7 +57,32 @@ def _result() -> AnalysisResult:
                 "status": "completed",
                 "tool": "openclaw_vision_analysis",
                 "tools": ["dicom_bbox_validate"],
-            }
+            },
+            {
+                "stage": "systematic_assist",
+                "status": "planned",
+                "tool": "ekg_layout_lead_group_probes",
+                "probes": [
+                    {
+                        "target_id": "ekg_systematic_precordial_leads",
+                        "crop_region": {"x": 0.0, "y": 0.5, "w": 1.0, "h": 0.5},
+                    }
+                ],
+            },
+            {
+                "stage": "refine",
+                "status": "completed",
+                "tool": "crop_region_base64",
+                "target_id": "ekg_systematic_precordial_leads",
+                "crop_source": "original_roi",
+                "tool_audit": [
+                    {
+                        "tool": "dicom_bbox_validate",
+                        "accepted_count": 2,
+                        "rejected_count": 0,
+                    }
+                ],
+            },
         ],
     )
 
@@ -78,6 +103,13 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     process = panel._process_layout.itemAt(0).widget()
     assert process is not None
     assert "dicom_bbox_validate" in process.text()
+    systematic = panel._process_layout.itemAt(1).widget()
+    assert systematic is not None
+    assert "ekg_systematic_precordial_leads" in systematic.text()
+    refined = panel._process_layout.itemAt(2).widget()
+    assert refined is not None
+    assert "Source: original_roi" in refined.text()
+    assert "accepted=2" in refined.text()
     panel.close()
 
 

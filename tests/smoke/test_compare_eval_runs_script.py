@@ -54,6 +54,10 @@ def _scorecard(
             "cant_miss": [],
             "cant_miss_caught": True,
             "cant_miss_missed": [],
+            "urgent_concerns": [],
+            "urgent_concern_hits": [],
+            "urgent_concern_missed": [],
+            "concept_false_positives": [],
         }
     ]
     if errored_extra_case:
@@ -153,8 +157,28 @@ def test_build_comparison_pairs_cases_and_records_improvement(tmp_path: Path) ->
         "regressed": 0,
         "unchanged": 0,
     }
+    assert report["safety_case_status_counts"] == {
+        "improved": 0,
+        "regressed": 0,
+        "unchanged": 1,
+    }
     assert report["candidate_cost"]["mean_openclaw_analyze_calls"] == 3.0
     assert report["cases"][0]["status"] == "improved"
+    assert report["cases"][0]["safety_status"] == "unchanged"
+    assert report["clinical_safety"]["abnormal_detection"] == {
+        "pairs": 1,
+        "baseline_hits": 1,
+        "candidate_hits": 1,
+        "baseline_rate": 1.0,
+        "candidate_rate": 1.0,
+        "rate_delta": 0.0,
+        "paired_exact_test": {
+            "improved": 0,
+            "regressed": 0,
+            "informative_pairs": 0,
+            "two_sided_p": 1.0,
+        },
+    }
 
 
 def test_resolve_eval_dir_accepts_experiment_root(tmp_path: Path) -> None:
@@ -278,3 +302,66 @@ def test_paired_sign_test_quantifies_improvement_signal() -> None:
         "informative_pairs": 5,
         "two_sided_p": 0.0625,
     }
+
+
+def test_clinical_safety_reports_normal_false_positives_and_urgent_regression(
+    tmp_path: Path,
+) -> None:
+    module = _load_compare_module()
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    baseline_payload = _scorecard(1.0, strict=True, latency_ms=1)
+    candidate_payload = _scorecard(1.0, strict=True, latency_ms=1)
+
+    baseline_case = baseline_payload["cases"][0]
+    candidate_case = candidate_payload["cases"][0]
+    for case in (baseline_case, candidate_case):
+        case["expected_severity"] = "normal"
+        case["actual_severity"] = "normal"
+        case["severity_match"] = True
+        case["severity_abnormal_match"] = True
+    candidate_case["concept_false_positives"] = ["atrial fibrillation"]
+
+    urgent_baseline = {
+        **baseline_case,
+        "case_label": "urgent",
+        "expected_severity": "critical",
+        "actual_severity": "critical",
+        "severity_match": True,
+        "severity_abnormal_match": True,
+        "urgent_concerns": ["STEMI"],
+        "urgent_concern_hits": ["STEMI"],
+        "urgent_concern_missed": [],
+    }
+    urgent_candidate = {
+        **urgent_baseline,
+        "actual_severity": "warning",
+        "severity_match": False,
+        "urgent_concern_hits": [],
+        "urgent_concern_missed": ["STEMI"],
+    }
+    baseline_payload["cases"].append(urgent_baseline)
+    candidate_payload["cases"].append(urgent_candidate)
+    for payload in (baseline_payload, candidate_payload):
+        payload["total"] = 2
+        payload["scored"] = 2
+
+    baseline.write_text(json.dumps(baseline_payload), encoding="utf-8")
+    candidate.write_text(json.dumps(candidate_payload), encoding="utf-8")
+    report = module.build_comparison(baseline, candidate)
+    safety = report["clinical_safety"]
+
+    assert safety["normal_without_false_positive"]["baseline_false_positive_rate"] == 0.0
+    assert safety["normal_without_false_positive"]["candidate_false_positive_rate"] == 1.0
+    assert safety["critical_exact_recall"]["rate_delta"] == -1.0
+    assert safety["urgent_concern_recall"]["baseline_hits"] == 1
+    assert safety["urgent_concern_recall"]["candidate_hits"] == 0
+    assert safety["urgent_concern_recall"]["paired_exact_test"]["two_sided_p"] == 1.0
+    assert report["safety_case_status_counts"] == {
+        "improved": 0,
+        "regressed": 2,
+        "unchanged": 0,
+    }
+    urgent_row = next(row for row in report["cases"] if row["case"] == "urgent")
+    assert urgent_row["safety_status"] == "regressed"
+    assert urgent_row["safety_hit_delta"] == -2

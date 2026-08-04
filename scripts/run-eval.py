@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -39,6 +40,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer  # noqa: E402
 from dicom_overlay.application.multi_pass import (  # noqa: E402
+    DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
     MultiPassAnalyzer,
     MultiPassInterpreter,
 )
@@ -672,7 +674,7 @@ def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
         if case.expected_severity in (Severity.WARNING, Severity.CRITICAL):
             checklist["lungs"] = {"value": "consolidation", "status": "warning"}
     summary = f"{case.modality.value}: {detail}"
-    return {
+    payload = {
         "modality": case.modality.value,
         "summary": summary,
         "severity": case.expected_severity.value,
@@ -680,6 +682,35 @@ def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
         "findings": findings,
         "checklist": checklist,
     }
+    if case.modality is Modality.EKG:
+        lead_names = [
+            "lead_I",
+            "lead_II",
+            "lead_III",
+            "lead_aVR",
+            "lead_aVL",
+            "lead_aVF",
+            "lead_V1",
+            "lead_V2",
+            "lead_V3",
+            "lead_V4",
+            "lead_V5",
+            "lead_V6",
+        ]
+        payload["layout"] = {
+            "format": "12lead_12x1",
+            "rhythm_strip_leads": [],
+            "rhythm_strip_bbox": None,
+            "leads": [
+                {
+                    "name": name,
+                    "label_visible": True,
+                    "bbox": [0.0, index / 12.0, 1.0, 1.0 / 12.0],
+                }
+                for index, name in enumerate(lead_names)
+            ],
+        }
+    return payload
 
 
 class _MockGateway:
@@ -689,6 +720,7 @@ class _MockGateway:
         self._payloads = payloads
         self._index = 0
         self._server: Any = None
+        self._current_payload: dict[str, Any] | None = None
         self.url = ""
 
     async def __aenter__(self) -> _MockGateway:
@@ -736,8 +768,34 @@ class _MockGateway:
                     }
                 )
             )
-            payload = self._payloads[min(self._index, len(self._payloads) - 1)]
-            self._index += 1
+            prompt = str(chat.get("params", {}).get("message", ""))
+            if "verification turn" in prompt:
+                if '"coarse_hypothesis": null' in prompt:
+                    payload = {"deltas": []}
+                else:
+                    target_match = re.search(
+                        r'"coarse_hypothesis":\s*\{.*?"id":\s*"([^"]+)"',
+                        prompt,
+                        re.DOTALL,
+                    )
+                    target_id = target_match.group(1) if target_match else "f1"
+                    payload = {
+                        "deltas": [
+                            {
+                                "action": "confirm",
+                                "target_id": target_id,
+                                "rationale": "Mock crop preserves the coarse finding.",
+                            }
+                        ]
+                    }
+            elif "final report-reconciliation turn" in prompt:
+                payload = self._current_payload or self._payloads[
+                    min(self._index, len(self._payloads) - 1)
+                ]
+            else:
+                payload = self._payloads[min(self._index, len(self._payloads) - 1)]
+                self._current_payload = payload
+                self._index += 1
             await ws.send(
                 json.dumps(
                     {
@@ -886,6 +944,7 @@ def _build_multi_pass_analyzer(
     *,
     cropper: Any,
     max_zoom_targets: int,
+    max_ekg_systematic_probes: int = DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
 ) -> tuple[MultiPassAnalyzer, _CountingAnalyzer]:
     counter = _CountingAnalyzer(inner)
     interpreter = MultiPassInterpreter(
@@ -893,6 +952,7 @@ def _build_multi_pass_analyzer(
         cropper=cropper,
         bbox_calibrator=calibrate_ekg_bboxes,
         max_zoom_targets=max_zoom_targets,
+        max_ekg_systematic_probes=max_ekg_systematic_probes,
     )
     return MultiPassAnalyzer(inner=counter, interpreter=interpreter), counter
 
@@ -933,6 +993,7 @@ async def _run(
     *,
     multi_pass: bool,
     multi_pass_max_targets: int,
+    multi_pass_max_ekg_systematic_probes: int,
     partial_scorecard_interval: int,
     rhythm_strip_pass: bool = True,
     ecg_founder_waveform_evidence: bool = False,
@@ -962,6 +1023,9 @@ async def _run(
                 client,
                 cropper=cropper,
                 max_zoom_targets=multi_pass_max_targets,
+                max_ekg_systematic_probes=(
+                    multi_pass_max_ekg_systematic_probes
+                ),
             )
             analyzer = _wrap_with_app_hooks(
                 multi_pass_analyzer,
@@ -1018,6 +1082,7 @@ async def _run(
                 if artifact_id
                 else nullcontext()
             )
+            result = None
             try:
                 with evidence_context:
                     result = await _invoke()
@@ -1034,9 +1099,35 @@ async def _run(
                 if multi_pass and counter:
                     calls = counter.analyze_calls - before_calls
                     crops = crop_calls - before_crops
+                    result_trace = (
+                        result.analysis_trace
+                        if result is not None
+                        and isinstance(result.analysis_trace, list)
+                        else []
+                    )
+                    systematic_targets = [
+                        str(probe.get("target_id"))
+                        for event in result_trace
+                        if isinstance(event, dict)
+                        and event.get("stage") == "systematic_assist"
+                        and isinstance(event.get("probes"), list)
+                        for probe in event["probes"]
+                        if isinstance(probe, dict) and probe.get("target_id")
+                    ]
+                    systematic_completed = [
+                        str(event.get("target_id"))
+                        for event in result_trace
+                        if isinstance(event, dict)
+                        and event.get("stage") == "refine"
+                        and event.get("status") == "completed"
+                        and str(event.get("target_id", "")).startswith(
+                            "ekg_systematic_"
+                        )
+                    ]
                     trace = {
                         "case": case.label or case.image_path.name,
                         "image": case.image_path.name,
+                        "modality": case.modality.value,
                         "model_path": "MultiPassAnalyzer",
                         "openclaw_analyze_calls": calls,
                         "coarse_passes": coarse_invocations,
@@ -1046,6 +1137,15 @@ async def _run(
                         "source_size_px": list(image_payload.source_size_px),
                         "coarse_size_px": list(image_payload.coarse_size_px),
                         "max_zoom_targets": multi_pass_max_targets,
+                        "max_ekg_systematic_probes": (
+                            multi_pass_max_ekg_systematic_probes
+                        ),
+                        "ekg_systematic_probe_count": len(systematic_targets),
+                        "ekg_systematic_completed_count": len(
+                            systematic_completed
+                        ),
+                        "ekg_systematic_probe_targets": systematic_targets,
+                        "ekg_systematic_completed_targets": systematic_completed,
                         "local_candidate_count": len(local_candidate_regions),
                         "local_candidate_regions": [
                             {
@@ -1545,6 +1645,15 @@ def main() -> int:
         help="Maximum abnormal findings to crop/refine per image in --multi-pass mode.",
     )
     parser.add_argument(
+        "--multi-pass-max-ekg-systematic-probes",
+        type=int,
+        default=DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
+        help=(
+            "Maximum layout-derived EKG discovery probes within the total "
+            "--multi-pass-max-targets budget."
+        ),
+    )
+    parser.add_argument(
         "--rhythm-strip-pass",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1687,6 +1796,9 @@ def main() -> int:
                 "max_image_edge_px": _MAX_IMAGE_EDGE_PX,
                 "multi_pass": bool(args.multi_pass),
                 "multi_pass_max_targets": args.multi_pass_max_targets,
+                "multi_pass_max_ekg_systematic_probes": (
+                    args.multi_pass_max_ekg_systematic_probes
+                ),
                 "multi_pass_bbox_calibrator": "calibrate_ekg_bboxes",
                 "refinement_crop_source": "original_roi",
                 "partial_scorecard_interval": args.partial_scorecard_interval,
@@ -1748,6 +1860,9 @@ def main() -> int:
                 args.timeout_sec,
                 multi_pass=args.multi_pass,
                 multi_pass_max_targets=args.multi_pass_max_targets,
+                multi_pass_max_ekg_systematic_probes=(
+                    args.multi_pass_max_ekg_systematic_probes
+                ),
                 partial_scorecard_interval=args.partial_scorecard_interval,
                 rhythm_strip_pass=args.rhythm_strip_pass,
                 ecg_founder_waveform_evidence=(

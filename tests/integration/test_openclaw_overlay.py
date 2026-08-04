@@ -190,6 +190,9 @@ class TestParseResult:
             "next_steps": ["Review lead II at source resolution."],
             "incomplete": True,
             "incomplete_reasons": ["Lead V6 label is cropped."],
+            "zoom_hints": ["Zoom lead II at source resolution."],
+            "review_required": True,
+            "review_reasons": ["Lead II morphology remains uncertain."],
             "findings": [
                 {
                     "id": "f1",
@@ -218,6 +221,9 @@ class TestParseResult:
         assert result.next_steps == ["Review lead II at source resolution."]
         assert result.incomplete is True
         assert result.incomplete_reasons == ["Lead V6 label is cropped."]
+        assert result.zoom_hints == ["Zoom lead II at source resolution."]
+        assert result.review_required is True
+        assert result.review_reasons == ["Lead II morphology remains uncertain."]
         assert len(result.findings) == 1
 
         f = result.findings[0]
@@ -241,6 +247,19 @@ class TestParseResult:
         assert result.findings == []
         assert result.checklist == {}
         assert result.analysis_time_ms == 200  # fallback to elapsed
+
+    def test_string_false_does_not_enable_incomplete_or_review_flags(self):
+        client = self._make_client()
+        result = client._parse_result(
+            {
+                "incomplete": "false",
+                "review_required": "false",
+            },
+            elapsed_ms=0,
+        )
+
+        assert result.incomplete is False
+        assert result.review_required is False
 
     def test_invalid_bbox_is_dropped_and_marks_result_incomplete(self):
         client = self._make_client()

@@ -27,12 +27,19 @@ from dicom_overlay.domain.entities import (  # noqa: E402
     RegionRect,
     Severity,
 )
+from dicom_overlay.domain.hooks import AnalyzeRequest, HookError  # noqa: E402
 from dicom_overlay.domain.modality_profile import get_active_registry  # noqa: E402
+from dicom_overlay.infrastructure.clinical_rule_loader import (  # noqa: E402
+    build_clinical_engine,
+)
 from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
     EvalCase,
     _aggregate,
     _error_score,
     score_case,
+)
+from dicom_overlay.infrastructure.hooks.output_validator import (  # noqa: E402
+    OutputValidator,
 )
 
 _EKG_VALID_REGIONS = (
@@ -92,6 +99,7 @@ def rebuild_scorecard(
     gateway_mode: str | None = None,
     promote_canonical: bool = False,
     require_protocol_fingerprint: bool = False,
+    apply_current_guardrails: bool = False,
 ) -> Path:
     """Score saved ``results/*.json`` files and write a rebuilt scorecard."""
     eval_dir = Path(eval_dir)
@@ -112,6 +120,13 @@ def rebuild_scorecard(
         cases=cases,
         fingerprint=fingerprint,
     )
+    registry = get_active_registry()
+    clinical_engine = (
+        build_clinical_engine(_REPO_ROOT / "clinical_rules")
+        if apply_current_guardrails
+        else None
+    )
+    guardrail_case_audits: list[dict[str, Any]] = []
     scores = []
     scored_cases = []
     scored_labels: set[str] = set()
@@ -126,45 +141,184 @@ def rebuild_scorecard(
             scores.append(_error_score(case, str(error)))
         else:
             result = _analysis_result_from_raw(raw, fallback_modality=case.modality)
+            if clinical_engine is not None:
+                guardrail_case_audits.append(
+                    _apply_current_guardrails(
+                        case,
+                        result,
+                        clinical_engine=clinical_engine,
+                        registry=registry,
+                    )
+                )
             scores.append(score_case(case, result, latency_ms=latency_ms))
         scored_cases.append(case)
         scored_labels.add(label)
 
     mode = gateway_mode or _read_gateway_mode(eval_dir) or "rebuilt"
-    report = _aggregate(mode, scores, scored_cases, get_active_registry())
+    report = _aggregate(mode, scores, scored_cases, registry)
     payload = json.loads(report.to_json())
     missing = [
         case.label or case.image_path.name
         for case in cases
         if (case.label or case.image_path.name) not in scored_labels
     ]
+    source_protocol_digest = (
+        str(fingerprint.get("protocol_digest")) if fingerprint else ""
+    )
+    source_comparability = (
+        fingerprint.get("comparability")
+        if fingerprint
+        else {
+            "status": "legacy_unfingerprinted",
+            "comparable": False,
+            "reasons": ["protocol-fingerprint.json is missing"],
+        }
+    )
+    scorer_provenance = _current_scorer_provenance()
+    guardrail_replay: dict[str, Any] | None = None
+    protocol_digest = source_protocol_digest
+    protocol_comparability = source_comparability
+    scorecard_kind = "full_rebuild"
+    if clinical_engine is not None:
+        provenance = _current_guardrail_provenance(clinical_engine)
+        changed = [audit for audit in guardrail_case_audits if audit["changed"]]
+        guardrail_replay = {
+            "enabled": True,
+            "kind": "derived_counterfactual",
+            "source_results_mutated": False,
+            "source_protocol_digest": source_protocol_digest,
+            "provenance": provenance,
+            "processed_case_count": len(guardrail_case_audits),
+            "changed_case_count": len(changed),
+            "cases": guardrail_case_audits,
+        }
+        protocol_digest = _protocol_digest(
+            {
+                "source_protocol_digest": source_protocol_digest,
+                "guardrail_provenance": provenance,
+                "scorer_provenance": scorer_provenance,
+            }
+        )
+        protocol_comparability = {
+            "status": "derived_counterfactual",
+            "comparable": False,
+            "reasons": [
+                "Current production guardrails were replayed after model inference; "
+                "this is not the originally recorded runtime protocol."
+            ],
+        }
+        scorecard_kind = "full_rebuild_current_guardrails"
+
     payload.update(
         {
             "manifest_total": len(cases),
             "result_count": len(scores),
             "missing_cases": missing,
             "is_partial": bool(missing),
-            "scorecard_kind": "full_rebuild",
-            "protocol_digest": (
-                str(fingerprint.get("protocol_digest")) if fingerprint else ""
-            ),
-            "protocol_comparability": (
-                fingerprint.get("comparability")
-                if fingerprint
-                else {
-                    "status": "legacy_unfingerprinted",
-                    "comparable": False,
-                    "reasons": ["protocol-fingerprint.json is missing"],
-                }
-            ),
+            "scorecard_kind": scorecard_kind,
+            "protocol_digest": protocol_digest,
+            "source_protocol_digest": source_protocol_digest,
+            "protocol_comparability": protocol_comparability,
+            "scorer_provenance": scorer_provenance,
         }
     )
+    if guardrail_replay is not None:
+        payload["guardrail_replay"] = guardrail_replay
     _atomic_write_json(output_path, payload)
     if promote_canonical:
         canonical_path = eval_dir / "scorecard.json"
         if canonical_path.resolve() != output_path.resolve():
             _atomic_write_json(canonical_path, payload)
     return output_path
+
+
+def _apply_current_guardrails(
+    case: EvalCase,
+    result: AnalysisResult,
+    *,
+    clinical_engine: Any,
+    registry: Any,
+) -> dict[str, Any]:
+    before = _guardrail_state(result)
+    request = AnalyzeRequest(
+        image_base64="",
+        modality=case.modality,
+        valid_regions=list(case.valid_regions),
+    )
+    validation_error = ""
+    try:
+        OutputValidator(strict=False, registry=registry).post_analyze(request, result)
+    except HookError as exc:
+        validation_error = str(exc)
+    violations = clinical_engine.apply(result)
+    after = _guardrail_state(result)
+    return {
+        "case": case.label or case.image_path.name,
+        "changed": before != after,
+        "before": before,
+        "after": after,
+        "validation_error": validation_error,
+        "violations": [
+            {
+                "rule_id": violation.rule.id,
+                "evidence": list(violation.evidence),
+                "reason": violation.reason(),
+            }
+            for violation in violations
+        ],
+    }
+
+
+def _guardrail_state(result: AnalysisResult) -> dict[str, Any]:
+    return {
+        "severity": result.severity.value,
+        "review_required": result.review_required,
+        "review_reasons": list(result.review_reasons),
+        "incomplete": result.incomplete,
+        "incomplete_reasons": list(result.incomplete_reasons),
+        "validation_warnings": list(result.validation_warnings),
+    }
+
+
+def _current_guardrail_provenance(clinical_engine: Any) -> dict[str, Any]:
+    files = (
+        "src/dicom_overlay/domain/clinical_rules.py",
+        "src/dicom_overlay/infrastructure/clinical_rule_loader.py",
+        "src/dicom_overlay/infrastructure/hooks/clinical_consistency.py",
+        "src/dicom_overlay/infrastructure/hooks/output_validator.py",
+    )
+    rule_ids = sorted(
+        rule.id
+        for modality_rules in clinical_engine.rules_by_modality.values()
+        for rule in modality_rules
+    )
+    return {
+        "rule_ids": rule_ids,
+        "rule_catalogue_sha256": hashlib.sha256(
+            clinical_engine.catalogue().encode("utf-8")
+        ).hexdigest(),
+        "implementation_files": [
+            {"path": path, "sha256": _sha256_file(_REPO_ROOT / path)}
+            for path in files
+        ],
+    }
+
+
+def _current_scorer_provenance() -> dict[str, Any]:
+    files = (
+        "scripts/rebuild-eval-scorecard.py",
+        "src/dicom_overlay/domain/modality_profile.py",
+        "src/dicom_overlay/infrastructure/eval_harness.py",
+        "src/dicom_overlay/infrastructure/hooks/output_validator.py",
+    )
+    identities = [
+        {"path": path, "sha256": _sha256_file(_REPO_ROOT / path)}
+        for path in files
+    ]
+    return {
+        "digest": _protocol_digest({"implementation_files": identities}),
+        "implementation_files": identities,
+    }
 
 
 def _sha256_file(path: Path) -> str:
@@ -459,6 +613,14 @@ def main() -> int:
         action="store_true",
         help="Fail if protocol-fingerprint.json is missing or invalid.",
     )
+    parser.add_argument(
+        "--apply-current-guardrails",
+        action="store_true",
+        help=(
+            "Replay the current production OutputValidator and clinical rules "
+            "against saved results. Raw result JSON is never modified."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -469,6 +631,7 @@ def main() -> int:
             gateway_mode=args.gateway_mode,
             promote_canonical=args.promote_canonical,
             require_protocol_fingerprint=args.require_protocol_fingerprint,
+            apply_current_guardrails=args.apply_current_guardrails,
         )
     except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

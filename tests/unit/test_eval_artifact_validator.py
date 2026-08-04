@@ -444,6 +444,85 @@ def test_required_multipass_refinement_rejects_unaccepted_bbox_tool_call(
     )
 
 
+def _write_ekg_systematic_probe_evidence(
+    eval_dir: Path,
+    *,
+    completed: bool,
+    crop_source: str = "original_roi",
+) -> None:
+    for index in range(2):
+        result_path = eval_dir / "results" / f"case_{index}.json"
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        result["modality"] = "EKG"
+        result["analysis_trace"] = [
+            {
+                "stage": "systematic_assist",
+                "status": "planned",
+                "probes": [
+                    {
+                        "target_id": "ekg_systematic_precordial_leads",
+                        "crop_region": {"x": 0.0, "y": 0.5, "w": 1.0, "h": 0.5},
+                    }
+                ],
+            },
+            *(
+                [
+                    {
+                        "stage": "refine",
+                        "status": "completed",
+                        "tool": "crop_region_base64",
+                        "target_id": "ekg_systematic_precordial_leads",
+                        "crop_source": crop_source,
+                    }
+                ]
+                if completed
+                else []
+            ),
+        ]
+        result_path.write_text(json.dumps(result), encoding="utf-8")
+
+
+def test_required_ekg_systematic_probes_rejects_legacy_multipass(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    _write_ekg_systematic_probe_evidence(eval_dir, completed=False)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_ekg_systematic_probes=True,
+    )
+
+    assert not verification.ok
+    assert any(
+        "no completed discovery probe" in failure
+        for failure in verification.failures
+    )
+
+
+def test_required_ekg_systematic_probes_accepts_original_roi_turns(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path)
+    _write_ekg_systematic_probe_evidence(eval_dir, completed=True)
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=2,
+        require_ekg_systematic_probes=True,
+    )
+
+    assert verification.ok
+    assert "ekg_systematic_probe_artifacts" in verification.passed_checks
+
+
 def test_results_reject_ekg_bbox_outside_declared_lead(tmp_path: Path) -> None:
     eval_dir = tmp_path / "eval"
     manifest_path = tmp_path / "manifest.json"

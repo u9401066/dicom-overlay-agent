@@ -11,6 +11,7 @@ from dicom_overlay.domain.entities import (
     ChecklistItem,
     Finding,
     Modality,
+    RegionRect,
     Severity,
 )
 from dicom_overlay.domain.hooks import (
@@ -178,6 +179,42 @@ class TestOutputValidator:
         assert len(result.checklist) == 16
         validated = validator.post_analyze(req, result)
         assert validated.summary == result.summary
+
+    def test_low_confidence_finding_with_question_requires_review(self):
+        validator = OutputValidator()
+        req = _make_request()
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="uncertain-st",
+                regions=["lead_II"],
+                label="Possible ST-T abnormality",
+                detail="The morphology remains unresolved.",
+                severity=Severity.WARNING,
+                bboxes=[RegionRect(0.1, 0.1, 0.2, 0.2)],
+                confidence="low",
+                question="Can this be reviewed on the source ECG?",
+            )
+        ]
+
+        validated = validator.post_analyze(req, result)
+
+        assert validated.review_required is True
+        assert validated.review_reasons == [
+            "Low-confidence finding requires review: Possible ST-T abnormality"
+        ]
+
+    def test_incomplete_result_requires_review(self):
+        validator = OutputValidator()
+        req = _make_request()
+        result = _make_result()
+        result.incomplete = True
+        result.incomplete_reasons = ["Lead V6 is cropped."]
+
+        validated = validator.post_analyze(req, result)
+
+        assert validated.review_required is True
+        assert "Incomplete analysis requires human review" in validated.review_reasons
 
 
 # ── RateLimiter Tests ────────────────────────────────────────────────

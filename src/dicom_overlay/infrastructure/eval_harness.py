@@ -396,6 +396,7 @@ class EvalReport:
     strict_pass_rate: float = 0.0
     mean_partial_credit: float = 0.0
     partial_credit_breakdown: dict[str, float] = field(default_factory=dict)
+    partial_credit_component_counts: dict[str, int] = field(default_factory=dict)
     # Can't-miss hard gate (Task C).
     cant_miss_total: int = 0
     cant_miss_caught_count: int = 0
@@ -418,6 +419,7 @@ class EvalReport:
     keyword_scorable_count: int = 0
     negative_scorable_count: int = 0
     false_positive_scorable_count: int = 0
+    concept_recall_scorable_count: int = 0
     urgent_concern_total: int = 0
     urgent_concern_caught_count: int = 0
     urgent_concern_missed: list[str] = field(default_factory=list)
@@ -1001,6 +1003,12 @@ _URGENT_CONCERN_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "long qt": ("long qt", "prolonged qt", "qtc prolongation"),
 }
+_STEMI_INJURY_DIFFERENTIAL_FORMS = (
+    "acute anterior injury",
+    "acute myocardial injury",
+    "acute injury pattern",
+    "acute coronary occlusion",
+)
 _URGENT_NEGATED_PREFIX = re.compile(
     r"\b(?:no|not|without|neither|absent|negative for|free of|"
     r"excluded|ruled out)\b[^.;:]{0,64}$"
@@ -1038,12 +1046,12 @@ def _non_negated_concern_hit(label: str, haystack: str) -> bool:
     return any(_concern_occurrences(form, haystack) for form in _concern_forms(label))
 
 
-def _uncertainty_contract_for_concern(
-    label: str,
+def _uncertainty_contract_for_forms(
+    forms: tuple[str, ...],
     result: AnalysisResult,
 ) -> bool:
     narrative = _narrative_haystack(result)
-    for form in _concern_forms(label):
+    for form in forms:
         for before, after in _concern_occurrences(form, narrative):
             local = f"{before[-64:]} {after[:64]}"
             if (
@@ -1055,12 +1063,35 @@ def _uncertainty_contract_for_concern(
     for finding in result.findings:
         finding_text = _normalize_lexical(f"{finding.label} {finding.detail}")
         if (
-            _non_negated_concern_hit(label, finding_text)
+            any(_concern_occurrences(form, finding_text) for form in forms)
             and finding.confidence == "low"
             and finding.question.strip()
         ):
             return True
     return False
+
+
+def _uncertainty_contract_for_concern(
+    label: str,
+    result: AnalysisResult,
+) -> bool:
+    return _uncertainty_contract_for_forms(_concern_forms(label), result)
+
+
+def _stemi_injury_differential_hit(result: AnalysisResult) -> bool:
+    st_segment = result.checklist.get("st_segment")
+    if not st_segment or st_segment.status not in {
+        Severity.WARNING,
+        Severity.CRITICAL,
+    }:
+        return False
+    if "elevat" not in _normalize_lexical(st_segment.value):
+        return False
+    narrative = _narrative_haystack(result)
+    return any(
+        _concern_occurrences(form, narrative)
+        for form in _STEMI_INJURY_DIFFERENTIAL_FORMS
+    )
 
 
 def _urgent_concern_check(
@@ -1074,10 +1105,23 @@ def _urgent_concern_check(
     hits: list[str] = []
     misses: list[str] = []
     for label in case.urgent_concerns:
+        concern_hit = _non_negated_concern_hit(label, narrative)
+        uncertainty_contract = _uncertainty_contract_for_concern(label, result)
+        if (
+            _normalize_lexical(label) == "stemi"
+            and _stemi_injury_differential_hit(result)
+        ):
+            concern_hit = True
+            uncertainty_contract = uncertainty_contract or (
+                _uncertainty_contract_for_forms(
+                    _STEMI_INJURY_DIFFERENTIAL_FORMS,
+                    result,
+                )
+            )
         surfaced = (
             result.severity is Severity.CRITICAL
-            and _non_negated_concern_hit(label, narrative)
-            and _uncertainty_contract_for_concern(label, result)
+            and concern_hit
+            and uncertainty_contract
         )
         (hits if surfaced else misses).append(label)
     return hits, misses, round(len(hits) / len(case.urgent_concerns), 3)
@@ -1134,7 +1178,12 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
     """Score a single structured result against the case ground truth."""
     haystack = _haystack(result)
     hits, misses, recall = _recall(case.expected_keywords, haystack)
-    false_positive_scorable = case.label_status == "asserted"
+    has_positive_reference = any(
+        not _is_negative_expectation(keyword) for keyword in case.expected_keywords
+    )
+    false_positive_scorable = case.label_status == "asserted" and (
+        has_positive_reference or case.expected_severity is Severity.NORMAL
+    )
     concept = _concept_metrics(
         case.expected_keywords,
         case.expected_severity,
@@ -1298,16 +1347,27 @@ def _error_score(case: EvalCase, message: str) -> CaseScore:
     )
 
 
-def _aggregate_partial_breakdown(scores: list[CaseScore]) -> dict[str, float]:
-    if not scores:
-        return {
-            **dict.fromkeys(_PARTIAL_CREDIT_WEIGHTS, 0.0),
-            "concept_precision": 0.0,
-            "concept_recall": 0.0,
-            "false_positive_penalty": 0.0,
-            "urgent_concern_recall": 0.0,
-        }
+def _partial_component_is_scorable(score: CaseScore, name: str) -> bool:
+    if name in {"severity_abnormal", "severity_exact"}:
+        return score.severity_scorable
+    if name == "keyword_recall":
+        return bool(score.keyword_hits or score.keyword_misses)
+    if name in {"concept_precision", "concept_f1", "false_positive_penalty"}:
+        return score.false_positive_scorable
+    if name == "concept_recall":
+        return bool(score.concept_hits or score.concept_misses)
+    if name == "negative_recall":
+        return bool(score.negative_hits or score.negative_misses)
+    if name == "urgent_concern_recall":
+        return bool(score.urgent_concerns)
+    raise ValueError(f"unknown partial-credit component: {name}")
+
+
+def _aggregate_partial_breakdown(
+    scores: list[CaseScore],
+) -> tuple[dict[str, float], dict[str, int]]:
     output: dict[str, float] = {}
+    counts: dict[str, int] = {}
     names = (
         *_PARTIAL_CREDIT_WEIGHTS,
         "concept_precision",
@@ -1316,12 +1376,22 @@ def _aggregate_partial_breakdown(scores: list[CaseScore]) -> dict[str, float]:
         "urgent_concern_recall",
     )
     for name in names:
-        output[name] = round(
-            sum(s.partial_credit_breakdown.get(name, 0.0) for s in scores)
-            / len(scores),
-            3,
-        )
-    return output
+        eligible = [s for s in scores if _partial_component_is_scorable(s, name)]
+        counts[name] = len(eligible)
+        if eligible:
+            output[name] = round(
+                sum(s.partial_credit_breakdown.get(name, 0.0) for s in eligible)
+                / len(eligible),
+                3,
+            )
+        else:
+            output[name] = (
+                1.0
+                if name
+                in {"keyword_recall", "negative_recall", "urgent_concern_recall"}
+                else 0.0
+            )
+    return output, counts
 
 
 def _target_axis_performance(scores: list[CaseScore]) -> dict[str, Any]:
@@ -1334,6 +1404,7 @@ def _target_axis_performance(scores: list[CaseScore]) -> dict[str, Any]:
     performance: dict[str, Any] = {}
     for axis, axis_scores in sorted(by_axis.items()):
         count = len(axis_scores)
+        components, component_counts = _aggregate_partial_breakdown(axis_scores)
         performance[axis] = {
             "case_count": count,
             "strict_pass_rate": round(
@@ -1342,19 +1413,12 @@ def _target_axis_performance(scores: list[CaseScore]) -> dict[str, Any]:
             "mean_partial_credit": round(
                 sum(s.partial_credit for s in axis_scores) / count, 3
             ),
-            "mean_keyword_recall": round(
-                sum(s.keyword_recall for s in axis_scores) / count, 3
-            ),
-            "mean_negative_recall": round(
-                sum(s.negative_recall for s in axis_scores) / count, 3
-            ),
-            "mean_concept_precision": round(
-                sum(s.concept_precision for s in axis_scores) / count, 3
-            ),
-            "mean_concept_recall": round(
-                sum(s.concept_recall for s in axis_scores) / count, 3
-            ),
-            "mean_concept_f1": round(sum(s.concept_f1 for s in axis_scores) / count, 3),
+            "mean_keyword_recall": components["keyword_recall"],
+            "mean_negative_recall": components["negative_recall"],
+            "mean_concept_precision": components["concept_precision"],
+            "mean_concept_recall": components["concept_recall"],
+            "mean_concept_f1": components["concept_f1"],
+            "component_counts": component_counts,
         }
     return performance
 
@@ -1385,6 +1449,9 @@ def _aggregate(
     false_positive_scored = [
         s for s in clinical_scored if s.false_positive_scorable
     ]
+    concept_recall_scored = [
+        s for s in clinical_scored if s.concept_hits or s.concept_misses
+    ]
 
     severity_acc = _rate(severity_scored, lambda s: s.severity_match)
     abnormal_acc = _rate(severity_scored, lambda s: s.severity_abnormal_match)
@@ -1414,10 +1481,11 @@ def _aggregate(
     )
     mean_concept_recall = (
         round(
-            sum(s.concept_recall for s in clinical_scored) / len(clinical_scored),
+            sum(s.concept_recall for s in concept_recall_scored)
+            / len(concept_recall_scored),
             3,
         )
-        if clinical_scored
+        if concept_recall_scored
         else 0.0
     )
     mean_concept_f1 = (
@@ -1455,7 +1523,9 @@ def _aggregate(
         if clinical_all
         else 0.0
     )
-    partial_breakdown = _aggregate_partial_breakdown(clinical_scored)
+    partial_breakdown, partial_component_counts = _aggregate_partial_breakdown(
+        clinical_scored
+    )
 
     # Can't-miss hard gate: aggregate across every scored case. A can't-miss
     # diagnosis carried by a case that the read failed to catch is recorded as
@@ -1495,6 +1565,7 @@ def _aggregate(
         strict_pass_rate=strict_pass_rate,
         mean_partial_credit=mean_partial_credit,
         partial_credit_breakdown=partial_breakdown,
+        partial_credit_component_counts=partial_component_counts,
         cant_miss_total=cant_miss_total,
         cant_miss_caught_count=cant_miss_caught_count,
         cant_miss_missed=cant_miss_missed,
@@ -1515,6 +1586,7 @@ def _aggregate(
         keyword_scorable_count=len(keyword_scored),
         negative_scorable_count=len(negative_scored),
         false_positive_scorable_count=len(false_positive_scored),
+        concept_recall_scorable_count=len(concept_recall_scored),
         urgent_concern_total=urgent_concern_total,
         urgent_concern_caught_count=urgent_concern_caught_count,
         urgent_concern_missed=urgent_concern_missed,

@@ -100,6 +100,26 @@ class OutputValidator(AnalyzeHook):
                     f"Finding[{i}] boxed info finding must declare confidence; "
                     "low confidence requires a reviewer question"
                 )
+            finding_name = finding.label.strip() or finding.id or f"Finding[{i}]"
+            if finding.confidence == "low":
+                result.review_required = True
+                _append_review_reason(
+                    result,
+                    f"Low-confidence finding requires review: {finding_name}",
+                )
+                if not finding.question.strip() and not (
+                    finding.severity is Severity.INFO and finding.bboxes
+                ):
+                    warnings.append(
+                        f"Finding[{i}] low-confidence finding requires a "
+                        "reviewer question"
+                    )
+            elif finding.question.strip():
+                result.review_required = True
+                _append_review_reason(
+                    result,
+                    f"Finding includes a reviewer question: {finding_name}",
+                )
             if (
                 request.modality.value == "EKG"
                 and finding.severity in {Severity.WARNING, Severity.CRITICAL}
@@ -140,6 +160,12 @@ class OutputValidator(AnalyzeHook):
                 dict.fromkeys([*result.validation_warnings, *warnings])
             )
 
+        if result.incomplete:
+            result.review_required = True
+            _append_review_reason(result, "Incomplete analysis requires human review")
+        elif result.review_required and not result.review_reasons:
+            _append_review_reason(result, "Model requested human review")
+
         # In strict mode, warnings become errors
         if self._strict:
             errors.extend(warnings)
@@ -154,3 +180,8 @@ class OutputValidator(AnalyzeHook):
             checklist_keys=len(result.checklist),
         )
         return result
+
+
+def _append_review_reason(result: AnalysisResult, reason: str) -> None:
+    if reason and reason not in result.review_reasons:
+        result.review_reasons.append(reason)

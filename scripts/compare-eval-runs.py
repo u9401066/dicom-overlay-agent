@@ -109,6 +109,17 @@ def build_comparison(
         "regressed": sum(1 for row in rows if row["status"] == "regressed"),
         "unchanged": sum(1 for row in rows if row["status"] == "unchanged"),
     }
+    safety_status_counts = {
+        "improved": sum(
+            1 for row in rows if row["safety_status"] == "improved"
+        ),
+        "regressed": sum(
+            1 for row in rows if row["safety_status"] == "regressed"
+        ),
+        "unchanged": sum(
+            1 for row in rows if row["safety_status"] == "unchanged"
+        ),
+    }
     return {
         "baseline_eval_dir": str(baseline_dir),
         "candidate_eval_dir": str(candidate_dir),
@@ -123,6 +134,8 @@ def build_comparison(
         "headline": _headline(baseline, candidate, rows),
         "paired_sign_test": _paired_sign_test(rows),
         "case_status_counts": status_counts,
+        "safety_case_status_counts": safety_status_counts,
+        "clinical_safety": _clinical_safety(rows),
         "baseline_cost": _trace_cost(baseline_dir),
         "candidate_cost": _trace_cost(candidate_dir),
         "baseline_bbox_audit": _bbox_audit_summary(baseline_dir),
@@ -215,8 +228,25 @@ def _scorecard_health(
         incomplete_reasons.append(
             f"raw_result_count={raw_result_count} case_count={case_count}"
         )
+    scorer = scorecard.get("scorer_provenance")
+    scorer_digest = (
+        str(scorer.get("digest") or "") if isinstance(scorer, dict) else ""
+    )
+    comparability = scorecard.get("protocol_comparability")
+    comparability_status = (
+        str(comparability.get("status") or "")
+        if isinstance(comparability, dict)
+        else ""
+    )
     return {
         "scorecard": str(scorecard_path),
+        "scorecard_kind": str(scorecard.get("scorecard_kind") or ""),
+        "protocol_digest": str(scorecard.get("protocol_digest") or ""),
+        "source_protocol_digest": str(
+            scorecard.get("source_protocol_digest") or ""
+        ),
+        "protocol_comparability_status": comparability_status,
+        "scorer_digest": scorer_digest,
         "total": total,
         "scored": scored,
         "error_count": error_count,
@@ -269,7 +299,7 @@ def _compare_case(
         status = "regressed"
     else:
         status = "unchanged"
-    return {
+    row = {
         "case": label,
         "image": candidate.get("image") or baseline.get("image"),
         "modality": candidate.get("modality") or baseline.get("modality"),
@@ -282,6 +312,29 @@ def _compare_case(
         "baseline_expected_severity": baseline.get("expected_severity"),
         "baseline_actual_severity": baseline.get("actual_severity"),
         "candidate_actual_severity": candidate.get("actual_severity"),
+        "baseline_severity_match": bool(baseline.get("severity_match")),
+        "candidate_severity_match": bool(candidate.get("severity_match")),
+        "baseline_severity_abnormal_match": bool(
+            baseline.get("severity_abnormal_match")
+        ),
+        "candidate_severity_abnormal_match": bool(
+            candidate.get("severity_abnormal_match")
+        ),
+        "baseline_concept_false_positives": list(
+            baseline.get("concept_false_positives", [])
+        ),
+        "candidate_concept_false_positives": list(
+            candidate.get("concept_false_positives", [])
+        ),
+        "urgent_concerns": list(
+            candidate.get("urgent_concerns") or baseline.get("urgent_concerns") or []
+        ),
+        "baseline_urgent_concern_hits": list(
+            baseline.get("urgent_concern_hits", [])
+        ),
+        "candidate_urgent_concern_hits": list(
+            candidate.get("urgent_concern_hits", [])
+        ),
         "baseline_keyword_recall": _float(baseline.get("keyword_recall")),
         "candidate_keyword_recall": _float(candidate.get("keyword_recall")),
         "baseline_negative_recall": _float(baseline.get("negative_recall")),
@@ -303,6 +356,156 @@ def _compare_case(
             "cant_miss": candidate.get("cant_miss_missed", []),
             "urgent_concerns": candidate.get("urgent_concern_missed", []),
         },
+    }
+    baseline_safety, candidate_safety = _case_safety_hits(row)
+    safety_delta = candidate_safety - baseline_safety
+    row.update(
+        {
+            "safety_status": (
+                "improved"
+                if safety_delta > 0
+                else "regressed"
+                if safety_delta < 0
+                else "unchanged"
+            ),
+            "safety_observations": _case_safety_observation_count(row),
+            "baseline_safety_hits": baseline_safety,
+            "candidate_safety_hits": candidate_safety,
+            "safety_hit_delta": safety_delta,
+        }
+    )
+    return row
+
+
+def _case_safety_observations(
+    row: dict[str, Any], prefix: str
+) -> list[bool]:
+    expected = row["baseline_expected_severity"]
+    abnormal_match = bool(row[f"{prefix}_severity_abnormal_match"])
+    observations: list[bool] = []
+    if expected in {"normal", "info"}:
+        observations.extend(
+            (
+                abnormal_match,
+                abnormal_match
+                and not bool(row[f"{prefix}_concept_false_positives"]),
+            )
+        )
+    elif expected in {"warning", "critical"}:
+        observations.append(abnormal_match)
+    if expected == "critical":
+        observations.append(bool(row[f"{prefix}_severity_match"]))
+    urgent_hits = set(row[f"{prefix}_urgent_concern_hits"])
+    observations.extend(
+        concern in urgent_hits for concern in row["urgent_concerns"]
+    )
+    return observations
+
+
+def _case_safety_hits(row: dict[str, Any]) -> tuple[int, int]:
+    return (
+        sum(_case_safety_observations(row, "baseline")),
+        sum(_case_safety_observations(row, "candidate")),
+    )
+
+
+def _case_safety_observation_count(row: dict[str, Any]) -> int:
+    return len(_case_safety_observations(row, "baseline"))
+
+
+def _binary_pair_summary(pairs: list[tuple[bool, bool]]) -> dict[str, Any]:
+    baseline_hits = sum(1 for baseline, _candidate in pairs if baseline)
+    candidate_hits = sum(1 for _baseline, candidate in pairs if candidate)
+    total = len(pairs)
+    improved = sum(1 for baseline, candidate in pairs if candidate and not baseline)
+    regressed = sum(1 for baseline, candidate in pairs if baseline and not candidate)
+    return {
+        "pairs": total,
+        "baseline_hits": baseline_hits,
+        "candidate_hits": candidate_hits,
+        "baseline_rate": round(baseline_hits / total, 3) if total else None,
+        "candidate_rate": round(candidate_hits / total, 3) if total else None,
+        "rate_delta": (
+            round((candidate_hits - baseline_hits) / total, 3) if total else None
+        ),
+        "paired_exact_test": _exact_sign_test(improved, regressed),
+    }
+
+
+def _clinical_safety(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    normal_rows = [
+        row
+        for row in rows
+        if row["baseline_expected_severity"] in {"normal", "info"}
+    ]
+    abnormal_rows = [
+        row
+        for row in rows
+        if row["baseline_expected_severity"] in {"warning", "critical"}
+    ]
+    critical_rows = [
+        row for row in rows if row["baseline_expected_severity"] == "critical"
+    ]
+
+    normal_severity_pairs = [
+        (
+            row["baseline_severity_abnormal_match"],
+            row["candidate_severity_abnormal_match"],
+        )
+        for row in normal_rows
+    ]
+    normal_clean_pairs = [
+        (
+            row["baseline_severity_abnormal_match"]
+            and not row["baseline_concept_false_positives"],
+            row["candidate_severity_abnormal_match"]
+            and not row["candidate_concept_false_positives"],
+        )
+        for row in normal_rows
+    ]
+    abnormal_detection_pairs = [
+        (
+            row["baseline_severity_abnormal_match"],
+            row["candidate_severity_abnormal_match"],
+        )
+        for row in abnormal_rows
+    ]
+    critical_exact_pairs = [
+        (row["baseline_severity_match"], row["candidate_severity_match"])
+        for row in critical_rows
+    ]
+    urgent_pairs: list[tuple[bool, bool]] = []
+    for row in rows:
+        baseline_hits = set(row["baseline_urgent_concern_hits"])
+        candidate_hits = set(row["candidate_urgent_concern_hits"])
+        urgent_pairs.extend(
+            (concern in baseline_hits, concern in candidate_hits)
+            for concern in row["urgent_concerns"]
+        )
+
+    normal_clean = _binary_pair_summary(normal_clean_pairs)
+    normal_clean["baseline_false_positive_cases"] = (
+        normal_clean["pairs"] - normal_clean["baseline_hits"]
+    )
+    normal_clean["candidate_false_positive_cases"] = (
+        normal_clean["pairs"] - normal_clean["candidate_hits"]
+    )
+    normal_clean["baseline_false_positive_rate"] = (
+        round(1.0 - normal_clean["baseline_rate"], 3)
+        if normal_clean["baseline_rate"] is not None
+        else None
+    )
+    normal_clean["candidate_false_positive_rate"] = (
+        round(1.0 - normal_clean["candidate_rate"], 3)
+        if normal_clean["candidate_rate"] is not None
+        else None
+    )
+    return {
+        "normal_severity_safe": _binary_pair_summary(normal_severity_pairs),
+        "normal_without_false_positive": normal_clean,
+        "abnormal_detection": _binary_pair_summary(abnormal_detection_pairs),
+        "critical_exact_recall": _binary_pair_summary(critical_exact_pairs),
+        "urgent_concern_recall": _binary_pair_summary(urgent_pairs),
     }
 
 
@@ -353,6 +556,11 @@ def _paired_sign_test(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Exact two-sided sign test over improved vs regressed paired cases."""
     improved = sum(1 for row in rows if row["status"] == "improved")
     regressed = sum(1 for row in rows if row["status"] == "regressed")
+    return _exact_sign_test(improved, regressed)
+
+
+def _exact_sign_test(improved: int, regressed: int) -> dict[str, Any]:
+    """Exact two-sided sign test for discordant paired binary outcomes."""
     n = improved + regressed
     if n == 0:
         p_value = 1.0
@@ -462,21 +670,46 @@ def _mean_field(rows: list[dict[str, Any]], field: str) -> float | None:
 def _markdown_report(report: dict[str, Any]) -> str:
     headline = report["headline"]
     counts = report["case_status_counts"]
+    safety_counts = report["safety_case_status_counts"]
     sign_test = report["paired_sign_test"]
+    safety = report["clinical_safety"]
     lines = [
         "# Eval Run Comparison",
         "",
         f"- Baseline: `{report['baseline_eval_dir']}`",
         f"- Candidate: `{report['candidate_eval_dir']}`",
+        f"- Baseline scorecard: `{report['baseline_health']['scorecard']}` "
+        f"({report['baseline_health']['scorecard_kind'] or 'unspecified'})",
+        f"- Candidate scorecard: `{report['candidate_health']['scorecard']}` "
+        f"({report['candidate_health']['scorecard_kind'] or 'unspecified'})",
+        f"- Candidate protocol status: "
+        f"{report['candidate_health']['protocol_comparability_status'] or 'unspecified'}",
+        f"- Baseline / candidate scorer digest: "
+        f"{report['baseline_health']['scorer_digest'] or 'legacy'} / "
+        f"{report['candidate_health']['scorer_digest'] or 'legacy'}",
         f"- Paired cases: {report['paired_cases']}",
-        f"- Improved / regressed / unchanged: "
+        f"- Partial-credit improved / regressed / unchanged: "
         f"{counts['improved']} / {counts['regressed']} / {counts['unchanged']}",
+        f"- Safety improved / regressed / unchanged: "
+        f"{safety_counts['improved']} / {safety_counts['regressed']} / "
+        f"{safety_counts['unchanged']}",
         f"- Strict pass delta: {headline['strict_pass_rate_delta']:.1%}",
         f"- Mean partial-credit delta: {headline['partial_credit_delta']:.1%}",
         f"- Paired mean partial-credit delta: "
         f"{headline['paired_mean_partial_credit_delta']:.1%}",
         f"- Keyword recall delta: {headline['keyword_recall_delta']:.1%}",
         f"- Paired sign-test p-value: {sign_test['two_sided_p']}",
+        "",
+        "## Safety And Clinical Detection",
+        "",
+        _format_binary_metric("Normal severity-safe", safety["normal_severity_safe"]),
+        _format_binary_metric(
+            "Normal without false positive",
+            safety["normal_without_false_positive"],
+        ),
+        _format_binary_metric("Abnormal detection", safety["abnormal_detection"]),
+        _format_binary_metric("Critical exact recall", safety["critical_exact_recall"]),
+        _format_binary_metric("Urgent concern recall", safety["urgent_concern_recall"]),
         "",
         "## Top Improvements",
         "",
@@ -500,6 +733,18 @@ def _markdown_report(report: dict[str, Any]) -> str:
             f"{row['candidate_partial_credit']:.1%}, {row['status']})"
         )
     return "\n".join(lines) + "\n"
+
+
+def _format_binary_metric(label: str, metric: dict[str, Any]) -> str:
+    total = metric["pairs"]
+    if not total:
+        return f"- {label}: not measured (0 paired observations)"
+    return (
+        f"- {label}: {metric['baseline_hits']}/{total} "
+        f"({metric['baseline_rate']:.1%}) -> {metric['candidate_hits']}/{total} "
+        f"({metric['candidate_rate']:.1%}); delta {metric['rate_delta']:+.1%}; "
+        f"paired p={metric['paired_exact_test']['two_sided_p']}"
+    )
 
 
 def _float(value: Any) -> float:
@@ -548,10 +793,16 @@ def main() -> int:
     write_report(report, output_dir)
     headline = report["headline"]
     counts = report["case_status_counts"]
+    safety_counts = report["safety_case_status_counts"]
     print(f"Paired cases: {report['paired_cases']}")
     print(
-        "Improved/regressed/unchanged: "
+        "Partial-credit improved/regressed/unchanged: "
         f"{counts['improved']}/{counts['regressed']}/{counts['unchanged']}"
+    )
+    print(
+        "Safety improved/regressed/unchanged: "
+        f"{safety_counts['improved']}/{safety_counts['regressed']}/"
+        f"{safety_counts['unchanged']}"
     )
     print(f"Strict pass delta: {headline['strict_pass_rate_delta']:.1%}")
     print(f"Partial-credit delta: {headline['partial_credit_delta']:.1%}")

@@ -142,9 +142,29 @@ def test_rebuild_scorecard_from_raw_results_adds_partial_credit(
     assert scorecard["cases"][0]["partial_credit"] == pytest.approx(0.816)
     assert scorecard["scorecard_kind"] == "full_rebuild"
     assert scorecard["protocol_digest"] == protocol_digest
+    assert len(scorecard["scorer_provenance"]["digest"]) == 64
+    assert scorecard["scorer_provenance"]["implementation_files"]
     assert json.loads((eval_dir / "scorecard.json").read_text(encoding="utf-8")) == (
         scorecard
     )
+
+    replay_output = module.rebuild_scorecard(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        output_path=eval_dir / "scorecard.current-guardrails.json",
+        require_protocol_fingerprint=True,
+        apply_current_guardrails=True,
+    )
+    replay = json.loads(replay_output.read_text(encoding="utf-8"))
+    assert replay["scorecard_kind"] == "full_rebuild_current_guardrails"
+    assert replay["source_protocol_digest"] == protocol_digest
+    assert replay["protocol_digest"] != protocol_digest
+    assert replay["protocol_comparability"]["status"] == "derived_counterfactual"
+    assert replay["guardrail_replay"]["source_results_mutated"] is False
+    assert replay["guardrail_replay"]["processed_case_count"] == 1
+    assert replay["guardrail_replay"]["changed_case_count"] == 0
+    assert replay["guardrail_replay"]["provenance"]["rule_ids"]
+    assert replay["scorer_provenance"] == scorecard["scorer_provenance"]
 
 
 def test_promote_canonical_requires_protocol_fingerprint(tmp_path: Path) -> None:
@@ -211,3 +231,56 @@ def test_analysis_result_rebuild_preserves_report_and_uncertainty_contract() -> 
     assert result.findings[0].notes == ["Refined on source pixels."]
     assert result.findings[0].confidence == "low"
     assert result.findings[0].question == "Is this reproducible on the source ECG?"
+
+
+def test_current_guardrail_replay_catches_uncertain_acute_injury_pattern() -> None:
+    module = _load_rebuild_module()
+    case = module.EvalCase(
+        image_path=Path("47511997.png"),
+        modality=module.Modality.EKG,
+        expected_severity=module.Severity.CRITICAL,
+        label="meeti_47511997",
+        valid_regions=module._EKG_VALID_REGIONS,
+    )
+    result = module._analysis_result_from_raw(
+        {
+            "modality": "EKG",
+            "summary": "Anterior precordial ST-T abnormality",
+            "severity": "warning",
+            "findings": [
+                {
+                    "id": "f1",
+                    "regions": ["lead_V2", "lead_V3", "lead_V4"],
+                    "label": "Anterior precordial ST-T abnormality",
+                    "detail": (
+                        "Mild ST elevation in V2-V4; early repolarization versus "
+                        "acute anterior injury cannot be resolved."
+                    ),
+                    "severity": "warning",
+                    "bboxes": [
+                        {"x": 0.05, "y": 0.59, "w": 0.08, "h": 0.08}
+                    ],
+                    "confidence": "low",
+                    "question": "Can acute injury be excluded?",
+                }
+            ],
+            "checklist": {
+                "st_segment": {"value": "ST elevation", "status": "warning"}
+            },
+        },
+        fallback_modality=module.Modality.EKG,
+    )
+
+    audit = module._apply_current_guardrails(
+        case,
+        result,
+        clinical_engine=module.build_clinical_engine(),
+        registry=module.get_active_registry(),
+    )
+
+    assert audit["before"]["severity"] == "warning"
+    assert audit["after"]["severity"] == "critical"
+    assert audit["after"]["review_required"] is True
+    assert [item["rule_id"] for item in audit["violations"]] == [
+        "ekg-uncertain-acute-injury-with-st-elevation-triage"
+    ]

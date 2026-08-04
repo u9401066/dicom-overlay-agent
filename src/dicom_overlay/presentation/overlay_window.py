@@ -326,6 +326,9 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 details.append(f"Target: {entry['target_id']}")
             if entry.get("hypothesis"):
                 details.append(f"Hypothesis: {entry['hypothesis']}")
+            crop_source = str(entry.get("crop_source") or entry.get("source") or "")
+            if crop_source:
+                details.append(f"Source: {crop_source}")
             crop = entry.get("crop_region")
             if isinstance(crop, dict):
                 details.append(
@@ -335,6 +338,37 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                         for key in ("x", "y", "w", "h")
                     )
                 )
+            probes = entry.get("probes")
+            if isinstance(probes, list):
+                for probe in probes:
+                    if not isinstance(probe, dict):
+                        continue
+                    probe_id = str(probe.get("target_id", "probe"))
+                    probe_crop = probe.get("crop_region")
+                    probe_text = f"Probe: {probe_id}"
+                    if isinstance(probe_crop, dict):
+                        probe_text += " (" + ", ".join(
+                            f"{key}={float(probe_crop.get(key, 0.0)):.4f}"
+                            for key in ("x", "y", "w", "h")
+                        ) + ")"
+                    details.append(probe_text)
+            tool_audit = entry.get("tool_audit")
+            if isinstance(tool_audit, list):
+                for receipt in tool_audit:
+                    if not isinstance(receipt, dict):
+                        continue
+                    receipt_tool = str(receipt.get("tool", "tool"))
+                    accepted = receipt.get("accepted_count")
+                    rejected = receipt.get("rejected_count")
+                    counts = []
+                    if isinstance(accepted, int):
+                        counts.append(f"accepted={accepted}")
+                    if isinstance(rejected, int):
+                        counts.append(f"rejected={rejected}")
+                    details.append(
+                        f"Tool receipt: {receipt_tool}"
+                        + (f" ({', '.join(counts)})" if counts else "")
+                    )
             decisions = entry.get("decisions")
             if isinstance(decisions, list):
                 for decision in decisions:

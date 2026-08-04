@@ -47,6 +47,7 @@ class _ExpectedCase:
 @dataclass
 class _ResultInventory:
     cases: set[str] = field(default_factory=set)
+    ekg_cases: set[str] = field(default_factory=set)
     bbox_counts: dict[str, int] = field(default_factory=dict)
     refinement_completed_cases: set[str] = field(default_factory=set)
     original_roi_refinement_cases: set[str] = field(default_factory=set)
@@ -56,6 +57,9 @@ class _ResultInventory:
     finalization_completed_cases: set[str] = field(default_factory=set)
     original_roi_finalization_cases: set[str] = field(default_factory=set)
     finalization_bbox_tool_accepted_cases: set[str] = field(default_factory=set)
+    ekg_systematic_planned_cases: set[str] = field(default_factory=set)
+    ekg_systematic_completed_cases: set[str] = field(default_factory=set)
+    original_roi_ekg_systematic_cases: set[str] = field(default_factory=set)
 
 
 def verify_eval_artifacts(
@@ -67,6 +71,7 @@ def verify_eval_artifacts(
     require_perfect_mock: bool = True,
     require_multipass_trace: bool = False,
     require_multipass_refinement: bool = False,
+    require_ekg_systematic_probes: bool = False,
     require_projection_audit: bool = False,
 ) -> EvalArtifactVerification:
     """Verify a complete eval run without invoking a model."""
@@ -122,6 +127,12 @@ def verify_eval_artifacts(
         require=require_multipass_trace or require_multipass_refinement,
         require_refinement=require_multipass_refinement,
         results=results,
+        failures=failures,
+        passed=passed,
+    )
+    _verify_ekg_systematic_probes(
+        results,
+        require=require_ekg_systematic_probes,
         failures=failures,
         passed=passed,
     )
@@ -480,6 +491,8 @@ def _verify_results(
                 f"results_artifacts: source image hash mismatch {path.name}"
             )
         inventory.cases.add(case.label)
+        if raw.get("modality") == "EKG":
+            inventory.ekg_cases.add(case.label)
 
         quality = raw.get("local_image_quality")
         if not isinstance(quality, dict) or "low_signal" not in quality:
@@ -548,12 +561,28 @@ def _verify_results(
                         for record in tool_audit
                     ):
                         inventory.finalization_bbox_tool_accepted_cases.add(case.label)
+                if event.get("stage") == "systematic_assist":
+                    probes = event.get("probes")
+                    if isinstance(probes, list) and any(
+                        isinstance(probe, dict)
+                        and str(probe.get("target_id", "")).startswith(
+                            "ekg_systematic_"
+                        )
+                        for probe in probes
+                    ):
+                        inventory.ekg_systematic_planned_cases.add(case.label)
                 if event.get("stage") != "refine" or event.get("status") != "completed":
                     continue
                 if event.get("tool") == "crop_region_base64":
                     inventory.refinement_completed_cases.add(case.label)
                     if event.get("crop_source") == "original_roi":
                         inventory.original_roi_refinement_cases.add(case.label)
+                    if str(event.get("target_id", "")).startswith(
+                        "ekg_systematic_"
+                    ):
+                        inventory.ekg_systematic_completed_cases.add(case.label)
+                        if event.get("crop_source") == "original_roi":
+                            inventory.original_roi_ekg_systematic_cases.add(case.label)
                 tool_audit = event.get("tool_audit")
                 if isinstance(tool_audit, list) and any(
                     isinstance(record, dict)
@@ -594,6 +623,46 @@ def _verify_results(
     if len(failures) == failure_count:
         passed.append("results_artifacts")
     return inventory
+
+
+def _verify_ekg_systematic_probes(
+    results: _ResultInventory,
+    *,
+    require: bool,
+    failures: list[str],
+    passed: list[str],
+) -> None:
+    if not require:
+        return
+    if not results.ekg_cases:
+        failures.append("ekg_systematic_probe_artifacts: no EKG result cases")
+        return
+    missing_planned = sorted(
+        results.ekg_cases - results.ekg_systematic_planned_cases
+    )
+    missing_completed = sorted(
+        results.ekg_cases - results.ekg_systematic_completed_cases
+    )
+    missing_original = sorted(
+        results.ekg_cases - results.original_roi_ekg_systematic_cases
+    )
+    if missing_planned:
+        failures.append(
+            "ekg_systematic_probe_artifacts: no planned discovery probe for "
+            + ", ".join(missing_planned[:5])
+        )
+    if missing_completed:
+        failures.append(
+            "ekg_systematic_probe_artifacts: no completed discovery probe for "
+            + ", ".join(missing_completed[:5])
+        )
+    if missing_original:
+        failures.append(
+            "ekg_systematic_probe_artifacts: discovery probe did not use "
+            "original_roi for " + ", ".join(missing_original[:5])
+        )
+    if not (missing_planned or missing_completed or missing_original):
+        passed.append("ekg_systematic_probe_artifacts")
 
 
 def _canonical_ekg_region(value: object) -> str | None:

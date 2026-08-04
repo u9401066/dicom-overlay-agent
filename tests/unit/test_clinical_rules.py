@@ -365,6 +365,70 @@ class TestBuiltinRules:
         assert res.severity is Severity.WARNING
         assert res.review_required is False
 
+    def test_uncertain_acute_injury_with_st_elevation_escalates_triage(self):
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.WARNING,
+            summary="Anterior precordial ST-T abnormality",
+            findings=[
+                Finding(
+                    id="anterior-stt",
+                    regions=["lead_V2", "lead_V3", "lead_V4"],
+                    label="Anterior precordial ST-T abnormality",
+                    detail=(
+                        "Mild concave ST elevation in V2-V4; early repolarization "
+                        "versus acute anterior injury cannot be resolved."
+                    ),
+                    severity=Severity.WARNING,
+                    confidence="low",
+                    question="Can acute injury be excluded on the source tracing?",
+                )
+            ],
+            checklist={
+                "st_segment": _item("ST elevation in V2-V4", Severity.WARNING),
+                "stemi_pattern": _item("absent", Severity.NORMAL),
+            },
+        )
+
+        violations = default_engine().apply(res)
+
+        assert [item.rule.id for item in violations] == [
+            "ekg-uncertain-acute-injury-with-st-elevation-triage"
+        ]
+        assert res.severity is Severity.CRITICAL
+        assert res.review_required is True
+        assert "cannot be resolved" in res.findings[0].detail
+
+    def test_benign_st_elevation_without_acute_injury_does_not_escalate(self):
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.WARNING,
+            summary="Mild concave elevation consistent with early repolarization.",
+            checklist={
+                "st_segment": _item("ST elevation in V2-V4", Severity.WARNING)
+            },
+        )
+
+        default_engine().apply(res)
+
+        assert res.severity is Severity.WARNING
+        assert res.review_required is False
+
+    def test_negated_acute_injury_with_st_elevation_does_not_escalate(self):
+        res = _result(
+            modality=Modality.EKG,
+            severity=Severity.WARNING,
+            summary="ST elevation is present with no acute myocardial injury.",
+            checklist={
+                "st_segment": _item("ST elevation in V2-V4", Severity.WARNING)
+            },
+        )
+
+        default_engine().apply(res)
+
+        assert res.severity is Severity.WARNING
+        assert res.review_required is False
+
     def test_builtin_pneumothorax_undercall_escalates(self):
         engine = default_engine()
         res = _result(
