@@ -7,7 +7,7 @@ MCP protocol support from the underlying backend (OpenClaw).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 
@@ -119,13 +119,16 @@ class HookedVisionAnalyzer(VisionAnalyzerService):
 
         analyze_with_source = getattr(self._inner, "analyze_with_source_size", None)
         if callable(analyze_with_source):
-            result = await analyze_with_source(
-                request.image_base64,
-                request.modality,
-                request.valid_regions,
-                source_size_px=source_size_px,
-                source_image_base64=source_image_base64,
-                local_candidate_regions=local_candidate_regions,
+            result = cast(
+                "AnalysisResult",
+                await analyze_with_source(
+                    request.image_base64,
+                    request.modality,
+                    request.valid_regions,
+                    source_size_px=source_size_px,
+                    source_image_base64=source_image_base64,
+                    local_candidate_regions=local_candidate_regions,
+                ),
             )
         else:
             result = await self._inner.analyze(
@@ -151,12 +154,15 @@ class HookedVisionAnalyzer(VisionAnalyzerService):
         refine_method = getattr(self._inner, "refine", None)
         if not callable(refine_method):
             raise NotImplementedError("inner analyzer does not support refine()")
-        return await refine_method(
-            image_base64,
-            modality,
-            valid_regions,
-            hypothesis=hypothesis,
-            crop_region=crop_region,
+        return cast(
+            "RefinementResult",
+            await refine_method(
+                image_base64,
+                modality,
+                valid_regions,
+                hypothesis=hypothesis,
+                crop_region=crop_region,
+            ),
         )
 
     def last_run_trace(self) -> dict[str, object]:

@@ -14,7 +14,7 @@ import textwrap
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -25,7 +25,10 @@ from dicom_overlay.infrastructure.overlay_geometry import (
 )
 
 if TYPE_CHECKING:
-    from PIL.ImageFont import ImageFont as PillowFont
+    from PIL.ImageFont import FreeTypeFont
+    from PIL.ImageFont import ImageFont as BitmapFont
+
+    PillowFont: TypeAlias = FreeTypeFont | BitmapFont
 
 _PANEL_WIDTH = 520
 _MARGIN = 14
@@ -743,7 +746,7 @@ def _load_font(size: int) -> PillowFont:
 
 def _line_height(font: PillowFont) -> int:
     bbox = font.getbbox("Ag")
-    return bbox[3] - bbox[1]
+    return int(bbox[3] - bbox[1])
 
 
 def _color_for(severity: str) -> tuple[int, int, int]:

@@ -51,7 +51,7 @@ def test_meeti_experiment_script_records_model_and_artifacts() -> None:
         encoding="utf-8"
     )
 
-    assert '[string]$ModelId = "openai/gpt-5.6-luna"' in script
+    assert '[string]$ModelId = "openai/gpt-5.4-mini"' in script
     assert '[string]$ManifestPath = ""' in script
     assert '[string]$ProviderProfile = ""' in script
     assert "openclaw-models-list.txt" in script
@@ -125,7 +125,7 @@ def test_meeti_experiment_config_records_bounded_openclaw_timeouts(tmp_path) -> 
     metadata = module.write_experiment_openclaw_config(
         base_config=base_config,
         target_config=target_config,
-        model_id="openai/gpt-5.6-luna",
+        model_id="openai/gpt-5.4-mini",
         profile_key="openai-vision",
         harness_plugin_path=tmp_path / "dicom-overlay-agent-harness",
         inference_timeout_sec=180,

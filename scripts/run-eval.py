@@ -100,6 +100,18 @@ _DEFAULT_TIMEOUT_SEC = 90
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
 _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
 _ECG_FOUNDER_MODEL_ID = "PKUDigitalHealth/ECGFounder"
+_PROTOCOL_SOURCE_PATHS = (
+    "src/dicom_overlay",
+    "scripts/run-eval.py",
+    "scripts/rebuild-eval-scorecard.py",
+    "scripts/export-eval-annotations.py",
+    "scripts/verify-eval-artifacts.py",
+    "openclaw/workspace/plugins/dicom-overlay-agent-harness",
+    "openclaw/workspace/skills",
+    "sidecars/ecgfounder",
+    "clinical_rules",
+    "pyproject.toml",
+)
 _ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23"
 _ECG_FOUNDER_CHECKPOINT_SHA256 = (
     "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
@@ -296,8 +308,21 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         )
 
     commit_result = run("rev-parse", "HEAD")
-    status_result = run("status", "--porcelain", "--untracked-files=normal")
-    diff_result = run("diff", "--binary", "--no-ext-diff", "HEAD", "--")
+    status_result = run(
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+        "--",
+        *_PROTOCOL_SOURCE_PATHS,
+    )
+    diff_result = run(
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "HEAD",
+        "--",
+        *_PROTOCOL_SOURCE_PATHS,
+    )
     available = all(
         result.returncode == 0 for result in (commit_result, status_result, diff_result)
     )
@@ -306,12 +331,14 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
             "available": False,
             "commit": "unknown",
             "dirty": None,
+            "scope": list(_PROTOCOL_SOURCE_PATHS),
             "tracked_diff_sha256": "",
         }
     return {
         "available": True,
         "commit": commit_result.stdout.decode("ascii", errors="replace").strip(),
         "dirty": bool(status_result.stdout.strip()),
+        "scope": list(_PROTOCOL_SOURCE_PATHS),
         "worktree_status_sha256": hashlib.sha256(status_result.stdout).hexdigest(),
         "tracked_diff_sha256": hashlib.sha256(diff_result.stdout).hexdigest(),
     }

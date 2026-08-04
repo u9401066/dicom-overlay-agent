@@ -6,12 +6,13 @@ import io
 import math
 import statistics
 from collections.abc import Callable
+from typing import TypedDict
 
 import mss
 import structlog
 from PIL import Image, ImageFilter
 
-from dicom_overlay.domain.entities import DisplayFrame, WindowRect
+from dicom_overlay.domain.entities import DisplayFrame, RegionRect, WindowRect
 from dicom_overlay.domain.services import ImageProcessorService, ScreenMonitorService
 
 logger = structlog.get_logger(__name__)
@@ -35,6 +36,18 @@ except ImportError:
 
 
 _HashFunc = Callable[[Image.Image], str]
+
+
+class _SignalCandidate(TypedDict):
+    label: str
+    source: str
+    x: float
+    y: float
+    w: float
+    h: float
+    confidence: float
+    dark_pixel_ratio: float
+    bbox_ink_density: float
 
 
 def _bits_to_hex(bits: list[bool]) -> str:
@@ -221,7 +234,7 @@ class ImageProcessor(ImageProcessorService):
 
         return base64.b64encode(image_data).decode("ascii")
 
-    def crop_region_base64(self, image_base64: str, region: object) -> str:
+    def crop_region_base64(self, image_base64: str, region: RegionRect) -> str:
         """Crop a normalized 0-1 sub-region out of a base64 PNG (ImageCropper).
 
         Matches the ``ImageCropper`` protocol used by the multi-pass
@@ -246,7 +259,7 @@ class ImageProcessor(ImageProcessorService):
         cropped.save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode("ascii")
 
-    def crop_region_bytes(self, image_base64: str, region: object) -> bytes:
+    def crop_region_bytes(self, image_base64: str, region: RegionRect) -> bytes:
         """Return the exact source-pixel crop without synthetic upscaling."""
 
         cropped = self._crop_region_image(image_base64, region)
@@ -255,7 +268,7 @@ class ImageProcessor(ImageProcessorService):
         return buf.getvalue()
 
     @staticmethod
-    def _crop_region_image(image_base64: str, region: object) -> Image.Image:
+    def _crop_region_image(image_base64: str, region: RegionRect) -> Image.Image:
         import base64
 
         data = base64.b64decode(image_base64, validate=True)
@@ -263,19 +276,19 @@ class ImageProcessor(ImageProcessorService):
             w, h = source.size
             if w <= 0 or h <= 0:
                 raise ValueError("cannot crop an empty image")
-            x0 = max(  # type: ignore[attr-defined]
+            x0 = max(
                 0,
                 min(w - 1, math.floor(region.x * w)),
             )
-            y0 = max(  # type: ignore[attr-defined]
+            y0 = max(
                 0,
                 min(h - 1, math.floor(region.y * h)),
             )
-            x1 = max(  # type: ignore[attr-defined]
+            x1 = max(
                 x0 + 1,
                 min(w, math.ceil((region.x + region.w) * w)),
             )
-            y1 = max(  # type: ignore[attr-defined]
+            y1 = max(
                 y0 + 1,
                 min(h, math.ceil((region.y + region.h) * h)),
             )
@@ -405,7 +418,7 @@ class ImageProcessor(ImageProcessorService):
             candidate_dark_pixels: int,
             *,
             source: str,
-        ) -> dict[str, object]:
+        ) -> _SignalCandidate:
             left, top, right, bottom = candidate_bbox
             bbox_area = max(1, (right - left) * (bottom - top))
             bbox_density = candidate_dark_pixels / bbox_area
@@ -431,6 +444,7 @@ class ImageProcessor(ImageProcessorService):
 
         left, top, right, bottom = bbox
         overall_area_ratio = max(1, (right - left) * (bottom - top)) / total
+        candidates: list[_SignalCandidate]
         if overall_area_ratio <= 0.55:
             candidates = [
                 build_candidate(

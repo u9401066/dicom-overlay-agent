@@ -477,7 +477,7 @@ class TestOpenClawRuntimeCompatibility:
         assert payload["gateway"]["mode"] == "local"
         assert "auth" not in payload["gateway"]
         assert payload["agents"]["defaults"]["model"]["primary"] == (
-            "openai/gpt-5.6-luna"
+            "openai/gpt-5.4-mini"
         )
         assert payload["models"]["providers"]["openai"]["apiKey"]["id"] == (
             "OPENAI_API_KEY"
@@ -599,7 +599,7 @@ class TestDesktopSettingsStore:
             json.dumps(
                 {
                     "agents": {
-                        "defaults": {"model": {"primary": "openai/gpt-5.6-luna"}}
+                        "defaults": {"model": {"primary": "openai/gpt-5.4-mini"}}
                     },
                     "models": {"providers": {"openai": {"apiKey": "secret"}}},
                 }
@@ -609,7 +609,7 @@ class TestDesktopSettingsStore:
 
         store = DesktopSettingsStore(repo_root=tmp_path)
 
-        assert store.load_model_ref() == "openai/gpt-5.6-luna"
+        assert store.load_model_ref() == "openai/gpt-5.4-mini"
 
     def test_ecg_founder_configuration_requires_endpoint_and_token(
         self, monkeypatch, tmp_path

@@ -17,7 +17,7 @@ def test_settings_dialog_lists_desktop_provider_profiles(qtbot, tmp_path):
     assert "OpenAI GPT-5.6 Luna Vision" in labels
     assert "OpenRouter" in labels
     assert "GitHub Copilot CLI BYOK-compatible" in labels
-    assert dialog.selected_profile().key == "openai-luna"
+    assert dialog.selected_profile().key == "openai-vision"
 
 
 def test_settings_dialog_selects_the_model_in_the_active_openclaw_config(

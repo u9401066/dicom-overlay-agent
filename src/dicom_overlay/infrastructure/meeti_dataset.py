@@ -778,7 +778,7 @@ def read_mat_report(mat_path: str) -> str:
     pulled into the packaged runtime.
     """
 
-    from scipy.io import loadmat  # type: ignore[import-not-found]  # eval-only dep
+    from scipy.io import loadmat  # type: ignore[import-untyped]  # eval-only dep
 
     data = loadmat(mat_path)
     raw = data.get("report")

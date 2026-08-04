@@ -815,6 +815,11 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     protocol = fingerprint["protocol"]
     assert protocol["source"]["commit"]
     assert isinstance(protocol["source"]["dirty"], bool)
+    assert "src/dicom_overlay" in protocol["source"]["scope"]
+    assert "sidecars/ecgfounder" in protocol["source"]["scope"]
+    assert not any(
+        path.startswith(".github") for path in protocol["source"]["scope"]
+    )
     assert protocol["model"]["id"] == "mock-eval-gateway"
     assert protocol["model"]["openclaw"]["version"]
     assert protocol["prompts"]

@@ -295,6 +295,13 @@ def _protocol_shared_invariants(eval_dir: Path) -> dict[str, Any] | None:
             "available": bool(source.get("available")),
             "commit": str(source.get("commit") or ""),
             "dirty": bool(source.get("dirty")),
+            "scope": sorted(
+                str(path)
+                for path in source.get("scope", [])
+                if isinstance(path, str)
+            )
+            if isinstance(source.get("scope"), list)
+            else [],
             "worktree_status_sha256": str(
                 source.get("worktree_status_sha256") or ""
             ),

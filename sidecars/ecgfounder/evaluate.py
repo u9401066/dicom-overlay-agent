@@ -13,7 +13,7 @@ from statistics import fmean, median
 from typing import Any
 
 SCHEMA_VERSION = 1
-EVALUATOR_VERSION = "ecgfounder-meeti-heldout-v1"
+EVALUATOR_VERSION = "ecgfounder-meeti-heldout-v2"
 DEFAULT_RUN_DIR = Path(
     "data/eval-runs/ecgfounder-meeti-1000-fullscores-20260804"
 )
@@ -44,6 +44,19 @@ class ScoreRow:
 
     def concept_score(self, mapping: ConceptMap) -> float:
         return max(self.scores[label] for label in mapping.statements)
+
+
+@dataclass(frozen=True)
+class ScoreExclusion:
+    artifact_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ScoreDataset:
+    rows: tuple[ScoreRow, ...]
+    exclusions: tuple[ScoreExclusion, ...]
+    target_case_count: int
 
 
 def sha256_file(path: Path) -> str:
@@ -114,7 +127,12 @@ def load_concept_map(path: Path, *, tasks: tuple[str, ...]) -> dict[str, Concept
     return mappings
 
 
-def load_full_score_rows(run_dir: Path, *, tasks: tuple[str, ...]) -> list[ScoreRow]:
+def load_full_score_dataset(
+    run_dir: Path,
+    *,
+    tasks: tuple[str, ...],
+    allow_ineligible: bool = False,
+) -> ScoreDataset:
     protocol = _read_object(run_dir / "protocol.json")
     if protocol.get("runner") not in _SUPPORTED_RUNNERS:
         raise ValueError("unsupported ECGFounder batch protocol")
@@ -128,6 +146,7 @@ def load_full_score_rows(run_dir: Path, *, tasks: tuple[str, ...]) -> list[Score
         raise ValueError("evaluation requires all 150 ECGFounder scores")
     task_set = set(tasks)
     rows: list[ScoreRow] = []
+    exclusions: list[ScoreExclusion] = []
     artifacts: set[str] = set()
     results_path = run_dir / "results.jsonl"
     try:
@@ -140,14 +159,31 @@ def load_full_score_rows(run_dir: Path, *, tasks: tuple[str, ...]) -> list[Score
                 raw = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"invalid result JSON at line {line_number}") from exc
-            if not isinstance(raw, dict) or raw.get("status") != "ok":
-                raise ValueError(f"non-ok full-score result at line {line_number}")
+            if not isinstance(raw, dict):
+                raise ValueError(f"invalid full-score result at line {line_number}")
             artifact_id = raw.get("artifact_id")
             if not isinstance(artifact_id, str) or not artifact_id:
                 raise ValueError(f"missing artifact id at line {line_number}")
             if artifact_id in artifacts:
                 raise ValueError(f"duplicate artifact id: {artifact_id}")
             artifacts.add(artifact_id)
+            status = raw.get("status")
+            if status == "ineligible":
+                if not allow_ineligible:
+                    raise ValueError(f"non-ok full-score result at line {line_number}")
+                reason = raw.get("reason")
+                if not isinstance(reason, str) or not reason:
+                    raise ValueError(
+                        f"ineligible result has no reason at line {line_number}"
+                    )
+                if raw.get("predictions") != []:
+                    raise ValueError(
+                        f"ineligible result has predictions at line {line_number}"
+                    )
+                exclusions.append(ScoreExclusion(artifact_id, reason))
+                continue
+            if status != "ok":
+                raise ValueError(f"non-ok full-score result at line {line_number}")
             raw_predictions = raw.get("predictions")
             if not isinstance(raw_predictions, list) or len(raw_predictions) != len(tasks):
                 raise ValueError(f"incomplete prediction vector at line {line_number}")
@@ -196,13 +232,30 @@ def load_full_score_rows(run_dir: Path, *, tasks: tuple[str, ...]) -> list[Score
     target = int(summary.get("target_case_count") or 0)
     if summary.get("protocol") != protocol:
         raise ValueError("summary protocol does not match the pinned protocol")
-    if (
-        summary.get("status") != "complete"
-        or len(rows) != target
-        or target != protocol.get("case_count")
-    ):
+    if len(rows) + len(exclusions) != target or target != protocol.get("case_count"):
         raise ValueError("full-score run is incomplete")
-    return rows
+    status_counts = summary.get("status_counts")
+    if allow_ineligible:
+        if summary.get("status") not in {"complete", "incomplete"}:
+            raise ValueError("full-score run is incomplete")
+        if summary.get("completed_case_count") != target:
+            raise ValueError("full-score run did not traverse the complete cohort")
+        if not isinstance(status_counts, dict) or set(status_counts) - {
+            "ok",
+            "ineligible",
+        }:
+            raise ValueError("full-score status counts are invalid")
+        if status_counts.get("ok", 0) != len(rows) or status_counts.get(
+            "ineligible", 0
+        ) != len(exclusions):
+            raise ValueError("full-score status counts do not match results")
+    elif summary.get("status") != "complete" or exclusions:
+        raise ValueError("full-score run is incomplete")
+    return ScoreDataset(tuple(rows), tuple(exclusions), target)
+
+
+def load_full_score_rows(run_dir: Path, *, tasks: tuple[str, ...]) -> list[ScoreRow]:
+    return list(load_full_score_dataset(run_dir, tasks=tasks).rows)
 
 
 def split_role(artifact_id: str, *, seed: str, calibration_fraction: float) -> str:
@@ -525,10 +578,16 @@ def evaluate(
     min_positive_per_split: int = 5,
     min_control_per_split: int = 10,
     cross_validation_folds: int = 5,
+    allow_ineligible: bool = False,
 ) -> dict[str, Any]:
     tasks = load_tasks(tasks_path)
     mappings = load_concept_map(mapping_path, tasks=tasks)
-    rows = load_full_score_rows(run_dir, tasks=tasks)
+    dataset = load_full_score_dataset(
+        run_dir,
+        tasks=tasks,
+        allow_ineligible=allow_ineligible,
+    )
+    rows = list(dataset.rows)
     roles = {
         row.artifact_id: split_role(
             row.artifact_id,
@@ -676,6 +735,11 @@ def evaluate(
             "reports for the normal concept; absence is never assumed negative"
         ),
         "patient_level_isolation": False,
+        "ineligible_case_policy": (
+            "explicit_exclusion_with_coverage_reporting"
+            if allow_ineligible
+            else "reject_run"
+        ),
     }
     evaluation_protocol["fingerprint"] = canonical_hash(evaluation_protocol)
     target = 0.85
@@ -686,6 +750,17 @@ def evaluate(
         "protocol": evaluation_protocol,
         "cohort": {
             "row_count": len(rows),
+            "target_row_count": dataset.target_case_count,
+            "ineligible_row_count": len(dataset.exclusions),
+            "eligibility_fraction": _ratio(len(rows), dataset.target_case_count),
+            "ineligible_reason_counts": {
+                reason: sum(item.reason == reason for item in dataset.exclusions)
+                for reason in sorted({item.reason for item in dataset.exclusions})
+            },
+            "ineligible_cases": [
+                {"artifact_id": item.artifact_id, "reason": item.reason}
+                for item in dataset.exclusions
+            ],
             "calibration_rows": len(rows) - len(holdout_rows),
             "holdout_rows": len(holdout_rows),
             "observed_reference_concepts": len(observed_concepts),
@@ -744,6 +819,14 @@ def evaluate(
             "The semantic statement map is hand-authored and hash-pinned but not independently clinician-adjudicated.",
             "Thresholds are research-only and must not be installed as deployment calibration.",
             "ECGFounder provides no screenshot localization or bounding boxes.",
+            *(
+                [
+                    f"{len(dataset.exclusions)} waveform case(s) were excluded by "
+                    "the pinned input-quality gate; metrics cover eligible cases only."
+                ]
+                if dataset.exclusions
+                else []
+            ),
         ],
         "sources": {
             "official_repository": "https://github.com/PKUDigitalHealth/ECGFounder",
@@ -761,7 +844,15 @@ def render_markdown(report: dict[str, Any]) -> str:
         "# ECGFounder MEETI Held-out Research Evaluation",
         "",
         f"- Protocol: `{report['protocol']['fingerprint']}`",
-        f"- Cohort: {cohort['row_count']} rows; holdout {cohort['holdout_rows']}",
+        (
+            f"- Cohort: {cohort['row_count']} eligible / "
+            f"{cohort['target_row_count']} traversed; holdout "
+            f"{cohort['holdout_rows']}"
+        ),
+        (
+            f"- Input eligibility: {cohort['eligibility_fraction']:.3%}; "
+            f"excluded {cohort['ineligible_row_count']}"
+        ),
         (
             "- Ontology coverage: "
             f"{cohort['mapped_concept_instance_fraction']:.3f} of asserted "
@@ -851,6 +942,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-positive-per-split", type=int, default=5)
     parser.add_argument("--min-control-per-split", type=int, default=10)
     parser.add_argument("--cross-validation-folds", type=int, default=5)
+    parser.add_argument(
+        "--allow-ineligible",
+        action="store_true",
+        help=(
+            "evaluate eligible rows only after validating complete cohort traversal; "
+            "coverage and exclusions remain explicit in the report"
+        ),
+    )
     return parser
 
 
@@ -868,6 +967,7 @@ def main(argv: list[str] | None = None) -> int:
             min_positive_per_split=max(1, args.min_positive_per_split),
             min_control_per_split=max(1, args.min_control_per_split),
             cross_validation_folds=max(2, args.cross_validation_folds),
+            allow_ineligible=args.allow_ineligible,
         )
         write_report(report, output=output, markdown=markdown)
     except (OSError, ValueError) as exc:
@@ -877,6 +977,12 @@ def main(argv: list[str] | None = None) -> int:
     ranking = report["ranking"]["holdout"]["at_k"]["20"]
     print(f"Evaluation status: {report['status']}")
     print(f"Protocol: {report['protocol']['fingerprint']}")
+    cohort = report["cohort"]
+    print(
+        "Input eligibility: "
+        f"{cohort['row_count']}/{cohort['target_row_count']} "
+        f"({cohort['eligibility_fraction']:.3%})"
+    )
     print(
         "Cross-validated metrics: "
         f"macro_BA={threshold['macro_cross_validated_balanced_accuracy']:.3f}, "

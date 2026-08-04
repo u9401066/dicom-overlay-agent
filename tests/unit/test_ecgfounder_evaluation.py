@@ -42,6 +42,8 @@ def _write_run(
     tasks: tuple[str, ...],
     concepts: object,
     max_predictions: int = 150,
+    status: str = "ok",
+    reason: str = "",
 ) -> None:
     protocol = {
         "schema_version": 1,
@@ -57,21 +59,25 @@ def _write_run(
     result = {
         "schema_version": 1,
         "artifact_id": "wf-one",
-        "status": "ok",
+        "status": status,
         "case": {
             "concepts": concepts,
             "expected_severity": "warning",
             "label_status": "asserted",
         },
-        "predictions": predictions,
+        "predictions": predictions if status == "ok" else [],
     }
+    if reason:
+        result["reason"] = reason
     (root / "protocol.json").write_text(json.dumps(protocol), encoding="utf-8")
     (root / "results.jsonl").write_text(json.dumps(result) + "\n", encoding="utf-8")
     (root / "summary.json").write_text(
         json.dumps(
             {
-                "status": "complete",
+                "status": "complete" if status == "ok" else "incomplete",
+                "completed_case_count": 1,
                 "target_case_count": 1,
+                "status_counts": {status: 1},
                 "protocol": protocol,
             }
         ),
@@ -119,6 +125,34 @@ def test_full_score_loader_rejects_tampered_protocol_fingerprint(
 
     with pytest.raises(ValueError, match="fingerprint mismatch"):
         evaluate.load_full_score_rows(tmp_path, tasks=tasks)
+
+
+def test_full_score_dataset_reports_explicit_ineligible_exclusion(
+    tmp_path: Path,
+) -> None:
+    tasks = evaluate.load_tasks(evaluate.DEFAULT_TASKS)
+    _write_run(
+        tmp_path,
+        tasks=tasks,
+        concepts=["pvc"],
+        status="ineligible",
+        reason="waveform_contains_flat_lead",
+    )
+
+    with pytest.raises(ValueError, match="non-ok"):
+        evaluate.load_full_score_rows(tmp_path, tasks=tasks)
+
+    dataset = evaluate.load_full_score_dataset(
+        tmp_path,
+        tasks=tasks,
+        allow_ineligible=True,
+    )
+
+    assert dataset.rows == ()
+    assert dataset.target_case_count == 1
+    assert dataset.exclusions == (
+        evaluate.ScoreExclusion("wf-one", "waveform_contains_flat_lead"),
+    )
 
 
 def test_controls_never_treat_report_silence_or_uncertainty_as_negative() -> None:
