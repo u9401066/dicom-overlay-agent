@@ -84,7 +84,7 @@ def test_pages_workflow_uses_current_official_action_majors() -> None:
     uses = {step["uses"] for step in steps if "uses" in step}
 
     assert uses == {
-        "actions/checkout@v6",
+        "actions/checkout@v7",
         "actions/configure-pages@v5",
         "actions/upload-pages-artifact@v4",
         "actions/deploy-pages@v4",
