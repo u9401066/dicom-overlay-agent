@@ -8,21 +8,26 @@
 
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 
-## 2026-08-05 Verification Status
+## 2026-08-09 Verification Status
 
-- The unit + smoke suite passes with 791 tests and 3 opt-in skips; the 55-test
-  OpenClaw integration suite, native Windows capture smoke, Ruff, mypy, and the
-  whitespace gate also pass.
-- A 1,000-case strict mock MultiPass run completed 4,869 analyzer calls, 2,869
-  source-image crops, 2,000 systematic EKG probes, and 1,000 annotated review
-  PNGs. All 865 bbox projection audits passed with zero clamp or drift. These
-  perfect mock scores prove protocol plumbing, not model accuracy.
-- The requested `openai/gpt-5.4-mini` current-protocol canary reached a real
-  image-capable OpenAI transaction and was blocked by exhausted provider
-  credits. No failed transaction is counted as a clinical answer.
-- The final 363.94 MiB portable bundle passed self-check, native plugin loading,
-  and an isolated authenticated Gateway start/connect/clean-stop smoke. See
-  [the current evidence ledger](docs/verification-2026-08-05.md).
+- Ruff and the complete unit + smoke suite pass: 915 passed, with 3 deliberate
+  opt-in skips. The freshly built bundle then passed 4/4 packaged self-check and
+  isolated Gateway tests plus the native Windows capture-exclusion smoke.
+- A frozen 32-case real paired pilot used the OpenClaw embedded agent and
+  `openai/gpt-5.4-mini` through subscription OAuth. MultiPass improved weak-label
+  mean partial credit from 0.253 to 0.480 (paired bootstrap 95% CI
+  `[+0.085,+0.368]`, random-sign `p=0.00449955`), but caught only 3/10 urgent
+  concerns. This is significant experiment agreement, not medical accuracy.
+- A later 8-case unseen run passed OpenClaw ownership, schema, bbox, crop,
+  projection, review-artifact, and 60/100/180-second SLA gates. It retained two
+  urgent misses and produced 8 annotated review images plus 30 crop images.
+- The 368.01 MiB portable bundle contains harness/plugin `1.5.7`, OpenClaw
+  `2026.7.1-2`, and Node `v24.18.0`. A pre-publication full-cohort launch was
+  deliberately stopped after 289 baseline results so later source changes
+  could not contaminate the paired comparison. The authoritative 9,922-case
+  post-publication run uses a frozen Git commit and reports live state only in
+  `paired-experiment.json`; it is not yet complete. See the
+  [current MEETI/OpenClaw evidence record](docs/meeti-openclaw-experiments-2026-08-09.md).
 
 The agent never replaces the physician. It acts as a systematic *second-check*
 to reduce omissions caused by fatigue, workload, or distraction. It cannot reach
@@ -40,7 +45,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 6.97 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB, currently 7.05 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -84,6 +89,14 @@ start.bat
 
 On first launch you define the screenshot **ROI** (cropping PHI) and pick the
 trigger mode. The agent then monitors the DICOM viewer and overlays findings.
+
+To use ChatGPT/Codex subscription allowance instead of a Platform API key, run
+`codex login` once, then select **OpenAI Subscription via OpenClaw** in Settings.
+The pinned official `@openclaw/codex` package is enabled only long enough to
+import OAuth state into the isolated OpenClaw home and is removed from live
+plugin config before inference. OpenClaw remains the agent-loop owner; the
+bundle contains no Codex agent runtime or platform binaries. A secret-free
+audit is written to `data/tmp/codex-auth-import.json`.
 
 ### Build the portable executable
 
@@ -167,6 +180,14 @@ The interpretation loop is backed by an executable, CI-verifiable contract.
   labeled dataset: axis×severity coverage, pertinent-negative recall, and a
   **can't-miss hard gate** (missing a STEMI / tension pneumothorax / etc. fails
   CI with a non-zero exit code).
+- [`scripts/run-meeti-paired-experiment.py`](scripts/run-meeti-paired-experiment.py)
+  runs a resumable blinded pair from one frozen source fingerprint: a minimal
+  one-look baseline followed by the clinical MultiPass candidate. The answer-free
+  inference manifest is kept separate from the gold manifest, runtime ownership
+  must resolve to OpenClaw, and any Codex agent route, Platform API key route,
+  manifest mismatch, or source/scorer drift fails closed. It preserves raw JSON,
+  provider and tool receipts, crop traces, review PNGs, coordinate audits,
+  scorecards, paired bootstrap/sign tests, and atomic supervisor state.
 - Production-scale ECG evaluation uses the public MEETI source dataset
   (Zenodo record `18523205`, `MEETI.rar`, about 10k ECG images). The local gate
   builds a minimum 1000-case manifest with
@@ -347,10 +368,11 @@ portable across OpenClaw releases.
   and the image attachment format are unchanged; raise the floor only when a
   real incompatibility is found.
 - The desktop Settings dialog exposes AI Provider profiles and selects the
-  model currently active in OpenClaw. The release default is the
-  `openai-vision` profile with `openai/gpt-5.4-mini` registered as `text+image`
-  over the Responses API. Luna remains an explicit profile. OpenRouter is also
-  available through
+  model and transport currently active in OpenClaw. The `openai-vision` profile
+  uses a Platform API key; **OpenAI Subscription via OpenClaw** uses the local
+  ChatGPT/Codex OAuth allowance and the native `openai-chatgpt-responses`
+  transport. Both route `openai/gpt-5.4-mini` image turns through the OpenClaw
+  embedded agent. Luna remains an explicit profile. OpenRouter is also available through
   `OPENROUTER_API_KEY` and `https://openrouter.ai/api/v1`. Saving a profile
   writes only app-managed OpenClaw provider/model sections and keeps secrets in
   environment variables or `.env`, not in git or experiment logs.
@@ -388,7 +410,8 @@ portable across OpenClaw releases.
   the runner and Settings default are now `openai/gpt-5.4-mini`. Copilot
   subscription models (e.g. MAI Flash) remain unusable as an API provider
   because they use an OAuth device-token flow, not an API key.
-- Current experiment status (2026-08-05): the requested
+- Historical experiment status (2026-08-05, superseded by the subscription
+  evidence above): the requested
   `openai/gpt-5.4-mini` MultiPass canary used the full `manifest-v2` protocol,
   clinical prompt, rhythm pass, three refinement slots, and two systematic
   EKG probes. The catalog declared `text,image`; the Gateway became ready in
@@ -433,13 +456,13 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 
 | Artifact | Budget | Current |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **6.97 MiB** |
-| App + Python/Qt layer | < 100 MiB | **94.66 MiB** |
-| Slim pinned OpenClaw runtime | < 500 MiB | **181.04 MiB** |
+| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **7.05 MiB** |
+| App + Python/Qt layer | < 100 MiB | **94.74 MiB** |
+| Slim pinned OpenClaw runtime | < 500 MiB | **185.02 MiB** |
 | Portable Node.js `v24.18.0` | - | **88.25 MiB** |
-| Full zero-install bundle | < 650 MiB | **363.94 MiB** |
+| Full zero-install bundle | < 650 MiB | **368.01 MiB** |
 
-The staged OpenClaw runtime (181.04 MiB in this build) keeps its required dist
+The staged OpenClaw runtime (185.02 MiB in this build) keeps its required dist
 and plugin surfaces intact on purpose: pruning those
 internal `dist` chunks would couple the app to OpenClaw internals and break
 **Core 3** across releases. We trim everything *around* it instead.
@@ -453,6 +476,7 @@ internal `dist` chunks would couple the app to OpenClaw internals and break
 - [Roadmap](ROADMAP.md) - Feature planning
 - [Real Test Runbook](REAL_TEST_RUNBOOK.md) - Live stack testing
 - [AGENTS.md](AGENTS.md) - AI maintenance guardrails for the four cores
+- [MEETI/OpenClaw Experiment Record](docs/meeti-openclaw-experiments-2026-08-09.md) - Real paired/unseen results, tools, SLA, and claim boundaries
 - [ECGFounder Tool Contract](docs/ecgfounder-tool.md) - External waveform evidence boundary
 - [2026-08-05 Verification Record](docs/verification-2026-08-05.md) - MultiPass, real canary, coordinates, bundle hashes, and blockers
 - [GitHub Pages source](site/index.html) - Public product/evidence site

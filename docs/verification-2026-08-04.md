@@ -1,6 +1,10 @@
 # Verification Record - 2026-08-04
 
-This file is the release-facing evidence ledger for the current desktop MVP.
+> Historical ledger. Its dated results remain unchanged; current subscription,
+> MultiPass, MEETI and bundle evidence is in
+> [the 2026-08-09 record](meeti-openclaw-experiments-2026-08-09.md).
+
+This file was the release-facing evidence ledger for the 2026-08-04 desktop MVP.
 It separates completed execution from blocked experiments so a local JSON file
 or a schema-valid response is never mistaken for clinical accuracy evidence.
 

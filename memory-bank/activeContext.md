@@ -1,5 +1,9 @@
 # Active Context
 
+> Current state is the final `2026-08-09 OpenClaw MultiPass evidence and release
+> status` section below. Earlier dated session updates are historical snapshots
+> and intentionally retain their then-valid blockers, versions and run states.
+
 ## Session Update (2026-08-05, evidence-v3 and GPT-5.4 Mini release default)
 
 - The release default is `openai/gpt-5.4-mini` through the `openai-vision`
@@ -498,6 +502,52 @@
   - `data\experiments\meeti-20260530-214839-openai_gpt-5.5-mini\experiment.json`: blocked because OpenClaw catalog does not expose `openai/gpt-5.5-mini`.
   - `data\experiments\meeti-20260530-214859-openai_gpt-5.4-mini\experiment.json`: completed 1-case runner smoke with experiment-local config/logs/eval artifacts.
 
+## 2026-08-06 OpenClaw subscription experiment freeze
+
+- Agent ownership is explicit: OpenClaw runs every image turn, crop/refine loop,
+  and native tool call. ChatGPT/Codex OAuth is only the subscription transport
+  for `openai-chatgpt-responses`; the Codex app server is never an analyzer.
+- Official `@openclaw/codex` is staged only as an OAuth migration provider, then
+  removed from the live Gateway config. Packaged verification proves
+  `codex_agent_runtime_dependencies_bundled=false` and zero platform binaries.
+- Full blind MEETI manifests contain 9,922 ordered image cases with no answer
+  fields in the inference manifest. The separate gold manifest is opened only
+  after inference for scoring.
+- Paired protocol runs a no-tool/no-harness baseline and a MultiPass candidate
+  with bounded crop/refine plus `dicom_bbox_validate`; ECGFounder remains
+  supporting evidence only and requires a valid matched-waveform sidecar.
+- Exploratory baseline pilot v1 finished 64/64 with zero runtime errors,
+  partial score 0.288, and mean latency 24.4 seconds. It is not the formal arm
+  because source code changed afterward; both formal arms will be rerun from
+  one frozen source fingerprint.
+- Fresh portable build exists at `dist/DICOMOverlayAgent/DICOMOverlayAgent.exe`.
+  Bundle verifier and opt-in isolated Gateway smoke are green; OpenClaw is
+  2026.7.1-2 and both native harness tools are discoverable.
+- A live post-fix ownership canary completed 1/1 with no error and partial
+  credit 0.886. Gateway evidence shows `[agent/embedded]`,
+  `api=openai-chatgpt-responses`, the ChatGPT Codex subscription endpoint,
+  `openai/gpt-5.4-mini`, one prompt image, and `tools=count=0` for baseline.
+- The research runner no longer installs, inspects, or uninstalls a Codex
+  plugin. It shares the app's bundled migration-only bootstrap, applies bounded
+  command timeouts, removes the temporary provider before Gateway launch, and
+  fails closed through the OpenClaw ownership guard.
+- Protocol source identity now hashes final contents of every tracked and
+  untracked file in the scoped worktree, including the arm runner, paired
+  supervisor, and comparator. A regression test proves same-path untracked
+  edits change the fingerprint even when Git status text does not.
+- OpenClaw may auto-discover the bundled Codex extension even after its config
+  entry is removed, so extension loading is not used as the ownership claim.
+  The install/stage flow now prunes the full `@openclaw/codex` runtime package,
+  `@openai/codex`, and all `codex.exe` binaries after extracting the official
+  OAuth migration provider.
+- Live ownership canary v5 completed successfully after pruning. Its audit has
+  one observed agent route (`openai/gpt-5.4-mini`), no Codex handoff markers,
+  no runtime dependencies/binaries, `tools=count=0`, and HTTP 200 through
+  OpenClaw's `openai-chatgpt-responses` transport.
+- Final desktop rebuild completed after the runtime-pruning fix. The bundle is
+  green, contains both native harness tools, has zero Codex binaries/full
+  runtime packages, and passed four opt-in packaged selfcheck/Gateway tests.
+
 > 📌 此檔案記錄當前工作焦點，每次工作階段開始時檢視，結束時更新。
 
 ## 🎯 當前焦點
@@ -567,6 +617,67 @@
 ---
 *Last updated: 2026-05-30*
 
+## 2026-08-07 OpenClaw SLA harness iteration
+
+- Current source harness/plugin version: `1.4.9`; model route remains
+  `openai/gpt-5.4-mini` with per-turn OpenClaw `fastMode=true`.
+- `fastMode` is recorded only as a Gateway execution request. The native
+  ChatGPT subscription transport strips unsupported `service_tier`; a priority
+  tier may be claimed only when `transport-receipt.json` observes it. The
+  64-case baseline receipt found 64/64 fast trajectories and 64/64
+  `serviceTier=undefined` provider requests.
+- MultiPass hard budgets are 60 seconds for coarse response, 100 seconds for
+  first crop/refinement, and 180 seconds total. Deadline degradation returns
+  the best completed result with review/incomplete receipts instead of waiting
+  indefinitely.
+- ECGFounder sidecar now emits deterministic lead-II R-R regularity evidence.
+  It does not diagnose AF. A local conflict guard acts only when top-three
+  waveform ranking contains AF/flutter and measured R-R timing is irregular;
+  it upgrades/reconciles an existing localized finding when possible.
+- `ImageProcessor.ekg_row_strip_evidence()` confirms 12-row geometry from
+  full-width black-ink periodicity while excluding red grid lines. Missing lead
+  declarations are repaired only with this independent image evidence; true
+  3x4/partial/low-signal images fail closed.
+- Experiment scoring is negation/uncertainty aware, including shared `no ...`
+  clauses, `excludes ... read`, and cautious labels that repeat an expected
+  concept without creating a second false positive.
+- Real blinded smoke v3 (2 cases), rebuilt with the frozen scorer: strict,
+  partial, schema, concept precision, normal specificity, and all SLA rates are
+  `1.0`. Final runtime canary: 45.613 s coarse, 57.833 s first refinement,
+  92.417 s total; trace proves fastMode, three OpenClaw turns, ECGFounder, and
+  `layout_signal_check` with 12-row confirmation.
+- Pilot failure review found three general defects: irregular R-R was allowed to
+  imply AF despite top-ranked ectopy, LVH-specific wording displaced balanced
+  waveform review, and one local crop could retract a multi-box hypothesis.
+  Version `1.4.9` routes rhythm/ectopy/AV-block hypotheses to a declared rhythm
+  strip or full lead II, routes bounded multi-lead patterns to their declared
+  lead context, and blocks retraction when the actual crop omits any coarse
+  evidence bbox. ECGFounder top-three ectopy now also routes a lead-II probe.
+- EKG prompts now test rhythm/ectopy, conduction, high versus low voltage,
+  Q/QS/R-wave progression, and ST-T morphology without ranking-driven priority.
+  Irregularity or poorly visible P waves alone cannot create AF.
+- ECGFounder acquisition is nonce-idempotent: only one sidecar request and one
+  evidence receipt are allowed; later attempts get a compact cached response
+  and a separate `ecg_founder_duplicate_suppressed` audit event. The agent sees
+  a compact evidence summary while full provenance remains in the receipt.
+- Top-three waveform labels can route the bounded systematic slot to lead II,
+  limb leads, or precordials; they still cannot set diagnosis/severity.
+- Verification after the `1.4.9` changes: Ruff clean; 892 passed, 3 opt-in
+  skips.
+- Fresh blinded pilot artifacts use a 1,080-case exposure denylist and exclude
+  all inspected smoke cases: `pilot-64-final.{inference,gold}.json`.
+- Paired pilot baseline is complete at 64/64; candidate is running in a frozen
+  `1.4.6` process so both arms remain comparable. Source/release `1.4.7`
+  and subsequent `1.4.9` changes will not be mixed into that running pair.
+- A fresh 32-case paired gate is prepared without inspecting case contents. It
+  excludes 1,144 exposed identities (the prior 1,080 plus the current 64) and
+  contains 8 normal, 14 warning, and 10 critical cases. It will validate
+  `1.4.9` after the frozen pilot releases the Gateway.
+- The currently rebuilt packaged app still contains harness/plugin `1.4.7`;
+  a `1.4.9` rebuild is pending the active pilot. Its verifier status is
+  `ok` with zero failures and packaged selfcheck is 3 passed, 1 Gateway smoke
+  skipped while the pilot owns port 18789.
+
 ## 2026-08-04 ECGFounder 外部工具狀態
 
 - 官方 `PKUDigitalHealth/ECGFounder` 是 ECG waveform classifier，不是 PNG
@@ -588,3 +699,52 @@
 - 系統化 MultiPass urgent canary 已完成但不是改善證據：2 案中 1 案 timeout，
   可評分案 partial 0.4、urgent concern 0/2。不能用此小樣本宣稱提升，需先處理
   多輪 timeout/成本並重新做 paired run。
+
+## 2026-08-09 OpenClaw MultiPass evidence and release status
+
+- Source harness/plugin is `1.5.7`; route is `openai/gpt-5.4-mini` through
+  OpenClaw-owned `openai-chatgpt-responses` with subscription OAuth. Codex only
+  migrates auth before Gateway start; runtime ownership receipts show no Codex
+  agent/app-server handoff and Platform API keys are disabled.
+- Frozen 32-case paired pilot (`1.5.2`) completed both arms. MultiPass improved
+  mean partial credit by +0.227 with bootstrap 95% CI `[+0.085,+0.368]` and
+  random-sign `p=0.00449955`; 23 cases improved, 4 regressed. Candidate met all
+  60/100/180 SLA stages, but normal severity-safe fell 8/8 to 6/8 and urgent
+  recall was only 3/10. This is significant weak-label agreement improvement,
+  not clinical validation.
+- Fresh `1.5.6` unseen8 completed 8/8 with zero errors, 8 review PNGs and 30
+  crops. Ownership/toolchain/schema/bbox/projection/SLA gates pass; mean stage
+  times are 16.180/28.508/71.058 seconds. Strict is 0.250, partial 0.595,
+  normal specificity 2/2, and urgent concern 1/3. Safety misses remain results.
+- Weak-label scorer now distinguishes asserted and candidate concepts.
+  Candidate uncertainty receives only 0.5 weight on incomplete weak labels and
+  cannot affect strict/cant-miss/urgent metrics; explicit negatives never score.
+- `1.5.7` removes exact duplicate study-level rate/rhythm findings while
+  preserving localized morphology. A real exposed one-case regression produced
+  one lead-II sinus-bradycardia box and no duplicate precordial rhythm boxes.
+- Process UI exposes ECGFounder ranked scores and deterministic rate/R-R
+  evidence with the uncalibrated/supporting-only/no-localization boundary.
+  Desktop review export is self-contained with source, result, marked image,
+  crop PNGs, and coordinate audit.
+- Detailed experiment record:
+  `docs/meeti-openclaw-experiments-2026-08-09.md`.
+- The pre-publication 9,922-case run at
+  `data/experiments/meeti-paired-full9922-v157-20260809` was deliberately stopped
+  at 289 baseline results before final commits. Its state is `interrupted`; the
+  retained HTTP 200/OpenClaw ownership/`fastMode=true` rows are launch evidence,
+  not a comparable full experiment.
+- The authoritative frozen-source root is
+  `data/experiments/meeti-paired-full9922-v157-postpublish-v1`. Launch it only
+  after all scoped commits are pushed, then treat its `paired-experiment.json`
+  as the sole live/completion state. The supervisor atomically resumes matching
+  results with retry; do not change source/harness/scorer until both arms and
+  comparison finish. At the unseen8 mean, candidate alone is about 196 hours.
+- Full verification is complete: Ruff passed; unit/smoke `915 passed, 3
+  skipped`; post-build packaged tests `4 passed`; Windows capture exclusion `1
+  passed`. The rebuilt bundle is `ok`, 368.01 MiB / 16,188 files, with OpenClaw
+  `2026.7.1-2`, Node `v24.18.0`, plugin `1.5.7`, and launcher SHA-256
+  `27fcb0fafecdb2285d9dc1aae1a51d6ca46a0930592400740abfbe6deb17984e`.
+- An isolated 15-second full GUI launch remained responsive, started bundled
+  Node/OpenClaw, and released port 18789 on shutdown. Release smoke did not call
+  a model. The pinned npm tree still has 7 moderate/4 high/0 critical upstream
+  advisories.

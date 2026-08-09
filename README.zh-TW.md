@@ -8,35 +8,25 @@
 
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 
-## 2026-08-05 最新驗證狀態
+## 2026-08-09 最新驗證狀態
 
-- unit + smoke suite 為 791 passed（另 3 個 opt-in skip），OpenClaw integration
-  55 passed，Windows 原生 capture-exclusion smoke、Ruff、mypy 63 個 source files
-  與 whitespace gate 全數通過；重建後 frozen bundle 的 selfcheck、native plugin、
-  authenticated Gateway cold-start/connect/clean-stop 為 3/3 passed。
-- 最新 MEETI 1,000-case strict mock protocol 已完整跑完：4,869 次 analyzer
-  call、2,869 個原圖 crop、2,000 個 limb/precordial systematic probe，並匯出
-  1,000 張 review PNG。865 個 bbox 的座標 round-trip 為 0 failure、0 clamp、
-  最大 drift 0 px。mock 的 1.0 只證明 pipeline/gate，不是模型準確率。
-- harness 現在明確區分 minimal control、clinical single-pass、MultiPass、
-  MultiPass+ECGFounder 四臂；低於 strict 0.75 或 partial credit 0.85 不能標記
-  completed，比較器也會拒絕不同 manifest/case/scorer/protocol 的結果。
-- 官方 checkpoint 的 ECGFounder paired waveform arm 已遍歷 MEETI 1,000/1,000；
-  999 筆 eligible，另 1 筆因原始 V5 導程全零而明確標成 `ineligible`，沒有硬產生
-  預測。有效結果仍是 uncalibrated supporting evidence，不會產生影像 bbox。
-- 完整 150 分數的五折 out-of-fold 研究評估在 23 個支撐足夠的概念得到
-  macro balanced accuracy 0.865、sensitivity 0.847、明確正常對照 specificity
-  0.883；holdout top-20 概念 recall 為 0.837，但 3-5 診斷完整 recall 只有
-  0.479，尚未達 0.75 產品目標。這是波形弱標籤研究，不是影像 agent 準確率。
-- 指定的 `openai/gpt-5.4-mini` 最新 MultiPass canary 已由 catalog 確認
-  `text,image`，Gateway 於 72.359 秒 ready，第一張圖的 coarse call 真實抵達
-  OpenAI 後被 `provider_credit_exhausted` 阻擋；因此紀錄為 infrastructure
-  `blocked`，不把它算成病例答錯。在額度恢復並完成四臂前不宣稱真實準確率。
-- 最新可攜 bundle 使用 OpenClaw `2026.7.1-2` 與 Node `v24.18.0`，總體積
-  363.94 MiB（15,226 個 payload 檔案），EXE SHA-256 為
-  `444b99d4614f1f5f4616118f1c0ac35f35f9a79c15b24bc8366f60a13170a24d`。
-  封裝掃描確認沒有 `.env*`、Torch、checkpoint、MEETI、sidecar 或實驗資料。詳見
-  [`docs/verification-2026-08-05.md`](docs/verification-2026-08-05.md)。
+- Ruff 與完整 unit + smoke suite 通過：915 passed、3 個刻意保留的 opt-in
+  skip。新 bundle 另通過 4/4 packaged self-check/isolated Gateway 測試及
+  Windows 原生 capture-exclusion smoke。
+- 32 例 frozen 真實 paired pilot 由 OpenClaw embedded agent 透過 subscription
+  OAuth 使用 `openai/gpt-5.4-mini`。MultiPass 將 weak-label mean partial
+  credit 從 0.253 提升到 0.480，paired bootstrap 95% CI 為
+  `[+0.085,+0.368]`、random-sign `p=0.00449955`；但 urgent concern 只抓到
+  3/10。這是實驗一致性顯著提升，不是醫療準確率。
+- 後續 8 例未曝光測試通過 OpenClaw ownership、schema、bbox、crop、projection、
+  review artifact 及 60/100/180 秒 SLA；保留 2 個 urgent miss，並匯出 8 張
+  標記 review 圖與 30 張 crop 圖。
+- 最新 portable bundle 為 368.01 MiB，包含 harness/plugin `1.5.7`、OpenClaw
+  `2026.7.1-2`、Node `v24.18.0`。發布前的全量嘗試為避免程式版本變動污染
+  paired comparison，已在 baseline 289 筆時主動中止。正式 9,922 例
+  post-publication run 會鎖定同一個 Git commit，暫態進度只以
+  `paired-experiment.json` 為準；目前仍不能宣稱全量完成。詳見
+  [`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)。
 
 ## 2026-07-02 real-model smoke 狀態
 
@@ -130,10 +120,11 @@
   `2026.7.1-2`，仍只透過 Gateway
   `connect` + `chat.send` 與 OpenClaw 溝通，不匯入 OpenClaw plugin SDK
   內部 API。
-- 桌面版 Settings 的 AI Provider 分頁支援 OpenRouter：
-  `OPENROUTER_API_KEY` + `https://openrouter.ai/api/v1`，預設模型為
-  MiniMax M3（`openrouter/minimax/minimax-m3`）。設定會寫入 OpenClaw
-  managed provider/model 區段，API key 留在環境變數或 `.env`，不進 git。
+- 桌面版 Settings 的 AI Provider 分頁可明確選擇 Platform API key 或
+  ChatGPT/Codex subscription OAuth；兩者都由 OpenClaw embedded agent 執行
+  `openai/gpt-5.4-mini` 影像回合。OpenRouter 等 API profile 仍可使用，設定只
+  寫入 OpenClaw managed provider/model 區段，secret 留在環境變數、`.env` 或
+  OpenClaw 私有 auth store，不進 git 與實驗紀錄。
 - MEETI 生產級評估 gate 使用 Zenodo record `18523205` 的 `MEETI.rar`
   公開資料來源；本機 manifest 已能從約 1 萬張 ECG 影像建立至少 1000
   case，並透過 `run-eval.py`、`export-eval-annotations.py`、
@@ -171,7 +162,7 @@ Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲�
 | 1 | **影像判讀圖層互動**（位置 + 內容） | AI 發現出現在正確的 *位置*（bbox/region 疊在原圖上），並提供可讀的 *內容*（checklist + 追問 chat） |
 | 2 | **OpenClaw 判讀完整 harness** | 一個可執行、CI 可驗證的合約，證明截圖 → 分析 → 疊加的迴圈確實可用 |
 | 3 | **OpenClaw plugin 兼容性** | 只透過穩定的公開 Gateway 協定溝通，能跨 OpenClaw 版本存活 |
-| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB，現為 6.90 MiB）加上含固定 Node/OpenClaw 的已驗證可攜 bundle |
+| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB，現為 7.05 MiB）加上含固定 Node/OpenClaw 的已驗證可攜 bundle |
 
 每個核心詳見下方 [核心詳解](#-核心詳解)。
 
@@ -214,6 +205,13 @@ start.bat
 ```
 
 首次啟動時設定截圖 **ROI**（裁切 PHI）並選擇 trigger 模式，之後 agent 即監控 DICOM viewer 並疊加發現。
+
+若要使用 ChatGPT/Codex 訂閱額度而不是 Platform API key，先執行一次
+`codex login`，再於 Settings 選擇 **OpenAI Subscription via OpenClaw**。
+固定版本的官方 `@openclaw/codex` 套件只在把 OAuth 狀態匯入隔離的
+OpenClaw home 時暫時啟用，推論前即從 live plugin config 移除。Agent loop
+全程仍由 OpenClaw 擁有；bundle 不含 Codex agent runtime 或平台執行檔，
+並在 `data/tmp/codex-auth-import.json` 留下不含 secret 的稽核紀錄。
 
 ### 建置可攜帶執行檔
 
@@ -278,6 +276,12 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
   [`scripts/run-eval.py`](scripts/run-eval.py) 以標註資料集評分辨識能力：
   軸×嚴重度覆蓋率、pertinent-negative recall，以及 **can't-miss 硬性 gate**
   （漏掉 STEMI／張力性氣胸 等致命診斷時 CI 以非零碼失敗）。
+- [`scripts/run-meeti-paired-experiment.py`](scripts/run-meeti-paired-experiment.py)
+  會以同一個 frozen source fingerprint 依序執行 minimal one-look baseline 與
+  clinical MultiPass candidate。無答案 inference manifest 與 gold manifest
+  分離；OpenClaw ownership、subscription transport、manifest/scorer/source
+  fingerprint 任一不符即 fail closed。每題保留原始 JSON、provider/tool receipt、
+  crop trace、標記 PNG、座標 audit、scorecard 與 paired 統計。
 
 ### 核心 3 — OpenClaw plugin 兼容性
 
@@ -339,13 +343,13 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 | 產物 | 預算 | 現況 |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **6.97 MiB** |
-| App + Python/Qt 層 | < 100 MiB | **94.66 MiB** |
-| slim pinned OpenClaw runtime | < 500 MiB | **181.04 MiB** |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **7.05 MiB** |
+| App + Python/Qt 層 | < 100 MiB | **94.74 MiB** |
+| slim pinned OpenClaw runtime | < 500 MiB | **185.02 MiB** |
 | 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
-| 完整零安裝 bundle | < 650 MiB | **363.94 MiB** |
+| 完整零安裝 bundle | < 650 MiB | **368.01 MiB** |
 
-本次 staged OpenClaw runtime 為 181.04 MiB，所需 `dist` 與 plugin surfaces
+本次 staged OpenClaw runtime 為 185.02 MiB，所需 `dist` 與 plugin surfaces
 刻意保持完整：修剪其內部 `dist`
 chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們只修剪它
 *周圍* 的一切。
@@ -360,6 +364,7 @@ chunks 會讓 app 耦合 OpenClaw 內部、跨版本破壞 **核心 3**。我們
 - [真實測試 Runbook](REAL_TEST_RUNBOOK.md) - Live stack 測試
 - [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
 - [ECGFounder 工具契約](docs/ecgfounder-tool.md) - 外部波形證據邊界
+- [2026-08-09 MEETI/OpenClaw 實驗紀錄](docs/meeti-openclaw-experiments-2026-08-09.md) - 真實 paired/unseen 結果、工具、SLA 與宣稱邊界
 - [2026-08-05 驗證紀錄](docs/verification-2026-08-05.md) - MultiPass、真實 canary、座標、bundle hash 與阻擋項
 - [GitHub Pages 原始碼](site/index.html) - 公開產品與證據網站
 

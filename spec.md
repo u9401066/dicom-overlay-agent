@@ -1,8 +1,40 @@
 # DICOM Overlay Agent — 系統規格書
 
-**Version:** 0.4.1 Draft  
-**Date:** 2026-03-12  
+**Version:** 0.4.6 Implementation Profile
+**Date:** 2026-08-09
 **Author:** 寧寧 (AI Research Assistant, KMUH Anesthesiology)
+
+---
+
+## 0. Current Implementation Binding
+
+本長篇規格保留早期產品設計與 prior-art 背景；以下條款覆蓋後文仍存在的舊版
+模型、延遲、封裝尺寸與自訂 WebSocket 範例：
+
+- 桌面程式只透過 OpenClaw 公開 `connect` / `chat.send` protocol 3 傳送影像，
+  agent loop 由 OpenClaw embedded agent 擁有；不提供繞過 Gateway 的 direct-API
+  fallback。
+- 目前真實實驗模型為 `openai/gpt-5.4-mini`。ChatGPT/Codex subscription OAuth
+  只作 transport credential；官方 Codex migration provider 不作影像判讀，
+  bundle 亦不含 Codex agent runtime。
+- 預設開啟 app `MultiPassAnalyzer`：完整圖 coarse read、原圖 crop/refine、EKG
+  systematic/rhythm probe、選配 ECGFounder waveform evidence 及 final
+  reconciliation。SLA 目標為首次概略 60 秒、首次 crop/detail 100 秒、整題
+  180 秒，所有回合可顯式要求 OpenClaw `fastMode`。
+- Bbox 必須綁定來源 digest/nonce/session/tool receipt，經 source-pixel crop、
+  parent projection 與 physical/logical round-trip 校正；匯出包含 marked PNG、
+  exact crops 與 coordinate audit。
+- MEETI 的正式比較使用分離的 9,922-case inference/gold manifests，由 paired
+  supervisor 在 frozen source fingerprint 上跑 minimal baseline 與完整 candidate。
+  weak-label partial credit、strict、normal specificity、urgent/cannot-miss、schema、
+  bbox 與 SLA 分開報告，不把正常 ECG 強迫判成異常。
+- 2026-08-09 portable bundle 為 368.01 MiB，launcher 7.05 MiB，含 OpenClaw
+  `2026.7.1-2`、Node `v24.18.0` 與 harness/plugin `1.5.7`。
+
+執行細節以 [`ARCHITECTURE.md`](ARCHITECTURE.md)、
+[`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md) 與
+[`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)
+為準。
 
 ---
 
@@ -405,7 +437,7 @@ Step 5: 持續循環
   - WAITING: 等待 DICOM viewer 出現（Control Bar 顯示「等待 viewer」）
   - MONITORING: 每 500ms 取樣、計算 hash、判斷是否變化
   - CAPTURING: 截圖 + ROI 裁切（< 100ms）
-  - ANALYZING: 等待 OpenClaw Vision API 回應（3–8s）
+  - ANALYZING: 等待 OpenClaw MultiPass；SLA 為 coarse 60s、first crop 100s、total 180s
   - DISPLAYING: Overlay 顯示中（30s 後淡出，critical 不淡出）
   - PAUSED: 使用者手動暫停（Control Bar ⾂⾂）
   - ERROR: 錯誤狀態（5s 後自動回 MONITORING）
@@ -443,7 +475,7 @@ Step 5: 持續循環
     "severity": "warning",
     "findings": [...],               // 同 §3.3 JSON 格式
     "checklist": {...},
-    "model_used": "claude-opus-4-6", // OpenClaw 回報實際使用的模型
+    "model_used": "openai/gpt-5.4-mini", // OpenClaw 回報實際使用的模型
     "tokens": { "input": 1200, "output": 450 }
   }
 }
@@ -662,8 +694,8 @@ debug:
 
 | 目的地 | 說明 | 必要性 |
 |--------|------|--------|
-| api.anthropic.com | Vision 分析（經 OpenClaw Gateway） | 必要 |
-| api.openai.com | Failover 備援（經 OpenClaw Gateway） | 備用 |
+| chatgpt.com | Subscription-backed GPT-5.4 Mini（經 OpenClaw Gateway） | 目前實驗必要 |
+| api.openai.com / provider endpoint | 顯式 API-key profile（經 OpenClaw Gateway） | 選配 |
 | localhost:18789 | OpenClaw Gateway（本機） | 必要 |
 | 無其他外連 | - | - |
 
@@ -695,7 +727,7 @@ debug:
 
 ### Phase 0：OpenClaw 環境建置
 
-- [ ] 安裝 OpenClaw Gateway（Node.js）
+- [x] 安裝並固定 OpenClaw Gateway（Node.js）
 - [ ] 設定 API Keys（Anthropic / OpenAI）
 - [ ] 建立 workspace skills（DICOM 分析 prompt）
 - [ ] 驗證 WebSocket 連線與模型 failover
@@ -706,7 +738,7 @@ debug:
 
 - [ ] pywin32 視窗偵測 + mss 截圖
 - [ ] ROI 裁切 PHI 去識別（首次設定 UI）
-- [ ] WebSocket Client 連線 OpenClaw Gateway
+- [x] WebSocket Client 連線 OpenClaw Gateway
 - [ ] 固定位置側欄摘要面板（純文字，無區域高亮）
 - [ ] Click-through 透明視窗
 - [ ] 小型 Control Bar（暫停/重觸發/模態切換）
@@ -751,7 +783,7 @@ debug:
 | 視窗偵測 | pywin32 (win32gui) | pygetwindow |
 | 影像 hash | imagehash (ahash) | phash |
 | WS 通訊 | websockets | - |
-| Vision API | OpenClaw 管理 (Opus 4.6 / GPT-4o) | - |
+| Vision API | OpenClaw 管理 (`openai/gpt-5.4-mini`) | - |
 | 設定檔 | PyYAML (yaml.safe_load) | - |
 | 打包 | PyInstaller（單一 exe） | - |
 | 系統常駐 | system tray (pystray) | Windows Task Scheduler |
@@ -779,7 +811,7 @@ debug:
 | 指標 | 目標 |
 |------|------|
 | 截圖 + 裁切 | < 100ms |
-| API 呼叫（經 OpenClaw） | 3–8s（取決於模型與網路） |
+| MultiPass（經 OpenClaw） | coarse ≤60s、first crop ≤100s、total ≤180s 目標 |
 | Overlay 渲染 | < 200ms |
 | 端到端延遲 | < 10s（截圖到顯示標注） |
 | 記憶體佔用 | < 150MB（常駐） |
@@ -796,7 +828,7 @@ debug:
 4. **Window/Level 相依性**：影像呈現品質受 DICOM viewer 當下 W/L 設定影響，AI 看到的是顯示影像而非原始 DICOM 數值。
 5. **PHI 裁切依賴設定**：ROI 裁切依賴使用者首次設定，DICOM viewer 版面固定時設定一次即可。
 6. **定性而非定量**：本工具輸出定性描述（normal/borderline/abnormal），不提供精確數值測量，數值仍需醫師判讀。
-7. **OpenClaw 依賴**：需要 OpenClaw Gateway 運行於本機，Node.js 環境若無法安裝，需回退至直接 API 呼叫模式。
+7. **OpenClaw 依賴**：需要本機 OpenClaw Gateway；portable bundle 內含固定 Node，且不允許 direct API fallback 繞過 ownership/audit 邊界。
 
 ---
 
@@ -840,19 +872,19 @@ overlay.exe --config config.yaml
 
 | 元件 | 大小 | 說明 |
 |------|------|------|
-| overlay 啟動器 exe | ~6.75MB | PyInstaller launcher |
-| App + Python/Qt 層 | ~89MB | PyQt6 已修剪未用模組 |
-| vendored OpenClaw runtime | ~114MB | dist + node_modules（不侵入內部以保 Core 3） |
-| Node.js portable | ~30MB | node.exe（opt-in 零安裝） |
-| config + .env | <1KB | 設定檔 |
-| **完整 bundle** | **~205MB** | 含 vendored OpenClaw；+node 為 ~235MB |
+| overlay 啟動器 exe | 7.05 MiB | PyInstaller launcher |
+| App + Python/Qt 層 | 94.74 MiB | PyQt6 已修剪未用模組 |
+| vendored OpenClaw runtime | 185.02 MiB | dist + node_modules（不侵入內部以保 Core 3） |
+| Node.js portable | 88.25 MiB | Node `v24.18.0` |
+| config / runtime state | 動態 | clean bundle 禁止 `.env`、token 與 SQLite state |
+| **完整 bundle** | **368.01 MiB** | 16,188 files，含固定 Node/OpenClaw |
 
 ### 12.5 限制
 
 - Windows only（pywin32 依賴）
-- 首次使用需設定 API key（寫入 `.env`）
+- 首次使用需 `codex login` subscription OAuth 或顯式 provider API profile
 - 需要網路連線（Vision API 呼叫）
-- 防火牆需開放 api.anthropic.com 和 api.openai.com
+- 防火牆需開放所選 provider；目前 subscription route 使用 ChatGPT backend
 
 ---
 
@@ -912,4 +944,6 @@ overlay.exe --config config.yaml
 
 ---
 
-*本規格書 v0.4.1，基於 v0.4 修訂。主要變更：新增 §13 相關專案與先行技術（Prior Art），記錄 OpenClaw 官方 repo、CloudToLocalLLM Vision System、OAIT OODA Loop、ai-assistant snip-and-ask 等參考架構，以及醫學影像 AI 和 OpenClaw 生態系相關專案。*
+*本規格書保留 v0.4.1 的產品設計與 prior-art 內容，並以 2026-08-09
+v0.4.6 implementation binding 覆蓋目前 runtime、模型、MultiPass、評估與封裝
+事實。*

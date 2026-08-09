@@ -150,6 +150,16 @@ a threshold. This matters because the official validation script derives
 per-class thresholds from labeled evaluation data; it does not publish a fixed,
 deployment-ready threshold table.
 
+For eligible 12-lead inputs, the sidecar also emits a deterministic
+`lead_II_qrs_energy_v1` rhythm measurement: accepted R-R intervals, median R-R,
+heart rate computed as `60000 / median_rr_ms`, coefficient of variation,
+RMSSD/range and a bounded `regular` / `irregular` / `indeterminate` signal. The
+plugin validates physiological ranges and marks its scope
+`rhythm_regularity_only`. It does not identify P waves or diagnose atrial
+fibrillation; ectopy, missed peaks, pacing and artifact remain explicit
+limitations. The Process tab displays this measurement separately from ranked
+ECGFounder labels.
+
 Every response is marked:
 
 ```json
@@ -234,9 +244,17 @@ not directly recover its uncertain acute ST concern in the top ten.
 ## Experiment Rule
 
 Do not compare a screenshot-only baseline against an ECGFounder arm unless the
-same cases have eligible waveform artifacts. For a waveform-matched cohort,
-record four paired arms with the same model, manifest, case order, OpenClaw
-runtime, and scorer:
+same cases have eligible waveform artifacts. The authoritative full-cohort
+supervisor records a pragmatic two-arm comparison with the same model, manifest,
+case order, OpenClaw runtime, and scorer:
+
+1. `baseline`: one image look with the minimal JSON envelope and no clinical
+   skill, tools, crop/refine, rhythm pass or waveform evidence.
+2. `candidate`: the complete clinical MultiPass path plus exactly one verified
+   matched-waveform ECGFounder receipt.
+
+For mechanism-ablation research, the candidate can still be decomposed into
+four separately paired arms:
 
 1. `minimal_control`: one image look with the minimal JSON envelope and no
    clinical skill, tools, crop/refine, or rhythm pass.
@@ -247,7 +265,10 @@ runtime, and scorer:
 4. `multipass_ecgfounder`: the same MultiPass path plus exactly one verified
    matched-waveform ECGFounder receipt.
 
-Start the fourth arm only after the sidecar endpoint and token are exported:
+Start an ECGFounder arm only after the sidecar endpoint and token are exported.
+The reportable full run uses the paired supervisor described in
+[`REAL_TEST_RUNBOOK.md`](../REAL_TEST_RUNBOOK.md); a bounded standalone arm can
+still be launched with:
 
 ```powershell
 scripts\run-meeti-openclaw-experiment.cmd `
@@ -257,7 +278,7 @@ scripts\run-meeti-openclaw-experiment.cmd `
   --ecgfounder-waveform-evidence
 ```
 
-The fourth arm tells OpenClaw to inspect the image independently first, call the
+The ECGFounder arm tells OpenClaw to inspect the image independently first, call the
 waveform tool exactly once, then reconcile agreement or disagreement. Provider
 quota/authentication failures are experiment blockers, not negative model
 results, and must remain recorded as such.
@@ -269,12 +290,13 @@ Accuracy and partial-credit comparison belong to the paired image experiment's
 scorecard and still require clinician review; this integration is a co-reading
 aid, not an autonomous diagnostic device.
 
-A real arm is `completed` only when its strict pass rate is at least 0.75 and
-its mean clinical partial credit is at least 0.85; otherwise the runner records
-`completed_below_target`. The comparator rejects incomplete runs, mismatched
-manifests or case sets, changed scorer provenance, and mixed/non-comparable
-protocols unless `--allow-incomplete` or `--allow-incompatible` is explicitly
-used for exploratory analysis.
+A real arm may finish execution while remaining below a clinical acceptance
+target; transport completion and measured quality are recorded separately. The
+paired supervisor requires a complete provenance-bound result set before
+comparison and records arm acceptance independently. The comparator rejects
+incomplete runs, mismatched manifests or case sets, changed scorer provenance,
+and mixed/non-comparable protocols unless an explicit exploratory override is
+used.
 
 The upstream MIT notice is retained in
 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and is included in the

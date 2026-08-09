@@ -9,6 +9,22 @@
 
 ### Added
 
+- **OpenClaw-owned subscription route**：新增 `OpenAI Subscription via OpenClaw`
+  profile；以固定版官方 `@openclaw/codex` 只做 OAuth migration，live inference
+  使用 `openai-chatgpt-responses`，並驗證/記錄 OpenClaw ownership、停用 Platform
+  API key、排除 Codex agent runtime 與平台執行檔
+- **9,922 例 blinded paired supervisor**：答案分離的 inference/gold manifests、
+  baseline→candidate 原子狀態、來源/manifest/scorer/protocol fingerprint、resume、
+  ownership gate、paired bootstrap/random-sign 統計及完整 raw/tool/crop/review
+  artifact；發布前 289 筆 run 明確中止，正式 run 只接受發布後 frozen commit
+- **MultiPass 影像判讀時間軸**：compact coarse read、原圖 crop/refine、deterministic
+  EKG row/lead probes、rhythm pass、ECGFounder reconciliation、final disposition，
+  每個 OpenClaw turn 可要求 `fastMode` 並記錄 60/100/180 秒 SLA
+- **專家 review package**：桌面與 eval 匯出 source/result/marked PNG/exact crops/
+  coordinate audit；diagnostic finding 與 dashed-cyan analysis crop 分開呈現
+- **ECGFounder deterministic rhythm evidence**：sidecar 輸出 lead-II R-R interval、
+  median-RR heart rate、CV/RMSSD/range 與 regularity，明確限制為 supporting-only
+  rhythm measurement，不推論 P wave/AF、不提供影像定位
 - **四臂 MEETI 實驗協定**：明確分離 minimal control、clinical single-pass、
   MultiPass、MultiPass+ECGFounder，保存 manifest/case/scorer/protocol digest、
   tool/crop/probe trace、bbox audit、review PNG 與 provider blocker；真實完成門檻
@@ -45,6 +61,14 @@
 
 ### Fixed
 
+- **Crop/bbox 對位與 evidence binding**：crop-local bbox 先做 epsilon-safe 正規化
+  再投影回 source frame；validator receipt 綁定最終 bbox multiset，低訊號、錯誤
+  lead、越界、round-trip drift 或 rejected coarse box 均 fail closed
+- **EKG 重複 finding**：study-level dedupe 只合併 exact-normalized rate/rhythm
+  重複，優先保留真 rhythm strip/lead II grounded bbox；局部 ST morphology 永不
+  因幾何重疊被折疊，並留下 retraction trace
+- **真實模型 JSON 邊界**：新增有限、可稽核的 delimiter repair 與 parse retry，
+  不完整 schema、無法復原 payload 與 timeout 仍保存為錯誤而非偽造判讀
 - **MultiPass 報告一致性與 lead inventory**：no-delta refine 仍進行 final
   reconciliation；人工寫回同步 summary/triage/checklist；共用 typed parser
   正確辨認 `I`／`II`／`V1` 等 12-lead 名稱，避免 parser/UI/bbox 規則漂移
@@ -62,6 +86,16 @@
 
 ### Changed
 
+- **弱標籤計分**：asserted concepts 才可進 strict/cannot-miss/urgent；未否定的
+  uncertain candidate 只在 incomplete weak report 取得半權重並獨立呈現，explicit
+  normal/WNL 可輸出零異常 finding
+- **最新真實證據**：32-case paired weak-label partial credit 0.253→0.480
+  （bootstrap 95% CI `[+0.085,+0.368]`，random-sign `p=0.00449955`）；8-case
+  unseen 通過 schema/bbox/crop/projection/artifact/SLA，但保留 2 個 urgent miss，
+  因此不宣稱醫療準確率或臨床安全
+- **Portable release**：harness/plugin `1.5.7`、OpenClaw `2026.7.1-2`、Node
+  `v24.18.0`；完整 bundle 368.01 MiB、launcher 7.05 MiB，source suite
+  `915 passed, 3 skipped`，另通過 4/4 packaged smoke 與 native capture smoke
 - mock perfect gate 現在明確只驗證 label-derived protocol self-test；真實 provider
   quota/auth/parser 失敗保留為 infrastructure blocker，不轉成病例答錯或部分分數
 - 正式臨床分數只使用 asserted references；weak/partial references 另列探索性

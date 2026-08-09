@@ -16,10 +16,12 @@ Run the project on Windows with a workspace-local OpenClaw Gateway and verify th
 2. Node.js 22+ available in `PATH`.
 3. Python virtual environment already prepared:
    - `uv sync --all-extras`
-4. At least one model credential available in the shell before launch:
-   - `ANTHROPIC_API_KEY`
-   - or `OPENAI_API_KEY`
-   - or `OPENROUTER_API_KEY`
+4. For the current MEETI protocol, a local ChatGPT/Codex subscription sign-in:
+   - run `codex login` once outside the repo;
+   - the runner imports OAuth into its isolated OpenClaw state and disables
+     `OPENAI_API_KEY` for the experiment;
+   - Platform API-key profiles remain available for manual desktop use, but
+     are not accepted by the authoritative paired runner.
 5. For the production-scale MEETI ECG gate, the public `MEETI.rar` archive from
    Zenodo record `18523205` is present at the repository root. The archive is
    intentionally gitignored.
@@ -48,6 +50,11 @@ This does the following:
 4. Starts the real OpenClaw Gateway.
 5. Runs gateway health check.
 6. Launches the DICOM Overlay Agent.
+
+For a subscription-backed desktop launch, open Settings and choose **OpenAI
+Subscription via OpenClaw**. The route label must read `OpenClaw agent |
+ChatGPT subscription OAuth`. The official Codex package is used only as an
+OAuth migration provider; the live inference agent is OpenClaw.
 
 ## Manual path
 
@@ -173,26 +180,26 @@ Uses an in-process mock gateway that echoes schema-valid payloads, exercising
 the real frame-building / parsing / scoring path. Proves the scorecard
 mechanism works end to end.
 
-### 2b. Real model benchmark (token required)
+### 2b. Short real-model diagnostic
 
 ```bat
-set ANTHROPIC_API_KEY=...        REM in your shell, never in code or git
-REM start the gateway first (see "Start the gateway" above)
-uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789
+REM Configure the desired provider in desktop/OpenClaw Settings first.
+REM Start the gateway, then use the existing environment directly.
+.venv\Scripts\python.exe scripts\run-eval.py --gateway ws://127.0.0.1:18789
 ```
 
 For the prepared MEETI ECG dataset, use the dataset selector and the strict
 "all cases must pass" gate:
 
 ```bat
-uv run python scripts\run-eval.py --mock --dataset meeti --require-perfect
-uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --timeout-sec 90 --require-perfect
+.venv\Scripts\python.exe scripts\run-eval.py --mock --dataset meeti --require-perfect
+.venv\Scripts\python.exe scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --timeout-sec 180
 ```
 
 Use `--limit N` while iterating on prompts or scorer behavior, for example:
 
 ```bat
-uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --limit 10 --timeout-sec 90 --require-perfect
+.venv\Scripts\python.exe scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --limit 10 --timeout-sec 180
 ```
 
 To test the real app multi-pass path (coarse read -> crop suspicious regions ->
@@ -200,9 +207,13 @@ refine), add `--multi-pass`. `--multi-pass-max-targets` caps the number of
 crop/refine passes per image, controlling latency and cost:
 
 ```bat
-uv run python scripts\run-eval.py --mock --dataset meeti --multi-pass --multi-pass-max-targets 2 --require-perfect
-uv run python scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --multi-pass --multi-pass-max-targets 2 --timeout-sec 90 --require-perfect
+.venv\Scripts\python.exe scripts\run-eval.py --mock --dataset meeti --multi-pass --multi-pass-max-targets 2 --require-perfect
+.venv\Scripts\python.exe scripts\run-eval.py --gateway ws://127.0.0.1:18789 --dataset meeti --multi-pass --multi-pass-max-targets 2 --timeout-sec 180
 ```
+
+Do not use a short diagnostic as the reported comparison. The authoritative
+experiment must use the paired supervisor in section 2d so both arms share one
+source fingerprint, blinded manifests, ownership checks and artifact gates.
 
 Multi-pass runs write `multipass-trace.jsonl` beside `scorecard.json`. Each line
 records the case id, image filename, `model_path=MultiPassAnalyzer`,
@@ -294,14 +305,33 @@ repo config. The desktop Settings dialog can also save OpenAI/OpenRouter
 profiles without storing the secret in git. Always rerun config validation,
 the image harness smoke, and readiness after changing providers or OpenClaw.
 
-Current local evidence (2026-08-05):
+Current local evidence (2026-08-09):
+
+- A frozen 32-case paired run completed with OpenClaw ownership and native
+  `openai-chatgpt-responses` subscription transport. MultiPass raised mean
+  weak-label partial credit from 0.253 to 0.480; paired bootstrap 95% CI was
+  `[+0.085,+0.368]` and random-sign `p=0.00449955`. It caught 3/10 urgent
+  concerns, so this is not a clinical-accuracy or safety claim.
+- An 8-case unseen harness run completed 8/8 with no errors and passed schema,
+  bbox, crop, projection, review-export and 60/100/180-second SLA gates. It
+  retained two urgent misses. The artifacts include 8 marked review PNGs and
+  30 exact crop PNGs.
+- Ruff and the complete unit/smoke suite passed (`915 passed, 3 skipped`). The
+  clean 368.01 MiB bundle then passed 4/4 opt-in packaged checks, native Windows
+  capture exclusion and an isolated responsive GUI launch.
+- A pre-publication 9,922-case launch was deliberately stopped after 289
+  baseline results before committing the final source. Its state is
+  `interrupted`; those results are launch/provenance evidence only. The
+  post-publication root in section 2d is the only authoritative full run.
+
+Historical local evidence (2026-08-05, Platform API route):
 
 - The strict `manifest-v2.json` mock completed 1,000/1,000 with 4,869 analyzer
   calls, 2,869 source-image crops, 2,000 systematic probes, and 1,000 review
   PNGs. Its perfect score proves protocol plumbing, not model accuracy.
 - The bbox audit contains 865 model boxes and 135 zero-box cases; all projected
   boxes passed round-trip calibration with zero clamps and 0 px maximum drift.
-- The requested GPT-5.4 Mini MultiPass canary reached the first real OpenAI
+- The then-requested GPT-5.4 Mini MultiPass canary reached the first real OpenAI
   image request and returned `provider_credit_exhausted`. It is recorded as
   `blocked`, not as a wrong clinical answer.
 - Full source verification is 769 passed and 2 release-only skips. The rebuilt
@@ -340,62 +370,60 @@ Historical local evidence (2026-07-02):
 
 ### 2d. Full MEETI real experiment runner
 
-Use this wrapper when the goal is to leave a reproducible experiment record. It
-does not mutate `openclaw\openclaw.json`; instead it writes an experiment-local
-OpenClaw config, starts the Gateway with that config, runs `run-eval.py`, then
-stores the console logs, model catalog, config, scorecard, raw per-case results,
-review PNGs, bbox audit/crops, rebuilt scorecard, and `experiment.json` under
-`data\experiments\`. New runs write `experiment.json` with `status=running`
-before model evaluation starts, then update it in `finally`.
+Use the paired supervisor for the reportable 9,922-case experiment. It runs two
+arms in order from the same source/protocol fingerprint:
 
-Run all four arms with the same model and immutable `manifest-v2.json`. Use
-distinct output directories and do not use `-RequirePerfect` for a real-model
-study; the runner's default completion gates are strict pass >= 0.75 and mean
-partial credit >= 0.85.
+- `baseline`: minimal one-look prompt, no clinical skill, MultiPass,
+  ECGFounder, rhythm pass or tools;
+- `candidate`: clinical coarse read, source-pixel crop/refine, one systematic
+  EKG probe, rhythm reconciliation and one matched-waveform ECGFounder call.
+
+Both use the OpenClaw embedded agent, `openai/gpt-5.4-mini`, ChatGPT/Codex
+subscription OAuth, `thinking=off`, per-turn `fastMode=true`, and a 180-second
+case timeout. The gold manifest is not opened until saved inference is scored.
+Do not commit, switch branches, edit scorer/harness files or rebuild in place
+while either arm is running; a source change makes the pair non-comparable.
+
+Before launch, confirm `codex login` is valid, AC sleep is disabled, the desired
+commit is pushed, no other Gateway owns port 18789, and the old pre-publication
+run is not alive. Then run:
 
 ```powershell
-# Arm 1: one-look minimal control, no clinical harness or tools
-powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.4-mini `
-  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
-  -ExperimentDir data\experiments\gpt54mini-minimal-control `
-  -TimeoutSec 180 `
-  -AnalysisPromptProfile minimal_control
-
-# Arm 2: clinical prompt/schema, exactly one image pass
-powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.4-mini `
-  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
-  -ExperimentDir data\experiments\gpt54mini-single-pass `
-  -TimeoutSec 180
-
-# Arm 3: clinical MultiPass with crops, probes, rhythm pass, reconciliation
-powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.4-mini `
-  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
-  -ExperimentDir data\experiments\gpt54mini-multipass `
-  -TimeoutSec 180 `
-  -MultiPass `
-  -MultiPassMaxTargets 3 `
-  -MultiPassMaxEkgSystematicProbes 2
-
-# Arm 4: identical MultiPass path plus matched ECGFounder waveform evidence
-powershell -ExecutionPolicy Bypass -File scripts\run-meeti-openclaw-experiment.ps1 `
-  -ModelId openai/gpt-5.4-mini `
-  -ManifestPath data\eval-datasets\meeti-1000-all\manifest-v2.json `
-  -ExperimentDir data\experiments\gpt54mini-multipass-ecgfounder `
-  -TimeoutSec 180 `
-  -MultiPass `
-  -MultiPassMaxTargets 3 `
-  -MultiPassMaxEkgSystematicProbes 2 `
-  -EcgFounderWaveformEvidence
+.venv\Scripts\python.exe scripts\run-meeti-paired-experiment.py `
+  --manifest data\eval-datasets\meeti-blind-v1\full-9922.inference.json `
+  --scoring-manifest data\eval-datasets\meeti-blind-v1\full-9922.gold.json `
+  --output-root data\experiments\meeti-paired-full9922-v157-postpublish-v1 `
+  --model-id openai/gpt-5.4-mini `
+  --thinking-level off `
+  --timeout-sec 180 `
+  --fast-mode `
+  --artifact-min-cases 9922 `
+  --multi-pass-max-targets 2 `
+  --multi-pass-max-ekg-systematic-probes 1 `
+  --random-seed 20260809
 ```
 
-If a requested model id is absent from the effective OpenClaw catalog, or the
-provider rejects authentication/quota, the runner records a blocked experiment
-instead of silently substituting a model or scoring an infrastructure failure.
-Every arm records `experiment_arm`, prompt profile, tool policy, protocol/scorer
-digests, raw results, traces, review PNGs, bbox audits, logs, and timing.
+`paired-experiment.json` is the authoritative live state. Do not infer completion
+from process presence or a few result files. Useful read-only checks are:
+
+```powershell
+Get-Content data\experiments\meeti-paired-full9922-v157-postpublish-v1\paired-experiment.json
+(Get-ChildItem data\experiments\meeti-paired-full9922-v157-postpublish-v1\baseline\eval\results -Filter *.json).Count
+Get-Content data\experiments\meeti-paired-full9922-v157-postpublish-v1\supervisor.log -Tail 40
+```
+
+Restarting the same command against the same fingerprint resumes existing raw
+results with `--resume --resume-retry-errors`. Auth/quota/model-catalog failure,
+ownership drift, source mismatch or incomplete provenance records an
+`interrupted`/blocked state instead of substituting a model or scoring a fake
+clinical miss. A completed run contains both arms, comparison JSON/Markdown,
+scorecards, provider logs, trajectories, review PNGs, crop files and coordinate
+audits. At the measured candidate mean of 71.058 seconds, the sequential
+candidate arm alone is roughly 196 hours, before baseline and post-processing.
+
+The old root `meeti-paired-full9922-v157-20260809` stopped at 289 baseline
+results to create a clean publication boundary. Never merge those partial rows
+into the post-publication pair.
 
 ### 3. Read the scorecard
 
@@ -423,6 +451,13 @@ The current weights are:
 - 20% exact severity
 - 35% positive keyword recall
 - 15% pertinent-negative recall
+
+Asserted reference concepts drive strict, cannot-miss and urgent metrics. For
+an incomplete weak report only, an explicitly uncertain, non-negated
+differential can match a candidate concept at half weight. Candidate credit is
+reported separately and can never satisfy a strict/safety gate. Explicit
+normal/within-range cases may correctly produce zero abnormal findings; the
+harness does not force a diagnosis merely to fill the schema.
 
 The pertinent-negative component is included only when a case actually has
 expected negatives, so abnormal cases without negatives no longer receive free
@@ -527,6 +562,9 @@ Outputs:
   `invalid_reason`.
 - `review\crops\<case>-fNN-bNN.png` -- the exact image crop inside each bbox,
   upscaled only for review readability.
+- analysis/probe regions are shown as dashed cyan boxes and exported separately
+  from solid diagnostic finding boxes, preventing a crop target from being
+  mistaken for a model diagnosis.
 - `review\index.html` -- clickable table for manual review.
 
 The exporter cleans generated review PNGs/crops by default before rewriting the
