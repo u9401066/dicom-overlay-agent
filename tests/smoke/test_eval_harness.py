@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import TYPE_CHECKING
+
+import pytest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,6 +23,7 @@ from dicom_overlay.infrastructure.eval_harness import (
     CaseScore,
     EvalCase,
     EvalReport,
+    _atomic_write_json,
     _write_raw_result,
     is_empty_read,
     run_evaluation,
@@ -133,6 +137,136 @@ def test_keyword_recall_does_not_count_negated_positive(tmp_path: Path) -> None:
     assert score.strict_pass is False
 
 
+def test_keyword_recall_rejects_unsupported_classifier_mention(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="unsupported_af",
+        keywords=("atrial fibrillation",),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary=(
+            "Regular sinus rhythm; automated atrial fibrillation scoring is "
+            "not visually supported on this screenshot."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["atrial fibrillation"]
+    assert score.concept_hits == []
+
+
+def test_normal_case_does_not_penalize_visually_unsupported_candidate_list(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="unsupported_candidates",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.NORMAL,
+        summary=(
+            "Normal sinus rhythm. Low-probability left atrial enlargement, "
+            "incomplete RBBB, and RBBB candidates are visually unsupported."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "right bundle branch block" not in score.concept_false_positives
+    assert score.keyword_recall == 1.0
+
+
+def test_normal_case_does_not_count_late_item_in_shared_no_clause(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="shared_no_clause",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.NORMAL,
+        summary=(
+            "Normal sinus rhythm. QRS is narrow, with no convincing conduction "
+            "block, pathologic Q waves, or acute ST-segment elevation/depression."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "st elevation" not in score.concept_false_positives
+    assert score.false_positive_penalty == 0.0
+
+
+def test_normal_case_does_not_count_excluded_definitive_read_as_diagnosis(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="excluded_ischemia_read",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.NORMAL,
+        summary=(
+            "Normal sinus rhythm. Screenshot-only capture limits exact interval "
+            "quantification and excludes a fully definitive ischemia read."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "ischemia" not in score.concept_false_positives
+    assert score.false_positive_penalty == 0.0
+
+
+def test_normal_case_does_not_score_info_review_marker_as_diagnosis(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="info_review_marker",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.INFO,
+        summary="Normal sinus rhythm; no actionable abnormality is confirmed.",
+        checklist={},
+    )
+    result.findings = [
+        Finding(
+            id="candidate",
+            regions=["lead_V1"],
+            label="LVH voltage candidate",
+            detail="High voltage is not confirmed on a calibrated source.",
+            severity=Severity.INFO,
+            confidence="low",
+            question="Can a reviewer confirm calibrated voltage criteria?",
+            bboxes=[RegionRect(0.1, 0.1, 0.1, 0.1)],
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_false_positives == []
+    assert score.severity_abnormal_match is True
+
+
 def test_score_case_marks_incomplete_schema_as_not_ok(tmp_path: Path) -> None:
     case = _case(tmp_path, Severity.WARNING, ("consolidation",))
     result = _result(
@@ -187,6 +321,8 @@ def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None
         "concept_precision": 1.0,
         "concept_recall": 1.0,
         "concept_f1": 1.0,
+        "candidate_concept_recall": 0.0,
+        "weighted_concept_recall": 1.0,
         "false_positive_penalty": 0.0,
         "negative_recall": 1.0,
     }
@@ -210,6 +346,8 @@ def test_partial_credit_does_not_award_empty_negative_recall(
         "concept_precision": 0.0,
         "concept_recall": 0.0,
         "concept_f1": 0.0,
+        "candidate_concept_recall": 0.0,
+        "weighted_concept_recall": 0.0,
         "false_positive_penalty": 0.0,
         "negative_recall": 1.0,
     }
@@ -276,6 +414,38 @@ def test_extra_diagnoses_reduce_concept_precision_and_partial_credit(
     assert noisy_score.strict_pass is False
 
 
+def test_cautious_expected_finding_label_is_not_a_new_false_positive(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="afib_cautious_finding",
+        keywords=("atrial fibrillation",),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Irregularly irregular rhythm most consistent with atrial fibrillation.",
+        checklist={},
+    )
+    result.findings = [
+        Finding(
+            id="f1",
+            regions=["lead_II"],
+            label="Irregular rhythm; atrial fibrillation possible",
+            detail="Native ECG confirmation remains appropriate.",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.1, 0.1, 0.2, 0.08)],
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_recall == 1.0
+    assert score.concept_false_positives == []
+    assert score.concept_precision == 1.0
+
+
 def test_specific_expected_phrase_does_not_create_broader_false_positive(
     tmp_path: Path,
 ) -> None:
@@ -321,7 +491,7 @@ def test_separate_broader_assertion_remains_a_false_positive(tmp_path: Path) -> 
     assert score.strict_pass is False
 
 
-def test_partial_uncertain_reference_is_exploratory_not_formal_accuracy(
+def test_partial_uncertain_reference_scores_asserted_concepts_without_precision(
     tmp_path: Path,
 ) -> None:
     case = _ekg_case(
@@ -341,12 +511,61 @@ def test_partial_uncertain_reference_is_exploratory_not_formal_accuracy(
 
     assert score.false_positive_scorable is False
     assert score.reference_complete is False
-    assert score.clinical_scorable is False
+    assert score.clinical_scorable is True
+    assert score.severity_scorable is True
     assert score.concept_false_positives == []
     assert score.false_positive_penalty == 0.0
     assert score.concept_hits == ["atrial fibrillation"]
     assert score.strict_pass is False
-    assert score.partial_credit == 0.0
+    assert score.partial_credit == 1.0
+    assert score.partial_credit_breakdown["concept_recall"] == 1.0
+
+
+def test_weak_reference_records_half_weighted_candidate_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="cautious_candidates",
+        keywords=(
+            "tachycardia",
+            "fascicular block",
+            "ventricular tachycardia",
+        ),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.INFO,
+        summary="Tachycardic ECG with possible LAFB.",
+        checklist={},
+    )
+    result.findings = [
+        Finding(
+            id="wide-run",
+            regions=["lead_V2", "lead_V3"],
+            label="Wide-complex run",
+            detail="Three broad complexes recur across the sampled leads.",
+            severity=Severity.INFO,
+            confidence="low",
+            question="Does this represent VT versus artifact?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == ["tachycardia"]
+    assert score.candidate_concept_hits == [
+        "fascicular block",
+        "ventricular tachycardia",
+    ]
+    assert score.candidate_concept_misses == []
+    assert score.concept_recall == 0.333
+    assert score.candidate_concept_recall == 0.667
+    assert score.weighted_concept_recall == 0.667
+    assert score.partial_credit_breakdown["concept_recall"] == 0.333
+    assert score.partial_credit_breakdown["weighted_concept_recall"] == 0.667
+    assert score.strict_pass is False
 
 
 def test_rather_than_phrase_does_not_assert_rejected_diagnosis(
@@ -821,6 +1040,14 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
         ),
         cases[1].image_path: _complete_result(Severity.NORMAL, summary="clear"),
     }
+    answers[cases[1].image_path].analysis_trace = [
+        {
+            "stage": "json_recovery",
+            "status": "repaired",
+            "tool": "bounded_json_delimiter_repair",
+            "repair_count": 2,
+        }
+    ]
 
     async def analyze(case: EvalCase) -> AnalysisResult:
         return answers[case.image_path]
@@ -844,6 +1071,8 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
         "negative_recall": 0,
         "concept_precision": 2,
         "concept_recall": 1,
+        "candidate_concept_recall": 0,
+        "weighted_concept_recall": 0,
         "false_positive_penalty": 2,
         "urgent_concern_recall": 0,
     }
@@ -873,6 +1102,18 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert scorecard["cases"][0]["concept_f1"] == 1.0
     assert scorecard["mean_partial_credit"] == 1.0
     assert scorecard["strict_pass_rate"] == 1.0
+    assert scorecard["sla_metrics"]["profile"] == {
+        "initial_response_sec": 60.0,
+        "first_crop_refinement_sec": 100.0,
+        "total_sec": 180.0,
+    }
+    assert scorecard["sla_metrics"]["initial_response"]["rate"] == 1.0
+    assert scorecard["sla_metrics"]["first_crop_refinement"]["rate"] is None
+    assert scorecard["sla_metrics"]["total"]["rate"] == 1.0
+    assert scorecard["json_repair_case_count"] == 1
+    assert scorecard["json_repair_total_count"] == 2
+    assert scorecard["raw_json_clean_rate"] == 0.5
+    assert scorecard["cases"][1]["json_repair_count"] == 2
     assert scorecard["manifest_total"] == 2
     assert scorecard["result_count"] == 2
     assert scorecard["is_partial"] is False
@@ -882,6 +1123,77 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert partial["manifest_total"] == 2
     assert partial["result_count"] == 2
     assert partial["is_partial"] is False
+
+
+async def test_run_evaluation_atomically_replaces_all_json_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = _case(tmp_path, Severity.NORMAL, (), name="atomic")
+    result = _complete_result(Severity.NORMAL, summary="Within normal limits.")
+    result.review_required = True
+    result.review_reasons = ["Expert review requested."]
+    replacements: list[str] = []
+    real_replace = os.replace
+
+    def tracked_replace(source, destination) -> None:
+        source_path = tmp_path.__class__(source)
+        destination_path = tmp_path.__class__(destination)
+        assert source_path.parent == destination_path.parent
+        assert source_path.name.startswith(f".{destination_path.name}.")
+        assert source_path.suffix == ".tmp"
+        json.loads(source_path.read_text(encoding="utf-8"))
+        replacements.append(destination_path.relative_to(tmp_path).as_posix())
+        real_replace(source, destination)
+
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.eval_harness.os.replace",
+        tracked_replace,
+    )
+
+    async def analyze(_case: EvalCase) -> AnalysisResult:
+        return result
+
+    out = tmp_path / "atomic-output"
+    await run_evaluation(
+        [case],
+        analyze,
+        output_dir=out,
+        gateway_mode="mock",
+        case_metadata=lambda _case: {"review_metadata": {"arm": "candidate"}},
+    )
+
+    assert replacements == [
+        "atomic-output/results/atomic.json",
+        "atomic-output/scorecard.partial.json",
+        "atomic-output/scorecard.json",
+    ]
+    raw = json.loads((out / "results" / "atomic.json").read_text(encoding="utf-8"))
+    assert raw["review_required"] is True
+    assert raw["review_metadata"] == {"arm": "candidate"}
+    assert not list(out.rglob("*.tmp"))
+
+
+def test_atomic_json_write_preserves_previous_file_when_replace_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    target = tmp_path / "scorecard.json"
+    target.write_text('{"state": "previous"}', encoding="utf-8")
+
+    def fail_replace(_source, _destination) -> None:
+        raise OSError("simulated interruption before replace")
+
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.eval_harness.os.replace",
+        fail_replace,
+    )
+
+    with pytest.raises(OSError, match="simulated interruption"):
+        _atomic_write_json(target, '{"state": "new"}')
+
+    assert json.loads(target.read_text(encoding="utf-8")) == {"state": "previous"}
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 async def test_diagnosis_metrics_separate_single_and_three_to_five_sets(
@@ -1046,6 +1358,92 @@ async def test_run_evaluation_fail_fast_on_consecutive_gateway_errors(
     assert scorecard["aborted_reason"] == "consecutive_infrastructure_errors"
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_reason"),
+    [
+        (
+            "OpenClaw error: 401 Unauthorized - OAuth access token expired",
+            "fatal_provider_authentication",
+        ),
+        (
+            "OpenClaw error: status=403 Forbidden",
+            "fatal_provider_authentication",
+        ),
+        (
+            "Provider code=insufficient_quota; subscription usage quota exhausted",
+            "fatal_provider_quota_exhausted",
+        ),
+        (
+            "ChatGPT subscription is expired",
+            "fatal_provider_subscription_unavailable",
+        ),
+    ],
+)
+async def test_run_evaluation_stops_after_fatal_provider_error(
+    tmp_path: Path,
+    message: str,
+    expected_reason: str,
+) -> None:
+    cases = [
+        _case(tmp_path, Severity.WARNING, (), name=f"fatal_{index}")
+        for index in range(5)
+    ]
+    attempted: list[str] = []
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        attempted.append(case.label)
+        raise RuntimeError(message)
+
+    out = tmp_path / expected_reason
+    report = await run_evaluation(
+        cases,
+        analyze,
+        output_dir=out,
+        gateway_mode="real",
+    )
+
+    assert attempted == ["fatal_0"]
+    assert report.total == 1
+    assert report.error_count == 1
+    assert report.aborted_reason == expected_reason
+    assert len(list((out / "results").glob("*.json"))) == 1
+    raw = json.loads((out / "results" / "fatal_0.json").read_text(encoding="utf-8"))
+    assert raw["abort_reason"] == expected_reason
+    for name in ("scorecard.partial.json", "scorecard.json"):
+        scorecard = json.loads((out / name).read_text(encoding="utf-8"))
+        assert scorecard["manifest_total"] == 5
+        assert scorecard["result_count"] == 1
+        assert scorecard["aborted_reason"] == expected_reason
+
+
+async def test_run_evaluation_does_not_abort_on_clinical_parse_or_schema_error(
+    tmp_path: Path,
+) -> None:
+    cases = [
+        _case(tmp_path, Severity.NORMAL, (), name=f"parse_{index}")
+        for index in range(3)
+    ]
+    attempted: list[str] = []
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        attempted.append(case.label)
+        if case.label == "parse_0":
+            raise ValueError("Clinical response JSON schema validation failed")
+        return _complete_result(Severity.NORMAL, summary="Within normal limits.")
+
+    report = await run_evaluation(
+        cases,
+        analyze,
+        output_dir=tmp_path / "parse-errors",
+        gateway_mode="real",
+    )
+
+    assert attempted == ["parse_0", "parse_1", "parse_2"]
+    assert report.total == 3
+    assert report.error_count == 1
+    assert report.aborted_reason == ""
+
+
 async def test_run_evaluation_aggregates_target_axis_performance(
     tmp_path: Path,
 ) -> None:
@@ -1189,6 +1587,45 @@ def _ekg_case(
         label_status=label_status,
         label=name,
     )
+
+
+def test_ekg_ectopy_singular_and_plural_are_one_clinical_concept(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="pvc_plural_reference",
+        keywords=("premature ventricular complexes", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Sinus rhythm with a premature ventricular complex.",
+        checklist={
+            "rhythm": ChecklistItem(
+                value="sinus rhythm with ventricular ectopy",
+                status=Severity.WARNING,
+            )
+        },
+    )
+    result.findings = [
+        Finding(
+            id="pvc-1",
+            regions=["lead_II"],
+            label="Premature ventricular complex",
+            detail="One wide premature beat with a compensatory pause.",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.1, 0.08, 0.05)],
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_recall == 1.0
+    assert score.concept_hits == ["premature ventricular complexes", "sinus rhythm"]
+    assert score.concept_misses == []
+    assert score.concept_false_positives == []
+    assert score.concept_f1 == 1.0
 
 
 def test_compute_axis_coverage_normal_and_abnormal(tmp_path: Path) -> None:
@@ -1383,6 +1820,48 @@ def test_urgent_stemi_concern_accepts_critical_hyperacute_ischemia(
     assert score.urgent_concern_recall == 1.0
 
 
+def test_urgent_stemi_concern_accepts_standardized_acute_st_elevation_phrase(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_standardized_st_elevation",
+        urgent_concerns=("STEMI",),
+        label_status="partially_ungradable",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Acute ischemia is possible but not confirmed.",
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="possible anterior",
+                status=Severity.CRITICAL,
+            ),
+            "ischemia": ChecklistItem(
+                value="possible acute",
+                status=Severity.CRITICAL,
+            ),
+        },
+    )
+    result.findings = [
+        Finding(
+            id="acute-pattern",
+            regions=["lead_V1", "lead_V2", "lead_V3", "lead_V4"],
+            label="Possible acute ST-elevation ischemic pattern",
+            detail="Contiguous anterior ST-T abnormality remains visible.",
+            severity=Severity.CRITICAL,
+            confidence="low",
+            question="Are reciprocal changes present on the native ECG?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == ["STEMI"]
+    assert score.urgent_concern_missed == []
+
+
 def test_urgent_stemi_concern_accepts_uncertain_injury_with_st_elevation(
     tmp_path: Path,
 ) -> None:
@@ -1442,9 +1921,7 @@ def test_urgent_injury_phrase_requires_structured_st_elevation(
     result = _result_with_checklist(
         Severity.CRITICAL,
         summary="Possible acute myocardial injury requires correlation.",
-        checklist={
-            "st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)
-        },
+        checklist={"st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)},
     )
 
     score = score_case(case, result, latency_ms=10)
@@ -1524,6 +2001,68 @@ def test_urgent_acute_mi_is_distinct_from_stemi(tmp_path: Path) -> None:
 
     assert score_case(case, acute_mi, 10).urgent_concern_hits == ["acute MI"]
     assert score_case(case, stemi_only, 10).urgent_concern_missed == ["acute MI"]
+
+
+def test_urgent_acute_mi_accepts_structured_critical_stemi_differential(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_acute_mi_structured",
+        urgent_concerns=("acute MI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary=(
+            "Possible acute anterior-lateral ischemic ST-elevation pattern; "
+            "STEMI cannot be excluded."
+        ),
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="possible; not excluded",
+                status=Severity.CRITICAL,
+            ),
+            "ischemia": ChecklistItem(
+                value="possible acute ischemic pattern",
+                status=Severity.CRITICAL,
+            ),
+        },
+    )
+
+    score = score_case(case, result, 10)
+
+    assert score.urgent_concern_hits == ["acute MI"]
+    assert score.urgent_concern_missed == []
+
+
+def test_urgent_acute_mi_rejects_stemi_without_structured_acute_ischemia(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_acute_mi_unstructured",
+        urgent_concerns=("acute MI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible STEMI cannot be excluded.",
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="possible; not excluded",
+                status=Severity.CRITICAL,
+            ),
+            "ischemia": ChecklistItem(
+                value="indeterminate",
+                status=Severity.INFO,
+            ),
+        },
+    )
+
+    assert score_case(case, result, 10).urgent_concern_missed == ["acute MI"]
 
 
 async def test_info_ungradable_case_is_excluded_from_accuracy_denominators(

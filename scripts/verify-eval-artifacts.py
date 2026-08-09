@@ -86,6 +86,14 @@ def main() -> int:
             "overlay projection round-trip calibration fields."
         ),
     )
+    parser.add_argument(
+        "--allow-safety-misses",
+        action="store_true",
+        help=(
+            "Treat cant-miss and urgent-concern misses as measured outcomes "
+            "instead of artifact-integrity failures."
+        ),
+    )
     args = parser.parse_args()
 
     verification = verify_eval_artifacts(
@@ -98,6 +106,7 @@ def main() -> int:
         require_multipass_refinement=args.require_multipass_refinement,
         require_ekg_systematic_probes=args.require_ekg_systematic_probes,
         require_projection_audit=args.require_projection_audit,
+        require_zero_safety_misses=not args.allow_safety_misses,
         min_strict_pass_rate=args.min_strict_pass_rate,
         min_mean_partial_credit=args.min_mean_partial_credit,
     )

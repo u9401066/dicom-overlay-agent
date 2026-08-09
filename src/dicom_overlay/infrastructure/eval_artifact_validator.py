@@ -14,6 +14,7 @@ from PIL import Image
 from dicom_overlay.domain.ekg_layout import (
     canonical_ekg_lead_name,
     parse_ekg_lead_inventory,
+    parse_normalized_region,
 )
 
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
@@ -21,6 +22,15 @@ _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
 _ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23"
 _ECG_FOUNDER_CHECKPOINT_SHA256 = (
     "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997"
+)
+_ECG_FOUNDER_REQUEST_INELIGIBLE_REASONS = frozenset(
+    {
+        "invalid_request_schema",
+        "invalid_artifact_id",
+        "unsupported_lead_mode",
+        "artifact_not_registered",
+        "invalid_max_predictions",
+    }
 )
 
 
@@ -83,6 +93,7 @@ def verify_eval_artifacts(
     require_multipass_refinement: bool = False,
     require_ekg_systematic_probes: bool = False,
     require_projection_audit: bool = False,
+    require_zero_safety_misses: bool = True,
     min_strict_pass_rate: float | None = None,
     min_mean_partial_credit: float | None = None,
 ) -> EvalArtifactVerification:
@@ -124,8 +135,22 @@ def verify_eval_artifacts(
     )
     protocol = fingerprint.get("protocol") if isinstance(fingerprint, dict) else None
     flags = protocol.get("flags") if isinstance(protocol, dict) else None
+    manifest_identity = (
+        protocol.get("manifest") if isinstance(protocol, dict) else None
+    )
+    paired_gold_manifest = bool(
+        isinstance(flags, dict)
+        and flags.get("defer_scoring") is True
+        and isinstance(manifest_identity, dict)
+        and manifest_path.is_file()
+        and manifest_identity.get("sha256") != _sha256_file(manifest_path)
+    )
     require_ecgfounder_evidence = bool(
         isinstance(flags, dict) and flags.get("ecgfounder_waveform_evidence") is True
+    )
+    minimal_control = bool(
+        isinstance(flags, dict)
+        and flags.get("analysis_prompt_profile") == "minimal_control"
     )
     expected_ecgfounder_preprocessing_revision = (
         str(flags.get("ecgfounder_preprocessing_revision") or "")
@@ -137,6 +162,18 @@ def verify_eval_artifacts(
             "protocol_fingerprint: ECGFounder arm lacks preprocessing revision"
         )
     if isinstance(scorecard, dict):
+        if paired_gold_manifest:
+            provenance = scorecard.get("scoring_manifest_provenance")
+            if (
+                not isinstance(provenance, dict)
+                or provenance.get("paired_gold_manifest") is not True
+                or provenance.get("sha256") != _sha256_file(manifest_path)
+            ):
+                failures.append(
+                    "scorecard_complete: paired gold manifest provenance mismatch"
+                )
+            else:
+                passed.append("paired_gold_manifest")
         _verify_scorecard(
             scorecard,
             expected_cases=set(expected_cases),
@@ -145,6 +182,8 @@ def verify_eval_artifacts(
             require_perfect_mock=require_perfect_mock,
             min_strict_pass_rate=min_strict_pass_rate,
             min_mean_partial_credit=min_mean_partial_credit,
+            require_schema_gate=not minimal_control,
+            require_zero_safety_misses=require_zero_safety_misses,
             failures=failures,
             passed=passed,
         )
@@ -157,6 +196,7 @@ def verify_eval_artifacts(
         expected_ecgfounder_preprocessing_revision=(
             expected_ecgfounder_preprocessing_revision
         ),
+        require_model_assist=not minimal_control,
         failures=failures,
         passed=passed,
     )
@@ -288,6 +328,33 @@ def _ecg_response_matches_receipt(
     )
 
 
+def _ineligible_ecg_response_matches_receipt(
+    response: object,
+    receipt: dict[str, Any],
+    evidence: dict[str, Any],
+) -> bool:
+    if not isinstance(response, dict) or "artifact_id" in response:
+        return False
+    reason = response.get("reason")
+    return bool(
+        response.get("schema_version") == 1
+        and response.get("status") == "ineligible"
+        and response.get("evidence_type") == "ecg_waveform_classification"
+        and response.get("lead_mode") == "12_lead"
+        and response.get("evidence_nonce") == evidence.get("evidence_nonce")
+        and response.get("artifact_id_sha256") == evidence.get("artifact_id_sha256")
+        and response.get("use_policy") == "supporting_evidence_only"
+        and response.get("spatial_localization") == "not_provided"
+        and isinstance(reason, str)
+        and bool(reason)
+        and reason not in _ECG_FOUNDER_REQUEST_INELIGIBLE_REASONS
+        and receipt.get("failure_reason") == reason
+        and response.get("predictions") == []
+        and receipt.get("predictions") == []
+        and receipt.get("prediction_count") == 0
+    )
+
+
 def _valid_ecg_founder_evidence(
     value: object,
     *,
@@ -305,7 +372,7 @@ def _valid_ecg_founder_evidence(
         else None
     )
     response_evidence = receipt.get("response_evidence") if receipt else None
-    return bool(
+    common_valid = bool(
         value.get("verified_exactly_once") is True
         and value.get("receipt_count") == 1
         and value.get("lead_mode") == "12_lead"
@@ -319,19 +386,37 @@ def _valid_ecg_founder_evidence(
         and receipt.get("tool") == "ecg_founder_analyze_waveform"
         and isinstance(receipt.get("tool_call_id"), str)
         and bool(receipt.get("tool_call_id"))
-        and receipt.get("status") == "ok"
         and receipt.get("lead_mode") == "12_lead"
         and _is_evidence_nonce(value.get("evidence_nonce"))
         and receipt.get("evidence_nonce") == value.get("evidence_nonce")
         and receipt.get("artifact_id_sha256") == value.get("artifact_id_sha256")
+        and _is_sha256(receipt.get("response_sha256"))
+        and isinstance(response_evidence, dict)
+        and _canonical_sha256(response_evidence) == receipt.get("response_sha256")
+        and (
+            "evidence_status" not in value
+            or value.get("evidence_status") == receipt.get("status")
+        )
+        and (
+            "usable" not in value
+            or value.get("usable") is (receipt.get("status") == "ok")
+        )
+    )
+    if not common_valid:
+        return False
+    if receipt.get("status") == "ineligible":
+        return _ineligible_ecg_response_matches_receipt(
+            response_evidence,
+            receipt,
+            value,
+        )
+    return bool(
+        receipt.get("status") == "ok"
         and receipt.get("model_id") == "PKUDigitalHealth/ECGFounder"
         and receipt.get("model_revision") == _ECG_FOUNDER_MODEL_REVISION
         and receipt.get("checkpoint_sha256") == _ECG_FOUNDER_CHECKPOINT_SHA256
         and _is_sha256(receipt.get("source_sha256"))
-        and _is_sha256(receipt.get("response_sha256"))
-        and isinstance(response_evidence, dict)
         and _ecg_response_matches_receipt(response_evidence, receipt, value)
-        and _canonical_sha256(response_evidence) == receipt.get("response_sha256")
         and isinstance(receipt.get("preprocessing_revision"), str)
         and bool(receipt.get("preprocessing_revision"))
         and (
@@ -460,9 +545,16 @@ def _verify_protocol_fingerprint(
     if not isinstance(manifest_identity, dict):
         failures.append("protocol_fingerprint: missing manifest identity")
         return fingerprint, manifest_cases
-    if not manifest_path.is_file() or manifest_identity.get("sha256") != _sha256_file(
-        manifest_path
-    ):
+    manifest_hash_matches = bool(
+        manifest_path.is_file()
+        and manifest_identity.get("sha256") == _sha256_file(manifest_path)
+    )
+    paired_gold_allowed = bool(
+        not manifest_hash_matches
+        and isinstance(flags, dict)
+        and flags.get("defer_scoring") is True
+    )
+    if not manifest_hash_matches and not paired_gold_allowed:
         failures.append("protocol_fingerprint: manifest hash mismatch")
     selected_rows = manifest_identity.get("cases")
     if not isinstance(selected_rows, list) or not selected_rows:
@@ -534,6 +626,8 @@ def _verify_scorecard(
     require_perfect_mock: bool,
     min_strict_pass_rate: float | None,
     min_mean_partial_credit: float | None,
+    require_schema_gate: bool,
+    require_zero_safety_misses: bool,
     failures: list[str],
     passed: list[str],
 ) -> None:
@@ -595,7 +689,10 @@ def _verify_scorecard(
     if len(failures) == failure_count:
         passed.append("scorecard_complete")
 
-    if float(scorecard.get("schema_pass_rate", 0.0)) >= 1.0:
+    schema_pass_rate = float(scorecard.get("schema_pass_rate", 0.0))
+    if not require_schema_gate and 0.0 <= schema_pass_rate <= 1.0:
+        passed.append("control_schema_observed")
+    elif schema_pass_rate >= 1.0:
         passed.append("schema_gate")
     else:
         failures.append(
@@ -608,15 +705,25 @@ def _verify_scorecard(
             f"bbox_gate: bbox_in_bounds_rate={scorecard.get('bbox_in_bounds_rate')}"
         )
     misses = scorecard.get("cant_miss_missed", [])
-    if isinstance(misses, list) and not misses:
+    if not isinstance(misses, list):
+        failures.append("cant_miss_metrics: cant_miss_missed is not a list")
+    elif require_zero_safety_misses and misses:
+        failures.append(f"cant_miss_gate: missed={misses}")
+    elif require_zero_safety_misses:
         passed.append("cant_miss_gate")
     else:
-        failures.append(f"cant_miss_gate: missed={misses}")
+        passed.append("cant_miss_metrics_recorded")
     urgent_misses = scorecard.get("urgent_concern_missed", [])
-    if isinstance(urgent_misses, list) and not urgent_misses:
+    if not isinstance(urgent_misses, list):
+        failures.append(
+            "urgent_concern_metrics: urgent_concern_missed is not a list"
+        )
+    elif require_zero_safety_misses and urgent_misses:
+        failures.append(f"urgent_concern_gate: missed={urgent_misses}")
+    elif require_zero_safety_misses:
         passed.append("urgent_concern_gate")
     else:
-        failures.append(f"urgent_concern_gate: missed={urgent_misses}")
+        passed.append("urgent_concern_metrics_recorded")
     if scorecard.get("gateway_mode") == "mock" and require_perfect_mock:
         if float(scorecard.get("strict_pass_rate", 0.0)) >= 1.0:
             passed.append("mock_perfect_gate")
@@ -674,6 +781,7 @@ def _verify_results(
     protocol_digest: str,
     require_ecgfounder_evidence: bool,
     expected_ecgfounder_preprocessing_revision: str,
+    require_model_assist: bool,
     failures: list[str],
     passed: list[str],
 ) -> _ResultInventory:
@@ -748,8 +856,8 @@ def _verify_results(
             ),
         ):
             failures.append(
-                "results_artifacts: ECGFounder evidence lacks exactly one "
-                f"pinned status=ok receipt in {path.name}"
+                "results_artifacts: ECGFounder evidence lacks exactly one valid "
+                f"bound ok/ineligible receipt in {path.name}"
             )
 
         findings = raw.get("findings")
@@ -862,13 +970,15 @@ def _verify_results(
         )
     else:
         passed.append("local_preflight_artifacts")
-    if missing_signal_candidates:
+    if missing_signal_candidates and require_model_assist:
         failures.append(
             "model_assist_artifacts: missing local_signal_candidates in "
             + ", ".join(missing_signal_candidates[:5])
         )
-    else:
+    elif require_model_assist:
         passed.append("model_assist_artifacts")
+    else:
+        passed.append("control_model_assist_disabled")
     if len(failures) == failure_count:
         passed.append("results_artifacts")
     return inventory
@@ -998,17 +1108,10 @@ def _ekg_layout_regions(layout: object) -> list[tuple[str, tuple[float, ...]]]:
 
 
 def _normalized_box_tuple(value: object) -> tuple[float, float, float, float] | None:
-    if not isinstance(value, list | tuple) or len(value) < 4:
+    region = parse_normalized_region(value)
+    if region is None:
         return None
-    try:
-        x, y, w, h = (float(item) for item in value[:4])
-    except (TypeError, ValueError):
-        return None
-    if x < 0.0 or y < 0.0 or w <= 0.0 or h <= 0.0:
-        return None
-    if x + w > 1.0 or y + h > 1.0:
-        return None
-    return x, y, w, h
+    return region.x, region.y, region.w, region.h
 
 
 def _ekg_bbox_lead_mismatch(finding: dict[str, Any], *, layout: object) -> str:

@@ -50,6 +50,7 @@ def test_rebuild_scorecard_from_raw_results_adds_partial_credit(
     )
     image_path = image_dir / "case.png"
     protocol = {
+        "flags": {"defer_scoring": True},
         "manifest": {
             "sha256": module._sha256_file(manifest),
             "selected_case_count": 1,
@@ -192,6 +193,32 @@ def test_rebuild_scorecard_from_raw_results_adds_partial_credit(
     assert replay["guardrail_replay"]["provenance"]["rule_ids"]
     assert replay["scorer_provenance"] == scorecard["scorer_provenance"]
 
+    gold_manifest = dataset / "manifest.gold.json"
+    gold_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    gold_payload["scoring_role"] = "gold"
+    gold_manifest.write_text(json.dumps(gold_payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="manifest hash"):
+        module.rebuild_scorecard(
+            eval_dir=eval_dir,
+            manifest_path=gold_manifest,
+            require_protocol_fingerprint=True,
+        )
+
+    paired_output = module.rebuild_scorecard(
+        eval_dir=eval_dir,
+        manifest_path=gold_manifest,
+        output_path=eval_dir / "scorecard.paired-gold.json",
+        require_protocol_fingerprint=True,
+        allow_paired_gold_manifest=True,
+    )
+    paired = json.loads(paired_output.read_text(encoding="utf-8"))
+    assert paired["protocol_digest"] == protocol_digest
+    assert paired["scoring_manifest_provenance"] == {
+        "path": str(gold_manifest.resolve()),
+        "sha256": module._sha256_file(gold_manifest),
+        "paired_gold_manifest": True,
+    }
+
 
 def test_promote_canonical_requires_protocol_fingerprint(tmp_path: Path) -> None:
     module = _load_rebuild_module()
@@ -203,6 +230,61 @@ def test_promote_canonical_requires_protocol_fingerprint(tmp_path: Path) -> None
             promote_canonical=True,
             require_protocol_fingerprint=True,
         )
+
+
+def test_rebuild_preserves_timeout_latency_and_sla_failure(tmp_path: Path) -> None:
+    module = _load_rebuild_module()
+    dataset = tmp_path / "dataset"
+    image_dir = dataset / "ekg"
+    image_dir.mkdir(parents=True)
+    Image.new("RGB", (10, 10), "white").save(image_dir / "case.png")
+    manifest = dataset / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "label": "timeout_case",
+                        "image": "ekg/case.png",
+                        "modality": "EKG",
+                        "expected_severity": "normal",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = tmp_path / "eval"
+    results = eval_dir / "results"
+    results.mkdir(parents=True)
+    (results / "timeout_case.json").write_text(
+        json.dumps(
+            {
+                "case": "timeout_case",
+                "image": "case.png",
+                "modality": "EKG",
+                "severity": "(error)",
+                "analysis_time_ms": 60_001,
+                "error": "AnalysisSlaTimeout: initial response exceeded 60s",
+                "findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = module.rebuild_scorecard(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+    )
+
+    scorecard = json.loads(output.read_text(encoding="utf-8"))
+    case = scorecard["cases"][0]
+    assert case["latency_ms"] == 60_001
+    assert case["initial_response_ms"] == 60_001
+    assert case["initial_response_sla_met"] is False
+    assert case["total_sla_met"] is False
+    assert scorecard["mean_latency_ms"] == 60_001
+    assert scorecard["sla_metrics"]["initial_response"]["max_ms"] == 60_001
 
 
 def test_analysis_result_rebuild_preserves_report_and_uncertainty_contract() -> None:

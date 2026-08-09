@@ -100,6 +100,7 @@ def rebuild_scorecard(
     promote_canonical: bool = False,
     require_protocol_fingerprint: bool = False,
     apply_current_guardrails: bool = False,
+    allow_paired_gold_manifest: bool = False,
 ) -> Path:
     """Score saved ``results/*.json`` files and write a rebuilt scorecard."""
     eval_dir = Path(eval_dir)
@@ -113,6 +114,7 @@ def rebuild_scorecard(
         _load_cases(manifest_path),
         manifest_path=manifest_path,
         fingerprint=fingerprint,
+        allow_paired_gold_manifest=allow_paired_gold_manifest,
     )
     result_paths = sorted((eval_dir / "results").glob("*.json"))
     raw_by_case = _load_result_artifacts(
@@ -135,10 +137,14 @@ def rebuild_scorecard(
         raw = raw_by_case.get(label)
         if raw is None:
             continue
-        latency_ms = int(raw.get("score", {}).get("latency_ms") or 0)
-        error = raw.get("error") or raw.get("score", {}).get("error")
+        raw_score = raw.get("score")
+        score_payload = raw_score if isinstance(raw_score, dict) else {}
+        latency_ms = int(
+            score_payload.get("latency_ms") or raw.get("analysis_time_ms") or 0
+        )
+        error = raw.get("error") or score_payload.get("error")
         if error:
-            scores.append(_error_score(case, str(error)))
+            scores.append(_error_score(case, str(error), latency_ms=latency_ms))
         else:
             result = _analysis_result_from_raw(raw, fallback_modality=case.modality)
             if clinical_engine is not None:
@@ -220,6 +226,15 @@ def rebuild_scorecard(
             "source_protocol_digest": source_protocol_digest,
             "protocol_comparability": protocol_comparability,
             "scorer_provenance": scorer_provenance,
+            "scoring_manifest_provenance": {
+                "path": str(manifest_path),
+                "sha256": _sha256_file(manifest_path),
+                "paired_gold_manifest": bool(
+                    fingerprint
+                    and fingerprint["protocol"]["manifest"].get("sha256")
+                    != _sha256_file(manifest_path)
+                ),
+            },
         }
     )
     if guardrail_replay is not None:
@@ -372,6 +387,7 @@ def _select_fingerprinted_cases(
     *,
     manifest_path: Path,
     fingerprint: dict[str, Any] | None,
+    allow_paired_gold_manifest: bool = False,
 ) -> list[EvalCase]:
     if fingerprint is None:
         return cases
@@ -379,7 +395,16 @@ def _select_fingerprinted_cases(
     manifest_identity = protocol.get("manifest")
     if not isinstance(manifest_identity, dict):
         raise ValueError("protocol fingerprint is missing manifest identity")
-    if manifest_identity.get("sha256") != _sha256_file(manifest_path):
+    manifest_hash_matches = manifest_identity.get("sha256") == _sha256_file(
+        manifest_path
+    )
+    flags = protocol.get("flags")
+    paired_gold_allowed = bool(
+        allow_paired_gold_manifest
+        and isinstance(flags, dict)
+        and flags.get("defer_scoring") is True
+    )
+    if not manifest_hash_matches and not paired_gold_allowed:
         raise ValueError("manifest hash does not match protocol fingerprint")
     selected_rows = manifest_identity.get("cases")
     if not isinstance(selected_rows, list) or not selected_rows:
@@ -623,6 +648,14 @@ def main() -> int:
             "against saved results. Raw result JSON is never modified."
         ),
     )
+    parser.add_argument(
+        "--allow-paired-gold-manifest",
+        action="store_true",
+        help=(
+            "Permit a different scoring manifest only for a fingerprinted "
+            "defer_scoring run; case and image identities remain exact."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -634,6 +667,7 @@ def main() -> int:
             promote_canonical=args.promote_canonical,
             require_protocol_fingerprint=args.require_protocol_fingerprint,
             apply_current_guardrails=args.apply_current_guardrails,
+            allow_paired_gold_manifest=args.allow_paired_gold_manifest,
         )
     except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

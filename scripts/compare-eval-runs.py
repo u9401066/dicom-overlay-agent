@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import math
+import random
 import statistics
 import sys
 from pathlib import Path
@@ -27,6 +28,12 @@ _PARTIAL_WEIGHTS: dict[str, float] = {
     "keyword_recall": 0.35,
     "negative_recall": 0.15,
 }
+
+_DEFAULT_BOOTSTRAP_ITERATIONS = 10_000
+_DEFAULT_PERMUTATION_ITERATIONS = 10_000
+_DEFAULT_RANDOM_SEED = 20_260_806
+_EXACT_RANDOM_SIGN_MAX_PAIRS = 16
+_INFERENCE_ALPHA = 0.05
 
 # These are the only protocol fields allowed to vary between experimental
 # arms. Everything else in the fingerprint is a shared invariant and must be
@@ -40,6 +47,7 @@ _ARM_VARIANT_FLAGS = frozenset(
         "ecgfounder_preprocessing_revision",
         "ecgfounder_waveform_evidence",
         "guardrail_hooks",
+        "local_signal_candidates",
         "multi_pass",
         "multi_pass_bbox_calibrator",
         "multi_pass_max_ekg_systematic_probes",
@@ -82,8 +90,15 @@ def build_comparison(
     min_delta: float = 0.05,
     allow_incomplete: bool = False,
     allow_incompatible: bool = False,
+    bootstrap_iterations: int = _DEFAULT_BOOTSTRAP_ITERATIONS,
+    permutation_iterations: int = _DEFAULT_PERMUTATION_ITERATIONS,
+    random_seed: int = _DEFAULT_RANDOM_SEED,
 ) -> dict[str, Any]:
     """Build a paired comparison report from two eval runs."""
+    if bootstrap_iterations <= 0:
+        raise ValueError("bootstrap_iterations must be positive")
+    if permutation_iterations <= 0:
+        raise ValueError("permutation_iterations must be positive")
     baseline_dir = resolve_eval_dir(baseline_path)
     candidate_dir = resolve_eval_dir(candidate_path)
     baseline_scorecard_path = resolve_scorecard_path(baseline_path)
@@ -145,15 +160,9 @@ def build_comparison(
         "unchanged": sum(1 for row in rows if row["status"] == "unchanged"),
     }
     safety_status_counts = {
-        "improved": sum(
-            1 for row in rows if row["safety_status"] == "improved"
-        ),
-        "regressed": sum(
-            1 for row in rows if row["safety_status"] == "regressed"
-        ),
-        "unchanged": sum(
-            1 for row in rows if row["safety_status"] == "unchanged"
-        ),
+        "improved": sum(1 for row in rows if row["safety_status"] == "improved"),
+        "regressed": sum(1 for row in rows if row["safety_status"] == "regressed"),
+        "unchanged": sum(1 for row in rows if row["safety_status"] == "unchanged"),
     }
     return {
         "baseline_eval_dir": str(baseline_dir),
@@ -173,6 +182,13 @@ def build_comparison(
         "candidate_only_cases": sorted(set(candidate_cases) - set(baseline_cases)),
         "headline": _headline(baseline, candidate, rows),
         "paired_sign_test": _paired_sign_test(rows),
+        "paired_partial_credit_inference": _paired_partial_credit_inference(
+            rows,
+            bootstrap_iterations=bootstrap_iterations,
+            permutation_iterations=permutation_iterations,
+            random_seed=random_seed,
+        ),
+        "paired_binary_inference": _paired_binary_inference(rows),
         "case_status_counts": status_counts,
         "safety_case_status_counts": safety_status_counts,
         "clinical_safety": _clinical_safety(rows),
@@ -237,15 +253,19 @@ def _protocol_manifest_identity(eval_dir: Path) -> dict[str, Any] | None:
     if not isinstance(manifest, dict):
         return None
     cases = manifest.get("cases")
-    case_sequence = [
-        {
-            "case": str(item.get("case") or ""),
-            "image": str(item.get("image") or ""),
-            "sha256": str(item.get("sha256") or ""),
-        }
-        for item in cases
-        if isinstance(item, dict)
-    ] if isinstance(cases, list) else []
+    case_sequence = (
+        [
+            {
+                "case": str(item.get("case") or ""),
+                "image": str(item.get("image") or ""),
+                "sha256": str(item.get("sha256") or ""),
+            }
+            for item in cases
+            if isinstance(item, dict)
+        ]
+        if isinstance(cases, list)
+        else []
+    )
     return {
         "sha256": str(manifest.get("sha256") or ""),
         "selected_case_count": _int(manifest.get("selected_case_count")),
@@ -296,16 +316,16 @@ def _protocol_shared_invariants(eval_dir: Path) -> dict[str, Any] | None:
             "commit": str(source.get("commit") or ""),
             "dirty": bool(source.get("dirty")),
             "scope": sorted(
-                str(path)
-                for path in source.get("scope", [])
-                if isinstance(path, str)
+                str(path) for path in source.get("scope", []) if isinstance(path, str)
             )
             if isinstance(source.get("scope"), list)
             else [],
-            "worktree_status_sha256": str(
-                source.get("worktree_status_sha256") or ""
-            ),
+            "worktree_status_sha256": str(source.get("worktree_status_sha256") or ""),
             "tracked_diff_sha256": str(source.get("tracked_diff_sha256") or ""),
+            "worktree_content_sha256": str(
+                source.get("worktree_content_sha256") or ""
+            ),
+            "worktree_file_count": _int(source.get("worktree_file_count")),
         },
         "model_runtime": {
             "id": str(model.get("id") or ""),
@@ -319,16 +339,10 @@ def _protocol_shared_invariants(eval_dir: Path) -> dict[str, Any] | None:
         "clinical_rules": _file_identity(protocol.get("clinical_rules")),
         "manifest": manifest,
         "shared_flags": {
-            key: flags[key]
-            for key in sorted(flags)
-            if key not in _ARM_VARIANT_FLAGS
+            key: flags[key] for key in sorted(flags) if key not in _ARM_VARIANT_FLAGS
         },
     }
-    arm = {
-        key: flags[key]
-        for key in sorted(flags)
-        if key in _ARM_VARIANT_FLAGS
-    }
+    arm = {key: flags[key] for key in sorted(flags) if key in _ARM_VARIANT_FLAGS}
     return {
         "digest": _canonical_digest(components),
         "components": components,
@@ -374,9 +388,7 @@ def _scorecard_health(
             f"raw_result_count={raw_result_count} case_count={case_count}"
         )
     scorer = scorecard.get("scorer_provenance")
-    scorer_digest = (
-        str(scorer.get("digest") or "") if isinstance(scorer, dict) else ""
-    )
+    scorer_digest = str(scorer.get("digest") or "") if isinstance(scorer, dict) else ""
     comparability = scorecard.get("protocol_comparability")
     comparability_status = (
         str(comparability.get("status") or "")
@@ -393,9 +405,7 @@ def _scorecard_health(
         "scorecard": str(scorecard_path),
         "scorecard_kind": str(scorecard.get("scorecard_kind") or ""),
         "protocol_digest": str(scorecard.get("protocol_digest") or ""),
-        "source_protocol_digest": str(
-            scorecard.get("source_protocol_digest") or ""
-        ),
+        "source_protocol_digest": str(scorecard.get("source_protocol_digest") or ""),
         "protocol_comparability_status": comparability_status,
         "scorer_digest": scorer_digest,
         "total": total,
@@ -542,12 +552,8 @@ def _compare_case(
         "urgent_concerns": list(
             candidate.get("urgent_concerns") or baseline.get("urgent_concerns") or []
         ),
-        "baseline_urgent_concern_hits": list(
-            baseline.get("urgent_concern_hits", [])
-        ),
-        "candidate_urgent_concern_hits": list(
-            candidate.get("urgent_concern_hits", [])
-        ),
+        "baseline_urgent_concern_hits": list(baseline.get("urgent_concern_hits", [])),
+        "candidate_urgent_concern_hits": list(candidate.get("urgent_concern_hits", [])),
         "baseline_keyword_recall": _float(baseline.get("keyword_recall")),
         "candidate_keyword_recall": _float(candidate.get("keyword_recall")),
         "baseline_negative_recall": _float(baseline.get("negative_recall")),
@@ -590,9 +596,7 @@ def _compare_case(
     return row
 
 
-def _case_safety_observations(
-    row: dict[str, Any], prefix: str
-) -> list[bool]:
+def _case_safety_observations(row: dict[str, Any], prefix: str) -> list[bool]:
     expected = row["baseline_expected_severity"]
     abnormal_match = bool(row[f"{prefix}_severity_abnormal_match"])
     observations: list[bool] = []
@@ -600,8 +604,7 @@ def _case_safety_observations(
         observations.extend(
             (
                 abnormal_match,
-                abnormal_match
-                and not bool(row[f"{prefix}_concept_false_positives"]),
+                abnormal_match and not bool(row[f"{prefix}_concept_false_positives"]),
             )
         )
     elif row["reference_complete"] and expected in {"warning", "critical"}:
@@ -609,9 +612,7 @@ def _case_safety_observations(
     if row["reference_complete"] and expected == "critical":
         observations.append(bool(row[f"{prefix}_severity_match"]))
     urgent_hits = set(row[f"{prefix}_urgent_concern_hits"])
-    observations.extend(
-        concern in urgent_hits for concern in row["urgent_concerns"]
-    )
+    observations.extend(concern in urgent_hits for concern in row["urgent_concerns"])
     return observations
 
 
@@ -661,8 +662,7 @@ def _clinical_safety(rows: list[dict[str, Any]]) -> dict[str, Any]:
     critical_rows = [
         row
         for row in rows
-        if row["reference_complete"]
-        and row["baseline_expected_severity"] == "critical"
+        if row["reference_complete"] and row["baseline_expected_severity"] == "critical"
     ]
 
     normal_severity_pairs = [
@@ -767,6 +767,34 @@ def _headline(
         "candidate_urgent_concern_missed": list(
             candidate.get("urgent_concern_missed", [])
         ),
+        "baseline_sla_rates": {
+            stage: _scorecard_sla_rate(baseline, stage)
+            for stage in (
+                "initial_response",
+                "first_crop_refinement",
+                "total",
+            )
+        },
+        "candidate_sla_rates": {
+            stage: _scorecard_sla_rate(candidate, stage)
+            for stage in (
+                "initial_response",
+                "first_crop_refinement",
+                "total",
+            )
+        },
+        "baseline_raw_json_clean_rate": _float(
+            baseline.get("raw_json_clean_rate", 1.0)
+        ),
+        "candidate_raw_json_clean_rate": _float(
+            candidate.get("raw_json_clean_rate", 1.0)
+        ),
+        "baseline_json_repair_total_count": _int(
+            baseline.get("json_repair_total_count")
+        ),
+        "candidate_json_repair_total_count": _int(
+            candidate.get("json_repair_total_count")
+        ),
     }
     for field in (
         "diagnosis_exact_set_accuracy",
@@ -808,6 +836,256 @@ def _exact_sign_test(improved: int, regressed: int) -> dict[str, Any]:
     }
 
 
+def _paired_partial_credit_inference(
+    rows: list[dict[str, Any]],
+    *,
+    bootstrap_iterations: int = _DEFAULT_BOOTSTRAP_ITERATIONS,
+    permutation_iterations: int = _DEFAULT_PERMUTATION_ITERATIONS,
+    random_seed: int = _DEFAULT_RANDOM_SEED,
+) -> dict[str, Any]:
+    """Quantify paired change in the weak-label partial-credit score."""
+    deltas = [
+        _float(row["candidate_partial_credit"]) - _float(row["baseline_partial_credit"])
+        for row in rows
+    ]
+    mean_delta = statistics.mean(deltas) if deltas else None
+    bootstrap = _paired_bootstrap_mean_ci(
+        deltas,
+        iterations=bootstrap_iterations,
+        seed=random_seed,
+    )
+    permutation = _paired_random_sign_test(
+        deltas,
+        monte_carlo_iterations=permutation_iterations,
+        seed=random_seed,
+    )
+    ci_positive = bootstrap["lower"] is not None and bootstrap["lower"] > 0.0
+    permutation_significant = (
+        permutation["two_sided_p"] is not None
+        and permutation["two_sided_p"] < _INFERENCE_ALPHA
+    )
+    return {
+        "metric": "weak_label_partial_credit",
+        "metric_note": (
+            "Partial credit is a weak-label composite score, not diagnostic accuracy."
+        ),
+        "paired_cases": len(deltas),
+        "mean_delta": round(mean_delta, 6) if mean_delta is not None else None,
+        "bootstrap_95_ci": bootstrap,
+        "random_sign_permutation_test": permutation,
+        "significant_improvement": {
+            "alpha": _INFERENCE_ALPHA,
+            "supported": bool(ci_positive and permutation_significant),
+            "criterion": (
+                "paired bootstrap 95% CI lower bound > 0 and two-sided paired "
+                "random-sign permutation p < 0.05"
+            ),
+            "ci_excludes_zero_in_positive_direction": ci_positive,
+            "permutation_p_below_alpha": permutation_significant,
+        },
+    }
+
+
+def _paired_bootstrap_mean_ci(
+    deltas: list[float],
+    *,
+    iterations: int,
+    seed: int,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "available": len(deltas) >= 2,
+        "method": "paired_case_percentile_bootstrap",
+        "confidence_level": 0.95,
+        "paired_cases": len(deltas),
+        "iterations": iterations,
+        "seed": seed,
+        "lower": None,
+        "upper": None,
+        "reason": None,
+    }
+    if len(deltas) < 2:
+        result["reason"] = "requires_at_least_two_paired_cases"
+        return result
+
+    rng = random.Random(seed)
+    n = len(deltas)
+    means = sorted(sum(rng.choices(deltas, k=n)) / n for _ in range(iterations))
+    result["lower"] = round(_percentile(means, 0.025), 6)
+    result["upper"] = round(_percentile(means, 0.975), 6)
+    return result
+
+
+def _paired_random_sign_test(
+    deltas: list[float],
+    *,
+    monte_carlo_iterations: int,
+    seed: int,
+) -> dict[str, Any]:
+    n = len(deltas)
+    observed = abs(statistics.mean(deltas)) if deltas else None
+    result: dict[str, Any] = {
+        "available": n >= 2,
+        "method": "not_computed",
+        "paired_cases": n,
+        "statistic": "absolute_mean_paired_delta",
+        "observed_statistic": round(observed, 6) if observed is not None else None,
+        "iterations": 0,
+        "seed": seed,
+        "two_sided_p": None,
+        "reason": None,
+    }
+    if n < 2:
+        result["reason"] = "requires_at_least_two_paired_cases"
+        return result
+
+    observed_sum = abs(sum(deltas))
+    tolerance = 1e-12
+    if n <= _EXACT_RANDOM_SIGN_MAX_PAIRS:
+        assignments = 1 << n
+        extreme = 0
+        for mask in range(assignments):
+            signed_sum = sum(
+                value if mask & (1 << index) else -value
+                for index, value in enumerate(deltas)
+            )
+            if abs(signed_sum) >= observed_sum - tolerance:
+                extreme += 1
+        result.update(
+            {
+                "method": "exact_random_sign_enumeration",
+                "iterations": assignments,
+                "seed": None,
+                "two_sided_p": extreme / assignments,
+            }
+        )
+        return result
+
+    magnitude_counts: dict[float, int] = {}
+    for value in deltas:
+        magnitude = abs(value)
+        if magnitude <= tolerance:
+            continue
+        magnitude_counts[magnitude] = magnitude_counts.get(magnitude, 0) + 1
+    magnitude_groups = tuple(magnitude_counts.items())
+    rng = random.Random(seed)
+    extreme = 0
+    for _ in range(monte_carlo_iterations):
+        signed_sum = sum(
+            (2 * rng.getrandbits(count).bit_count() - count) * magnitude
+            for magnitude, count in magnitude_groups
+        )
+        if abs(signed_sum) >= observed_sum - tolerance:
+            extreme += 1
+    result.update(
+        {
+            "method": "monte_carlo_random_sign",
+            "iterations": monte_carlo_iterations,
+            "two_sided_p": (extreme + 1) / (monte_carlo_iterations + 1),
+        }
+    )
+    return result
+
+
+def _percentile(sorted_values: list[float], quantile: float) -> float:
+    position = (len(sorted_values) - 1) * quantile
+    lower_index = math.floor(position)
+    upper_index = math.ceil(position)
+    if lower_index == upper_index:
+        return sorted_values[lower_index]
+    fraction = position - lower_index
+    return (
+        sorted_values[lower_index] * (1.0 - fraction)
+        + sorted_values[upper_index] * fraction
+    )
+
+
+def _paired_binary_inference(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    eligible_normal = [
+        row
+        for row in rows
+        if row["reference_complete"]
+        and row["clinical_scorable"]
+        and row["baseline_expected_severity"] in {"normal", "info"}
+    ]
+    normal_pairs = [
+        (
+            bool(row["baseline_severity_abnormal_match"])
+            and not bool(row["baseline_concept_false_positives"]),
+            bool(row["candidate_severity_abnormal_match"])
+            and not bool(row["candidate_concept_false_positives"]),
+        )
+        for row in eligible_normal
+    ]
+    eligible_critical = [
+        row
+        for row in rows
+        if row["reference_complete"]
+        and row["clinical_scorable"]
+        and row["baseline_expected_severity"] == "critical"
+    ]
+    critical_pairs = [
+        (
+            _critical_safety_correct(row, "baseline"),
+            _critical_safety_correct(row, "candidate"),
+        )
+        for row in eligible_critical
+    ]
+    return {
+        "normal_detection": {
+            "population": ("reference-complete, clinically scorable normal/info cases"),
+            "correctness_definition": (
+                "non-abnormal severity classification with no concept false positive"
+            ),
+            **_mcnemar_exact_test(normal_pairs),
+        },
+        "critical_safety": {
+            "population": ("reference-complete, clinically scorable critical cases"),
+            "correctness_definition": (
+                "exact critical severity with no missed cant-miss or urgent concern"
+            ),
+            **_mcnemar_exact_test(critical_pairs),
+        },
+    }
+
+
+def _critical_safety_correct(row: dict[str, Any], prefix: str) -> bool:
+    misses = row[f"{prefix}_misses"]
+    return bool(row[f"{prefix}_severity_match"]) and not (
+        misses["cant_miss"] or misses["urgent_concerns"]
+    )
+
+
+def _mcnemar_exact_test(pairs: list[tuple[bool, bool]]) -> dict[str, Any]:
+    a = sum(1 for baseline, candidate in pairs if baseline and candidate)
+    b = sum(1 for baseline, candidate in pairs if baseline and not candidate)
+    c = sum(1 for baseline, candidate in pairs if not baseline and candidate)
+    d = sum(1 for baseline, candidate in pairs if not baseline and not candidate)
+    discordant = b + c
+    result: dict[str, Any] = {
+        "available": len(pairs) >= 2,
+        "method": "mcnemar_exact_two_sided",
+        "paired_cases": len(pairs),
+        "a_both_correct": a,
+        "b_baseline_correct_candidate_incorrect": b,
+        "c_baseline_incorrect_candidate_correct": c,
+        "d_both_incorrect": d,
+        "discordant_pairs": discordant,
+        "two_sided_p": None,
+        "reason": None,
+    }
+    if len(pairs) < 2:
+        result["reason"] = "requires_at_least_two_paired_cases"
+        return result
+    if discordant == 0:
+        result["two_sided_p"] = 1.0
+        result["reason"] = "no_discordant_pairs"
+        return result
+    smaller = min(b, c)
+    tail = sum(math.comb(discordant, k) for k in range(smaller + 1)) / (2**discordant)
+    result["two_sided_p"] = min(1.0, 2 * tail)
+    return result
+
+
 def _scorecard_strict_rate(scorecard: dict[str, Any]) -> float:
     if "strict_pass_rate" in scorecard:
         return _float(scorecard["strict_pass_rate"])
@@ -824,6 +1102,23 @@ def _scorecard_partial_credit(scorecard: dict[str, Any]) -> float:
     if not cases:
         return 0.0
     return round(sum(_case_partial_credit(case) for case in cases) / len(cases), 3)
+
+
+def _scorecard_sla_rate(
+    scorecard: dict[str, Any],
+    stage: str,
+) -> float | None:
+    metrics = scorecard.get("sla_metrics")
+    metrics = metrics if isinstance(metrics, dict) else {}
+    stage_metrics = metrics.get(stage)
+    stage_metrics = stage_metrics if isinstance(stage_metrics, dict) else {}
+    value = stage_metrics.get("rate")
+    if value is None:
+        return None
+    try:
+        return round(float(value), 3)
+    except (TypeError, ValueError):
+        return None
 
 
 def _case_partial_credit(case: dict[str, Any]) -> float:
@@ -890,9 +1185,7 @@ def _trace_cost(eval_dir: Path) -> dict[str, Any]:
 def _session_usage(eval_dir: Path) -> dict[str, Any]:
     """Aggregate provider-reported usage from OpenClaw session messages."""
 
-    sessions_dir = (
-        eval_dir.parent / "openclaw-state" / "agents" / "main" / "sessions"
-    )
+    sessions_dir = eval_dir.parent / "openclaw-state" / "agents" / "main" / "sessions"
     empty = {
         "usage_records": 0,
         "total_input_tokens": None,
@@ -970,11 +1263,17 @@ def _mean_field(rows: list[dict[str, Any]], field: str) -> float | None:
     return round(statistics.mean(values), 3) if values else None
 
 
+def _format_optional_rate(value: object) -> str:
+    return "n/a" if value is None else f"{_float(value):.1%}"
+
+
 def _markdown_report(report: dict[str, Any]) -> str:
     headline = report["headline"]
     counts = report["case_status_counts"]
     safety_counts = report["safety_case_status_counts"]
     sign_test = report["paired_sign_test"]
+    partial_inference = report["paired_partial_credit_inference"]
+    binary_inference = report["paired_binary_inference"]
     safety = report["clinical_safety"]
     baseline_cost = report["baseline_cost"]
     candidate_cost = report["candidate_cost"]
@@ -1003,6 +1302,15 @@ def _markdown_report(report: dict[str, Any]) -> str:
         f"- Paired mean partial-credit delta: "
         f"{headline['paired_mean_partial_credit_delta']:.1%}",
         f"- Keyword recall delta: {headline['keyword_recall_delta']:.1%}",
+        "- Candidate SLA (initial / first crop / total): "
+        f"{_format_optional_rate(headline['candidate_sla_rates']['initial_response'])} / "
+        f"{_format_optional_rate(headline['candidate_sla_rates']['first_crop_refinement'])} / "
+        f"{_format_optional_rate(headline['candidate_sla_rates']['total'])}",
+        "- Raw JSON clean rate (baseline / candidate): "
+        f"{headline['baseline_raw_json_clean_rate']:.1%} / "
+        f"{headline['candidate_raw_json_clean_rate']:.1%} "
+        f"(repairs {headline['baseline_json_repair_total_count']} / "
+        f"{headline['candidate_json_repair_total_count']})",
         f"- Diagnosis exact-set delta: "
         f"{headline['diagnosis_exact_set_accuracy_delta']:.1%}",
         f"- Diagnosis complete-recall delta: "
@@ -1013,6 +1321,14 @@ def _markdown_report(report: dict[str, Any]) -> str:
         f"- Normal-control specificity delta: "
         f"{headline['normal_control_specificity_delta']:.1%}",
         f"- Paired sign-test p-value: {sign_test['two_sided_p']}",
+        "",
+        "## Paired Statistical Inference",
+        "",
+        _format_partial_credit_inference(partial_inference),
+        _format_mcnemar("Normal detection", binary_inference["normal_detection"]),
+        _format_mcnemar("Critical safety", binary_inference["critical_safety"]),
+        "- Interpretation note: weak-label partial credit is a composite score, "
+        "not diagnostic accuracy.",
         "",
         "## Runtime And Provider Usage",
         "",
@@ -1052,6 +1368,48 @@ def _markdown_report(report: dict[str, Any]) -> str:
             f"{row['candidate_partial_credit']:.1%}, {row['status']})"
         )
     return "\n".join(lines) + "\n"
+
+
+def _format_partial_credit_inference(inference: dict[str, Any]) -> str:
+    bootstrap = inference["bootstrap_95_ci"]
+    permutation = inference["random_sign_permutation_test"]
+    supported = inference["significant_improvement"]["supported"]
+    if not bootstrap["available"] or not permutation["available"]:
+        return (
+            "- Weak-label partial-credit inference: not available "
+            f"(n={inference['paired_cases']}; requires at least two paired cases)"
+        )
+    seed = permutation["seed"] if permutation["seed"] is not None else "not used"
+    return (
+        f"- Weak-label partial-credit mean delta: {inference['mean_delta']:+.1%}; "
+        f"paired bootstrap 95% CI [{bootstrap['lower']:+.1%}, "
+        f"{bootstrap['upper']:+.1%}] "
+        f"(iterations={bootstrap['iterations']}, seed={bootstrap['seed']}); "
+        f"two-sided random-sign p={permutation['two_sided_p']} "
+        f"(method={permutation['method']}, iterations={permutation['iterations']}, "
+        f"seed={seed}); significant improvement supported={supported}"
+    )
+
+
+def _format_mcnemar(label: str, result: dict[str, Any]) -> str:
+    b = result["b_baseline_correct_candidate_incorrect"]
+    c = result["c_baseline_incorrect_candidate_correct"]
+    context = (
+        f"population={result['population']}; "
+        f"correctness={result['correctness_definition']}"
+    )
+    if not result["available"]:
+        return (
+            f"- {label} McNemar exact: not available "
+            f"(n={result['paired_cases']}, b={b}, c={c}; requires at least two "
+            f"pairs); {context}"
+        )
+    return (
+        f"- {label} McNemar exact: n={result['paired_cases']}, "
+        f"b={b} (baseline correct/candidate incorrect), "
+        f"c={c} (baseline incorrect/candidate correct), "
+        f"two-sided p={result['two_sided_p']}; {context}"
+    )
 
 
 def _format_binary_metric(label: str, metric: dict[str, Any]) -> str:
@@ -1099,6 +1457,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--min-delta", type=float, default=0.05)
     parser.add_argument(
+        "--bootstrap-iterations",
+        type=int,
+        default=_DEFAULT_BOOTSTRAP_ITERATIONS,
+    )
+    parser.add_argument(
+        "--permutation-iterations",
+        type=int,
+        default=_DEFAULT_PERMUTATION_ITERATIONS,
+    )
+    parser.add_argument("--random-seed", type=int, default=_DEFAULT_RANDOM_SEED)
+    parser.add_argument(
         "--allow-incomplete",
         action="store_true",
         help=(
@@ -1123,6 +1492,9 @@ def main() -> int:
             min_delta=args.min_delta,
             allow_incomplete=args.allow_incomplete,
             allow_incompatible=args.allow_incompatible,
+            bootstrap_iterations=args.bootstrap_iterations,
+            permutation_iterations=args.permutation_iterations,
+            random_seed=args.random_seed,
         )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -1147,6 +1519,11 @@ def main() -> int:
     print(f"Strict pass delta: {headline['strict_pass_rate_delta']:.1%}")
     print(f"Partial-credit delta: {headline['partial_credit_delta']:.1%}")
     print(f"Paired sign-test p-value: {report['paired_sign_test']['two_sided_p']}")
+    inference = report["paired_partial_credit_inference"]
+    print(
+        "Weak-label partial-credit significant improvement supported: "
+        f"{inference['significant_improvement']['supported']}"
+    )
     print(f"Output: {output_dir}")
     return 0
 

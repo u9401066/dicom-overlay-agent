@@ -69,6 +69,44 @@ def _ecg_receipt() -> dict[str, object]:
     }
 
 
+def _ineligible_ecg_receipt(
+    reason: str = "waveform_contains_flat_lead",
+) -> dict[str, object]:
+    response_evidence = {
+        "schema_version": 1,
+        "status": "ineligible",
+        "evidence_type": "ecg_waveform_classification",
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "artifact_id_sha256": "a" * 64,
+        "use_policy": "supporting_evidence_only",
+        "spatial_localization": "not_provided",
+        "limitations": ["No waveform classification evidence is available."],
+        "reason": reason,
+        "predictions": [],
+    }
+    return {
+        "schema_version": 1,
+        "tool": "ecg_founder_analyze_waveform",
+        "tool_call_id": "call-ineligible",
+        "status": "ineligible",
+        "evidence_nonce": "d" * 32,
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "response_evidence": response_evidence,
+        "response_sha256": hashlib.sha256(
+            json.dumps(
+                response_evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "prediction_count": 0,
+        "predictions": [],
+        "failure_reason": reason,
+    }
+
+
 def test_ecgfounder_evidence_requires_one_matching_pinned_receipt() -> None:
     receipt = _ecg_receipt()
     evidence = {
@@ -103,6 +141,32 @@ def test_ecgfounder_evidence_requires_one_matching_pinned_receipt() -> None:
     assert _valid_ecg_founder_evidence(evidence) is False
 
 
+def test_ecgfounder_evidence_accepts_bound_data_ineligibility_receipt() -> None:
+    receipt = _ineligible_ecg_receipt()
+    evidence = {
+        "requested": True,
+        "verified_exactly_once": True,
+        "evidence_status": "ineligible",
+        "usable": False,
+        "ineligible_reason": "waveform_contains_flat_lead",
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "receipt_count": 1,
+        "receipts": [receipt],
+    }
+
+    assert _valid_ecg_founder_evidence(evidence) is True
+    receipt["failure_reason"] = "artifact_not_registered"
+    response = receipt["response_evidence"]
+    assert isinstance(response, dict)
+    response["reason"] = "artifact_not_registered"
+    receipt["response_sha256"] = hashlib.sha256(
+        json.dumps(response, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert _valid_ecg_founder_evidence(evidence) is False
+
+
 def test_ecgfounder_response_hash_cannot_mask_provenance_disagreement() -> None:
     receipt = _ecg_receipt()
     evidence = {
@@ -132,6 +196,7 @@ def _write_minimal_eval(
     count: int = 2,
     *,
     ecgfounder: bool = False,
+    defer_scoring: bool = False,
 ) -> None:
     manifest_path.write_text(
         json.dumps(
@@ -175,6 +240,7 @@ def _write_minimal_eval(
         "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
         "flags": {
             "multi_pass": False,
+            "defer_scoring": defer_scoring,
             "ecgfounder_waveform_evidence": ecgfounder,
             "ecgfounder_preprocessing_revision": (
                 "preprocess-v1" if ecgfounder else ""
@@ -935,3 +1001,47 @@ def test_mixed_or_missing_protocol_is_never_reported_comparable(tmp_path: Path) 
     )
     assert not missing.ok
     assert any("legacy runs are not comparable" in item for item in missing.failures)
+
+
+def test_deferred_run_accepts_only_identity_matched_gold_manifest(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    inference_manifest = tmp_path / "manifest.inference.json"
+    _write_minimal_eval(
+        eval_dir,
+        inference_manifest,
+        count=1,
+        defer_scoring=True,
+    )
+    gold_manifest = tmp_path / "manifest.gold.json"
+    gold = json.loads(inference_manifest.read_text(encoding="utf-8"))
+    gold["cases"][0]["expected_severity"] = "normal"
+    gold_manifest.write_text(json.dumps(gold), encoding="utf-8")
+    scorecard_path = eval_dir / "scorecard.json"
+    scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
+    scorecard["scoring_manifest_provenance"] = {
+        "path": str(gold_manifest),
+        "sha256": hashlib.sha256(gold_manifest.read_bytes()).hexdigest(),
+        "paired_gold_manifest": True,
+    }
+    scorecard_path.write_text(json.dumps(scorecard), encoding="utf-8")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=gold_manifest,
+        min_cases=1,
+    )
+
+    assert verification.ok
+    assert "paired_gold_manifest" in verification.passed_checks
+
+    gold["cases"][0]["image"] = "wrong.png"
+    gold_manifest.write_text(json.dumps(gold), encoding="utf-8")
+    mismatched = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=gold_manifest,
+        min_cases=1,
+    )
+    assert not mismatched.ok
+    assert any("image" in item for item in mismatched.failures)

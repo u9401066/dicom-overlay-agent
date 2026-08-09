@@ -87,6 +87,39 @@ def test_mock_payload_scores_perfect_for_normal_case(tmp_path: Path) -> None:
     assert score.negative_misses == []
 
 
+def test_git_identity_hashes_untracked_source_contents(tmp_path: Path) -> None:
+    module = _load_run_eval_module()
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            capture_output=True,
+            check=True,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "Test")
+    tracked = tmp_path / "src" / "dicom_overlay" / "tracked.py"
+    tracked.parent.mkdir(parents=True)
+    tracked.write_text("TRACKED = True\n", encoding="utf-8")
+    git("add", tracked.relative_to(tmp_path).as_posix())
+    git("commit", "-qm", "fixture")
+    untracked = tracked.with_name("new_auth.py")
+    untracked.write_text("VALUE = 'first'\n", encoding="utf-8")
+
+    before = module._git_identity(tmp_path)
+    untracked.write_text("VALUE = 'second'\n", encoding="utf-8")
+    after = module._git_identity(tmp_path)
+
+    assert before["worktree_status_sha256"] == after["worktree_status_sha256"]
+    assert before["tracked_diff_sha256"] == after["tracked_diff_sha256"]
+    assert before["worktree_file_count"] == 2
+    assert after["worktree_file_count"] == 2
+    assert before["worktree_content_sha256"] != after["worktree_content_sha256"]
+
+
 def test_make_client_uses_eval_timeout_for_inference() -> None:
     module = _load_run_eval_module()
 
@@ -97,6 +130,27 @@ def test_make_client_uses_eval_timeout_for_inference() -> None:
     assert client._inference_timeout == 90
     assert client._registry is module.get_active_registry()
     assert client._base_dir == module._REPO_ROOT
+    assert client._fast_mode is True
+
+
+def test_rhythm_trace_omits_wrapper_when_no_pass_ran() -> None:
+    module = _load_run_eval_module()
+
+    assert module._rhythm_trace_has_activity(
+        None,
+        analyze_calls=0,
+        crop_calls=0,
+    ) is False
+    assert module._rhythm_trace_has_activity(
+        RegionRect(x=0.0, y=0.8, w=1.0, h=0.2),
+        analyze_calls=0,
+        crop_calls=0,
+    ) is True
+    assert module._rhythm_trace_has_activity(
+        None,
+        analyze_calls=1,
+        crop_calls=0,
+    ) is True
 
 
 def test_waveform_evidence_requires_one_nonce_correlated_pinned_receipt() -> None:
@@ -164,6 +218,22 @@ def test_waveform_evidence_requires_one_nonce_correlated_pinned_receipt() -> Non
 
     assert evidence["verified_exactly_once"] is True
     assert evidence["receipt_count"] == 1
+
+    suppressed = module._build_waveform_evidence(
+        artifact_id=artifact_id,
+        lead_mode="12_lead",
+        evidence_nonce=nonce,
+        receipts=[receipt],
+        duplicate_attempts=[
+            {
+                "status": "duplicate_suppressed",
+                "tool_call_id": "call-2",
+            }
+        ],
+    )
+    assert suppressed["verified_exactly_once"] is True
+    assert suppressed["receipt_count"] == 1
+    assert suppressed["duplicate_suppressed_count"] == 1
 
     wrong_nonce = dict(receipt, evidence_nonce="b" * 32)
     rejected = module._build_waveform_evidence(
@@ -288,6 +358,7 @@ def test_counting_analyzer_delegates_refine_and_runtime_trace() -> None:
             *,
             hypothesis: Finding | None,
             crop_region: RegionRect,
+            probe_id: str = "",
         ) -> RefinementResult:
             calls.append(
                 (
@@ -296,6 +367,7 @@ def test_counting_analyzer_delegates_refine_and_runtime_trace() -> None:
                     valid_regions,
                     hypothesis,
                     crop_region,
+                    probe_id,
                 )
             )
             return expected
@@ -317,7 +389,7 @@ def test_counting_analyzer_delegates_refine_and_runtime_trace() -> None:
     )
 
     assert result is expected
-    assert calls == [("crop", Modality.EKG, ["lead_II"], None, crop_region)]
+    assert calls == [("crop", Modality.EKG, ["lead_II"], None, crop_region, "")]
     assert counter.analyze_calls == 1
     assert counter.last_run_trace() == {
         "run_id": "run-1",
@@ -420,6 +492,7 @@ def test_multipass_uses_coarse_for_first_read_and_original_for_refine_crop() -> 
             *,
             hypothesis: Finding | None,
             crop_region: RegionRect,
+            probe_id: str = "",
         ) -> RefinementResult:
             refined_images.append(image_base64)
             assert hypothesis is not None
@@ -483,6 +556,51 @@ def test_eval_analyzer_wiring_matches_app_hooks_and_bbox_calibrator() -> None:
     assert analyzer._interpreter._bbox_calibrator is module.calibrate_ekg_bboxes
 
 
+def test_minimal_control_declares_no_app_clinical_hooks() -> None:
+    module = _load_run_eval_module()
+
+    assert module._guardrail_hook_names(
+        analysis_prompt_profile="minimal_control", multi_pass=False
+    ) == []
+    assert module._guardrail_hook_names(
+        analysis_prompt_profile="clinical", multi_pass=False
+    ) == [
+        "InputGuard",
+        "ClinicalConsistencyHook",
+        "BboxCalibrationHook",
+        "OutputValidator",
+    ]
+
+
+def test_load_cases_accepts_gold_stripped_blinded_manifest(tmp_path: Path) -> None:
+    module = _load_run_eval_module()
+    image = tmp_path / "case.png"
+    image.write_bytes(b"image")
+    manifest = tmp_path / "manifest.inference.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "label": "blind-1",
+                        "image": "case.png",
+                        "modality": "EKG",
+                        "valid_regions": ["lead_I"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    case = module._load_cases(manifest)[0]
+
+    assert case.label == "blind-1"
+    assert case.expected_severity.value == "normal"
+    assert case.label_status == "blinded_inference"
+    assert case.expected_keywords == ()
+
+
 def test_limited_cases_caps_console_preview() -> None:
     module = _load_run_eval_module()
 
@@ -540,6 +658,38 @@ def test_pending_cases_uses_writer_filename_sanitization(tmp_path: Path) -> None
     assert skipped == 1
 
 
+def test_pending_cases_can_retry_only_persisted_errors(tmp_path: Path) -> None:
+    module = _load_run_eval_module()
+    cases = [
+        EvalCase(
+            image_path=tmp_path / f"{label}.png",
+            modality=Modality.EKG,
+            expected_severity=Severity.NORMAL,
+            label=label,
+        )
+        for label in ("ok", "retry")
+    ]
+    results_dir = tmp_path / "eval" / "results"
+    results_dir.mkdir(parents=True)
+    (results_dir / "ok.json").write_text(
+        '{"case":"ok","score":{"error":null}}',
+        encoding="utf-8",
+    )
+    (results_dir / "retry.json").write_text(
+        '{"case":"retry","error":"temporary timeout"}',
+        encoding="utf-8",
+    )
+
+    pending, skipped = module._pending_cases(
+        cases,
+        tmp_path / "eval",
+        retry_errors=True,
+    )
+
+    assert [case.label for case in pending] == ["retry"]
+    assert skipped == 1
+
+
 def _fingerprint(module, *, model: str, image_sha256: str) -> dict:
     protocol = {
         "model": {"id": model},
@@ -565,6 +715,30 @@ def _fingerprint(module, *, model: str, image_sha256: str) -> dict:
         },
         "protocol": protocol,
     }
+
+
+def test_openclaw_config_identity_ignores_only_touch_timestamp(tmp_path: Path) -> None:
+    module = _load_run_eval_module()
+    config = tmp_path / "openclaw.experiment.json"
+    payload = {
+        "meta": {"lastTouchedVersion": "test", "lastTouchedAt": "first"},
+        "agents": {"defaults": {"model": {"primary": "openai/gpt-5.4-mini"}}},
+        "plugins": {"allow": ["openai"]},
+    }
+    config.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    first = module._openclaw_config_identity(config)
+
+    payload["meta"]["lastTouchedAt"] = "second"
+    config.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    second = module._openclaw_config_identity(config)
+
+    assert first["identity"] == "canonical_json_without_meta.lastTouchedAt"
+    assert first["sha256"] == second["sha256"]
+
+    payload["plugins"]["allow"].append("dicom-overlay-agent-harness")
+    config.write_text(json.dumps(payload), encoding="utf-8")
+    changed = module._openclaw_config_identity(config)
+    assert changed["sha256"] != second["sha256"]
 
 
 def _resume_case(tmp_path: Path) -> EvalCase:
@@ -815,6 +989,8 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     protocol = fingerprint["protocol"]
     assert protocol["source"]["commit"]
     assert isinstance(protocol["source"]["dirty"], bool)
+    assert len(protocol["source"]["worktree_content_sha256"]) == 64
+    assert protocol["source"]["worktree_file_count"] > 0
     assert "src/dicom_overlay" in protocol["source"]["scope"]
     assert "sidecars/ecgfounder" in protocol["source"]["scope"]
     assert not any(
@@ -829,13 +1005,15 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     assert protocol["manifest"]["cases"][0]["case"] == "case.png"
     assert protocol["flags"]["guardrail_hooks"] == [
         "InputGuard",
-        "OutputValidator",
-        "BboxCalibrationHook",
         "ClinicalConsistencyHook",
+        "BboxCalibrationHook",
+        "OutputValidator",
     ]
     assert protocol["flags"]["single_pass_bbox_calibrator"] == ("calibrate_ekg_bboxes")
     assert protocol["flags"]["multi_pass_bbox_calibrator"] == ("calibrate_ekg_bboxes")
+    assert protocol["flags"]["local_signal_candidates"] == "image_processor"
     assert protocol["flags"]["multi_pass_max_ekg_systematic_probes"] == 2
+    assert protocol["flags"]["openclaw_fast_mode"] is True
     assert protocol["flags"]["refinement_crop_source"] == "original_roi"
     assert protocol["flags"]["rhythm_strip_pass"] is False
     assert result["protocol_digest"] == fingerprint["protocol_digest"]
@@ -843,3 +1021,54 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     assert scorecard["scorecard_kind"] == "full_rebuild"
     assert scorecard["result_count"] == 1
     assert scorecard["cases"][0]["case_label"] == "case.png"
+
+
+def test_blinded_mock_run_defers_gold_scoring(tmp_path: Path) -> None:
+    script = Path(__file__).resolve().parents[2] / "scripts" / "run-eval.py"
+    image = tmp_path / "blind.png"
+    Image.new("RGB", (32, 24), "white").save(image)
+    manifest = tmp_path / "manifest.inference.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "label": "blind-case",
+                        "image": image.name,
+                        "modality": "EKG",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "blind-eval"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--mock",
+            "--model-id",
+            "mock-eval-gateway",
+            "--manifest",
+            str(manifest),
+            "--output",
+            str(output),
+            "--no-rhythm-strip-pass",
+            "--defer-scoring",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "formal scoring is deferred" in completed.stdout
+    fingerprint = json.loads(
+        (output / "protocol-fingerprint.json").read_text(encoding="utf-8")
+    )
+    scorecard = json.loads((output / "scorecard.json").read_text(encoding="utf-8"))
+    assert fingerprint["protocol"]["flags"]["defer_scoring"] is True
+    assert scorecard["result_count"] == 1
+    assert scorecard["clinical_scorable_count"] == 0
