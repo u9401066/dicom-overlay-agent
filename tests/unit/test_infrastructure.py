@@ -29,10 +29,12 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     read_installed_openclaw_version,
 )
 from dicom_overlay.infrastructure.openclaw_settings import (
+    ProviderAuthMode,
     ProviderProfile,
     ProviderType,
     build_openclaw_config,
     default_provider_profiles,
+    merge_openclaw_config,
 )
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ScreenMonitor
@@ -69,6 +71,7 @@ class TestConfigLoader:
         assert config.phi_roi.configured is False
         assert config.openclaw.gateway_url == "ws://localhost:9999"
         assert config.openclaw.gateway_start_timeout_sec == 180
+        assert config.openclaw.fast_mode is True
         assert config.analysis.trigger_mode == TriggerMode.MANUAL
 
     def test_save_roi_config(self, tmp_path):
@@ -143,8 +146,91 @@ class TestOpenClawSettings:
         )
         assert profile.provider_id == "openai"
         assert profile.provider_type == ProviderType.OPENAI
-        assert profile.model
+        assert profile.model == "gpt-5.4-mini"
+        assert profile.input_modalities == ("text", "image")
+        assert profile.auth_mode is ProviderAuthMode.CODEX_SUBSCRIPTION
+        assert profile.api_key_env == ""
+        assert profile.api == "openai-chatgpt-responses"
+        assert profile.agent_runtime == "openclaw"
         assert profile.requires_vision_check
+
+    def test_build_codex_subscription_config_is_fail_closed_without_api_key(self):
+        profile = next(
+            p for p in default_provider_profiles() if p.key == "openai-codex"
+        )
+
+        config = build_openclaw_config(profile)
+
+        provider = config["models"]["providers"]["openai"]
+        assert provider["timeoutSeconds"] == 165
+        assert "apiKey" not in provider
+        assert "baseUrl" not in provider
+        assert provider["api"] == "openai-chatgpt-responses"
+        assert provider["models"][0] == {
+            "id": "gpt-5.4-mini",
+            "name": "OpenAI Subscription via OpenClaw",
+            "input": ["text", "image"],
+            "reasoning": True,
+            "contextWindow": 400_000,
+            "maxTokens": 128_000,
+            "agentRuntime": {"id": "openclaw"},
+        }
+        assert config["agents"]["defaults"]["models"][profile.model_ref][
+            "agentRuntime"
+        ] == {"id": "openclaw"}
+        assert "plugins" not in config
+
+    def test_subscription_merge_removes_stale_api_transport_and_keeps_plugins(self):
+        profile = next(
+            p for p in default_provider_profiles() if p.key == "openai-codex"
+        )
+        existing = {
+            "models": {
+                "providers": {
+                    "openai": {
+                        "apiKey": {"id": "OPENAI_API_KEY"},
+                        "baseUrl": "https://api.openai.com/v1",
+                        "models": [{"id": "gpt-5.4-mini"}],
+                    }
+                }
+            },
+            "plugins": {
+                "allow": ["dicom-overlay-agent-harness", "codex"],
+                "entries": {
+                    "dicom-overlay-agent-harness": {"enabled": True},
+                    "codex": {
+                        "enabled": True,
+                        "config": {"appServer": {"homeScope": "agent"}},
+                    },
+                },
+                "load": {
+                    "paths": [
+                        "C:/state/plugins/@openclaw/codex",
+                        "C:/workspace/dicom-overlay-agent-harness",
+                    ]
+                },
+            },
+        }
+
+        merged = merge_openclaw_config(existing, build_openclaw_config(profile))
+
+        provider = merged["models"]["providers"]["openai"]
+        assert "apiKey" not in provider
+        assert "baseUrl" not in provider
+        assert provider["api"] == "openai-chatgpt-responses"
+        assert provider["models"][0]["input"] == ["text", "image"]
+        assert provider["models"][0]["agentRuntime"] == {"id": "openclaw"}
+        assert merged["agents"]["defaults"]["models"][profile.model_ref][
+            "agentRuntime"
+        ] == {"id": "openclaw"}
+        assert merged["plugins"]["allow"] == ["dicom-overlay-agent-harness"]
+        assert merged["plugins"]["entries"]["dicom-overlay-agent-harness"] == {
+            "enabled": True
+        }
+        assert "codex" not in merged["plugins"]["entries"]
+        assert merged["plugins"]["load"]["paths"] == [
+            "C:/workspace/dicom-overlay-agent-harness"
+        ]
 
     def test_build_openclaw_config_uses_secret_refs_and_model_allowlist(self):
         profile = ProviderProfile(
@@ -252,6 +338,7 @@ class TestOpenClawRuntimeCompatibility:
         manifest = build_harness_manifest()
 
         assert manifest["name"] == "dicom-overlay-agent-harness"
+        assert manifest["version"] == "1.5.7"
         assert manifest["compatibility"]["minimumOpenClaw"] == "2026.4.22"
         assert manifest["compatibility"]["gatewayProtocol"]["methods"] == [
             "connect",
@@ -260,12 +347,67 @@ class TestOpenClawRuntimeCompatibility:
         assert manifest["capabilities"]["bboxCropReanalysis"] is True
         assert manifest["capabilities"]["coordinateDriftCalibration"] is True
         assert manifest["capabilities"]["imageTurnBoundBboxReceipts"] is True
+        assert manifest["capabilities"]["compactCoarseTriage"] is True
+        assert manifest["capabilities"]["compactLeadOrderLayout"] is True
+        assert manifest["capabilities"]["nearMissRowPeakGeometryRecovery"] is True
+        assert manifest["capabilities"]["epsilonSafeCropProjection"] is True
+        assert manifest["capabilities"]["overlapAwareSystematicFallback"] is True
+        assert manifest["capabilities"]["finalTurnAfterCompletedRefinement"] is True
+        assert manifest["capabilities"]["boundedFinalizationRetryBudget"] is True
+        assert manifest["capabilities"]["explicitUnassessedChecklistFallback"] is True
+        assert manifest["capabilities"]["finalDispositionBoundBboxReceipt"] is True
+        assert manifest["capabilities"]["finalFindingRetainReviseRetract"] is True
+        assert manifest["capabilities"]["rejectedCoarseBboxRetraction"] is True
+        assert manifest["capabilities"]["objectShapedLayoutGeometry"] is True
+        assert manifest["capabilities"]["semanticUnlocalizedEkgRouting"] is True
+        assert manifest["capabilities"]["geometryDeduplicatedSystematicProbes"] is True
+        assert manifest["capabilities"]["systematicHypothesisReconciliation"] is True
+        assert manifest["capabilities"]["unlocalizedActionableGroundingGuard"] is True
+        assert (
+            manifest["capabilities"]["unavailableRhythmRegionReconciliation"]
+            is True
+        )
+        assert manifest["capabilities"]["boxedInfoUncertaintyGuard"] is True
+        assert manifest["capabilities"]["preFinalTightEkgBboxGuard"] is True
+        assert manifest["capabilities"]["benignVariantRetractionContract"] is True
+        assert (
+            manifest["capabilities"]["timeCriticalStElevationTriageContract"]
+            is True
+        )
+        assert manifest["capabilities"]["boundedRhythmStripRefinement"] is True
+        assert manifest["capabilities"]["endToEndRhythmSlaReceipt"] is True
         assert manifest["capabilities"]["ecgFounderWaveformAssist"] is True
         assert manifest["capabilities"]["noScreenshotToWaveformInference"] is True
         assert (
             "ecg_founder_analyze_waveform" in manifest["capabilities"]["openClawTools"]
         )
+        assert manifest["capabilities"]["ineligibleWaveformImageFallback"] is True
         assert manifest["capabilities"]["gatewayOnlyDesktopBoundary"] is True
+        assert manifest["capabilities"]["perTurnFastModeRequest"] is True
+        assert (
+            manifest["capabilities"][
+                "transportReceiptRequiredForServiceTierClaim"
+            ]
+            is True
+        )
+        assert manifest["capabilities"]["deterministicRowStripDetection"] is True
+        assert manifest["capabilities"]["imageCorroboratedLayoutRecovery"] is True
+        assert (
+            manifest["capabilities"]["deterministicRhythmRegularityMeasurement"]
+            is True
+        )
+        assert manifest["capabilities"]["waveformRhythmConflictGuard"] is True
+        assert manifest["capabilities"]["ekgContextualCropRouting"] is True
+        assert manifest["capabilities"]["partialCropRetractionGuard"] is True
+        assert (
+            manifest["capabilities"]["balancedWaveformCandidateVerification"]
+            is True
+        )
+        assert manifest["capabilities"]["nonceIdempotentWaveformTool"] is True
+        assert manifest["capabilities"]["compactWaveformAgentPayload"] is True
+        assert manifest["compatibility"]["gatewayProtocol"][
+            "chatSendParameters"
+        ] == ["fastMode"]
         assert "plugin-sdk" not in yaml.safe_dump(manifest)
 
     def test_builds_gateway_chat_frame_with_stable_image_attachment_schema(self):
@@ -275,11 +417,13 @@ class TestOpenClawRuntimeCompatibility:
             message="Analyze this.",
             idempotency_key="idem-1",
             image_base64="ZmFrZQ==",
+            fast_mode=True,
         )
 
         assert frame["method"] == "chat.send"
         assert frame["params"]["sessionKey"] == "main"
         assert frame["params"]["message"] == "Analyze this."
+        assert frame["params"]["fastMode"] is True
         assert frame["params"]["attachments"] == [
             {
                 "type": "image",
@@ -287,6 +431,17 @@ class TestOpenClawRuntimeCompatibility:
                 "content": "ZmFrZQ==",
             }
         ]
+
+    def test_gateway_chat_frame_rejects_non_integer_fast_auto_delay(self):
+        with pytest.raises(ValueError, match="integer"):
+            build_openclaw_chat_frame(
+                request_id="chat-1",
+                session_key="main",
+                message="Analyze this.",
+                idempotency_key="idem-1",
+                fast_mode="auto",
+                fast_auto_on_seconds="30",  # type: ignore[arg-type]
+            )
 
     def test_gateway_manager_reads_bundled_openclaw_runtime_when_frozen(
         self, monkeypatch, tmp_path
@@ -503,6 +658,30 @@ class TestOpenClawRuntimeCompatibility:
             },
         }
 
+    def test_gateway_manager_preloads_subscription_openai_provider(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        profile = next(
+            item for item in default_provider_profiles() if item.key == "openai-codex"
+        )
+        config_path = tmp_path / "openclaw" / "openclaw.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(build_openclaw_config(profile)),
+            encoding="utf-8",
+        )
+        manager = GatewayManager(repo_root=tmp_path)
+
+        path = manager._ensure_openclaw_config()
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["plugins"]["allow"] == [
+            "dicom-overlay-agent-harness",
+            "openai",
+        ]
+        assert payload["plugins"]["entries"]["openai"] == {"enabled": True}
+
     def test_gateway_manager_enables_ecg_founder_only_with_endpoint_and_token(
         self, monkeypatch, tmp_path
     ):
@@ -665,11 +844,11 @@ class TestDesktopSettingsStore:
             encoding="utf-8",
         )
         profile = ProviderProfile(
-            key="openai-codex",
-            label="OpenAI Codex",
+            key="openai-vision",
+            label="OpenAI Vision",
             provider_id="openai",
             provider_type=ProviderType.OPENAI,
-            model="gpt-5.2-codex",
+            model="gpt-5.4-mini",
             api_key_env="OPENAI_API_KEY",
             base_url="https://api.openai.com/v1",
         )
@@ -682,6 +861,33 @@ class TestDesktopSettingsStore:
         assert config["models"]["providers"]["openai"]["apiKey"]["id"] == (
             "OPENAI_API_KEY"
         )
+
+    def test_save_codex_subscription_never_writes_platform_api_key(self, tmp_path):
+        profile = next(
+            p for p in default_provider_profiles() if p.key == "openai-codex"
+        )
+        store = DesktopSettingsStore(repo_root=tmp_path)
+
+        store.save_provider_profile(
+            profile,
+            api_key="must-not-be-written",
+            gateway_token="gw-test",
+        )
+
+        env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+        config = yaml.safe_load(
+            (tmp_path / "openclaw" / "openclaw.json").read_text(encoding="utf-8")
+        )
+        assert "must-not-be-written" not in env_text
+        assert "OPENAI_API_KEY" not in env_text
+        provider = config["models"]["providers"]["openai"]
+        assert "apiKey" not in provider
+        assert "baseUrl" not in provider
+        assert provider["api"] == "openai-chatgpt-responses"
+        assert provider["models"][0]["input"] == ["text", "image"]
+        assert config["agents"]["defaults"]["models"][profile.model_ref][
+            "agentRuntime"
+        ] == {"id": "openclaw"}
 
     def test_save_trigger_mode_updates_config_yaml_without_dropping_roi(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -714,6 +920,7 @@ class TestDesktopSettingsStore:
         store.save_analysis_settings(
             multi_pass_enabled=True,
             max_zoom_targets=2,
+            fast_mode_enabled=False,
         )
 
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -723,6 +930,7 @@ class TestDesktopSettingsStore:
             "multi_pass_max_zoom_targets": 2,
         }
         assert raw["phi_roi"]["top"] == 12
+        assert raw["openclaw"]["fast_mode"] is False
 
     def test_read_env_file_ignores_comments_and_preserves_values(self, tmp_path):
         env_path = tmp_path / ".env"
