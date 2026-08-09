@@ -18,6 +18,10 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 
 from PIL import Image, ImageDraw, ImageFont
 
+from dicom_overlay.domain.ekg_layout import (
+    canonical_ekg_lead_name,
+    parse_ekg_lead_inventory,
+)
 from dicom_overlay.domain.entities import RegionRect, WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
     BboxProjectionCalibration,
@@ -43,6 +47,8 @@ _TEXT = (24, 29, 36)
 _MUTED = (92, 99, 112)
 _PANEL_BG = (248, 249, 251)
 _LOW_SIGNAL = (185, 42, 150)
+_LEAD_MISMATCH = (194, 50, 50)
+_ANALYSIS_CROP = (0, 132, 150)
 _INK_THRESHOLD = 80
 _LOW_SIGNAL_MIN_INK_RATIO = 0.01
 _CROP_THUMBNAIL_MIN_EDGE = 180
@@ -75,6 +81,9 @@ class BboxAudit:
     height_px: int
     ink_pixel_ratio: float
     low_signal: bool
+    declared_regions: tuple[str, ...]
+    geometry_region: str
+    geometry_region_declared: bool | None
     was_clamped: bool
     invalid_reason: str
     projection_ok: bool
@@ -101,6 +110,9 @@ class BboxAudit:
             "height_px": self.height_px,
             "ink_pixel_ratio": round(self.ink_pixel_ratio, 6),
             "low_signal": self.low_signal,
+            "declared_regions": list(self.declared_regions),
+            "geometry_region": self.geometry_region,
+            "geometry_region_declared": self.geometry_region_declared,
             "was_clamped": self.was_clamped,
             "invalid_reason": self.invalid_reason,
             "projection_ok": self.projection_ok,
@@ -169,9 +181,16 @@ def export_eval_annotations(
                 output_path=output_path,
             )
         )
-        if audits:
-            audit_records.extend(audits)
-        else:
+        audit_records.extend(audits)
+        bbox_audit_count = sum(
+            isinstance(record, BboxAudit)
+            or (
+                isinstance(record, dict)
+                and record.get("audit_type") == "bbox"
+            )
+            for record in audits
+        )
+        if bbox_audit_count == 0:
             audit_records.append(
                 {
                     "audit_type": "case",
@@ -216,6 +235,25 @@ def render_annotated_result(
     return path
 
 
+def render_annotated_result_with_audit(
+    *,
+    image_path: Path,
+    result: dict[str, Any],
+    output_path: Path,
+    crops_dir: Path | None = None,
+) -> tuple[Path, list[BboxAudit | dict[str, Any]]]:
+    """Draw one review image and retain its coordinate audit records."""
+    if crops_dir is not None:
+        crops_dir.mkdir(parents=True, exist_ok=True)
+    return _render_annotated_result_with_audit(
+        image_path=image_path,
+        result=result,
+        output_path=output_path,
+        case_label=str(result.get("case") or output_path.stem),
+        crops_dir=crops_dir,
+    )
+
+
 def _render_annotated_result_with_audit(
     *,
     image_path: Path,
@@ -234,8 +272,62 @@ def _render_annotated_result_with_audit(
     title = _load_font(17)
 
     findings = list(result.get("findings") or [])
+    analysis_crops = _analysis_crop_events(result)
+    layout_leads = [
+        (lead.name, lead.bbox)
+        for lead in parse_ekg_lead_inventory(result.get("layout")).leads
+    ]
     audit_records: list[BboxAudit | dict[str, Any]] = []
     audits_by_finding: dict[int, list[BboxAudit]] = {}
+    for crop_index, event in enumerate(analysis_crops, start=1):
+        crop_region = event["crop_region"]
+        mapping = _bbox_pixels(crop_region, source.width, source.height)
+        if mapping is None:
+            audit_records.append(
+                {
+                    "audit_type": "analysis_crop",
+                    "case": case_label,
+                    "crop_index": crop_index,
+                    "target_id": str(event.get("target_id") or ""),
+                    "normalized": dict(crop_region),
+                    "pixels": {},
+                    "projection_ok": False,
+                    "invalid_reason": "crop_region_invalid",
+                    "crop": "",
+                    "review_image": output_path.name,
+                    "diagnostic_bbox": False,
+                }
+            )
+            continue
+        crop_rel = ""
+        if crops_dir is not None:
+            crop_path = _save_bbox_crop(
+                source,
+                mapping.pixels,
+                crops_dir,
+                f"{_safe_filename(case_label)}-analysis-c{crop_index:02d}.png",
+            )
+            crop_rel = _relative_posix(crop_path, crops_dir.parent)
+        audit_records.append(
+            _analysis_crop_audit(
+                source,
+                mapping,
+                case_label=case_label,
+                event=event,
+                crop_index=crop_index,
+                crop_rel=crop_rel,
+                review_image=output_path.name,
+            )
+        )
+        _draw_dashed_rectangle(draw, mapping.pixels, _ANALYSIS_CROP, width=2)
+        _draw_badge(
+            draw,
+            mapping.pixels[0],
+            mapping.pixels[1],
+            f"C{crop_index}",
+            _ANALYSIS_CROP,
+            small,
+        )
     for index, finding in enumerate(findings, start=1):
         color = _color_for(str(finding.get("severity") or result.get("severity")))
         for bbox_index, bbox in enumerate(finding.get("bboxes") or [], start=1):
@@ -275,12 +367,15 @@ def _render_annotated_result_with_audit(
                 bbox_index=bbox_index,
                 crop_rel=crop_rel,
                 review_image=output_path.name,
+                layout_leads=layout_leads,
             )
             audit_records.append(audit)
             audits_by_finding.setdefault(index, []).append(audit)
             draw.rectangle(box, outline=color, width=3)
             if audit.low_signal:
                 _draw_low_signal_marker(draw, box)
+            if audit.geometry_region_declared is False:
+                draw.rectangle(box, outline=_LEAD_MISMATCH, width=2)
             _draw_badge(draw, box[0], box[1], str(index), color, small)
 
     _draw_panel(
@@ -293,6 +388,7 @@ def _render_annotated_result_with_audit(
         small,
         title,
         audits_by_finding,
+        analysis_crop_count=len(analysis_crops),
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output_path)
@@ -325,6 +421,22 @@ def _resolve_image_path(result: dict[str, Any], image_index: dict[str, Path]) ->
         f"Could not resolve source image for result case={result.get('case')!r} "
         f"image={result.get('image')!r}"
     )
+
+
+def _analysis_crop_events(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return completed crop/refine turns whose regions use ROI coordinates."""
+
+    events: list[dict[str, Any]] = []
+    for event in result.get("analysis_trace") or []:
+        if not isinstance(event, dict):
+            continue
+        if event.get("stage") != "refine" or event.get("status") != "completed":
+            continue
+        crop_region = event.get("crop_region")
+        if not isinstance(crop_region, dict):
+            continue
+        events.append(event)
+    return events
 
 
 def _bbox_pixels(
@@ -372,6 +484,79 @@ def _bbox_pixels(
     )
 
 
+def _analysis_crop_audit(
+    source: Image.Image,
+    mapping: BboxPixelMapping,
+    *,
+    case_label: str,
+    event: dict[str, Any],
+    crop_index: int,
+    crop_rel: str,
+    review_image: str,
+) -> dict[str, Any]:
+    x0, y0, x1, y1 = mapping.pixels
+    gray = source.crop(mapping.pixels).convert("L")
+    total = max(1, gray.width * gray.height)
+    histogram = gray.histogram()
+    ink_ratio = sum(histogram[:_INK_THRESHOLD]) / total
+    return {
+        "audit_type": "analysis_crop",
+        "case": case_label,
+        "crop_index": crop_index,
+        "target_id": str(event.get("target_id") or ""),
+        "hypothesis": str(event.get("hypothesis") or ""),
+        "crop_source": str(event.get("crop_source") or ""),
+        "normalized": mapping.normalized,
+        "clamped_normalized": mapping.clamped_normalized,
+        "pixels": {"x0": x0, "y0": y0, "x1": x1, "y1": y1},
+        "width_px": x1 - x0,
+        "height_px": y1 - y0,
+        "ink_pixel_ratio": round(ink_ratio, 6),
+        "was_clamped": mapping.was_clamped,
+        "invalid_reason": mapping.invalid_reason,
+        "projection_ok": (
+            mapping.projection.ok
+            and not mapping.projection.was_clamped
+            and not mapping.was_clamped
+            and not mapping.invalid_reason
+        ),
+        "projection_max_edge_drift_px": round(
+            mapping.projection.max_edge_drift_px,
+            6,
+        ),
+        "projection_was_clamped": mapping.projection.was_clamped,
+        "projection_back_projected_bbox": _normalized_payload(
+            mapping.projection.back_projected_bbox.x,
+            mapping.projection.back_projected_bbox.y,
+            mapping.projection.back_projected_bbox.w,
+            mapping.projection.back_projected_bbox.h,
+        ),
+        "crop_created_ms": event.get("crop_created_ms"),
+        "completed_ms": event.get("completed_ms"),
+        "crop": crop_rel,
+        "review_image": review_image,
+        "diagnostic_bbox": False,
+    }
+
+
+def _lead_at_bbox_center(
+    mapping: BboxPixelMapping,
+    layout_leads: list[tuple[str, RegionRect]],
+) -> str:
+    box = mapping.clamped_normalized
+    center_x = box["x"] + box["w"] / 2.0
+    center_y = box["y"] + box["h"] / 2.0
+    candidates = [
+        (name, lead)
+        for name, lead in layout_leads
+        if lead.x <= center_x <= lead.x + lead.w
+        and lead.y <= center_y <= lead.y + lead.h
+    ]
+    if not candidates:
+        return ""
+    return min(candidates, key=lambda item: item[1].w * item[1].h)[0]
+
+
 def _audit_bbox(
     source: Image.Image,
     mapping: BboxPixelMapping,
@@ -382,6 +567,7 @@ def _audit_bbox(
     bbox_index: int,
     crop_rel: str,
     review_image: str,
+    layout_leads: list[tuple[str, RegionRect]],
 ) -> BboxAudit:
     box = mapping.pixels
     x0, y0, x1, y1 = box
@@ -390,6 +576,17 @@ def _audit_bbox(
     histogram = gray.histogram()
     ink_pixels = sum(histogram[:_INK_THRESHOLD])
     ink_ratio = ink_pixels / total
+    declared_regions = tuple(
+        dict.fromkeys(
+            canonical
+            for raw in finding.get("regions") or []
+            if (canonical := canonical_ekg_lead_name(str(raw))) is not None
+        )
+    )
+    geometry_region = _lead_at_bbox_center(mapping, layout_leads)
+    geometry_region_declared = (
+        geometry_region in declared_regions if geometry_region else None
+    )
     return BboxAudit(
         case_label=case_label,
         finding_index=finding_index,
@@ -404,6 +601,9 @@ def _audit_bbox(
         height_px=y1 - y0,
         ink_pixel_ratio=ink_ratio,
         low_signal=ink_ratio < _LOW_SIGNAL_MIN_INK_RATIO,
+        declared_regions=declared_regions,
+        geometry_region=geometry_region,
+        geometry_region_declared=geometry_region_declared,
         was_clamped=mapping.was_clamped,
         invalid_reason=mapping.invalid_reason,
         projection_ok=(
@@ -471,6 +671,13 @@ def _invalid_bbox_audit(
         "height_px": 0,
         "ink_pixel_ratio": 0.0,
         "low_signal": True,
+        "declared_regions": [
+            canonical
+            for raw in finding.get("regions") or []
+            if (canonical := canonical_ekg_lead_name(str(raw))) is not None
+        ],
+        "geometry_region": "",
+        "geometry_region_declared": None,
         "was_clamped": False,
         "invalid_reason": reason,
         "projection_ok": False,
@@ -541,6 +748,24 @@ def _draw_low_signal_marker(
     draw.line((x1, y0, x0, y1), fill=_LOW_SIGNAL, width=2)
 
 
+def _draw_dashed_rectangle(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    color: tuple[int, int, int],
+    *,
+    width: int,
+    dash: int = 10,
+    gap: int = 6,
+) -> None:
+    x0, y0, x1, y1 = box
+    for start in range(x0, x1, dash + gap):
+        draw.line((start, y0, min(start + dash, x1), y0), fill=color, width=width)
+        draw.line((start, y1, min(start + dash, x1), y1), fill=color, width=width)
+    for start in range(y0, y1, dash + gap):
+        draw.line((x0, start, x0, min(start + dash, y1)), fill=color, width=width)
+        draw.line((x1, start, x1, min(start + dash, y1)), fill=color, width=width)
+
+
 def _draw_panel(
     draw: ImageDraw.ImageDraw,
     result: dict[str, Any],
@@ -551,6 +776,8 @@ def _draw_panel(
     small: PillowFont,
     title_font: PillowFont,
     audits_by_finding: dict[int, list[BboxAudit]],
+    *,
+    analysis_crop_count: int,
 ) -> None:
     x = image_width
     draw.rectangle((x, 0, x + _PANEL_WIDTH, image_height), fill=_PANEL_BG)
@@ -574,6 +801,18 @@ def _draw_panel(
         _TEXT,
         56,
     )
+    if analysis_crop_count:
+        cursor = _draw_wrapped(
+            draw,
+            (x + _MARGIN, cursor + 4),
+            (
+                f"Dashed cyan C1-C{analysis_crop_count}: analysis crops reviewed "
+                "by OpenClaw, not diagnostic finding boxes."
+            ),
+            small,
+            _ANALYSIS_CROP,
+            58,
+        )
     cursor += 4
     for idx, finding in enumerate(findings[:12], start=1):
         label = str(finding.get("label") or "finding")
@@ -622,14 +861,23 @@ def _draw_panel(
         for audit in audits_by_finding.get(idx, []):
             pixels = audit.pixels
             status = "LOW-SIGNAL" if audit.low_signal else "signal"
-            fill = _LOW_SIGNAL if audit.low_signal else _MUTED
+            lead_status = ""
+            if audit.geometry_region:
+                lead_status = f"; lead {audit.geometry_region}"
+                if audit.geometry_region_declared is False:
+                    lead_status += " MISMATCH"
+            fill = (
+                _LEAD_MISMATCH
+                if audit.geometry_region_declared is False
+                else (_LOW_SIGNAL if audit.low_signal else _MUTED)
+            )
             cursor = _draw_wrapped(
                 draw,
                 (text_x, cursor),
                 (
                     f"Box {audit.bbox_index}: px "
                     f"{pixels['x0']},{pixels['y0']}-{pixels['x1']},{pixels['y1']}; "
-                    f"ink {audit.ink_pixel_ratio:.1%}; {status}"
+                    f"ink {audit.ink_pixel_ratio:.1%}; {status}{lead_status}"
                 ),
                 small,
                 fill,
@@ -712,7 +960,9 @@ def _write_index(output_dir: Path, exported: list[ExportedAnnotation]) -> None:
         "<th>Raw Result</th></tr></thead><tbody>"
         f"{rows}</tbody></table>"
         '<p><a href="bbox-audit.jsonl">bbox-audit.jsonl</a> stores pixel '
-        "coordinates, crop paths, and low-signal flags for every box.</p>"
+        "coordinates, crop paths, low-signal flags, and geometry-derived lead "
+        "assignments for every diagnostic box, plus separately typed analysis "
+        "crop regions used during multi-pass review.</p>"
         "</body></html>"
     )
     (output_dir / "index.html").write_text(html, encoding="utf-8")

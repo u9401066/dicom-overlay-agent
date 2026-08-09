@@ -16,6 +16,10 @@ from dicom_overlay.application.annotation_accumulator import (
     AnnotationAccumulator,
     max_severity,
 )
+from dicom_overlay.application.multi_pass import (
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+    AnalysisSlaTimeout,
+)
 from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
 from dicom_overlay.domain.entities import (
     AgentState,
@@ -970,38 +974,53 @@ class OverlayAgent:
         retries = max(0, self._config.openclaw.analyze_retries)
         backoff = self._config.openclaw.analyze_retry_backoff_sec
         attempt = 0
-        while True:
-            try:
-                analyze_with_source_size = getattr(
-                    self._analyzer, "analyze_with_source_size", None
+        deadline = time.monotonic() + DEFAULT_TOTAL_ANALYSIS_SLA_SEC
+
+        async def invoke() -> AnalysisResult:
+            analyze_with_source_size = getattr(
+                self._analyzer, "analyze_with_source_size", None
+            )
+            if callable(analyze_with_source_size):
+                parameters = inspect.signature(
+                    analyze_with_source_size
+                ).parameters.values()
+                names = {parameter.name for parameter in parameters}
+                accepts_extra = any(
+                    parameter.kind is inspect.Parameter.VAR_KEYWORD
+                    for parameter in parameters
                 )
-                if callable(analyze_with_source_size):
-                    parameters = inspect.signature(
-                        analyze_with_source_size
-                    ).parameters.values()
-                    names = {parameter.name for parameter in parameters}
-                    accepts_extra = any(
-                        parameter.kind is inspect.Parameter.VAR_KEYWORD
-                        for parameter in parameters
-                    )
-                    extra: dict[str, object] = {}
-                    if accepts_extra or "source_image_base64" in names:
-                        extra["source_image_base64"] = source_image_base64
-                    if accepts_extra or "local_candidate_regions" in names:
-                        extra["local_candidate_regions"] = local_candidate_regions
-                    return cast(
-                        "AnalysisResult",
-                        await analyze_with_source_size(
-                            image_b64,
-                            modality,
-                            valid_regions,
-                            source_size_px=source_size_px,
-                            **extra,
-                        ),
-                    )
-                return await self._analyzer.analyze(image_b64, modality, valid_regions)
+                extra: dict[str, object] = {}
+                if accepts_extra or "source_image_base64" in names:
+                    extra["source_image_base64"] = source_image_base64
+                if accepts_extra or "local_candidate_regions" in names:
+                    extra["local_candidate_regions"] = local_candidate_regions
+                return cast(
+                    "AnalysisResult",
+                    await analyze_with_source_size(
+                        image_b64,
+                        modality,
+                        valid_regions,
+                        source_size_px=source_size_px,
+                        **extra,
+                    ),
+                )
+            return await self._analyzer.analyze(image_b64, modality, valid_regions)
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                raise TimeoutError("analysis exceeded the 180s total SLA")
+            try:
+                return await asyncio.wait_for(invoke(), timeout=remaining)
+            except AnalysisSlaTimeout:
+                # Retrying a coarse turn after its 60s deadline would violate the
+                # single-question 180s contract and duplicate tool calls.
+                raise
             except TimeoutError:
                 if attempt >= retries:
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= backoff:
                     raise
                 attempt += 1
                 logger.warning(

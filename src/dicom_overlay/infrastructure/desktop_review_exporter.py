@@ -11,7 +11,10 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from dicom_overlay.infrastructure.annotation_exporter import render_annotated_result
+from dicom_overlay.infrastructure.annotation_exporter import (
+    BboxAudit,
+    render_annotated_result_with_audit,
+)
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import (
@@ -154,16 +157,37 @@ def export_desktop_review(
         "layout": result.layout,
         "analysis_trace": result.analysis_trace,
     }
+    review_path = folder / "review.png"
+    crops_dir = folder / "crops"
+    _, audit_records = render_annotated_result_with_audit(
+        image_path=source_path,
+        result=payload,
+        output_path=review_path,
+        crops_dir=crops_dir,
+    )
+    audit_payload = {
+        "schema_version": 1,
+        "case": case,
+        "coordinate_space": "normalized_original_roi",
+        "source_image_sha256": payload["source_image"]["sha256"],
+        "source_size_px": [width, height],
+        "review_image": review_path.name,
+        "records": [
+            record.to_json() if isinstance(record, BboxAudit) else record
+            for record in audit_records
+        ],
+    }
+    audit_path = folder / "bbox-audit.json"
+    audit_path.write_text(
+        json.dumps(audit_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    payload["coordinate_audit"] = audit_path.name
+    payload["crop_directory"] = crops_dir.name
     result_path = folder / "result.json"
     result_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
-    )
-    review_path = folder / "review.png"
-    render_annotated_result(
-        image_path=source_path,
-        result=payload,
-        output_path=review_path,
     )
     with Image.open(review_path) as review:
         review.verify()

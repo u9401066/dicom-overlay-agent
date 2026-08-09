@@ -108,7 +108,10 @@ class ControlBarWindow(QWidget):
         layout.addWidget(self._annotate_btn)
 
         self._export_btn = self._button("Export")
-        self._export_btn.setToolTip("Export the source image with review overlays")
+        self._export_btn.setToolTip(
+            "Export source, structured result, annotated image, crops, and "
+            "coordinate audit"
+        )
         self._export_btn.clicked.connect(self.export_clicked.emit)
         layout.addWidget(self._export_btn)
 

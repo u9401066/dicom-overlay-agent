@@ -43,6 +43,58 @@ SEVERITY_COLORS: dict[str, QColor] = {
 _USER_REGION_HIGHLIGHT_ID = "__user_region__"
 
 
+def _summarize_process_trace(
+    trace: list[dict[str, object]],
+) -> dict[str, object]:
+    model_turns = 0
+    crop_reads = 0
+    registered_tools: list[str] = []
+    internal_aids: list[str] = []
+    sla_receipt: dict[str, object] | None = None
+    model_turn_tools = {
+        "openclaw_vision_analysis",
+        "crop_region_base64",
+        "openclaw_report_reconciliation",
+    }
+
+    def remember(values: list[str], value: object) -> None:
+        text = str(value).strip()
+        if text and text not in values:
+            values.append(text)
+
+    for entry in trace:
+        if entry.get("stage") == "analysis_sla":
+            sla_receipt = entry
+        status = str(entry.get("status", ""))
+        tool = str(entry.get("tool", ""))
+        if status == "completed" and tool in model_turn_tools:
+            model_turns += 1
+        if status == "completed" and tool == "crop_region_base64":
+            crop_reads += 1
+        if tool and tool not in {
+            "openclaw_vision_analysis",
+            "openclaw_report_reconciliation",
+        }:
+            remember(internal_aids, tool)
+        tools = entry.get("tools")
+        if isinstance(tools, list):
+            for registered_tool in tools:
+                remember(registered_tools, registered_tool)
+        receipts = entry.get("tool_audit")
+        if isinstance(receipts, list):
+            for receipt in receipts:
+                if isinstance(receipt, dict):
+                    remember(registered_tools, receipt.get("tool", ""))
+
+    return {
+        "model_turns": model_turns,
+        "crop_reads": crop_reads,
+        "registered_tools": registered_tools,
+        "internal_aids": internal_aids,
+        "sla_receipt": sla_receipt,
+    }
+
+
 class _DraggableWindowMixin:
     """Mixin providing drag-to-move for frameless top-level panels."""
 
@@ -370,6 +422,59 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             )
             self._process_layout.addWidget(layout_label)
 
+        if result.analysis_trace:
+            process_summary = _summarize_process_trace(result.analysis_trace)
+            summary_lines = [
+                "OpenClaw agent: "
+                f"{process_summary['model_turns']} model turn(s) | "
+                f"{process_summary['crop_reads']} source crop read(s)"
+            ]
+            registered_tools = process_summary["registered_tools"]
+            if isinstance(registered_tools, list) and registered_tools:
+                summary_lines.append("Registered tools: " + ", ".join(registered_tools))
+            internal_aids = process_summary["internal_aids"]
+            if isinstance(internal_aids, list) and internal_aids:
+                summary_lines.append("Local aids: " + ", ".join(internal_aids))
+            sla_receipt = process_summary["sla_receipt"]
+            if isinstance(sla_receipt, dict):
+                timings = sla_receipt.get("timings_ms")
+                timings = timings if isinstance(timings, dict) else {}
+                met = sla_receipt.get("met")
+                met = met if isinstance(met, dict) else {}
+
+                def timing_text(key: str) -> str:
+                    value = timings.get(key)
+                    return (
+                        f"{float(value) / 1000:.1f}s"
+                        if isinstance(value, int | float)
+                        else "n/a"
+                    )
+
+                def met_text(key: str) -> str:
+                    value = met.get(key)
+                    return "met" if value is True else "missed" if value is False else "n/a"
+
+                summary_lines.append(
+                    "SLA initial / first crop / total: "
+                    f"{timing_text('initial_response')} {met_text('initial_response')} / "
+                    f"{timing_text('first_crop_refinement')} "
+                    f"{met_text('first_crop_refinement')} / "
+                    f"{timing_text('total')} {met_text('total')}"
+                )
+            process_summary_label = QLabel("\n".join(summary_lines))
+            process_summary_label.setWordWrap(True)
+            process_summary_label.setTextFormat(Qt.TextFormat.PlainText)
+            process_summary_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            process_summary_label.setFont(
+                QFont("Segoe UI", 9, QFont.Weight.DemiBold)
+            )
+            process_summary_label.setStyleSheet(
+                "color: #8ad0ff; padding: 5px 0; border-bottom: 1px solid #526273;"
+            )
+            self._process_layout.addWidget(process_summary_label)
+
         for index, entry in enumerate(result.analysis_trace, start=1):
             stage = str(entry.get("stage", "step")).replace("_", " ").title()
             status = str(entry.get("status", ""))
@@ -384,10 +489,52 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 details.append(f"Target: {entry['target_id']}")
             if entry.get("operation"):
                 details.append(f"Operation: {entry['operation']}")
+            if isinstance(entry.get("turn_elapsed_ms"), int | float):
+                details.append(f"OpenClaw turn: {int(entry['turn_elapsed_ms'])} ms")
+            if isinstance(entry.get("turn_budget_ms"), int | float):
+                details.append(f"App turn budget: {int(entry['turn_budget_ms'])} ms")
+            if isinstance(entry.get("absolute_deadline_ms"), int | float):
+                details.append(
+                    "Absolute analysis deadline: "
+                    f"{int(entry['absolute_deadline_ms'])} ms"
+                )
+            if isinstance(entry.get("fast_mode_requested"), bool):
+                requested = "yes" if entry["fast_mode_requested"] else "no"
+                details.append(f"OpenClaw fast mode requested: {requested}")
+            if isinstance(entry.get("priority_service_observed"), bool):
+                observed = "yes" if entry["priority_service_observed"] else "no"
+                details.append(f"Priority service observed: {observed}")
+            if entry.get("turn_aborted") is True:
+                details.append("OpenClaw turn: aborted at deadline")
             if entry.get("bbox_source"):
                 details.append(f"Box source: {entry['bbox_source']}")
             if entry.get("user_confirmed") is True:
                 details.append("Reviewer confirmation: recorded")
+            if entry.get("stage") == "analysis_sla":
+                timings = entry.get("timings_ms")
+                met = entry.get("met")
+                if isinstance(timings, dict):
+                    details.append(
+                        "Elapsed ms: "
+                        f"initial={timings.get('initial_response', 'n/a')}, "
+                        f"crop={timings.get('first_crop_created', 'n/a')}, "
+                        "crop detail="
+                        f"{timings.get('first_crop_refinement', 'n/a')}, "
+                        f"total={timings.get('total', 'n/a')}"
+                    )
+                if isinstance(met, dict):
+                    details.append(
+                        "SLA met: "
+                        f"initial={met.get('initial_response', 'n/a')}, "
+                        "crop detail="
+                        f"{met.get('first_crop_refinement', 'n/a')}, "
+                        f"total={met.get('total', 'n/a')}"
+                    )
+                if entry.get("skipped_refinement_count"):
+                    details.append(
+                        "Skipped refinements: "
+                        f"{entry['skipped_refinement_count']}"
+                    )
             reconciliation = entry.get("report_reconciliation")
             if isinstance(reconciliation, dict):
                 details.append(
@@ -505,6 +652,57 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                         f"Tool receipt: {receipt_tool}"
                         + (f" ({', '.join(counts)})" if counts else "")
                     )
+                    if receipt_tool == "ecg_founder_analyze_waveform":
+                        model_id = str(receipt.get("model_id") or "ECGFounder")
+                        details.append(
+                            f"Waveform assist: {model_id}; supporting evidence "
+                            "only, uncalibrated, no image localization"
+                        )
+                        predictions = receipt.get("predictions")
+                        if isinstance(predictions, list):
+                            ranked: list[str] = []
+                            for prediction in predictions[:5]:
+                                if not isinstance(prediction, dict):
+                                    continue
+                                label = str(prediction.get("label") or "").strip()
+                                score = prediction.get("probability")
+                                if not label:
+                                    continue
+                                ranked.append(
+                                    f"{label} {float(score):.3f}"
+                                    if isinstance(score, int | float)
+                                    else label
+                                )
+                            if ranked:
+                                details.append(
+                                    "Waveform ranked candidates (uncalibrated): "
+                                    + ", ".join(ranked)
+                                )
+                        response_evidence = receipt.get("response_evidence")
+                        rhythm = (
+                            response_evidence.get("rhythm_measurement")
+                            if isinstance(response_evidence, dict)
+                            else None
+                        )
+                        if isinstance(rhythm, dict) and rhythm.get("status") == "ok":
+                            rhythm_bits: list[str] = []
+                            heart_rate = rhythm.get("heart_rate_bpm_from_median_rr")
+                            if isinstance(heart_rate, int | float):
+                                rhythm_bits.append(f"rate={float(heart_rate):.1f} bpm")
+                            regularity = str(
+                                rhythm.get("regularity_signal") or ""
+                            ).strip()
+                            if regularity:
+                                rhythm_bits.append(f"regularity={regularity}")
+                            rr_count = rhythm.get("rr_interval_count")
+                            if isinstance(rr_count, int):
+                                rhythm_bits.append(f"R-R intervals={rr_count}")
+                            if rhythm_bits:
+                                details.append(
+                                    "Deterministic lead-II timing: "
+                                    + ", ".join(rhythm_bits)
+                                    + "; rhythm diagnosis not inferred"
+                                )
             decisions = entry.get("decisions")
             if isinstance(decisions, list):
                 for decision in decisions:

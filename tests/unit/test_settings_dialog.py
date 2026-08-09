@@ -12,7 +12,7 @@ def test_settings_dialog_lists_desktop_provider_profiles(qtbot, tmp_path):
         for i in range(dialog._provider_combo.count())
     ]
 
-    assert "OpenAI Codex" in labels
+    assert "OpenAI Subscription via OpenClaw" in labels
     assert "OpenAI GPT-5.4 Mini Vision" in labels
     assert "OpenAI GPT-5.6 Luna Vision" in labels
     assert "OpenRouter" in labels
@@ -36,6 +36,25 @@ def test_settings_dialog_selects_the_model_in_the_active_openclaw_config(
     assert dialog.selected_profile().key == "openai-vision"
 
 
+def test_settings_dialog_restores_subscription_transport_for_shared_model(
+    qtbot, tmp_path
+):
+    config_path = tmp_path / "openclaw" / "openclaw.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        '{"agents":{"defaults":{"model":{"primary":"openai/gpt-5.4-mini"}}},'
+        '"models":{"providers":{"openai":{"api":'
+        '"openai-chatgpt-responses"}}}}',
+        encoding="utf-8",
+    )
+
+    dialog = SettingsDialog(repo_root=tmp_path)
+    qtbot.addWidget(dialog)
+
+    assert dialog.selected_profile().key == "openai-codex"
+    assert dialog._api_key_edit.isEnabled() is False
+
+
 def test_settings_dialog_updates_fields_when_provider_changes(qtbot, tmp_path):
     dialog = SettingsDialog(repo_root=tmp_path)
     qtbot.addWidget(dialog)
@@ -52,6 +71,28 @@ def test_settings_dialog_updates_fields_when_provider_changes(qtbot, tmp_path):
     assert dialog._api_key_env_edit.text() == "OPENROUTER_API_KEY"
 
 
+def test_settings_dialog_disables_api_transport_for_codex_subscription(qtbot, tmp_path):
+    dialog = SettingsDialog(repo_root=tmp_path)
+    qtbot.addWidget(dialog)
+    codex_index = next(
+        i
+        for i in range(dialog._provider_combo.count())
+        if dialog._provider_combo.itemData(i).key == "openai-codex"
+    )
+
+    dialog._provider_combo.setCurrentIndex(codex_index)
+
+    assert dialog._model_edit.text() == "gpt-5.4-mini"
+    assert dialog._base_url_edit.isEnabled() is False
+    assert dialog._api_key_env_edit.isEnabled() is False
+    assert dialog._api_key_edit.isEnabled() is False
+    assert dialog._api_key_edit.placeholderText() == "Uses local Codex sign-in"
+    assert (
+        dialog._inference_route.text()
+        == "OpenClaw agent | ChatGPT subscription OAuth"
+    )
+
+
 def test_settings_dialog_exposes_bounded_multi_pass_controls(qtbot, tmp_path):
     dialog = SettingsDialog(
         repo_root=tmp_path,
@@ -66,6 +107,8 @@ def test_settings_dialog_exposes_bounded_multi_pass_controls(qtbot, tmp_path):
     assert dialog._max_zoom_targets.value() == 4
     assert dialog._max_zoom_targets.minimum() == 1
     assert dialog._max_zoom_targets.maximum() == 5
+    assert dialog._fast_mode_check.isChecked() is True
+    assert "OpenClaw fast mode" in dialog._fast_mode_check.toolTip()
     assert dialog._waveform_assist_status.text() == "Not configured"
 
 

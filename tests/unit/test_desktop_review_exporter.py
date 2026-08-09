@@ -54,7 +54,19 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
             "detail": "Readable",
         },
         next_steps=["Review the original study."],
-        analysis_trace=[{"stage": "coarse", "tools": ["dicom_bbox_validate"]}],
+        analysis_trace=[
+            {"stage": "coarse", "tools": ["dicom_bbox_validate"]},
+            {
+                "stage": "refine",
+                "status": "completed",
+                "target_id": "f1",
+                "hypothesis": "ST-T change",
+                "crop_source": "original_roi",
+                "crop_region": {"x": 0.2, "y": 0.2, "w": 0.4, "h": 0.4},
+                "crop_created_ms": 12000,
+                "completed_ms": 24000,
+            },
+        ],
     )
 
     review_path = export_desktop_review(
@@ -92,5 +104,36 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
     assert payload["findings"][0]["source"] == "interactive_ai_review"
     assert payload["image_quality"]["adequacy"] == "limited"
     assert payload["next_steps"] == ["Review the original study."]
+    assert payload["coordinate_audit"] == "bbox-audit.json"
+    assert payload["crop_directory"] == "crops"
+    crop_files = sorted((review_path.parent / "crops").glob("*.png"))
+    assert len(crop_files) == 4
+    audit = json.loads((review_path.parent / "bbox-audit.json").read_text("utf-8"))
+    assert audit["coordinate_space"] == "normalized_original_roi"
+    assert audit["source_size_px"] == [800, 400]
+    analysis_crop = next(
+        record for record in audit["records"] if record["audit_type"] == "analysis_crop"
+    )
+    finding_box = next(
+        record
+        for record in audit["records"]
+        if record["audit_type"] == "bbox" and record["finding_index"] == 1
+    )
+    assert finding_box["normalized"] == {
+        "x": 0.25,
+        "y": 0.25,
+        "w": 0.25,
+        "h": 0.25,
+    }
+    assert finding_box["pixels"] == {
+        "x0": 200,
+        "y0": 100,
+        "x1": 400,
+        "y1": 200,
+    }
+    assert finding_box["projection_ok"] is True
+    assert finding_box["projection_max_edge_drift_px"] <= 1e-6
+    assert analysis_crop["crop"].startswith("crops/")
+    assert all(record["crop"].startswith("crops/") for record in audit["records"])
     with Image.open(review_path) as review:
         assert review.width > 800
