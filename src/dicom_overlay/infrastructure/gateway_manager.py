@@ -17,6 +17,11 @@ import structlog
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+from dicom_overlay.infrastructure.codex_subscription_auth import (
+    ensure_openclaw_subscription_auth,
+    resolve_native_codex_home,
+    uses_codex_subscription_transport,
+)
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_runtime import (
     ensure_openclaw_runtime_supported,
@@ -41,6 +46,7 @@ _DST_SKILLS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "skills"
 _SRC_PLUGINS = Path("openclaw/workspace/plugins")
 _DST_PLUGINS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "plugins"
 _HARNESS_PLUGIN = "dicom-overlay-agent-harness"
+_OPENAI_PROVIDER_PLUGIN = "openai"
 _ECG_FOUNDER_TOOL = "ecg_founder_analyze_waveform"
 _GATEWAY_LAUNCH_LOCK = Path("data/tmp/openclaw-gateway.lock")
 DEFAULT_GATEWAY_READY_TIMEOUT_SEC = 180.0
@@ -51,6 +57,18 @@ def ecg_founder_tool_enabled(environment: Mapping[str, str]) -> bool:
     return bool(
         environment.get("DICOM_ECGFOUNDER_ENDPOINT", "").strip()
         and environment.get("DICOM_ECGFOUNDER_TOKEN", "").strip()
+    )
+
+
+def _uses_openai_subscription_provider(config: Mapping[str, object]) -> bool:
+    models = config.get("models")
+    providers = models.get("providers") if isinstance(models, dict) else None
+    openai = providers.get("openai") if isinstance(providers, dict) else None
+    return bool(
+        isinstance(openai, dict)
+        and openai.get("api") == "openai-chatgpt-responses"
+        and "apiKey" not in openai
+        and "baseUrl" not in openai
     )
 
 
@@ -226,6 +244,34 @@ class GatewayManager:
                     if not missing_surfaces
                     else f"missing: {', '.join(missing_surfaces)}"
                 ),
+            )
+        )
+        codex_migration = package_root / "dist" / "extensions" / "codex"
+        try:
+            codex_package = json.loads(
+                (codex_migration / "package.json").read_text(encoding="utf-8")
+            )
+            codex_bundle = json.loads(
+                (codex_migration / "migration-bundle.json").read_text(
+                    encoding="utf-8-sig"
+                )
+            )
+        except (OSError, json.JSONDecodeError):
+            codex_package = {}
+            codex_bundle = {}
+        codex_migration_ready = bool(
+            codex_package.get("name") == "@openclaw/codex"
+            and codex_package.get("version") == "2026.7.1-1"
+            and codex_bundle.get("purpose") == "oauth_migration_only"
+            and codex_bundle.get("codex_agent_runtime_dependencies_bundled") is False
+            and (codex_migration / "dist" / "index.js").is_file()
+            and not (codex_migration / "node_modules" / "@openai" / "codex").exists()
+        )
+        rows.append(
+            (
+                "codex_oauth_migration_provider",
+                codex_migration_ready,
+                str(codex_migration),
             )
         )
         harness_root = self._resource_root() / _SRC_PLUGINS / _HARNESS_PLUGIN
@@ -451,6 +497,9 @@ class GatewayManager:
             plugins["allow"] = allow
         if _HARNESS_PLUGIN not in allow:
             allow.append(_HARNESS_PLUGIN)
+        subscription_transport = _uses_openai_subscription_provider(payload)
+        if subscription_transport and _OPENAI_PROVIDER_PLUGIN not in allow:
+            allow.append(_OPENAI_PROVIDER_PLUGIN)
         load = plugins.setdefault("load", {})
         if not isinstance(load, dict):
             load = {}
@@ -471,6 +520,12 @@ class GatewayManager:
             entry = {}
             entries[_HARNESS_PLUGIN] = entry
         entry["enabled"] = True
+        if subscription_transport:
+            provider_entry = entries.setdefault(_OPENAI_PROVIDER_PLUGIN, {})
+            if not isinstance(provider_entry, dict):
+                provider_entry = {}
+                entries[_OPENAI_PROVIDER_PLUGIN] = provider_entry
+            provider_entry["enabled"] = True
 
         # Keep the model tool surface bounded. ECGFounder is exposed only when
         # an authenticated loopback sidecar is explicitly configured; normal
@@ -604,6 +659,28 @@ class GatewayManager:
 
             home = self._repo_root / _OPENCLAW_HOME
             config = self._ensure_openclaw_config()
+            subscription_transport = uses_codex_subscription_transport(config)
+            if subscription_transport:
+                ensure_openclaw_subscription_auth(
+                    node_executable=node,
+                    openclaw_cli=script,
+                    config_path=config,
+                    state_home=home,
+                    source_codex_home=resolve_native_codex_home(os.environ),
+                    plugin_path=(
+                        self._resource_root()
+                        / "openclaw"
+                        / "node_modules"
+                        / "openclaw"
+                        / "dist"
+                        / "extensions"
+                        / "codex"
+                    ),
+                    working_directory=self._repo_root,
+                    audit_path=(
+                        self._repo_root / "data" / "tmp" / "codex-auth-import.json"
+                    ),
+                )
             env = {
                 **os.environ,
                 **read_env_file(self._repo_root / ".env"),
@@ -615,6 +692,9 @@ class GatewayManager:
                     self._repo_root / "data" / "tmp" / "bbox-tool-audit.jsonl"
                 ),
             }
+            if subscription_transport:
+                env.pop("OPENAI_API_KEY", None)
+                env.pop("CODEX_HOME", None)
             env.setdefault(
                 "DICOM_ECGFOUNDER_AUDIT_PATH",
                 str(self._repo_root / "data" / "tmp" / "ecgfounder-tool-audit.jsonl"),

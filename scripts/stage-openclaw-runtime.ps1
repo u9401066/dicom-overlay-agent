@@ -16,6 +16,9 @@ $source = Join-Path $repo "openclaw\node_modules\openclaw"
 if (-not (Test-Path (Join-Path $source "openclaw.mjs"))) {
     throw "OpenClaw runtime not found. Run scripts\install-openclaw-local.bat first."
 }
+& (Join-Path $PSScriptRoot "stage-codex-auth-migration-provider.ps1") `
+    -RepoRoot $repo.Path `
+    -OpenClawRoot $source
 
 $outputParent = Split-Path $OutputRoot -Parent
 if (-not (Test-Path $outputParent)) {

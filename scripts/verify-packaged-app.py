@@ -47,6 +47,10 @@ REQUIRED_FILES = (
     "node/node.exe",
     "openclaw/node_modules/openclaw/openclaw.mjs",
     "openclaw/node_modules/openclaw/package.json",
+    "openclaw/node_modules/openclaw/dist/extensions/codex/dist/index.js",
+    "openclaw/node_modules/openclaw/dist/extensions/codex/package.json",
+    "openclaw/node_modules/openclaw/dist/extensions/codex/openclaw.plugin.json",
+    "openclaw/node_modules/openclaw/dist/extensions/codex/migration-bundle.json",
     "openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json",
     "openclaw/workspace/plugins/dicom-overlay-agent-harness/openclaw.plugin.json",
     "openclaw/workspace/plugins/dicom-overlay-agent-harness/package.json",
@@ -176,6 +180,16 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
     )
     native_plugin_manifest = _read_json(harness_root / "openclaw.plugin.json")
     native_plugin_package = _read_json(harness_root / "package.json")
+    codex_migration_root = (
+        bundle
+        / "openclaw"
+        / "node_modules"
+        / "openclaw"
+        / "dist"
+        / "extensions"
+        / "codex"
+    )
+    codex_migration_bundle = _inspect_codex_migration_bundle(codex_migration_root)
     component_counts = _component_counts(bundle)
     selfcheck = _run_selfcheck(exe) if run_selfcheck and exe.is_file() else None
     openclaw_cli = (
@@ -197,6 +211,15 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
     )
     plugin_runtime = (
         _inspect_native_plugin(bundle, harness_root)
+        if run_selfcheck
+        and (bundle / "node" / "node.exe").is_file()
+        and (
+            bundle / "openclaw" / "node_modules" / "openclaw" / "openclaw.mjs"
+        ).is_file()
+        else None
+    )
+    codex_migration_runtime = (
+        _inspect_codex_migration_runtime(bundle)
         if run_selfcheck
         and (bundle / "node" / "node.exe").is_file()
         and (
@@ -264,6 +287,11 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         failures.append("harness plugin manifest is unreadable or incomplete")
     if not _valid_native_plugin(native_plugin_manifest, native_plugin_package):
         failures.append("native OpenClaw plugin metadata is unreadable or incomplete")
+    if not codex_migration_bundle.get("ok"):
+        failures.append(
+            "OAuth-only Codex migration provider is incomplete: "
+            + str(codex_migration_bundle.get("error") or "unknown error")
+        )
     for component, count in component_counts.items():
         if count == 0:
             failures.append(f"bundled OpenClaw component is empty: {component}")
@@ -277,6 +305,11 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         failures.append(
             "bundled native harness plugin failed runtime inspection: "
             + str(plugin_runtime.get("error") or "unknown error")
+        )
+    if codex_migration_runtime is not None and not codex_migration_runtime.get("ok"):
+        failures.append(
+            "bundled Codex migration provider failed runtime inspection: "
+            + str(codex_migration_runtime.get("error") or "unknown error")
         )
 
     return {
@@ -303,9 +336,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             "launcher_sha256": _sha256_file(exe),
             "payload_tree_sha256": _bundle_tree_sha256(bundle),
         },
-        "source_provenance": _source_provenance(
-            Path(__file__).resolve().parents[1]
-        ),
+        "source_provenance": _source_provenance(Path(__file__).resolve().parents[1]),
         "budgets": {
             "launcher_max_bytes": MAX_LAUNCHER_BYTES,
             "app_layer_max_bytes": MAX_APP_LAYER_BYTES,
@@ -315,6 +346,8 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         "selfcheck": selfcheck,
         "openclaw_cli_check": openclaw_cli,
         "native_plugin_runtime_check": plugin_runtime,
+        "codex_migration_bundle_check": codex_migration_bundle,
+        "codex_migration_runtime_check": codex_migration_runtime,
         "failures": failures,
     }
 
@@ -407,7 +440,7 @@ def _source_provenance(repo_root: Path) -> dict[str, Any]:
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
@@ -443,6 +476,111 @@ def _valid_native_plugin(manifest: dict[str, Any], package: dict[str, Any]) -> b
         and "dicom_bbox_validate" in tools
         and "ecg_founder_analyze_waveform" in tools
     )
+
+
+def _inspect_codex_migration_bundle(root: Path) -> dict[str, Any]:
+    package = _read_json(root / "package.json")
+    manifest = _read_json(root / "openclaw.plugin.json")
+    metadata = _read_json(root / "migration-bundle.json")
+    contracts = manifest.get("contracts")
+    migration_providers = (
+        contracts.get("migrationProviders") if isinstance(contracts, dict) else None
+    )
+    runtime_dependency = root / "node_modules" / "@openai" / "codex"
+    platform_binaries = list(root.glob("node_modules/@openai/codex-*/**/codex.exe"))
+    size_bytes = sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+    ok = bool(
+        package.get("name") == "@openclaw/codex"
+        and package.get("version") == "2026.7.1-1"
+        and manifest.get("id") == "codex"
+        and isinstance(migration_providers, list)
+        and "codex" in migration_providers
+        and metadata.get("purpose") == "oauth_migration_only"
+        and metadata.get("codex_agent_runtime_dependencies_bundled") is False
+        and (root / "dist" / "index.js").is_file()
+        and not runtime_dependency.exists()
+        and not platform_binaries
+        and size_bytes < 32 * MIB
+    )
+    return {
+        "ok": ok,
+        "package": package.get("name"),
+        "version": package.get("version"),
+        "purpose": metadata.get("purpose"),
+        "codex_agent_runtime_dependencies_bundled": metadata.get(
+            "codex_agent_runtime_dependencies_bundled"
+        ),
+        "size_bytes": size_bytes,
+        "platform_binary_count": len(platform_binaries),
+        "error": ""
+        if ok
+        else "identity, migration contract, or runtime exclusion failed",
+    }
+
+
+def _inspect_codex_migration_runtime(bundle: Path) -> dict[str, Any]:
+    """Confirm the OAuth migration provider is trusted as a bundled plugin."""
+    with tempfile.TemporaryDirectory(prefix="codex-migration-verify-") as temp_text:
+        temp = Path(temp_text)
+        state = temp / "state"
+        state.mkdir()
+        config = temp / "openclaw.json"
+        config.write_text(
+            json.dumps(
+                {
+                    "plugins": {
+                        "allow": ["codex"],
+                        "entries": {"codex": {"enabled": True}},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        process = _run_process(
+            [
+                str(bundle / "node" / "node.exe"),
+                str(bundle / "openclaw" / "node_modules" / "openclaw" / "openclaw.mjs"),
+                "plugins",
+                "inspect",
+                "codex",
+                "--json",
+            ],
+            cwd=bundle,
+            timeout=PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC,
+            env={
+                **os.environ,
+                "OPENCLAW_STATE_DIR": str(state),
+                "OPENCLAW_HOME": str(state),
+                "OPENCLAW_CONFIG_PATH": str(config),
+                "HOME": str(state),
+                "USERPROFILE": str(state),
+            },
+        )
+        if process["exit_code"] != 0:
+            return {
+                "ok": False,
+                "exit_code": process["exit_code"],
+                "error": process["stderr"] or process["stdout"],
+            }
+        payload = _parse_json_output(process["stdout"])
+        if not payload:
+            return {"ok": False, "error": "plugin inspect did not return JSON"}
+        plugin = payload.get("plugin")
+        ok = bool(
+            isinstance(plugin, dict)
+            and plugin.get("id") == "codex"
+            and plugin.get("packageName") == "@openclaw/codex"
+            and plugin.get("origin") == "bundled"
+            and plugin.get("status") == "loaded"
+            and "codex" in plugin.get("migrationProviderIds", [])
+        )
+        return {
+            "ok": ok,
+            "exit_code": process["exit_code"],
+            "origin": plugin.get("origin") if isinstance(plugin, dict) else "",
+            "status": plugin.get("status") if isinstance(plugin, dict) else "",
+            "error": "" if ok else "provider was not loaded with bundled trust",
+        }
 
 
 def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
@@ -495,9 +633,8 @@ def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
                 "exit_code": process["exit_code"],
                 "error": process["stderr"] or process["stdout"],
             }
-        try:
-            payload = json.loads(process["stdout"])
-        except json.JSONDecodeError:
+        payload = _parse_json_output(process["stdout"])
+        if not payload:
             return {
                 "ok": False,
                 "exit_code": process["exit_code"],
@@ -596,11 +733,25 @@ def _run_process(
         )
         return {
             "exit_code": result.returncode,
-            "stdout": result.stdout[-20_000:],
-            "stderr": result.stderr[-20_000:],
+            "stdout": result.stdout[-100_000:],
+            "stderr": result.stderr[-100_000:],
         }
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"exit_code": -1, "stdout": "", "stderr": str(exc)}
+
+
+def _parse_json_output(value: str) -> dict[str, Any]:
+    decoder = json.JSONDecoder()
+    for offset, character in enumerate(value):
+        if character != "{":
+            continue
+        try:
+            payload, _end = decoder.raw_decode(value[offset:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
 
 
 def main() -> int:

@@ -32,6 +32,13 @@ class ProviderType(Enum):
     GITHUB_COPILOT_BYOK = "github_copilot_byok"
 
 
+class ProviderAuthMode(Enum):
+    """Authentication/billing routes supported by desktop provider presets."""
+
+    API_KEY = "api_key"
+    CODEX_SUBSCRIPTION = "codex_subscription"
+
+
 @dataclass(frozen=True)
 class ProviderProfile:
     """A provider/model profile that can be translated into OpenClaw config."""
@@ -42,6 +49,7 @@ class ProviderProfile:
     provider_type: ProviderType
     model: str
     api_key_env: str
+    auth_mode: ProviderAuthMode = ProviderAuthMode.API_KEY
     base_url: str = ""
     api: str = ""
     input_modalities: tuple[str, ...] = ()
@@ -62,16 +70,6 @@ def default_provider_profiles() -> list[ProviderProfile]:
     """Return desktop presets for the providers requested by the product."""
     return [
         ProviderProfile(
-            key="openai-codex",
-            label="OpenAI Codex",
-            provider_id="openai",
-            provider_type=ProviderType.OPENAI,
-            model="gpt-5.2-codex",
-            api_key_env="OPENAI_API_KEY",
-            base_url="https://api.openai.com/v1",
-            notes="Codex-family OpenAI API model. Requires image smoke test.",
-        ),
-        ProviderProfile(
             key="openai-vision",
             label="OpenAI GPT-5.4 Mini Vision",
             provider_id="openai",
@@ -86,6 +84,26 @@ def default_provider_profiles() -> list[ProviderProfile]:
             reasoning=True,
             agent_runtime="openclaw",
             notes="Cost-efficient OpenAI multimodal default with tool support.",
+        ),
+        ProviderProfile(
+            key="openai-codex",
+            label="OpenAI Subscription via OpenClaw",
+            provider_id="openai",
+            provider_type=ProviderType.OPENAI,
+            model="gpt-5.4-mini",
+            api_key_env="",
+            auth_mode=ProviderAuthMode.CODEX_SUBSCRIPTION,
+            api="openai-chatgpt-responses",
+            input_modalities=("text", "image"),
+            context_window=400_000,
+            max_tokens=128_000,
+            reasoning=True,
+            agent_runtime="openclaw",
+            notes=(
+                "OpenClaw owns the agent loop and uses the local ChatGPT/Codex "
+                "OAuth allowance for inference. Run `codex login` first; no "
+                "Platform API key or Codex agent runtime is used."
+            ),
         ),
         ProviderProfile(
             key="openai-luna",
@@ -159,13 +177,20 @@ def default_provider_profiles() -> list[ProviderProfile]:
 def build_analysis_tool_policy(allowed_tools: list[str]) -> dict[str, Any]:
     """Build the bounded tool surface used by screenshot-analysis agents."""
 
-    return {
-        "allow": list(dict.fromkeys(allowed_tools)),
+    unique_tools = list(dict.fromkeys(allowed_tools))
+    policy: dict[str, Any] = {
         "web": {
             "search": {"enabled": False},
             "fetch": {"enabled": False},
         },
     }
+    if unique_tools:
+        policy["allow"] = unique_tools
+    else:
+        # OpenClaw treats an empty allowlist as unspecified/permissive. A
+        # wildcard deny is the explicit text-only control-arm policy.
+        policy["deny"] = ["*"]
+    return policy
 
 
 def build_openclaw_config(
@@ -183,18 +208,32 @@ def build_openclaw_config(
     provider_timeout_sec, agent_timeout_sec = derive_openclaw_timeout_budget(
         inference_timeout_sec
     )
-    provider_config: dict[str, Any] = {
-        "apiKey": {
-            "source": "env",
-            "provider": "default",
-            "id": profile.api_key_env,
-        },
-        "timeoutSeconds": provider_timeout_sec,
-    }
-    if profile.base_url:
-        provider_config["baseUrl"] = profile.base_url
-    if profile.api:
-        provider_config["api"] = profile.api
+    provider_configs: dict[str, Any] = {}
+    if profile.auth_mode is ProviderAuthMode.CODEX_SUBSCRIPTION:
+        provider_config: dict[str, Any] = {
+            "timeoutSeconds": provider_timeout_sec,
+        }
+        if profile.base_url:
+            provider_config["baseUrl"] = profile.base_url
+        if profile.api:
+            provider_config["api"] = profile.api
+        provider_configs[profile.provider_id] = provider_config
+    else:
+        if not profile.api_key_env:
+            raise ValueError("API-key provider profiles require api_key_env")
+        provider_config = {
+            "apiKey": {
+                "source": "env",
+                "provider": "default",
+                "id": profile.api_key_env,
+            },
+            "timeoutSeconds": provider_timeout_sec,
+        }
+        if profile.base_url:
+            provider_config["baseUrl"] = profile.base_url
+        if profile.api:
+            provider_config["api"] = profile.api
+        provider_configs[profile.provider_id] = provider_config
     if profile.input_modalities:
         model_config: dict[str, Any] = {
             "id": profile.model,
@@ -210,7 +249,7 @@ def build_openclaw_config(
             model_config["agentRuntime"] = {"id": profile.agent_runtime}
         provider_config["models"] = [model_config]
 
-    return {
+    config: dict[str, Any] = {
         "gateway": {
             "mode": "local",
             "auth": {
@@ -219,9 +258,7 @@ def build_openclaw_config(
         },
         "models": {
             "mode": "merge",
-            "providers": {
-                profile.provider_id: provider_config,
-            },
+            "providers": provider_configs,
         },
         "agents": {
             "defaults": {
@@ -232,6 +269,11 @@ def build_openclaw_config(
                 "models": {
                     profile.model_ref: {
                         "alias": profile.label,
+                        **(
+                            {"agentRuntime": {"id": profile.agent_runtime}}
+                            if profile.agent_runtime
+                            else {}
+                        ),
                     },
                 },
                 "imageMaxDimensionPx": image_max_dimension_px,
@@ -240,6 +282,7 @@ def build_openclaw_config(
         },
         "tools": build_analysis_tool_policy(["dicom_bbox_validate"]),
     }
+    return config
 
 
 def derive_openclaw_timeout_budget(inference_timeout_sec: int) -> tuple[int, int]:
@@ -262,7 +305,65 @@ def merge_openclaw_config(
     result = dict(existing)
     for key in ("gateway", "models", "agents"):
         result[key] = _deep_merge(result.get(key, {}), managed.get(key, {}))
+    managed_providers = managed.get("models", {}).get("providers", {})
+    if isinstance(managed_providers, dict):
+        result_providers = result.setdefault("models", {}).setdefault("providers", {})
+        for provider_id, provider_config in managed_providers.items():
+            # Switching auth routes must not retain stale apiKey/baseUrl/model
+            # transport fields from the prior provider configuration.
+            result_providers[provider_id] = provider_config
+    managed_plugins = managed.get("plugins")
+    if isinstance(managed_plugins, dict):
+        existing_plugins = result.get("plugins", {})
+        existing_allow = existing_plugins.get("allow", [])
+        managed_allow = managed_plugins.get("allow", [])
+        result["plugins"] = _deep_merge(existing_plugins, managed_plugins)
+        result["plugins"]["allow"] = list(
+            dict.fromkeys([*existing_allow, *managed_allow])
+        )
+    if _uses_openclaw_subscription_transport(managed_providers):
+        _remove_codex_runtime_plugin_config(result)
     return result
+
+
+def _uses_openclaw_subscription_transport(providers: object) -> bool:
+    if not isinstance(providers, dict):
+        return False
+    openai = providers.get("openai")
+    if not isinstance(openai, dict):
+        return False
+    if openai.get("api") != "openai-chatgpt-responses":
+        return False
+    models = openai.get("models", [])
+    return isinstance(models, list) and any(
+        isinstance(model, dict) and model.get("agentRuntime") == {"id": "openclaw"}
+        for model in models
+    )
+
+
+def _remove_codex_runtime_plugin_config(config: dict[str, Any]) -> None:
+    plugins = config.get("plugins")
+    if not isinstance(plugins, dict):
+        return
+    allow = plugins.get("allow")
+    if isinstance(allow, list):
+        plugins["allow"] = [item for item in allow if item != "codex"]
+    entries = plugins.get("entries")
+    if isinstance(entries, dict):
+        entries.pop("codex", None)
+    load = plugins.get("load")
+    paths = load.get("paths") if isinstance(load, dict) else None
+    if isinstance(paths, list):
+        load["paths"] = [
+            item for item in paths if not _is_codex_plugin_source_path(item)
+        ]
+
+
+def _is_codex_plugin_source_path(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.replace("\\", "/").rstrip("/").lower()
+    return normalized.endswith("/@openclaw/codex")
 
 
 def _deep_merge(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:

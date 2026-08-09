@@ -67,6 +67,29 @@ def _write_required_bundle(root: Path, module) -> None:
         encoding="utf-8",
     )
     package_root = root / "openclaw/node_modules/openclaw"
+    codex_migration = package_root / "dist/extensions/codex"
+    (codex_migration / "package.json").write_text(
+        json.dumps({"name": "@openclaw/codex", "version": "2026.7.1-1"}),
+        encoding="utf-8",
+    )
+    (codex_migration / "openclaw.plugin.json").write_text(
+        json.dumps(
+            {
+                "id": "codex",
+                "contracts": {"migrationProviders": ["codex"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (codex_migration / "migration-bundle.json").write_text(
+        json.dumps(
+            {
+                "purpose": "oauth_migration_only",
+                "codex_agent_runtime_dependencies_bundled": False,
+            }
+        ),
+        encoding="utf-8",
+    )
     for relative in (
         "skills/healthcheck/SKILL.md",
         "dist/extensions/keep.js",
@@ -83,9 +106,7 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
 ) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)
-    monkeypatch.setattr(
-        module, "_read_version", lambda _command, **_kwargs: "v24.18.0"
-    )
+    monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
 
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
@@ -96,6 +117,13 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert len(report["integrity"]["launcher_sha256"]) == 64
     assert len(report["integrity"]["payload_tree_sha256"]) == 64
     assert len(report["source_provenance"]["source_tree_sha256"]) == 64
+    assert report["codex_migration_bundle_check"]["ok"] is True
+    assert (
+        report["codex_migration_bundle_check"][
+            "codex_agent_runtime_dependencies_bundled"
+        ]
+        is False
+    )
 
 
 def test_inspect_bundle_rejects_missing_and_banned_components(tmp_path: Path) -> None:
@@ -142,9 +170,7 @@ def test_inspect_bundle_rejects_sidecar_runtime_and_model_artifacts(
 def test_inspect_bundle_rejects_environment_files(tmp_path: Path, monkeypatch) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)
-    monkeypatch.setattr(
-        module, "_read_version", lambda _command, **_kwargs: "v24.18.0"
-    )
+    monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
     environment_file = (
         tmp_path / "openclaw/node_modules/openclaw/node_modules/example/.env.production"
     )
@@ -187,7 +213,9 @@ def test_inspect_bundle_excludes_its_generated_manifest_from_payload_size(
     assert second["integrity"] == first["integrity"]
 
 
-def test_source_provenance_records_scoped_git_state(tmp_path: Path, monkeypatch) -> None:
+def test_source_provenance_records_scoped_git_state(
+    tmp_path: Path, monkeypatch
+) -> None:
     module = _load_module()
     source = tmp_path / "src" / "dicom_overlay" / "app.py"
     source.parent.mkdir(parents=True)
@@ -234,3 +262,20 @@ def test_packaged_plugin_runtime_inspection_has_bounded_cold_start_timeout() -> 
     module = _load_module()
 
     assert module.PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC == 180
+
+
+def test_inspect_bundle_rejects_codex_agent_runtime_dependency(tmp_path: Path) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    runtime = (
+        tmp_path
+        / "openclaw/node_modules/openclaw/dist/extensions/codex/node_modules"
+        / "@openai/codex/package.json"
+    )
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("{}", encoding="utf-8")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert "OAuth-only Codex migration provider" in " ".join(report["failures"])
