@@ -6,7 +6,11 @@ import dataclasses
 
 import structlog
 
-from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
+from dicom_overlay.domain.ekg_layout import (
+    normalize_ekg_row_strip_layout,
+    parse_ekg_lead_inventory,
+    parse_normalized_region,
+)
 from dicom_overlay.domain.entities import AnalysisResult, Severity
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
@@ -55,6 +59,20 @@ class OutputValidator(AnalyzeHook):
         ekg_inventory = None
         ekg_visible_regions: set[str] = set()
         if request.modality.value == "EKG":
+            normalized_layout, layout_repaired = normalize_ekg_row_strip_layout(
+                result.layout
+            )
+            if layout_repaired:
+                result.layout = normalized_layout
+                result.analysis_trace.append(
+                    {
+                        "stage": "layout_normalization",
+                        "status": "repaired",
+                        "tool": "local_ekg_row_strip_normalizer",
+                        "format": "12lead_12x1",
+                        "lead_count": 12,
+                    }
+                )
             ekg_inventory = parse_ekg_lead_inventory(result.layout)
             ekg_visible_regions = set(ekg_inventory.by_name())
             if _has_normalized_bbox(
@@ -258,17 +276,4 @@ def _append_review_reason(result: AnalysisResult, reason: str) -> None:
 
 
 def _has_normalized_bbox(value: object) -> bool:
-    if not isinstance(value, list | tuple) or len(value) < 4:
-        return False
-    try:
-        x, y, width, height = (float(item) for item in value[:4])
-    except (TypeError, ValueError):
-        return False
-    return (
-        x >= 0.0
-        and y >= 0.0
-        and width > 0.0
-        and height > 0.0
-        and x + width <= 1.0 + 1e-9
-        and y + height <= 1.0 + 1e-9
-    )
+    return parse_normalized_region(value) is not None

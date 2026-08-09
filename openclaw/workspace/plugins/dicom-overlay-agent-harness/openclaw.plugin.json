@@ -2,12 +2,68 @@
   "id": "dicom-overlay-agent-harness",
   "name": "DICOM Overlay Agent Harness",
   "description": "OpenClaw runtime boundary for the desktop medical-image crop/refine harness.",
-  "version": "1.2.0",
+  "version": "1.5.7",
   "activation": {
     "onStartup": true
   },
   "contracts": {
-    "tools": ["dicom_bbox_validate", "ecg_founder_analyze_waveform"]
+    "tools": ["dicom_bbox_validate", "ecg_founder_analyze_waveform"],
+    "analysisSlaSeconds": {
+      "initialResponse": 60,
+      "firstCropRefinement": 100,
+      "total": 180
+    },
+    "turnContracts": {
+      "firstLook": "compact_coarse_triage",
+      "twelveRowLayout": "compact_lead_order_plus_local_pixel_geometry",
+      "fullyRejectedFirstLookBoxes": "retract_boxes_and_refine_hypotheses",
+      "completedRefinement": "always_finalize",
+      "finalFindingDisposition": "retain_revise_or_retract_draft_ids_only",
+      "finalBboxReceipt": "exact_retained_final_multiset_with_locked_geometry"
+    },
+    "chatSendFastMode": {
+      "default": true,
+      "scope": "every clinical image turn",
+      "auditField": "fast_mode_requested",
+      "semantics": "gateway_execution_request",
+      "serviceTierClaim": "requires_gateway_transport_receipt"
+    },
+    "refinementEvidenceCoverage": {
+      "contextualEkgCropRouting": true,
+      "unlocalizedEkgSemanticRouting": true,
+      "systematicProbeHypothesisReconciliation": true,
+      "unlocalizedActionableFindingPolicy": "info_low_confidence_native_review",
+      "unavailableRhythmStripRegion": "replace_with_bbox_center_leads_without_moving_box",
+      "boxedInfoUncertainty": "retain_tool_accepted_coordinates_and_require_confidence_question",
+      "tightEkgOverlayBoxes": "remove_broad_or_normal_boxes_before_final_binding",
+      "compactRowPeakTolerance": "exact_lead_order_plus_11_to_13_periodic_local_peaks",
+      "benignVariantPolicy": "retract_without_pathologic_contiguous_or_reciprocal_pattern",
+      "timeCriticalStElevationPolicy": "explicit_possible_stemi_low_confidence_critical_triage",
+      "systematicProbeDeduplication": "exact_original_roi_geometry",
+      "rhythmStripMaximumImageHeightFraction": 0.35,
+      "retractionRequiresAllCoarseBboxesCovered": true
+    },
+    "waveformToolExecution": {
+      "maximumSidecarAcquisitionsPerNonce": 1,
+      "duplicateAttempts": "cached_and_audited",
+      "ineligibleFallback": "continue_image_only_with_bound_exclusion_receipt",
+      "agentPayload": "compact_summary",
+      "fullProvenance": "audit_receipt"
+    },
+    "auditEvents": [
+      "analysis_sla",
+      "bbox_receipt_reconciliation",
+      "grounding_guardrail",
+      "boxed_info_guardrail",
+      "ekg_overlay_bbox_guardrail",
+      "bbox_region_reconciliation",
+      "json_recovery",
+      "layout_signal_check",
+      "layout_normalization",
+      "refinement_guardrail",
+      "waveform_rhythm_guardrail",
+      "final_disposition"
+    ]
   },
   "toolMetadata": {
     "dicom_bbox_validate": {

@@ -87,6 +87,7 @@ def _parse_config(raw: dict[str, Any]) -> AppConfig:
             analyze_retries=oc_raw.get("analyze_retries", 1),
             analyze_retry_backoff_sec=oc_raw.get("analyze_retry_backoff_sec", 1.5),
             max_image_edge_px=oc_raw.get("max_image_edge_px", 1568),
+            fast_mode=oc_raw.get("fast_mode", True),
         ),
         overlay=OverlayConfig(
             position=overlay_raw.get("position", "right"),

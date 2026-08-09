@@ -106,7 +106,7 @@ def test_voltage_box_with_signal_expands_to_interpretable_waveform_context() -> 
     )
 
 
-def test_bbox_region_is_reconciled_to_declared_lead_layout() -> None:
+def test_bbox_is_constrained_to_declared_lead_layout() -> None:
     image = Image.new("RGB", (400, 200), "white")
     draw = ImageDraw.Draw(image)
     draw.line((80, 120, 150, 130), fill="black", width=4)
@@ -135,13 +135,49 @@ def test_bbox_region_is_reconciled_to_declared_lead_layout() -> None:
         result,
     )
 
-    assert calibrated.findings[0].regions == ["lead_V4"]
+    assert calibrated.findings[0].regions == ["lead_V5"]
+    box = calibrated.findings[0].bboxes[0]
+    assert box.y >= 0.75
+    assert box.y + box.h <= 1.0
     assert calibrated.findings[0].confidence == "low"
-    assert "model named lead_V5" in calibrated.findings[0].question
-    assert "box maps to lead_V4" in calibrated.findings[0].question
     assert calibrated.review_required is True
     assert any(
-        row["status"] == "lead_region_reconciled" for row in calibrated.analysis_trace
+        row["status"] == "snapped_to_declared_lead" for row in calibrated.analysis_trace
+    )
+
+
+def test_unpaired_bbox_conflict_records_geometry_lead_without_moving_box() -> None:
+    image = Image.new("RGB", (400, 200), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((80, 120, 150, 130), fill="black", width=4)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    result = _result()
+    result.layout = {
+        "leads": [
+            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+        ]
+    }
+    result.findings[0] = Finding(
+        id="f1",
+        regions=["lead_V5", "lead_V6"],
+        label="Possible ST-T change",
+        detail="Review localization.",
+        severity=Severity.INFO,
+        bboxes=[RegionRect(0.2, 0.55, 0.2, 0.15)],
+        confidence="low",
+    )
+
+    calibrated = calibrate_ekg_bboxes(
+        base64.b64encode(buffer.getvalue()).decode("ascii"),
+        result,
+    )
+
+    assert calibrated.findings[0].regions == ["lead_V5", "lead_V6", "lead_V4"]
+    assert calibrated.findings[0].bboxes[0].y < 0.75
+    assert any(
+        row["status"] == "lead_region_conflict" for row in calibrated.analysis_trace
     )
 
 

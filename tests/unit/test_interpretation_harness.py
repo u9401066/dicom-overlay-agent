@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dicom_overlay.application.interpretation_harness import (
     InterpretationContext,
+    build_coarse_analysis_prompt,
     build_followup_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
@@ -33,6 +34,7 @@ def test_initial_analysis_prompt_contains_structured_interpretation_protocol():
     assert "next_steps" in prompt
     assert "lead_I, rhythm_strip" in prompt
     assert "Return a single JSON object only" in prompt
+    assert "exactly match the accepted boxes" in prompt
 
 
 def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
@@ -47,10 +49,52 @@ def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
     )
 
     assert "ecg_founder_analyze_waveform exactly once" in prompt
+    assert "never call it again for this nonce" in prompt
+    assert "duplicate attempts are suppressed" in prompt
     assert "artifact_id='wf-opaque-123'" in prompt
     assert f"evidence_nonce='{'a' * 32}'" in prompt
     assert "uncalibrated_score is neither a positive nor a negative" in prompt
+    assert "normal/otherwise-normal label" in prompt
+    assert "omission of a condition from top-k" in prompt
+    assert "visually supported, visually unsupported, or not assessable" in prompt
+    assert "ranked labels to route visual checks" in prompt
+    assert "high versus low voltage" in prompt
+    assert "Irregular R-R timing alone cannot diagnose atrial fibrillation" in prompt
+    assert "top-three candidate is PVC/PAC/ectopy" in prompt
+    assert "unrounded heart_rate_bpm_from_median_rr" in prompt
     assert "has no image localization" in prompt
+
+
+def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
+    prompt = build_coarse_analysis_prompt(
+        modality=Modality.EKG,
+        valid_regions=["lead_I", "lead_II"],
+        waveform_artifact_id="wf-opaque-123",
+        waveform_lead_mode="12_lead",
+        waveform_evidence_nonce="a" * 32,
+        bbox_source_image_sha256="b" * 64,
+        bbox_evidence_nonce="c" * 32,
+    )
+
+    assert "TRIAGE" in prompt
+    assert "checklist={}" in prompt
+    assert "at most three" in prompt
+    assert "ecg_founder_analyze_waveform exactly once" in prompt
+    assert "max_predictions=5" in prompt
+    assert "top-k omission is not negative evidence" in prompt
+    assert "dicom_bbox_validate exactly once" in prompt
+    assert "accepted=[]" in prompt
+    assert "never return a rejected coordinate" in prompt
+    assert "lead_order" in prompt
+    assert "do not output per-lead bboxes" in prompt
+    assert "never rhythm_strip" in prompt
+    assert "under 2200 characters" in prompt
+    assert "Normal/WNL is valid" in prompt
+    assert "never emit urgent/emergent" in prompt
+    assert "full modality checklist" in prompt
+    assert "three consecutive broad QRS complexes" in prompt
+    assert "NSVT/VT versus artifact" in prompt
+    assert "16 keys" not in prompt
 
 
 def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> None:

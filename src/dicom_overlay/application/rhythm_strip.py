@@ -22,13 +22,21 @@ Design constraints (see AGENTS.md four cores):
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import math
+import time
 from typing import TYPE_CHECKING
 
 import structlog
 
-from dicom_overlay.application.multi_pass import pad_region, remap_bbox
+from dicom_overlay.application.multi_pass import (
+    DEFAULT_MIN_FOLLOWUP_BUDGET_SEC,
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+    pad_region,
+    remap_bbox,
+)
+from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     Finding,
@@ -55,6 +63,7 @@ _SEVERITY_RANK: dict[Severity, int] = {
     Severity.CRITICAL: 2,
 }
 _ABNORMAL: frozenset[Severity] = frozenset({Severity.WARNING, Severity.CRITICAL})
+_MAX_RHYTHM_STRIP_HEIGHT = 0.35
 
 
 def resolve_rhythm_strip_region(result: AnalysisResult) -> RegionRect | None:
@@ -63,15 +72,19 @@ def resolve_rhythm_strip_region(result: AnalysisResult) -> RegionRect | None:
     General by design: the region comes only from the Step-0
     ``layout.rhythm_strip_bbox`` the model reported for THIS image, so a
     single-strip / partial / non-standard / unknown capture is never cropped on
-    a guessed position. Accepts the ``[x, y, w, h]`` normalized array form and
-    clamps it into the unit square, dropping degenerate strips.
+    a guessed position. Accepts normalized array or object geometry, clamps it
+    into the unit square, and rejects degenerate or near-full-frame regions.
     """
     layout = result.layout if isinstance(result.layout, dict) else {}
     raw = layout.get("rhythm_strip_bbox")
-    if not isinstance(raw, (list, tuple)) or len(raw) < 4:
+    if isinstance(raw, dict):
+        values = tuple(raw.get(key) for key in ("x", "y", "w", "h"))
+    elif isinstance(raw, (list, tuple)) and len(raw) >= 4:
+        values = tuple(raw[:4])
+    else:
         return None
     try:
-        x, y, w, h = float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])
+        x, y, w, h = (float(value) for value in values)
     except (TypeError, ValueError):
         return None
     if not all(math.isfinite(value) for value in (x, y, w, h)):
@@ -80,9 +93,32 @@ def resolve_rhythm_strip_region(result: AnalysisResult) -> RegionRect | None:
     y = min(max(y, 0.0), 1.0)
     w = min(max(w, 0.0), 1.0 - x)
     h = min(max(h, 0.0), 1.0 - y)
-    if w <= 0.0 or h <= 0.0:
+    if w <= 0.0 or h <= 0.0 or h > _MAX_RHYTHM_STRIP_HEIGHT:
         return None
     return RegionRect(x=x, y=y, w=w, h=h)
+
+
+def _geometry_leads(
+    result: AnalysisResult,
+    boxes: list[RegionRect],
+) -> list[str]:
+    layout_leads = parse_ekg_lead_inventory(result.layout).leads
+    names: list[str] = []
+    for box in boxes:
+        center_x = box.x + box.w / 2.0
+        center_y = box.y + box.h / 2.0
+        candidates = [
+            lead
+            for lead in layout_leads
+            if lead.bbox.x <= center_x <= lead.bbox.x + lead.bbox.w
+            and lead.bbox.y <= center_y <= lead.bbox.y + lead.bbox.h
+        ]
+        if not candidates:
+            continue
+        name = min(candidates, key=lambda lead: lead.bbox.w * lead.bbox.h).name
+        if name not in names:
+            names.append(name)
+    return names
 
 
 def _more_severe(a: Severity, b: Severity) -> Severity:
@@ -128,10 +164,18 @@ def merge_rhythm_strip(
         if finding.label.strip().lower() in existing_labels:
             continue
         remapped = [remap_bbox(b, strip_region) for b in finding.bboxes]
+        declared_strip = resolve_rhythm_strip_region(coarse)
+        regions = list(finding.regions)
+        if declared_strip is not None and "rhythm_strip" not in regions:
+            regions.append("rhythm_strip")
+        for name in _geometry_leads(coarse, remapped):
+            if name not in regions:
+                regions.append(name)
         appended.append(
             dataclasses.replace(
                 finding,
                 id=f"rhythm_{finding.id}" if finding.id else f"rhythm_{len(appended) + 1}",
+                regions=regions,
                 bboxes=remapped,
             )
         )
@@ -162,6 +206,7 @@ async def refine_rhythm_strip(
     valid_regions: list[str],
     padding: float = 0.05,
     retry_attempts: int = 1,
+    max_turn_sec: float = 35.0,
 ) -> AnalysisResult:
     """Crop the declared rhythm strip, re-read it, and merge rhythm findings.
 
@@ -177,6 +222,34 @@ async def refine_rhythm_strip(
     region = resolve_rhythm_strip_region(result)
     if region is None:
         return result
+    sla_event = next(
+        (
+            event
+            for event in reversed(result.analysis_trace)
+            if event.get("stage") == "analysis_sla"
+        ),
+        None,
+    )
+    sla_total_budget_sec = DEFAULT_TOTAL_ANALYSIS_SLA_SEC
+    elapsed_before_ms = result.analysis_time_ms
+    if sla_event is not None:
+        budgets = sla_event.get("budgets_sec")
+        timings = sla_event.get("timings_ms")
+        if isinstance(budgets, dict):
+            sla_total_budget_sec = float(
+                budgets.get("total", DEFAULT_TOTAL_ANALYSIS_SLA_SEC)
+            )
+        if isinstance(timings, dict):
+            elapsed_before_ms = int(timings.get("total") or elapsed_before_ms)
+    remaining_total_sec = sla_total_budget_sec - (elapsed_before_ms / 1000) - 1.0
+    if sla_event is not None and remaining_total_sec < DEFAULT_MIN_FOLLOWUP_BUDGET_SEC:
+        return _finish_rhythm_with_sla(
+            result,
+            elapsed_before_ms=elapsed_before_ms,
+            added_elapsed_ms=0,
+            total_budget_sec=sla_total_budget_sec,
+            status="deadline_reserve_exhausted",
+        )
     crop_region = pad_region(region, padding)
     try:
         crop_b64 = cropper(image_base64, crop_region)
@@ -184,9 +257,17 @@ async def refine_rhythm_strip(
         logger.warning("rhythm_strip_crop_failed")
         return result
     strip: AnalysisResult | None = None
+    started_at = time.monotonic()
+    turn_budget_sec = min(max_turn_sec, max(0.0, remaining_total_sec))
     for attempt in range(retry_attempts + 1):
         try:
-            strip = await analyze_fn(crop_b64, Modality.EKG, valid_regions)
+            remaining_turn_sec = turn_budget_sec - (time.monotonic() - started_at)
+            if remaining_turn_sec <= 0.0:
+                raise TimeoutError("rhythm-strip SLA exhausted")
+            strip = await asyncio.wait_for(
+                analyze_fn(crop_b64, Modality.EKG, valid_regions),
+                timeout=remaining_turn_sec,
+            )
             if strip.summary.strip() or strip.findings:
                 break
         except Exception:
@@ -199,7 +280,15 @@ async def refine_rhythm_strip(
             )
     if strip is None or (not strip.summary.strip() and not strip.findings):
         logger.warning("rhythm_strip_analysis_failed")
-        return result
+        if sla_event is None:
+            return result
+        return _finish_rhythm_with_sla(
+            result,
+            elapsed_before_ms=elapsed_before_ms,
+            added_elapsed_ms=int((time.monotonic() - started_at) * 1000),
+            total_budget_sec=sla_total_budget_sec,
+            status="deadline_exceeded",
+        )
     merged = merge_rhythm_strip(result, strip, crop_region)
     event: dict[str, object] = {
         "stage": "rhythm_strip_refine",
@@ -215,9 +304,76 @@ async def refine_rhythm_strip(
         "finding_count_before": len(result.findings),
         "finding_count_after": len(merged.findings),
     }
-    return dataclasses.replace(
+    output = dataclasses.replace(
         merged,
         analysis_trace=[*merged.analysis_trace, event],
+    )
+    if sla_event is None:
+        return output
+    return _finish_rhythm_with_sla(
+        output,
+        elapsed_before_ms=elapsed_before_ms,
+        added_elapsed_ms=int((time.monotonic() - started_at) * 1000),
+        total_budget_sec=sla_total_budget_sec,
+        status="completed",
+    )
+
+
+def _finish_rhythm_with_sla(
+    result: AnalysisResult,
+    *,
+    elapsed_before_ms: int,
+    added_elapsed_ms: int,
+    total_budget_sec: float,
+    status: str,
+) -> AnalysisResult:
+    """Refresh the shared SLA receipt after an optional rhythm-strip turn."""
+    total_ms = elapsed_before_ms + max(0, added_elapsed_ms)
+    total_met = total_ms <= int(total_budget_sec * 1000)
+    trace: list[dict[str, object]] = []
+    for event in result.analysis_trace:
+        if event.get("stage") != "analysis_sla":
+            trace.append(event)
+            continue
+        updated = dict(event)
+        timings = dict(updated.get("timings_ms", {}))
+        timings["total"] = total_ms
+        met = dict(updated.get("met", {}))
+        met["total"] = total_met
+        updated["timings_ms"] = timings
+        updated["met"] = met
+        if status != "completed" or not total_met:
+            updated["status"] = "degraded"
+        trace.append(updated)
+    trace.append(
+        {
+            "stage": "rhythm_strip_sla",
+            "status": status,
+            "added_elapsed_ms": max(0, added_elapsed_ms),
+            "total_completed_ms": total_ms,
+            "total_sla_met": total_met,
+        }
+    )
+    if status == "completed" and total_met:
+        return dataclasses.replace(
+            result,
+            analysis_time_ms=total_ms,
+            analysis_trace=trace,
+        )
+    reason = (
+        "Rhythm-strip refinement was stopped at the total analysis time budget; "
+        "review rhythm and conduction manually."
+    )
+    return dataclasses.replace(
+        result,
+        analysis_time_ms=total_ms,
+        analysis_trace=trace,
+        incomplete=True,
+        incomplete_reasons=list(
+            dict.fromkeys([*result.incomplete_reasons, reason])
+        ),
+        review_required=True,
+        review_reasons=list(dict.fromkeys([*result.review_reasons, reason])),
     )
 
 

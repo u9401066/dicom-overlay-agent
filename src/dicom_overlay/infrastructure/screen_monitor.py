@@ -10,7 +10,7 @@ from typing import TypedDict
 
 import mss
 import structlog
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 from dicom_overlay.domain.entities import DisplayFrame, RegionRect, WindowRect
 from dicom_overlay.domain.services import ImageProcessorService, ScreenMonitorService
@@ -381,6 +381,96 @@ class ImageProcessor(ImageProcessorService):
             "source_short_edge_px": source_short_edge_px,
             "insufficient_source_resolution": insufficient_source_resolution,
             "low_signal": low_signal,
+        }
+
+    def ekg_row_strip_evidence(self, image_base64: str) -> dict[str, object]:
+        """Detect a 12-row ECG strip from full-width black-ink periodicity.
+
+        Red graph-paper lines are excluded by thresholding the maximum RGB
+        channel instead of grayscale. The detector only reports geometry; it
+        does not identify waveforms, leads, or diagnoses.
+        """
+
+        import base64
+
+        raw = base64.b64decode(image_base64, validate=True)
+        with Image.open(io.BytesIO(raw)) as source:
+            image = source.convert("RGB")
+        width, height = image.size
+        method = "local_black_ink_row_periodicity_v1"
+        if width < 240 or height < 240:
+            return {
+                "method": method,
+                "status": "insufficient",
+                "is_12_row_strip": False,
+                "detected_row_count": 0,
+                "reason": "image_too_small",
+            }
+
+        red, green, blue = image.split()
+        max_channel = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+        black_mask = max_channel.point(
+            [255 if value < 110 else 0 for value in range(256)],
+            mode="L",
+        )
+        left = max(1, round(width * 0.05))
+        content = black_mask.crop((left, 0, width, height))
+        content_width = content.width
+        pixels = content.tobytes()
+        row_counts = [
+            sum(pixels[y * content_width : (y + 1) * content_width]) / 255.0
+            for y in range(height)
+        ]
+        smooth_radius = max(1, round(height * 0.003))
+        smoothed = [
+            statistics.fmean(
+                row_counts[
+                    max(0, y - smooth_radius) : min(
+                        height,
+                        y + smooth_radius + 1,
+                    )
+                ]
+            )
+            for y in range(height)
+        ]
+        minimum_distance = max(4, round(height * 0.05))
+        minimum_strength = content_width * 0.08
+        peaks: list[int] = []
+        for y in sorted(range(height), key=smoothed.__getitem__, reverse=True):
+            if smoothed[y] < minimum_strength:
+                break
+            if all(abs(y - existing) >= minimum_distance for existing in peaks):
+                peaks.append(y)
+        peaks.sort()
+        gaps = [peaks[index] - peaks[index - 1] for index in range(1, len(peaks))]
+        median_gap = statistics.median(gaps) if gaps else 0.0
+        consistent_gap_count = (
+            sum(
+                0.65 * median_gap <= gap <= 1.55 * median_gap
+                for gap in gaps
+            )
+            if median_gap > 0.0
+            else 0
+        )
+        period_ratio = median_gap / height
+        span_ratio = (peaks[-1] - peaks[0]) / height if len(peaks) >= 2 else 0.0
+        confirmed = (
+            len(peaks) == 12
+            and consistent_gap_count >= 10
+            and 0.065 <= period_ratio <= 0.10
+            and span_ratio >= 0.85
+        )
+        return {
+            "method": method,
+            "status": "ok",
+            "is_12_row_strip": confirmed,
+            "detected_row_count": len(peaks),
+            "peak_y_normalized": [round(y / height, 6) for y in peaks],
+            "median_row_period_normalized": round(period_ratio, 6),
+            "consistent_gap_count": consistent_gap_count,
+            "vertical_span_ratio": round(span_ratio, 6),
+            "black_threshold_max_rgb": 110,
+            "minimum_peak_ink_ratio": 0.08,
         }
 
     def local_signal_candidates(self, image_data: bytes) -> dict[str, object]:

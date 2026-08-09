@@ -269,6 +269,9 @@ class OpenClawConfig:
     analyze_retry_backoff_sec: float = 1.5
     # Cap the longest image edge before sending to the gateway (0 disables).
     max_image_edge_px: int = 1568
+    # Request OpenClaw's per-turn fast service path. This can consume priority
+    # subscription capacity, so the desktop exposes it as an explicit setting.
+    fast_mode: bool = True
 
 
 @dataclass

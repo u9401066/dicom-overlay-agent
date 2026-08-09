@@ -14,9 +14,12 @@ const ECG_FOUNDER_MODEL_REVISION = "04edac702b61c91face519774ddcc0cd712fef23";
 const ECG_FOUNDER_12_LEAD_CHECKPOINT_SHA256 =
   "ee199f3781f4ae1f732973267f003da0a759ea12bddb0dd28a77faa60aca7997";
 const ECG_FOUNDER_SCHEMA_VERSION = 1;
-const ECG_FOUNDER_DEFAULT_TIMEOUT_MS = 45_000;
+const ECG_FOUNDER_DEFAULT_TIMEOUT_MS = 30_000;
+const ECG_FOUNDER_MAX_TIMEOUT_MS = 30_000;
 const ECG_FOUNDER_MAX_RESPONSE_CHARS = 1_000_000;
 const ECG_FOUNDER_MAX_PREDICTIONS = 150;
+const ECG_FOUNDER_NONCE_CACHE_LIMIT = 64;
+const ECG_RHYTHM_METHOD = "lead_II_qrs_energy_v1";
 const ECG_FOUNDER_ALLOWED_HOSTS = new Set([
   "127.0.0.1",
   "localhost",
@@ -214,7 +217,7 @@ function resolveEcgFounderConfig(env = process.env) {
 
   const timeoutValue = Number(env.DICOM_ECGFOUNDER_TIMEOUT_MS);
   const timeoutMs = Number.isFinite(timeoutValue)
-    ? Math.min(120_000, Math.max(1_000, Math.trunc(timeoutValue)))
+    ? Math.min(ECG_FOUNDER_MAX_TIMEOUT_MS, Math.max(1_000, Math.trunc(timeoutValue)))
     : ECG_FOUNDER_DEFAULT_TIMEOUT_MS;
   const auditPath = String(env.DICOM_ECGFOUNDER_AUDIT_PATH ?? "").trim();
   return {
@@ -249,6 +252,114 @@ function canonicalJson(value) {
     return `{${entries.join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function sanitizeRhythmMeasurement(raw) {
+  const unavailable = {
+    method: ECG_RHYTHM_METHOD,
+    lead: "II",
+    status: "unavailable",
+    diagnostic_scope: "rhythm_regularity_only",
+    reason: "not_provided",
+    rr_interval_count: 0,
+    limitations: [],
+  };
+  if (raw === undefined || raw === null) return unavailable;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("ECG rhythm measurement must be an object");
+  }
+  const method = cleanText(raw.method, 64);
+  const lead = cleanText(raw.lead, 8);
+  const status = cleanText(raw.status, 32);
+  const scope = cleanText(raw.diagnostic_scope, 64);
+  if (
+    method !== ECG_RHYTHM_METHOD ||
+    lead !== "II" ||
+    scope !== "rhythm_regularity_only" ||
+    !new Set(["ok", "insufficient", "unavailable"]).has(status)
+  ) {
+    throw new Error("ECG rhythm measurement contract mismatch");
+  }
+  const limitations = cleanStringList(raw.limitations, 8, 200);
+  const reason = cleanText(raw.reason, 80);
+  const intervalCount = Number(raw.rr_interval_count ?? 0);
+  if (!Number.isInteger(intervalCount) || intervalCount < 0 || intervalCount > 30) {
+    throw new Error("ECG rhythm measurement has invalid interval count");
+  }
+  const common = {
+    method,
+    lead,
+    status,
+    diagnostic_scope: scope,
+    reason,
+    rr_interval_count: intervalCount,
+    limitations,
+  };
+  if (status !== "ok") return common;
+
+  const intervals = Array.isArray(raw.rr_intervals_ms)
+    ? raw.rr_intervals_ms.map((value) => Number(value))
+    : [];
+  if (
+    intervals.length !== intervalCount ||
+    intervalCount < 5 ||
+    intervals.some(
+      (value) => !Number.isFinite(value) || value < 250 || value > 3000,
+    )
+  ) {
+    throw new Error("ECG rhythm measurement has invalid R-R intervals");
+  }
+  const regularitySignal = cleanText(raw.regularity_signal, 32);
+  if (!new Set(["regular", "irregular", "indeterminate"]).has(regularitySignal)) {
+    throw new Error("ECG rhythm measurement has invalid regularity signal");
+  }
+  const metrics = {
+    beat_count: Number(raw.beat_count),
+    median_rr_ms: finiteNumber(raw.median_rr_ms),
+    heart_rate_bpm_from_median_rr: finiteNumber(
+      raw.heart_rate_bpm_from_median_rr,
+    ),
+    rr_cv: finiteNumber(raw.rr_cv),
+    rr_rmssd_ms: finiteNumber(raw.rr_rmssd_ms),
+    rr_range_ms: finiteNumber(raw.rr_range_ms),
+    successive_rr_diff_over_80ms_fraction: finiteNumber(
+      raw.successive_rr_diff_over_80ms_fraction,
+    ),
+  };
+  if (
+    !Number.isInteger(metrics.beat_count) ||
+    metrics.beat_count !== intervalCount + 1 ||
+    metrics.median_rr_ms === null ||
+    metrics.median_rr_ms < 250 ||
+    metrics.median_rr_ms > 3000 ||
+    metrics.heart_rate_bpm_from_median_rr === null ||
+    metrics.heart_rate_bpm_from_median_rr < 20 ||
+    metrics.heart_rate_bpm_from_median_rr > 240 ||
+    metrics.rr_cv === null ||
+    metrics.rr_cv < 0 ||
+    metrics.rr_cv > 2 ||
+    metrics.rr_rmssd_ms === null ||
+    metrics.rr_rmssd_ms < 0 ||
+    metrics.rr_rmssd_ms > 3000 ||
+    metrics.rr_range_ms === null ||
+    metrics.rr_range_ms < 0 ||
+    metrics.rr_range_ms > 3000 ||
+    metrics.successive_rr_diff_over_80ms_fraction === null ||
+    metrics.successive_rr_diff_over_80ms_fraction < 0 ||
+    metrics.successive_rr_diff_over_80ms_fraction > 1
+  ) {
+    throw new Error("ECG rhythm measurement has invalid metrics");
+  }
+  return {
+    ...common,
+    ...metrics,
+    rr_intervals_ms: intervals.map((value) => Math.round(value)),
+    regularity_signal: regularitySignal,
+    rule: {
+      irregular_rr_cv_min: 0.1,
+      irregular_successive_diff_fraction_min: 0.25,
+    },
+  };
 }
 
 function sanitizeEcgFounderResponse(raw, request) {
@@ -431,6 +542,7 @@ function sanitizeEcgFounderResponse(raw, request) {
       revision: calibrationRevision,
     },
     predictions,
+    rhythm_measurement: sanitizeRhythmMeasurement(raw.rhythm_measurement),
   };
 }
 
@@ -467,6 +579,9 @@ async function appendEcgFounderAuditRecord(
     calibration_revision: details.calibration?.revision ?? "",
     prediction_count: details.predictions.length,
     predictions: details.predictions,
+    rhythm_regularity_signal:
+      details.rhythm_measurement?.regularity_signal ?? "",
+    rr_interval_count: details.rhythm_measurement?.rr_interval_count ?? 0,
     response_evidence: responseEvidence,
     response_sha256: createHash("sha256")
       .update(canonicalJson(responseEvidence))
@@ -480,21 +595,122 @@ async function appendEcgFounderAuditRecord(
   });
 }
 
+async function appendEcgFounderDuplicateAuditRecord(
+  toolCallId,
+  request,
+  cached,
+  config,
+) {
+  if (!config.auditPath) return;
+  const record = {
+    schema_version: 1,
+    recorded_at: new Date().toISOString(),
+    tool: "ecg_founder_duplicate_suppressed",
+    original_tool: ECG_FOUNDER_TOOL,
+    tool_call_id: String(toolCallId ?? ""),
+    original_tool_call_id: cached.toolCallId,
+    evidence_nonce: request.evidence_nonce,
+    status: "duplicate_suppressed",
+    original_status: cached.details.status,
+    artifact_id_sha256: createHash("sha256")
+      .update(request.artifact_id)
+      .digest("hex"),
+    request_sha256: cached.requestSha256,
+  };
+  await mkdir(dirname(config.auditPath), { recursive: true });
+  await appendFile(config.auditPath, `${JSON.stringify(record)}\n`, {
+    encoding: "utf8",
+  });
+}
+
+function compactEcgFounderToolResult(details, { duplicateSuppressed = false } = {}) {
+  const rhythm = details.rhythm_measurement;
+  const rhythmSummary =
+    rhythm && typeof rhythm === "object"
+      ? {
+          method: rhythm.method,
+          lead: rhythm.lead,
+          status: rhythm.status,
+          diagnostic_scope: rhythm.diagnostic_scope,
+          beat_count: rhythm.beat_count,
+          rr_interval_count: rhythm.rr_interval_count,
+          median_rr_ms: rhythm.median_rr_ms,
+          heart_rate_bpm_from_median_rr: rhythm.heart_rate_bpm_from_median_rr,
+          rr_cv: rhythm.rr_cv,
+          rr_rmssd_ms: rhythm.rr_rmssd_ms,
+          rr_range_ms: rhythm.rr_range_ms,
+          successive_rr_diff_over_80ms_fraction:
+            rhythm.successive_rr_diff_over_80ms_fraction,
+          regularity_signal: rhythm.regularity_signal,
+          limitations: rhythm.limitations,
+        }
+      : null;
+  return {
+    schema_version: ECG_FOUNDER_SCHEMA_VERSION,
+    status: details.status,
+    evidence_type: details.evidence_type ?? "ecg_waveform_classification",
+    lead_mode: details.lead_mode,
+    evidence_nonce: details.evidence_nonce,
+    use_policy: "supporting_evidence_only",
+    spatial_localization: "not_provided",
+    calibration_status: details.calibration?.status ?? "",
+    predictions: (details.predictions ?? []).map((item) => ({
+      label: item.label,
+      probability: item.probability,
+      threshold: item.threshold,
+      decision: item.decision,
+    })),
+    rhythm_measurement: rhythmSummary,
+    provenance: {
+      model_id: details.model?.id ?? "",
+      model_revision: details.model?.revision ?? "",
+      checkpoint_sha256: details.model?.checkpoint_sha256 ?? "",
+      source_sha256: details.input?.source_sha256 ?? "",
+      preprocessing_revision:
+        details.preprocessing?.implementation_revision ?? "",
+    },
+    limitations: [
+      "Ranked waveform support only; uncalibrated scores are not diagnoses.",
+      "R-R timing measures regularity only and cannot diagnose atrial fibrillation.",
+      "No image localization is provided; ground every bbox in the image.",
+    ],
+    tool_call_policy: {
+      completed_for_nonce: true,
+      repeat_calls_forbidden: true,
+      duplicate_suppressed: duplicateSuppressed,
+      next_action: "Finish visual reconciliation and the structured image report.",
+    },
+    reason: details.reason ?? "",
+  };
+}
+
 function createEcgFounderTool(config, fetchImpl = globalThis.fetch) {
   if (typeof fetchImpl !== "function") {
     throw new Error("ECGFounder tool requires a fetch implementation");
   }
+  const completedByNonce = new Map();
+
+  function rememberCompleted(nonce, entry) {
+    completedByNonce.delete(nonce);
+    completedByNonce.set(nonce, entry);
+    while (completedByNonce.size > ECG_FOUNDER_NONCE_CACHE_LIMIT) {
+      completedByNonce.delete(completedByNonce.keys().next().value);
+    }
+  }
+
   return {
     name: ECG_FOUNDER_TOOL,
     label: "Analyze ECG Waveform",
     description:
-      "Request supporting ECGFounder probability evidence for a trusted raw-waveform artifact. Call only when the app explicitly supplies an ECG waveform artifact id. Never call for a screenshot alone, never invent an id, and never use this tool to create image bounding boxes.",
+      "Request supporting ECGFounder probability evidence once for a trusted raw-waveform artifact. Call only when the app explicitly supplies an ECG waveform artifact id. Never call for a screenshot alone, never invent an id, never repeat a completed nonce, and never use this tool to create image bounding boxes.",
     promptSnippet:
       "ECGFounder waveform evidence (only for an app-supplied waveform artifact id)",
     promptGuidelines: [
       "Treat ECGFounder output as supporting evidence, not a final diagnosis.",
       "Do not convert uncalibrated scores into positive or negative diagnoses.",
+      "Use the deterministic lead-II R-R measurement only as rhythm-regularity evidence; it does not identify P waves or diagnose atrial fibrillation.",
       "ECGFounder provides no image localization; ground every bbox in the attached image and crop/refine evidence.",
+      "Call exactly once per evidence nonce. After the result, do not call again; finish visual reconciliation and the structured report promptly.",
     ],
     parameters: ecgFounderParameters,
     executionMode: "sequential",
@@ -506,6 +722,37 @@ function createEcgFounderTool(config, fetchImpl = globalThis.fetch) {
         evidence_nonce: String(args?.evidence_nonce ?? ""),
         max_predictions: Number(args?.max_predictions ?? 10),
       };
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.artifact_id)) {
+        throw new Error("ECGFounder artifact id does not match the tool contract");
+      }
+      if (request.lead_mode !== "12_lead") {
+        throw new Error("Only the pinned ECGFounder 12-lead contract is supported");
+      }
+      if (!/^[a-f0-9]{32}$/.test(request.evidence_nonce)) {
+        throw new Error("ECGFounder evidence nonce does not match the tool contract");
+      }
+      const requestSha256 = createHash("sha256")
+        .update(canonicalJson(request))
+        .digest("hex");
+      const cached = completedByNonce.get(request.evidence_nonce);
+      if (cached) {
+        if (cached.requestSha256 !== requestSha256) {
+          throw new Error("ECGFounder evidence nonce was reused with different inputs");
+        }
+        await appendEcgFounderDuplicateAuditRecord(
+          toolCallId,
+          request,
+          cached,
+          config,
+        );
+        const summary = compactEcgFounderToolResult(cached.details, {
+          duplicateSuppressed: true,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(summary) }],
+          details: summary,
+        };
+      }
       const controller = new AbortController();
       const startedAt = Date.now();
       const abortFromCaller = () => controller.abort(signal?.reason);
@@ -547,9 +794,15 @@ function createEcgFounderTool(config, fetchImpl = globalThis.fetch) {
         await appendEcgFounderAuditRecord(toolCallId, details, config, {
           latencyMs: Date.now() - startedAt,
         });
-        return {
-          content: [{ type: "text", text: JSON.stringify(details) }],
+        rememberCompleted(request.evidence_nonce, {
+          requestSha256,
+          toolCallId: String(toolCallId ?? ""),
           details,
+        });
+        const summary = compactEcgFounderToolResult(details);
+        return {
+          content: [{ type: "text", text: JSON.stringify(summary) }],
+          details: summary,
         };
       } catch (error) {
         const failure = {
@@ -562,6 +815,11 @@ function createEcgFounderTool(config, fetchImpl = globalThis.fetch) {
         };
         await appendEcgFounderAuditRecord(toolCallId, failure, config, {
           latencyMs: Date.now() - startedAt,
+        });
+        rememberCompleted(request.evidence_nonce, {
+          requestSha256,
+          toolCallId: String(toolCallId ?? ""),
+          details: failure,
         });
         throw error;
       } finally {

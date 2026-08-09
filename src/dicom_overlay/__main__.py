@@ -210,6 +210,7 @@ def _run_gateway_smoke(
         reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
         connect_timeout_sec=config.openclaw.connect_timeout_sec,
         inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        fast_mode=config.openclaw.fast_mode,
         gateway_token=gateway_token,
         base_dir=base_dir,
     )
@@ -322,6 +323,7 @@ def main() -> None:
         reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
         connect_timeout_sec=config.openclaw.connect_timeout_sec,
         inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        fast_mode=config.openclaw.fast_mode,
         gateway_token=gateway_token,
         registry=registry,
         base_dir=base_dir,
@@ -694,18 +696,28 @@ def main() -> None:
         control_bar.set_trigger_mode(mode)
         control_bar.set_status(f"Mode: {mode.value}")
 
-    def on_analysis_settings_changed(enabled: bool, max_targets: int) -> None:
+    def on_analysis_settings_changed(
+        enabled: bool,
+        max_targets: int,
+        fast_mode_enabled: bool,
+    ) -> None:
         nonlocal multi_pass_analyzer
         multi_pass_analyzer = build_multi_pass_analyzer(max_targets)
         agent.set_vision_analyzer(multi_pass_analyzer if enabled else hooked_analyzer)
         config.analysis.multi_pass_enabled = enabled
         config.analysis.multi_pass_max_zoom_targets = max_targets
+        config.openclaw.fast_mode = fast_mode_enabled
+        openclaw_client.set_fast_mode(fast_mode_enabled)
         settings_store.save_analysis_settings(
             multi_pass_enabled=enabled,
             max_zoom_targets=max_targets,
+            fast_mode_enabled=fast_mode_enabled,
         )
         state = "on" if enabled else "off"
-        control_bar.set_status(f"Multi-pass: {state} ({max_targets} targets)")
+        speed = "priority" if fast_mode_enabled else "standard"
+        control_bar.set_status(
+            f"Multi-pass: {state} ({max_targets} targets), {speed} inference"
+        )
 
     def on_modality_cycle():
         modality_index[0] = (modality_index[0] + 1) % len(modality_cycle)
@@ -757,6 +769,7 @@ def main() -> None:
             current_mode=agent.trigger_mode,
             multi_pass_enabled=config.analysis.multi_pass_enabled,
             multi_pass_max_zoom_targets=(config.analysis.multi_pass_max_zoom_targets),
+            fast_mode_enabled=config.openclaw.fast_mode,
             config_path=config_path,
             parent=control_bar,
         )

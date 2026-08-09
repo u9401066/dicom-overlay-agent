@@ -85,6 +85,23 @@ def _valid_payload() -> dict[str, object]:
         "predictions": [
             {"label": "ATRIAL FIBRILLATION", "probability": 0.91, "threshold": 0.5}
         ],
+        "rhythm_measurement": {
+            "method": "lead_II_qrs_energy_v1",
+            "lead": "II",
+            "status": "ok",
+            "diagnostic_scope": "rhythm_regularity_only",
+            "beat_count": 7,
+            "rr_interval_count": 6,
+            "rr_intervals_ms": [860, 720, 650, 810, 690, 840],
+            "median_rr_ms": 765.0,
+            "heart_rate_bpm_from_median_rr": 78.4,
+            "rr_cv": 0.11,
+            "rr_rmssd_ms": 130.0,
+            "rr_range_ms": 210.0,
+            "successive_rr_diff_over_80ms_fraction": 0.8,
+            "regularity_signal": "irregular",
+            "limitations": ["R-peak timing only; not an AF diagnosis."],
+        },
         "limitations": ["Research support only"],
     }
 
@@ -96,8 +113,16 @@ def test_ecg_founder_tool_is_optional_and_not_bundled_as_model_weights() -> None
     capability_manifest = json.loads(
         (_PLUGIN_ROOT / "manifest.json").read_text(encoding="utf-8")
     )
+    package_manifest = json.loads(
+        (_PLUGIN_ROOT / "package.json").read_text(encoding="utf-8")
+    )
 
     metadata = plugin_manifest["toolMetadata"]["ecg_founder_analyze_waveform"]
+    assert {
+        plugin_manifest["version"],
+        capability_manifest["version"],
+        package_manifest["version"],
+    } == {"1.5.7"}
     assert metadata["optional"] is True
     assert capability_manifest["capabilities"]["noScreenshotToWaveformInference"]
     assert not list(_PLUGIN_ROOT.rglob("*.pth"))
@@ -119,7 +144,8 @@ try {{
 }}
 const config = module.resolveEcgFounderConfig({{
   DICOM_ECGFOUNDER_ENDPOINT: "http://127.0.0.1:18790/v1/analyze",
-  DICOM_ECGFOUNDER_TOKEN: "secret"
+  DICOM_ECGFOUNDER_TOKEN: "secret",
+  DICOM_ECGFOUNDER_TIMEOUT_MS: "120000"
 }});
 const details = module.sanitizeEcgFounderResponse(
   {payload},
@@ -128,10 +154,13 @@ const details = module.sanitizeEcgFounderResponse(
 console.log(JSON.stringify({{
   remoteRejected,
   endpoint: config.endpoint,
+  timeoutMs: config.timeoutMs,
   decision: details.predictions[0].decision,
   threshold: details.predictions[0].threshold,
   localization: details.spatial_localization,
-  sourceKind: details.input.source_kind
+  sourceKind: details.input.source_kind,
+  regularitySignal: details.rhythm_measurement.regularity_signal,
+  rrIntervalCount: details.rhythm_measurement.rr_interval_count
 }}));
 """
 
@@ -139,10 +168,13 @@ console.log(JSON.stringify({{
 
     assert result["remoteRejected"] is True
     assert str(result["endpoint"]).startswith("http://127.0.0.1:")
+    assert result["timeoutMs"] == 30_000
     assert result["decision"] == "uncalibrated_score"
     assert result["threshold"] is None
     assert result["localization"] == "not_provided"
     assert result["sourceKind"] == "raw_waveform"
+    assert result["regularitySignal"] == "irregular"
+    assert result["rrIntervalCount"] == 6
 
 
 def test_ecg_founder_plugin_rejects_screenshot_source() -> None:
@@ -288,3 +320,64 @@ console.log(JSON.stringify({{ done: true }}));
         expected_preprocessing_revision="test",
     )
     assert records[1]["failure_reason"] == "transport_down"
+
+
+def test_ecg_founder_tool_suppresses_duplicate_nonce_without_second_fetch(
+    tmp_path: Path,
+) -> None:
+    module_uri = (_PLUGIN_ROOT / "index.js").as_uri()
+    audit_path = tmp_path / "ecgfounder-audit.jsonl"
+    payload = json.dumps(_valid_payload())
+    source = f"""
+const module = await import({json.dumps(module_uri)});
+const config = {{
+  endpoint: "http://127.0.0.1:18790/v1/analyze",
+  token: "secret",
+  timeoutMs: 5000,
+  auditPath: {json.dumps(str(audit_path))}
+}};
+let fetchCalls = 0;
+const fetchOnce = async () => {{
+  fetchCalls += 1;
+  return new Response({json.dumps(payload)}, {{ status: 200 }});
+}};
+const tool = module.createEcgFounderTool(config, fetchOnce);
+const args = {{
+  artifact_id: "artifact-1",
+  lead_mode: "12_lead",
+  evidence_nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  max_predictions: 10
+}};
+const first = await tool.execute("call-first", args);
+const duplicate = await tool.execute("call-duplicate", args);
+let mismatchRejected = false;
+try {{
+  await tool.execute("call-mismatch", {{ ...args, max_predictions: 5 }});
+}} catch {{
+  mismatchRejected = true;
+}}
+console.log(JSON.stringify({{
+  fetchCalls,
+  mismatchRejected,
+  first: first.details,
+  duplicate: duplicate.details
+}}));
+"""
+
+    result = _run_node_module(source)
+    records = [
+        json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result["fetchCalls"] == 1
+    assert result["mismatchRejected"] is True
+    assert result["first"]["tool_call_policy"]["duplicate_suppressed"] is False  # type: ignore[index]
+    duplicate = result["duplicate"]  # type: ignore[assignment]
+    assert duplicate["tool_call_policy"]["duplicate_suppressed"] is True  # type: ignore[index]
+    assert "rr_intervals_ms" not in duplicate["rhythm_measurement"]  # type: ignore[index]
+    assert [record["tool"] for record in records] == [
+        "ecg_founder_analyze_waveform",
+        "ecg_founder_duplicate_suppressed",
+    ]
+    assert records[1]["original_tool_call_id"] == "call-first"
+    assert records[1]["tool_call_id"] == "call-duplicate"

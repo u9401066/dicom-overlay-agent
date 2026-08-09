@@ -7,24 +7,38 @@ that a zoom crop only ever shrinks the captured region.
 
 from __future__ import annotations
 
+import asyncio
+import dataclasses
+
 import pytest
 
 from dicom_overlay.application.multi_pass import (
+    AnalysisSlaTimeout,
     MultiPassAnalyzer,
     MultiPassInterpreter,
     RefinementAction,
     RefinementDelta,
     RefinementResult,
+    apply_ekg_overlay_bbox_guard,
+    apply_ekg_waveform_rhythm_conflict_guard,
     apply_refinement_delta,
+    apply_unlocalized_ekg_grounding_guard,
     build_manual_zoom_message,
     clamp_unit,
     covering_region,
+    deduplicate_ekg_study_level_findings,
     expand_crop_to_min_source_edge,
     needs_manual_zoom,
     pad_region,
+    project_ekg_lead_regions_to_crop,
+    qualify_boxed_info_findings,
+    reconcile_final_report,
+    reconcile_unavailable_ekg_rhythm_regions,
     region_source_edge_px,
     remap_bbox,
     select_ekg_systematic_probe_regions,
+    select_ekg_waveform_attention_probe_regions,
+    select_hypothesis_crop_region,
     select_zoom_targets,
 )
 from dicom_overlay.domain.entities import (
@@ -204,6 +218,120 @@ class TestCoveringRegion:
         with pytest.raises(ValueError):
             covering_region([])
 
+    def test_disjoint_hypothesis_uses_largest_local_box(self):
+        finding = Finding(
+            id="lvh",
+            regions=["lead_aVL", "lead_V5"],
+            label="Left ventricular hypertrophy",
+            detail="Voltage criteria",
+            severity=Severity.WARNING,
+            bboxes=[
+                RegionRect(0.06, 0.34, 0.22, 0.08),
+                RegionRect(0.06, 0.88, 0.24, 0.08),
+            ],
+        )
+
+        selected = select_hypothesis_crop_region(finding, modality=Modality.EKG)
+
+        assert selected == finding.bboxes[1]
+
+    def test_temporal_ekg_hypothesis_uses_declared_rhythm_strip(self):
+        finding = Finding(
+            id="pvc",
+            regions=["lead_II", "rhythm_strip"],
+            label="Frequent premature ventricular complexes",
+            detail="Wide premature beats with compensatory pauses",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.12, 0.22, 0.08, 0.05)],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["rhythm_strip_bbox"] = [0.02, 0.78, 0.96, 0.18]
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert selected == RegionRect(0.02, 0.78, 0.96, 0.18)
+
+    def test_temporal_ekg_hypothesis_falls_back_to_full_lead_ii(self):
+        finding = Finding(
+            id="avb",
+            regions=["lead_II"],
+            label="First-degree AV block",
+            detail="Prolonged PR relationship",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.09, 0.05, 0.03)],
+        )
+        result = _ekg_row_layout_result([finding])
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert selected == RegionRect(0.0, 1 / 12, 1.0, 1 / 12)
+
+    def test_multi_lead_conduction_hypothesis_uses_declared_lead_context(self):
+        finding = Finding(
+            id="rbbb",
+            regions=["lead_V1", "lead_V2", "lead_V6"],
+            label="Right bundle branch block",
+            detail="Wide QRS with terminal right-precordial forces",
+            severity=Severity.WARNING,
+            bboxes=[
+                RegionRect(0.1, 0.52, 0.08, 0.04),
+                RegionRect(0.1, 0.94, 0.08, 0.04),
+            ],
+        )
+        result = _ekg_row_layout_result([finding])
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert selected == RegionRect(0.0, 0.5, 1.0, 0.5)
+
+
+class TestCropLeadProjection:
+    def test_projects_visible_stacked_leads_into_crop_coordinates(self):
+        result = _ekg_row_layout_result([])
+        crop = RegionRect(x=0.0, y=0.5, w=1.0, h=0.5)
+
+        projected = project_ekg_lead_regions_to_crop(result.layout, crop)
+
+        assert list(projected) == [
+            "lead_V1",
+            "lead_V2",
+            "lead_V3",
+            "lead_V4",
+            "lead_V5",
+            "lead_V6",
+        ]
+        assert projected["lead_V1"].y == pytest.approx(0.0)
+        assert projected["lead_V4"].y == pytest.approx(0.5)
+        assert projected["lead_V6"].y == pytest.approx(5 / 6)
+        assert projected["lead_V6"].h == pytest.approx(1 / 6)
+
+    def test_clamps_full_crop_projection_roundoff_to_unit_interval(self):
+        result = _ekg_row_layout_result([])
+        result.layout["leads"] = [
+            {
+                "name": "II",
+                "label_visible": True,
+                "bbox": [0.1, 0.1, 0.7, 0.2],
+            }
+        ]
+        crop = RegionRect(x=0.1, y=0.1, w=0.7, h=0.2)
+
+        projected = project_ekg_lead_regions_to_crop(result.layout, crop)
+
+        assert projected["lead_II"] == RegionRect(0.0, 0.0, 1.0, 1.0)
+
 
 class TestEkgSystematicProbeRegions:
     def test_uses_declared_lead_layout_to_cover_limb_and_precordial_groups(self):
@@ -212,12 +340,12 @@ class TestEkgSystematicProbeRegions:
         probes = select_ekg_systematic_probe_regions(result)
 
         assert [key for key, _region in probes] == [
-            "limb_leads",
             "precordial_leads",
+            "limb_leads",
         ]
-        assert probes[0][1].y == pytest.approx(0.0)
+        assert probes[0][1].y == pytest.approx(0.5)
         assert probes[0][1].h == pytest.approx(0.5)
-        assert probes[1][1].y == pytest.approx(0.5)
+        assert probes[1][1].y == pytest.approx(0.0)
         assert probes[1][1].h == pytest.approx(0.5)
 
     def test_accepts_unprefixed_real_model_lead_names(self):
@@ -228,8 +356,8 @@ class TestEkgSystematicProbeRegions:
         probes = select_ekg_systematic_probe_regions(result)
 
         assert [key for key, _region in probes] == [
-            "limb_leads",
             "precordial_leads",
+            "limb_leads",
         ]
 
     def test_accepts_case_and_separator_variants(self):
@@ -254,19 +382,303 @@ class TestEkgSystematicProbeRegions:
         probes = select_ekg_systematic_probe_regions(result)
 
         assert [key for key, _region in probes] == [
-            "limb_leads",
             "precordial_leads",
+            "limb_leads",
         ]
 
     def test_rejects_sparse_or_non_ekg_layout(self):
         result = _ekg_row_layout_result([])
         result.layout = {
-            "leads": [
-                {"name": "lead_I", "label_visible": True, "bbox": [0, 0, 1, 0.1]}
-            ]
+            "leads": [{"name": "lead_I", "label_visible": True, "bbox": [0, 0, 1, 0.1]}]
         }
         assert select_ekg_systematic_probe_regions(result) == []
         assert select_ekg_systematic_probe_regions(_result([])) == []
+
+    def test_waveform_rhythm_candidate_routes_attention_to_lead_ii(self):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "stage": "coarse",
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": "ATRIAL FIBRILLATION"},
+                            {"label": "ABNORMAL ECG"},
+                            {"label": "SINUS RHYTHM"},
+                        ],
+                    }
+                ],
+            }
+        ]
+
+        probes = select_ekg_waveform_attention_probe_regions(result)
+
+        assert probes == [
+            ("waveform_rhythm_lead_II", RegionRect(0.0, 1 / 12, 1.0, 1 / 12))
+        ]
+
+    def test_low_rank_rhythm_does_not_redirect_top_three_st_probe(self):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": "NORMAL SINUS RHYTHM"},
+                            {"label": "NORMAL ECG"},
+                            {"label": "NONSPECIFIC ST ABNORMALITY"},
+                            {"label": "ATRIAL FIBRILLATION"},
+                        ],
+                    }
+                ]
+            }
+        ]
+
+        assert select_ekg_waveform_attention_probe_regions(result) == [
+            (
+                "waveform_attention_precordial_leads",
+                RegionRect(0.0, 0.5, 1.0, 0.5),
+            )
+        ]
+
+    def test_top_ranked_ectopy_routes_attention_to_lead_ii(self):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": "PREMATURE VENTRICULAR COMPLEXES"},
+                            {"label": "SINUS RHYTHM"},
+                            {"label": "NORMAL SINUS RHYTHM"},
+                        ],
+                    }
+                ]
+            }
+        ]
+
+        assert select_ekg_waveform_attention_probe_regions(result) == [
+            ("waveform_rhythm_lead_II", RegionRect(0.0, 1 / 12, 1.0, 1 / 12))
+        ]
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            "LONG QT",
+            "FIRST DEGREE AV BLOCK",
+            "SINUS BRADYCARDIA",
+            "LEFT ATRIAL ENLARGEMENT",
+        ],
+    )
+    def test_ranked_temporal_candidate_routes_attention_to_lead_ii(self, label):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [{"label": label}],
+                    }
+                ]
+            }
+        ]
+
+        assert select_ekg_waveform_attention_probe_regions(result) == [
+            ("waveform_rhythm_lead_II", RegionRect(0.0, 1 / 12, 1.0, 1 / 12))
+        ]
+
+    def test_ranked_axis_candidate_routes_attention_to_limb_leads(self):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": "ABNORMAL ECG"},
+                            {"label": "LEFT AXIS DEVIATION"},
+                            {"label": "LEFT BUNDLE BRANCH BLOCK"},
+                        ],
+                    }
+                ]
+            }
+        ]
+
+        probes = select_ekg_waveform_attention_probe_regions(result)
+
+        assert probes == [
+            ("waveform_attention_limb_leads", RegionRect(0.0, 0.0, 1.0, 0.5)),
+            (
+                "waveform_attention_precordial_leads",
+                RegionRect(0.0, 0.5, 1.0, 0.5),
+            ),
+        ]
+
+    def test_ranked_low_voltage_candidate_routes_attention_to_precordials(self):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": "LOW VOLTAGE QRS"},
+                            {"label": "SINUS RHYTHM"},
+                        ],
+                    }
+                ]
+            }
+        ]
+
+        assert select_ekg_waveform_attention_probe_regions(result) == [
+            (
+                "waveform_attention_precordial_leads",
+                RegionRect(0.0, 0.5, 1.0, 0.5),
+            )
+        ]
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            "NONSPECIFIC T WAVE ABNORMALITY",
+            "NONSPECIFIC ST-T ABNORMALITY",
+            "REPOLARIZATION ABNORMALITY",
+        ],
+    )
+    def test_ranked_st_t_candidate_routes_attention_to_precordials(self, label):
+        result = _ekg_row_layout_result([])
+        result.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": "ABNORMAL ECG"},
+                            {"label": label},
+                            {"label": "SINUS RHYTHM"},
+                        ],
+                    }
+                ]
+            }
+        ]
+
+        assert select_ekg_waveform_attention_probe_regions(result) == [
+            (
+                "waveform_attention_precordial_leads",
+                RegionRect(0.0, 0.5, 1.0, 0.5),
+            )
+        ]
+
+
+class TestEkgWaveformRhythmConflictGuard:
+    @staticmethod
+    def _candidate(
+        *,
+        regularity_signal: str = "irregular",
+        labels: tuple[str, ...] = ("ATRIAL FIBRILLATION", "ABNORMAL ECG"),
+    ) -> AnalysisResult:
+        result = _ekg_row_layout_result([])
+        result.summary = "Normal sinus rhythm; no acute abnormality."
+        result.analysis_trace = [
+            {
+                "stage": "coarse",
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [
+                            {"label": label, "probability": 0.9}
+                            for label in labels
+                        ],
+                        "response_evidence": {
+                            "rhythm_measurement": {
+                                "method": "lead_II_qrs_energy_v1",
+                                "lead": "II",
+                                "status": "ok",
+                                "diagnostic_scope": "rhythm_regularity_only",
+                                "rr_interval_count": 6,
+                                "rr_cv": 0.108,
+                                "successive_rr_diff_over_80ms_fraction": 0.417,
+                                "regularity_signal": regularity_signal,
+                            }
+                        },
+                    }
+                ],
+            }
+        ]
+        return result
+
+    def test_escalates_dual_signal_conflict_without_forcing_diagnosis(self):
+        guarded = apply_ekg_waveform_rhythm_conflict_guard(self._candidate())
+
+        finding = guarded.findings[-1]
+        assert guarded.severity is Severity.WARNING
+        assert guarded.incomplete is True
+        assert guarded.review_required is True
+        assert "atrial fibrillation is not excluded" in guarded.summary.casefold()
+        assert finding.id == "waveform-rhythm-conflict"
+        assert finding.source == "waveform_rhythm_conflict_guard"
+        assert finding.bboxes == []
+        assert guarded.checklist["rhythm"].status is Severity.WARNING
+        guard_trace = guarded.analysis_trace[-1]
+        assert guard_trace["stage"] == "waveform_rhythm_guardrail"
+        assert guard_trace["diagnosis_forced"] is False
+
+        grounded = apply_unlocalized_ekg_grounding_guard(guarded)
+        assert grounded.severity is Severity.WARNING
+        assert grounded.findings[-1].severity is Severity.INFO
+        assert grounded.findings[-1].confidence == "low"
+
+    def test_upgrades_existing_localized_rhythm_finding_without_duplicate(self):
+        candidate = self._candidate()
+        marker = RegionRect(0.08, 0.08, 0.28, 0.09)
+        candidate.findings = [
+            _finding(
+                "rhythm1",
+                Severity.INFO,
+                marker,
+                label="Irregular rhythm; atrial fibrillation not excluded",
+                detail="Irregular R-R intervals on the lead-II crop.",
+            )
+        ]
+        candidate.severity = Severity.INFO
+
+        guarded = apply_ekg_waveform_rhythm_conflict_guard(candidate)
+
+        assert len(guarded.findings) == 1
+        assert guarded.findings[0].id == "rhythm1"
+        assert guarded.findings[0].severity is Severity.WARNING
+        assert guarded.findings[0].bboxes == [marker]
+        assert guarded.analysis_trace[-1]["reconciled_finding_id"] == "rhythm1"
+
+    @pytest.mark.parametrize(
+        ("regularity_signal", "labels"),
+        [
+            ("regular", ("ATRIAL FIBRILLATION", "ABNORMAL ECG")),
+            ("irregular", ("NORMAL SINUS RHYTHM", "NORMAL ECG")),
+        ],
+    )
+    def test_requires_both_quantified_irregularity_and_ranked_rhythm_signal(
+        self,
+        regularity_signal: str,
+        labels: tuple[str, ...],
+    ):
+        candidate = self._candidate(
+            regularity_signal=regularity_signal,
+            labels=labels,
+        )
+
+        assert apply_ekg_waveform_rhythm_conflict_guard(candidate) is candidate
 
 
 # ── select_zoom_targets ──────────────────────────────────────────────
@@ -287,6 +699,23 @@ class TestSelectZoomTargets:
     def test_skips_findings_without_bbox(self):
         res = _result([_finding("a", Severity.CRITICAL, None)])
         assert select_zoom_targets(res, max_targets=3) == []
+
+    def test_routes_unlocalized_ekg_temporal_finding_to_lead_ii(self):
+        res = _ekg_row_layout_result(
+            [
+                _finding(
+                    "rhythm",
+                    Severity.CRITICAL,
+                    None,
+                    label="Tachyarrhythmia",
+                )
+            ]
+        )
+
+        targets = select_zoom_targets(res, max_targets=1)
+
+        assert [target.id for target in targets] == ["rhythm"]
+        assert targets[0].bboxes == [RegionRect(0.0, 1 / 12, 1.0, 1 / 12)]
 
     def test_critical_prioritized_over_warning(self):
         box = RegionRect(x=0.1, y=0.1, w=0.1, h=0.1)
@@ -440,6 +869,8 @@ class _HypothesisAwareAnalyzer(_FakeAnalyzer):
         *,
         hypothesis,
         crop_region,
+        probe_id="",
+        crop_lead_regions=None,
     ):
         self.refine_calls.append(
             {
@@ -448,6 +879,8 @@ class _HypothesisAwareAnalyzer(_FakeAnalyzer):
                 "valid_regions": valid_regions,
                 "hypothesis": hypothesis,
                 "crop_region": crop_region,
+                "probe_id": probe_id,
+                "crop_lead_regions": crop_lead_regions,
             }
         )
         return self._refinements.pop(0)
@@ -485,6 +918,19 @@ class _FinalizingAnalyzer(_HypothesisAwareAnalyzer):
         return self._final
 
 
+class _FailingFinalizingAnalyzer(_HypothesisAwareAnalyzer):
+    async def finalize(
+        self,
+        image_base64,
+        modality,
+        valid_regions,
+        *,
+        draft,
+        refinement_trace,
+    ):
+        raise TimeoutError("bounded final turn expired")
+
+
 class _RecordingCropper:
     """Fake cropper: records crop regions, returns a marker string."""
 
@@ -498,8 +944,203 @@ class _RecordingCropper:
         return f"crop::{region.x:.3f},{region.y:.3f}"
 
 
+class _RowEvidenceCropper(_RecordingCropper):
+    def ekg_row_strip_evidence(self, _image_base64: str) -> dict[str, object]:
+        return {
+            "method": "local_black_ink_row_periodicity_v1",
+            "status": "ok",
+            "is_12_row_strip": True,
+            "detected_row_count": 12,
+            "consistent_gap_count": 10,
+        }
+
+
+class _SlowCoarseAnalyzer(_FakeAnalyzer):
+    async def analyze(self, image_base64, modality, valid_regions):
+        await asyncio.sleep(0.03)
+        return await super().analyze(image_base64, modality, valid_regions)
+
+
+def test_final_report_can_revise_clinical_fields_with_locked_geometry() -> None:
+    box = RegionRect(0.2, 0.2, 0.2, 0.2)
+    draft_finding = dataclasses.replace(
+        _finding("f1", Severity.CRITICAL, box, detail="possible acute pattern"),
+        regions=["lead_V2"],
+        source="crop_refine",
+    )
+    draft = _result([draft_finding])
+    final_finding = dataclasses.replace(
+        draft_finding,
+        label="Benign repolarization variant",
+        detail="Concave morphology without convincing reciprocal change.",
+        severity=Severity.INFO,
+        confidence="moderate",
+    )
+    final = _result([final_finding])
+    final.severity = Severity.INFO
+    final.summary = "No convincing acute ischemic pattern."
+
+    result = reconcile_final_report(draft, final)
+
+    assert result.severity is Severity.INFO
+    assert result.findings[0].label == "Benign repolarization variant"
+    assert result.findings[0].bboxes == [box]
+    assert result.findings[0].regions == ["lead_V2"]
+    assert result.findings[0].source == "crop_refine"
+    disposition = result.analysis_trace[-1]
+    assert disposition["status"] == "revised"
+    assert disposition["geometry_locked"] is True
+
+
+def test_final_report_rejects_added_ids_and_moved_geometry() -> None:
+    box = RegionRect(0.2, 0.2, 0.2, 0.2)
+    draft = _result([_finding("f1", Severity.WARNING, box)])
+
+    with pytest.raises(ValueError, match="cannot add findings"):
+        reconcile_final_report(
+            draft,
+            _result([_finding("invented", Severity.WARNING, box)]),
+        )
+
+    with pytest.raises(ValueError, match="cannot change bboxes"):
+        reconcile_final_report(
+            draft,
+            _result(
+                [
+                    _finding(
+                        "f1",
+                        Severity.WARNING,
+                        RegionRect(0.3, 0.2, 0.2, 0.2),
+                    )
+                ]
+            ),
+        )
+
+
+def test_final_report_normalizes_bounded_decimal_rounding_to_draft_geometry() -> None:
+    draft_box = RegionRect(0.123456, 0.234567, 0.2, 0.1)
+    final_box = RegionRect(0.1235, 0.2346, 0.2, 0.1)
+    draft = _result([_finding("f1", Severity.WARNING, draft_box)])
+    final = _result([_finding("f1", Severity.WARNING, final_box)])
+
+    result = reconcile_final_report(draft, final)
+
+    assert result.findings[0].bboxes == [draft_box]
+    disposition = result.analysis_trace[-1]
+    assert disposition["status"] == "retained"
+    assert disposition["max_bbox_coordinate_drift"] == pytest.approx(0.000044)
+    assert disposition["geometry_locked"] is True
+
+
+class _CoarseAwareAnalyzer(_FakeAnalyzer):
+    def __init__(self, results: list[AnalysisResult]) -> None:
+        super().__init__(results)
+        self.coarse_calls = 0
+
+    async def analyze(self, image_base64, modality, valid_regions):
+        raise AssertionError("full analysis should not be used for the coarse turn")
+
+    async def analyze_coarse(self, image_base64, modality, valid_regions):
+        self.coarse_calls += 1
+        self.images.append(image_base64)
+        return self._results.pop(0)
+
+
+class _SlowRefinementAnalyzer(_HypothesisAwareAnalyzer):
+    async def refine(self, *args, **kwargs):
+        await asyncio.sleep(0.03)
+        return await super().refine(*args, **kwargs)
+
+
 @pytest.mark.asyncio
 class TestMultiPassInterpreter:
+    async def test_prefers_compact_coarse_capability_when_available(self):
+        analyzer = _CoarseAwareAnalyzer([_result([])])
+        interp = MultiPassInterpreter(analyzer, _RecordingCropper())
+
+        result = await interp.interpret("img", Modality.CXR, [])
+
+        assert analyzer.coarse_calls == 1
+        assert analyzer.images == ["img"]
+        assert result.severity is Severity.NORMAL
+
+    async def test_initial_response_deadline_is_hard_and_auditable(self):
+        analyzer = _SlowCoarseAnalyzer([_result([])])
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            initial_response_sla_sec=0.01,
+            first_refinement_sla_sec=0.02,
+            total_analysis_sla_sec=0.05,
+            finalization_reserve_sec=0.01,
+            min_followup_budget_sec=0.001,
+        )
+
+        with pytest.raises(AnalysisSlaTimeout) as captured:
+            await interp.interpret("img", Modality.CXR, [])
+
+        assert captured.value.stage == "initial_response"
+        assert captured.value.audit_trace()["status"] == "required_stage_timeout"
+
+    async def test_first_crop_timeout_returns_coarse_result_for_review(self):
+        box = RegionRect(0.2, 0.2, 0.2, 0.2)
+        coarse = _result([_finding("f1", Severity.WARNING, box)])
+        analyzer = _SlowRefinementAnalyzer(
+            coarse,
+            [RefinementResult()],
+        )
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            zoom_retry_attempts=0,
+            initial_response_sla_sec=0.01,
+            first_refinement_sla_sec=0.02,
+            total_analysis_sla_sec=0.06,
+            max_refinement_turn_sec=0.02,
+            finalization_reserve_sec=0.01,
+            min_followup_budget_sec=0.001,
+        )
+
+        result = await interp.interpret("img", Modality.CXR, [])
+
+        receipt = result.analysis_trace[-1]
+        assert receipt["stage"] == "analysis_sla"
+        assert receipt["met"]["initial_response"] is True
+        assert receipt["met"]["first_crop_refinement"] is False
+        assert receipt["met"]["total"] is True
+        assert receipt["timings_ms"]["first_crop_created"] is not None
+        assert result.incomplete is True
+        assert result.review_required is True
+
+    async def test_successful_pass_records_three_sla_receipts(self):
+        box = RegionRect(0.2, 0.2, 0.2, 0.2)
+        coarse = _result([_finding("f1", Severity.WARNING, box)])
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            initial_response_sla_sec=0.02,
+            first_refinement_sla_sec=0.04,
+            total_analysis_sla_sec=0.08,
+            finalization_reserve_sec=0.01,
+            min_followup_budget_sec=0.001,
+        )
+
+        result = await interp.interpret("img", Modality.CXR, [])
+
+        receipt = result.analysis_trace[-1]
+        assert receipt["status"] == "completed"
+        assert receipt["met"] == {
+            "initial_response": True,
+            "first_crop_refinement": True,
+            "total": True,
+        }
+        assert receipt["budgets_sec"] == {
+            "initial_response": 0.02,
+            "first_crop_refinement": 0.04,
+            "total": 0.08,
+        }
+
     async def test_ekg_systematic_probes_can_discover_a_coarse_miss(self):
         coarse = _ekg_row_layout_result([])
         discovered = _finding(
@@ -542,13 +1183,432 @@ class TestMultiPassInterpreter:
         assert len(analyzer.refine_calls) == 2
         assert all(call["hypothesis"] is None for call in analyzer.refine_calls)
         assert cropper.images == ["original-image", "original-image"]
-        assert [region.y for region in cropper.regions] == pytest.approx([0.0, 0.5])
+        assert [region.y for region in cropper.regions] == pytest.approx([0.5, 0.0])
+        assert [call["probe_id"] for call in analyzer.refine_calls] == [
+            "ekg_systematic_precordial_leads",
+            "ekg_systematic_limb_leads",
+        ]
+        assert list(analyzer.refine_calls[0]["crop_lead_regions"]) == [
+            "lead_V1",
+            "lead_V2",
+            "lead_V3",
+            "lead_V4",
+            "lead_V5",
+            "lead_V6",
+        ]
+        assert list(analyzer.refine_calls[1]["crop_lead_regions"]) == [
+            "lead_I",
+            "lead_II",
+            "lead_III",
+            "lead_aVR",
+            "lead_aVL",
+            "lead_aVF",
+        ]
         assert result.severity is Severity.WARNING
         assert [finding.id for finding in result.findings] == ["st_probe"]
         assert any(
-            event.get("stage") == "systematic_assist"
+            event.get("stage") == "systematic_assist" for event in result.analysis_trace
+        )
+
+    async def test_row_layout_is_normalized_before_systematic_crop(self):
+        coarse = _ekg_row_layout_result([])
+        coarse.layout["format"] = "12lead_3x4"
+        for lead in coarse.layout["leads"]:
+            lead["bbox"][2] = 0.25
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        cropper = _RecordingCropper()
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            cropper.__call__,
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert result.layout["format"] == "12lead_12x1"
+        assert cropper.regions == [RegionRect(0.0, 0.5, 1.0, 0.5)]
+        projected_v1 = analyzer.refine_calls[0]["crop_lead_regions"]["lead_V1"]
+        assert (projected_v1.x, projected_v1.y, projected_v1.w) == (0.0, 0.0, 1.0)
+        assert projected_v1.h == pytest.approx(1 / 6)
+        assert any(
+            event.get("status") == "repaired_before_refinement"
             for event in result.analysis_trace
         )
+
+    async def test_image_evidence_repairs_eight_lead_inventory_and_stale_warning(self):
+        coarse = _ekg_row_layout_result([])
+        coarse.layout["format"] = "12lead_3x4"
+        coarse.layout["leads"] = coarse.layout["leads"][:8]
+        for index, lead in enumerate(coarse.layout["leads"]):
+            lead["bbox"] = [0.0, index / 8, 1.0, 1 / 8]
+        coarse.validation_warnings = [
+            "EKG layout is missing visible leads: lead_V3, lead_V4, lead_V5, lead_V6"
+        ]
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        cropper = _RowEvidenceCropper()
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            cropper.__call__,
+            ekg_row_strip_detector=cropper.ekg_row_strip_evidence,
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert result.layout["format"] == "12lead_12x1"
+        assert len(result.layout["leads"]) == 12
+        assert result.validation_warnings == []
+        assert any(
+            event.get("stage") == "layout_signal_check"
+            and event.get("status") == "confirmed_12_row_strip"
+            for event in result.analysis_trace
+        )
+
+    async def test_waveform_rhythm_attention_preempts_generic_probe_budget(self):
+        coarse = _ekg_row_layout_result([])
+        coarse.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [{"label": "ATRIAL FIBRILLATION"}],
+                    }
+                ]
+            }
+        ]
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        cropper = _RecordingCropper()
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            cropper,
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        await interpreter.interpret("img", Modality.EKG, [])
+
+        assert (
+            analyzer.refine_calls[0]["probe_id"]
+            == "ekg_systematic_waveform_rhythm_lead_II"
+        )
+        assert cropper.regions == [RegionRect(0.0, 1 / 12, 1.0, 1 / 12)]
+
+    async def test_overlapping_waveform_probe_falls_back_to_other_lead_group(self):
+        coarse = _ekg_row_layout_result(
+            [
+                _finding(
+                    "rhythm",
+                    Severity.WARNING,
+                    RegionRect(0.1, 0.1, 0.2, 0.04),
+                    label="Premature ventricular complex",
+                )
+            ]
+        )
+        coarse.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [{"label": "PREMATURE VENTRICULAR COMPLEX"}],
+                    }
+                ]
+            }
+        ]
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        await interpreter.interpret("img", Modality.EKG, [])
+
+        assert analyzer.refine_calls[0]["hypothesis"].id == "rhythm"
+        assert (
+            analyzer.refine_calls[1]["probe_id"]
+            == "ekg_systematic_precordial_leads"
+        )
+
+    async def test_identical_waveform_and_generic_probe_regions_are_deduplicated(self):
+        coarse = _ekg_row_layout_result([])
+        coarse.analysis_trace = [
+            {
+                "tool_audit": [
+                    {
+                        "tool": "ecg_founder_analyze_waveform",
+                        "status": "ok",
+                        "predictions": [{"label": "RIGHT BUNDLE BRANCH BLOCK"}],
+                    }
+                ]
+            }
+        ]
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            max_ekg_systematic_probes=2,
+            zoom_padding=0.0,
+        )
+
+        await interpreter.interpret("img", Modality.EKG, [])
+
+        assert [call["probe_id"] for call in analyzer.refine_calls] == [
+            "ekg_systematic_waveform_attention_precordial_leads",
+            "ekg_systematic_limb_leads",
+        ]
+
+    async def test_systematic_probe_verifies_overlapping_untargeted_hypothesis(self):
+        rhythm = _finding(
+            "rhythm",
+            Severity.CRITICAL,
+            None,
+            label="irregular tachycardia",
+            detail="irregular rapid rhythm",
+        )
+        rhythm = dataclasses.replace(rhythm, regions=["rhythm_strip"])
+        st_t = _finding(
+            "st-t",
+            Severity.CRITICAL,
+            None,
+            label="anterior ST-T abnormality",
+            detail="precordial ST-T change",
+        )
+        st_t = dataclasses.replace(
+            st_t,
+            regions=["lead_V2", "lead_V3", "lead_V4", "lead_V5"],
+        )
+        coarse = _ekg_row_layout_result([rhythm, st_t])
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        await interpreter.interpret("img", Modality.EKG, [])
+
+        assert analyzer.refine_calls[0]["hypothesis"].id == "rhythm"
+        assert analyzer.refine_calls[1]["probe_id"].startswith("ekg_systematic_")
+        assert analyzer.refine_calls[1]["hypothesis"].id == "st-t"
+
+    async def test_systematic_probe_survives_complete_crop_overlap(self):
+        coarse = _ekg_row_layout_result(
+            [
+                _finding(
+                    "global",
+                    Severity.WARNING,
+                    RegionRect(0.0, 0.0, 1.0, 1.0),
+                    label="Unresolved global waveform pattern",
+                )
+            ]
+        )
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert len(analyzer.refine_calls) == 2
+        assert analyzer.refine_calls[1]["probe_id"].startswith("ekg_systematic_")
+        assert any(
+            event.get("stage") == "systematic_assist"
+            and event.get("status") == "planned_overlap_fallback"
+            for event in result.analysis_trace
+        )
+
+
+def test_unlocalized_ekg_grounding_guard_preserves_study_triage() -> None:
+    unlocalized = _finding(
+        "urgent",
+        Severity.CRITICAL,
+        None,
+        label="possible acute ST-T pattern",
+    )
+    localized = _finding(
+        "localized",
+        Severity.WARNING,
+        RegionRect(0.2, 0.2, 0.1, 0.08),
+    )
+    result = _ekg_row_layout_result([unlocalized, localized])
+    result.severity = Severity.CRITICAL
+
+    guarded = apply_unlocalized_ekg_grounding_guard(result)
+
+    assert guarded.severity is Severity.CRITICAL
+    assert guarded.findings[0].severity is Severity.INFO
+    assert guarded.findings[0].confidence == "low"
+    assert "native ECG" in guarded.findings[0].question
+    assert guarded.findings[1] == localized
+    assert guarded.incomplete is True
+    assert guarded.review_required is True
+    assert guarded.analysis_trace[-1]["status"] == (
+        "downgraded_unlocalized_actionable_finding"
+    )
+
+
+def test_boxed_info_guard_adds_uncertainty_without_moving_validated_box() -> None:
+    box = RegionRect(0.21, 0.33, 0.14, 0.07)
+    finding = _finding(
+        "uncertain",
+        Severity.INFO,
+        box,
+        label="Possible repolarization change",
+    )
+    result = _ekg_row_layout_result([finding])
+
+    guarded = qualify_boxed_info_findings(result)
+
+    assert guarded.findings[0].confidence == "low"
+    assert "highlighted source-image region" in guarded.findings[0].question
+    assert guarded.findings[0].bboxes == [box]
+    assert guarded.review_required is True
+    assert guarded.analysis_trace[-1]["status"] == "qualified_boxed_info_finding"
+    assert guarded.analysis_trace[-1]["coordinates_moved"] is False
+
+
+def test_boxed_info_guard_leaves_qualified_finding_unchanged() -> None:
+    finding = dataclasses.replace(
+        _finding("qualified", Severity.INFO, RegionRect(0.1, 0.2, 0.1, 0.1)),
+        confidence="moderate",
+    )
+    result = _ekg_row_layout_result([finding])
+
+    assert qualify_boxed_info_findings(result) is result
+
+
+def test_ekg_overlay_guard_removes_broad_box_before_grounding_downgrade() -> None:
+    broad = RegionRect(0.0, 0.08, 1.0, 0.08)
+    result = _ekg_row_layout_result(
+        [_finding("broad", Severity.WARNING, broad, label="Possible ST change")]
+    )
+
+    narrowed = apply_ekg_overlay_bbox_guard(result)
+    guarded = apply_unlocalized_ekg_grounding_guard(narrowed)
+
+    assert guarded.findings[0].bboxes == []
+    assert guarded.findings[0].severity is Severity.INFO
+    assert guarded.severity is Severity.WARNING
+    assert narrowed.analysis_trace[-1]["removed_count"] == 1
+    assert narrowed.analysis_trace[-1]["coordinates_moved"] is False
+
+
+def test_ekg_study_level_duplicate_guard_prefers_lead_ii_without_moving_box() -> None:
+    lead_ii_box = RegionRect(0.1, 0.09, 0.2, 0.04)
+    precordial_box = RegionRect(0.2, 0.7, 0.2, 0.08)
+    lead_ii = dataclasses.replace(
+        _finding("coarse-rate", Severity.INFO, lead_ii_box, label="sinus bradycardia"),
+        regions=["lead_II"],
+        confidence="high",
+    )
+    redundant = dataclasses.replace(
+        _finding(
+            "crop-rate",
+            Severity.INFO,
+            precordial_box,
+            label="Sinus Bradycardia",
+        ),
+        regions=["lead_V4"],
+        confidence="moderate",
+    )
+    result = _ekg_row_layout_result([lead_ii, redundant])
+
+    deduplicated = deduplicate_ekg_study_level_findings(result)
+
+    assert [finding.id for finding in deduplicated.findings] == ["coarse-rate"]
+    assert deduplicated.findings[0].bboxes == [lead_ii_box]
+    event = deduplicated.analysis_trace[-1]
+    assert event["status"] == "retracted_exact_study_level_duplicate"
+    assert event["retained_finding_id"] == "coarse-rate"
+    assert event["retracted_finding_id"] == "crop-rate"
+    assert event["coordinates_moved"] is False
+
+
+def test_ekg_duplicate_guard_does_not_collapse_local_morphology_findings() -> None:
+    first = _finding(
+        "v2-change",
+        Severity.WARNING,
+        RegionRect(0.1, 0.5, 0.1, 0.05),
+        label="ST elevation",
+    )
+    second = _finding(
+        "v5-change",
+        Severity.WARNING,
+        RegionRect(0.6, 0.8, 0.1, 0.05),
+        label="ST elevation",
+    )
+    result = _ekg_row_layout_result([first, second])
+
+    assert deduplicate_ekg_study_level_findings(result) is result
+
+
+def test_unavailable_rhythm_strip_region_uses_bbox_center_lead_without_moving_box() -> None:
+    box = RegionRect(0.1, 0.09, 0.2, 0.04)
+    finding = _finding(
+        "rhythm",
+        Severity.CRITICAL,
+        box,
+        label="Irregular tachyarrhythmia",
+    )
+    finding = dataclasses.replace(finding, regions=["rhythm_strip"])
+    result = _ekg_row_layout_result([finding])
+    result.layout["rhythm_strip_bbox"] = None
+
+    reconciled = reconcile_unavailable_ekg_rhythm_regions(result)
+
+    assert reconciled.findings[0].regions == ["lead_II"]
+    assert reconciled.findings[0].bboxes == [box]
+    assert reconciled.findings[0].confidence == "low"
+    assert reconciled.review_required is True
+    assert reconciled.analysis_trace[-1]["status"] == (
+        "replaced_unavailable_rhythm_strip"
+    )
+    assert reconciled.analysis_trace[-1]["coordinates_moved"] is False
+
+
+def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
+    finding = dataclasses.replace(
+        _finding("rhythm", Severity.INFO, None, label="Possible rhythm change"),
+        regions=["rhythm_strip"],
+    )
+    result = _ekg_row_layout_result([finding])
+    result.layout["rhythm_strip_bbox"] = None
+
+    reconciled = reconcile_unavailable_ekg_rhythm_regions(result)
+
+    assert reconciled.findings[0].regions == []
+    assert reconciled.findings[0].bboxes == []
+    assert reconciled.analysis_trace[-1]["status"] == (
+        "removed_unlocalized_rhythm_strip"
+    )
 
     async def test_ekg_budget_keeps_one_hypothesis_and_two_discovery_probes(self):
         coarse = _ekg_row_layout_result(
@@ -583,7 +1643,7 @@ class TestMultiPassInterpreter:
         assert analyzer.refine_calls[1]["hypothesis"] is None
         assert analyzer.refine_calls[2]["hypothesis"] is None
 
-    async def test_final_report_turn_uses_source_image_and_cannot_replace_boxes(self):
+    async def test_invalid_final_addition_falls_back_to_grounded_draft(self):
         coarse_box = RegionRect(0.2, 0.2, 0.2, 0.2)
         refined_local_box = RegionRect(0.25, 0.25, 0.2, 0.2)
         coarse = _result([_finding("f1", Severity.WARNING, coarse_box)])
@@ -632,18 +1692,26 @@ class TestMultiPassInterpreter:
             source_size_px=(1000, 1000),
         )
 
-        assert result.summary == "Reconciled final narrative."
+        assert result.summary == "test"
         assert result.severity is Severity.WARNING
         assert [finding.id for finding in result.findings] == ["f1"]
         assert result.findings[0].detail == "confirmed on crop"
         assert result.findings[0].bboxes != [RegionRect(0.8, 0.8, 0.1, 0.1)]
         assert result.layout == {"format": "partial"}
+        assert result.review_required is True
         assert analyzer.finalize_calls[0]["image"] == "original-image"
         assert analyzer.finalize_calls[0]["refinement_trace"]
-        assert result.analysis_trace[-1]["stage"] == "finalize"
-        assert result.analysis_trace[-1]["status"] == "completed"
+        finalize_event = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "finalize"
+        )
+        assert finalize_event["status"] == "failed"
+        assert finalize_event["error_type"] == "ValueError"
+        assert "cannot add findings" in finalize_event["error"]
+        assert result.analysis_trace[-1]["stage"] == "analysis_sla"
 
-    async def test_negative_refinement_still_runs_final_report_reconciliation(self):
+    async def test_empty_refinement_still_runs_final_report_turn(self):
         coarse = _result(
             [
                 _finding(
@@ -671,10 +1739,81 @@ class TestMultiPassInterpreter:
         )
 
         assert len(analyzer.finalize_calls) == 1
-        assert analyzer.finalize_calls[0]["refinement_trace"]
         assert result.summary == "Regional review found no additional finding."
-        assert [finding.id for finding in result.findings] == ["f1"]
-        assert result.analysis_trace[-1]["stage"] == "finalize"
+        assert result.severity is Severity.NORMAL
+        assert result.findings == []
+        assert any(event.get("stage") == "refine" for event in result.analysis_trace)
+        disposition = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "final_disposition"
+        )
+        assert disposition["status"] == "retracted"
+        finalize_event = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "finalize"
+        )
+        assert finalize_event["status"] == "completed"
+        assert finalize_event["retracted_count"] == 1
+        assert result.analysis_trace[-1]["stage"] == "analysis_sla"
+
+    async def test_no_crop_target_still_runs_final_report_turn(self):
+        coarse = _result([])
+        final = _result([])
+        final.summary = "Normal study after complete review."
+        final.checklist = {
+            "x": ChecklistItem(value="normal", status=Severity.NORMAL)
+        }
+        analyzer = _FinalizingAnalyzer(coarse, [], final)
+        interpreter = MultiPassInterpreter(
+            analyzer=analyzer,
+            cropper=_RecordingCropper(),
+            max_zoom_targets=0,
+        )
+
+        result = await interpreter.interpret("image", Modality.CXR, [])
+
+        assert len(analyzer.finalize_calls) == 1
+        assert analyzer.finalize_calls[0]["refinement_trace"] == []
+        assert result.summary == "Normal study after complete review."
+        assert result.checklist["x"].value == "normal"
+        sla = result.analysis_trace[-1]
+        assert sla["stage"] == "analysis_sla"
+        assert sla["first_crop_applicable"] is False
+
+    async def test_failed_final_turn_has_retry_budget_and_explicit_unknown_checklist(self):
+        coarse = _ekg_row_layout_result([])
+        analyzer = _FailingFinalizingAnalyzer(coarse, [])
+        interpreter = MultiPassInterpreter(
+            analyzer=analyzer,
+            cropper=_RecordingCropper(),
+            max_zoom_targets=0,
+            max_ekg_systematic_probes=0,
+        )
+
+        result = await interpreter.interpret("image", Modality.EKG, [])
+
+        assert len(result.checklist) == 16
+        assert result.checklist["rhythm"].value == "sinus"
+        assert result.checklist["stemi_pattern"].status is Severity.INFO
+        assert "Not assessed" in result.checklist["stemi_pattern"].value
+        assert result.incomplete is True
+        assert result.review_required is True
+        finalize_event = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "finalize"
+        )
+        assert finalize_event["status"] == "failed"
+        assert finalize_event["turn_budget_ms"] >= 75_000
+        fallback_event = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "checklist_fallback"
+        )
+        assert fallback_event["clinical_status_inferred"] is False
+        assert fallback_event["diagnosis_forced"] is False
 
     async def test_refinement_crop_uses_original_source_not_coarse_downscale(self):
         box = RegionRect(x=0.2, y=0.2, w=0.4, h=0.4)
@@ -707,7 +1846,12 @@ class TestMultiPassInterpreter:
 
         assert analyzer.images == ["coarse-downscale"]
         assert cropper.images == ["original-roi"]
-        assert result.analysis_trace[-1]["crop_source"] == "original_roi"
+        refine_event = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "refine" and event.get("status") == "completed"
+        )
+        assert refine_event["crop_source"] == "original_roi"
 
     async def test_no_abnormal_findings_skips_zoom(self):
         coarse = _result([])
@@ -909,6 +2053,54 @@ class TestMultiPassInterpreter:
 
         assert out.findings == []
         assert out.severity is Severity.NORMAL
+
+    async def test_partial_crop_cannot_retract_disjoint_coarse_evidence(self):
+        finding = Finding(
+            id="multi-site",
+            regions=[],
+            label="Two-site signal anomaly",
+            detail="Separate visible candidates require independent review",
+            severity=Severity.WARNING,
+            bboxes=[
+                RegionRect(0.05, 0.05, 0.20, 0.10),
+                RegionRect(0.70, 0.78, 0.10, 0.08),
+            ],
+        )
+        coarse = _ekg_row_layout_result([finding])
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [
+                RefinementResult(
+                    (
+                        RefinementDelta(
+                            RefinementAction.RETRACT,
+                            target_id="multi-site",
+                            rationale="the selected local crop is normal",
+                        ),
+                    )
+                )
+            ],
+        )
+        cropper = _RecordingCropper()
+        interp = MultiPassInterpreter(
+            analyzer,
+            cropper,
+            zoom_padding=0.0,
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+        )
+
+        out = await interp.interpret("img", Modality.EKG, [])
+
+        assert [item.id for item in out.findings] == ["multi-site"]
+        assert cropper.regions == [finding.bboxes[0]]
+        guard = next(
+            event
+            for event in out.analysis_trace
+            if event.get("status") == "partial_crop_retraction_blocked"
+        )
+        assert guard["tool"] == "crop_coverage_guard"
+        assert guard["uncovered_bbox_count"] == 1
 
     async def test_delta_cannot_revise_a_different_coarse_finding(self):
         box = RegionRect(x=0.3, y=0.3, w=0.3, h=0.3)
@@ -1120,6 +2312,55 @@ class TestMultiPassInterpreter:
         assert analyzer.refine_calls[0]["hypothesis"] is None
         assert out.severity is Severity.WARNING
         assert out.findings[0].bboxes[0] == RegionRect(0.175, 0.175, 0.15, 0.15)
+
+    async def test_unresolved_discovery_is_kept_for_review_without_warning(self):
+        coarse = _result([])
+        discovered = Finding(
+            id="possible-lvh",
+            regions=["lead_V1"],
+            label="Possible LVH voltage pattern",
+            detail="Voltage appears high but secondary change is not confirmed.",
+            severity=Severity.WARNING,
+            confidence="moderate",
+            question="Can a reviewer confirm calibrated voltage criteria?",
+            bboxes=[RegionRect(0.25, 0.25, 0.5, 0.5)],
+        )
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [
+                RefinementResult(
+                    (
+                        RefinementDelta(
+                            RefinementAction.ADD,
+                            finding=discovered,
+                            rationale="unresolved discovery-only crop",
+                        ),
+                    )
+                )
+            ],
+        )
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            zoom_padding=0.0,
+            max_normal_safety_probes=1,
+        )
+
+        out = await interp.interpret(
+            "img",
+            Modality.CXR,
+            ["lead_V1"],
+            local_candidate_regions=[RegionRect(0.1, 0.1, 0.3, 0.3)],
+        )
+
+        assert out.severity is Severity.INFO
+        assert out.findings[0].severity is Severity.INFO
+        assert out.findings[0].confidence == "low"
+        assert any(
+            event.get("stage") == "refinement_guardrail"
+            and event.get("status") == "downgraded_unresolved_discovery"
+            for event in out.analysis_trace
+        )
 
     async def test_full_frame_local_candidate_is_not_a_safety_probe(self):
         coarse = _result([])

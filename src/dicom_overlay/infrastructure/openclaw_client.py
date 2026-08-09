@@ -13,7 +13,7 @@ import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from json import JSONDecodeError
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 from dicom_overlay.application.interpretation_harness import (
+    build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
 )
@@ -74,6 +75,10 @@ class BboxEvidenceError(ValueError):
     """A boxed result lacks a receipt bound to this image and model turn."""
 
 
+class ModelResponseParseError(ValueError):
+    """A completed model turn did not contain a parseable output contract."""
+
+
 @dataclass
 class _WaveformArtifactBinding:
     artifact_id: str
@@ -81,6 +86,7 @@ class _WaveformArtifactBinding:
     evidence_nonce: str
     audit_offset: int
     receipts: list[dict[str, object]] = field(default_factory=list)
+    duplicate_attempts: list[dict[str, object]] = field(default_factory=list)
     tool_call_ids: set[str] = field(default_factory=set)
 
 
@@ -112,11 +118,14 @@ class OpenClawClient(VisionAnalyzerService):
         base_dir: Path | None = None,
         analysis_prompt_profile: str = "clinical",
         require_bound_bbox_receipts: bool = True,
+        fast_mode: bool = False,
     ) -> None:
         if analysis_prompt_profile not in _ANALYSIS_PROMPT_PROFILES:
             raise ValueError(
                 "analysis_prompt_profile must be clinical or minimal_control"
             )
+        if not isinstance(fast_mode, bool):
+            raise ValueError("fast_mode must be a boolean")
         self._url = gateway_url
         self._timeout = timeout_sec
         # Split timeouts: handshake is fast, inference can be slow on big images.
@@ -127,6 +136,7 @@ class OpenClawClient(VisionAnalyzerService):
         self._base_dir = (base_dir or Path.cwd()).resolve()
         self._analysis_prompt_profile = analysis_prompt_profile
         self._require_bbox_receipts = bool(require_bound_bbox_receipts)
+        self._fast_mode = fast_mode
         self._ws: Any = None
         self._connected = False
         self._request_counter = 0
@@ -142,6 +152,9 @@ class OpenClawClient(VisionAnalyzerService):
         self._last_session_key = ""
         self._last_run_tools: list[str] = []
         self._last_parse_retry_count = 0
+        self._last_run_started_at = 0.0
+        self._last_run_elapsed_ms = 0
+        self._last_run_aborted = False
         self._bbox_evidence_nonce = ""
         self._bbox_source_image_sha256 = ""
         self._tool_audit_path = _resolve_bbox_tool_audit_path(self._base_dir)
@@ -203,6 +216,20 @@ class OpenClawClient(VisionAnalyzerService):
         self._refresh_waveform_binding(binding)
         return [dict(receipt) for receipt in binding.receipts]
 
+    def waveform_duplicate_attempts(
+        self,
+        evidence_nonce: str,
+    ) -> list[dict[str, object]]:
+        """Return suppressed duplicate waveform-tool attempts for audit only."""
+
+        binding = self._waveform_artifact_context.get()
+        if binding is None or binding.evidence_nonce != evidence_nonce:
+            binding = self._last_waveform_binding
+        if binding is None or binding.evidence_nonce != evidence_nonce:
+            return []
+        self._refresh_waveform_binding(binding)
+        return [dict(attempt) for attempt in binding.duplicate_attempts]
+
     async def connect(self) -> None:
         try:
             self._ws = await asyncio.wait_for(
@@ -234,6 +261,12 @@ class OpenClawClient(VisionAnalyzerService):
 
     def is_connected(self) -> bool:
         return self._connected and self._ws is not None
+
+    def set_fast_mode(self, enabled: bool) -> None:
+        """Apply the explicit per-turn OpenClaw fast-mode request."""
+        if not isinstance(enabled, bool):
+            raise ValueError("fast_mode must be a boolean")
+        self._fast_mode = enabled
 
     async def analyze(
         self,
@@ -273,6 +306,44 @@ class OpenClawClient(VisionAnalyzerService):
                     self._connected = False
                     raise ConnectionError(f"Reconnect failed: {exc}") from None
 
+    async def analyze_coarse(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        """Run the compact first-look contract used by MultiPassInterpreter."""
+        async with self._ws_lock:
+            try:
+                return await self._analyze_coarse_with_parse_retry(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                )
+            except (
+                websockets.ConnectionClosed,
+                websockets.exceptions.ConcurrencyError,
+            ):
+                logger.warning("Connection lost during coarse read, reconnecting...")
+                self._connected = False
+                try:
+                    await self.connect()
+                    return await self._analyze_coarse_with_parse_retry(
+                        image_base64,
+                        modality,
+                        valid_regions,
+                    )
+                except websockets.ConnectionClosed:
+                    self._connected = False
+                    raise ConnectionError(
+                        "Gateway connection lost after reconnect"
+                    ) from None
+                except ConnectionError:
+                    raise
+                except Exception as exc:
+                    self._connected = False
+                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+
     async def refine(
         self,
         image_base64: str,
@@ -281,6 +352,8 @@ class OpenClawClient(VisionAnalyzerService):
         *,
         hypothesis: Finding | None,
         crop_region: RegionRect,
+        probe_id: str = "",
+        crop_lead_regions: dict[str, RegionRect] | None = None,
     ) -> RefinementResult:
         """Re-read one crop while explicitly testing the coarse hypothesis."""
         async with self._ws_lock:
@@ -291,6 +364,8 @@ class OpenClawClient(VisionAnalyzerService):
                     valid_regions,
                     hypothesis=hypothesis,
                     crop_region=crop_region,
+                    probe_id=probe_id,
+                    crop_lead_regions=crop_lead_regions,
                 )
             except (
                 websockets.ConnectionClosed,
@@ -306,6 +381,8 @@ class OpenClawClient(VisionAnalyzerService):
                         valid_regions,
                         hypothesis=hypothesis,
                         crop_region=crop_region,
+                        probe_id=probe_id,
+                        crop_lead_regions=crop_lead_regions,
                     )
                 except websockets.ConnectionClosed:
                     self._connected = False
@@ -382,6 +459,35 @@ class OpenClawClient(VisionAnalyzerService):
             return result
         raise AssertionError("unreachable")
 
+    async def _analyze_coarse_with_parse_retry(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        for attempt in range(2):
+            try:
+                result = await self._do_coarse_analyze(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                )
+            except (
+                json.JSONDecodeError,
+                BboxEvidenceError,
+                ModelResponseParseError,
+            ):
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                logger.warning(
+                    "Malformed coarse triage JSON; retrying once with a new turn"
+                )
+                continue
+            self._last_parse_retry_count = attempt
+            return result
+        raise AssertionError("unreachable")
+
     async def _refine_with_parse_retry(
         self,
         image_base64: str,
@@ -390,6 +496,8 @@ class OpenClawClient(VisionAnalyzerService):
         *,
         hypothesis: Finding | None,
         crop_region: RegionRect,
+        probe_id: str = "",
+        crop_lead_regions: dict[str, RegionRect] | None = None,
     ) -> RefinementResult:
         for attempt in range(2):
             try:
@@ -399,8 +507,14 @@ class OpenClawClient(VisionAnalyzerService):
                     valid_regions,
                     hypothesis=hypothesis,
                     crop_region=crop_region,
+                    probe_id=probe_id,
+                    crop_lead_regions=crop_lead_regions,
                 )
-            except (json.JSONDecodeError, BboxEvidenceError):
+            except (
+                json.JSONDecodeError,
+                BboxEvidenceError,
+                ModelResponseParseError,
+            ):
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
@@ -430,7 +544,11 @@ class OpenClawClient(VisionAnalyzerService):
                     draft=draft,
                     refinement_trace=refinement_trace,
                 )
-            except (json.JSONDecodeError, BboxEvidenceError):
+            except (
+                json.JSONDecodeError,
+                BboxEvidenceError,
+                ModelResponseParseError,
+            ):
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
@@ -446,6 +564,34 @@ class OpenClawClient(VisionAnalyzerService):
         modality: Modality,
         valid_regions: list[str],
     ) -> AnalysisResult:
+        return await self._do_analysis_turn(
+            image_base64,
+            modality,
+            valid_regions,
+            coarse_triage=False,
+        )
+
+    async def _do_coarse_analyze(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> AnalysisResult:
+        return await self._do_analysis_turn(
+            image_base64,
+            modality,
+            valid_regions,
+            coarse_triage=True,
+        )
+
+    async def _do_analysis_turn(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+        *,
+        coarse_triage: bool,
+    ) -> AnalysisResult:
         if not self.is_connected():
             raise ConnectionError("Not connected to OpenClaw Gateway")
 
@@ -455,21 +601,34 @@ class OpenClawClient(VisionAnalyzerService):
         waveform_context = self._waveform_artifact_context.get()
         bbox_evidence_nonce = uuid4().hex
         source_image_sha256 = _image_sha256(image_base64)
-        prompt = _build_analysis_prompt(
-            modality,
-            valid_regions,
-            skill,
-            base_dir=self._base_dir,
-            waveform_artifact_id=(
+        prompt_args = {
+            "waveform_artifact_id": (
                 waveform_context.artifact_id if waveform_context else ""
             ),
-            waveform_lead_mode=(waveform_context.lead_mode if waveform_context else ""),
-            waveform_evidence_nonce=(
+            "waveform_lead_mode": (
+                waveform_context.lead_mode if waveform_context else ""
+            ),
+            "waveform_evidence_nonce": (
                 waveform_context.evidence_nonce if waveform_context else ""
             ),
-            bbox_source_image_sha256=source_image_sha256,
-            bbox_evidence_nonce=bbox_evidence_nonce,
-            prompt_profile=self._analysis_prompt_profile,
+            "bbox_source_image_sha256": source_image_sha256,
+            "bbox_evidence_nonce": bbox_evidence_nonce,
+        }
+        prompt = (
+            build_coarse_analysis_prompt(
+                modality=modality,
+                valid_regions=valid_regions,
+                **prompt_args,
+            )
+            if coarse_triage and self._analysis_prompt_profile == "clinical"
+            else _build_analysis_prompt(
+                modality,
+                valid_regions,
+                skill,
+                base_dir=self._base_dir,
+                prompt_profile=self._analysis_prompt_profile,
+                **prompt_args,
+            )
         )
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
@@ -486,6 +645,7 @@ class OpenClawClient(VisionAnalyzerService):
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
+            fast_mode=self._fast_mode,
         )
 
         start = time.monotonic()
@@ -501,6 +661,8 @@ class OpenClawClient(VisionAnalyzerService):
         response = await self._wait_for_chat_result(request_id)
         elapsed_ms = int((time.monotonic() - start) * 1000)
         result = self._parse_result(response, elapsed_ms, modality)
+        if coarse_triage:
+            self._retract_tool_rejected_coarse_boxes(result)
         self._require_bound_bbox_receipt(result)
         return result
 
@@ -512,6 +674,8 @@ class OpenClawClient(VisionAnalyzerService):
         *,
         hypothesis: Finding | None,
         crop_region: RegionRect,
+        probe_id: str = "",
+        crop_lead_regions: dict[str, RegionRect] | None = None,
     ) -> RefinementResult:
         if not self.is_connected():
             raise ConnectionError("Not connected to OpenClaw Gateway")
@@ -534,6 +698,13 @@ class OpenClawClient(VisionAnalyzerService):
             valid_regions=valid_regions,
             hypothesis=hypothesis,
             crop_region=crop_region,
+            probe_id=probe_id,
+            crop_lead_regions=crop_lead_regions,
+            supporting_waveform_evidence=(
+                self._supporting_waveform_evidence()
+                if modality is Modality.EKG
+                else None
+            ),
             bbox_source_image_sha256=source_image_sha256,
             bbox_evidence_nonce=bbox_evidence_nonce,
         )
@@ -543,6 +714,7 @@ class OpenClawClient(VisionAnalyzerService):
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
+            fast_mode=self._fast_mode,
         )
         await self._ws.send(json.dumps(frame))
         response = await self._wait_for_chat_result(request_id)
@@ -589,6 +761,7 @@ class OpenClawClient(VisionAnalyzerService):
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
+            fast_mode=self._fast_mode,
         )
         start = time.monotonic()
         await self._ws.send(json.dumps(frame))
@@ -609,6 +782,9 @@ class OpenClawClient(VisionAnalyzerService):
         self._last_run_id = ""
         self._last_run_tools = []
         self._last_parse_retry_count = 0
+        self._last_run_started_at = time.monotonic()
+        self._last_run_elapsed_ms = 0
+        self._last_run_aborted = False
         self._bbox_evidence_nonce = bbox_evidence_nonce
         self._bbox_source_image_sha256 = source_image_sha256
         self._tool_audit_offset = _file_size(self._tool_audit_path)
@@ -637,7 +813,21 @@ class OpenClawClient(VisionAnalyzerService):
                 ),
             },
             "parse_retry_count": self._last_parse_retry_count,
+            "turn_elapsed_ms": self._current_run_elapsed_ms(),
+            "turn_timeout_sec": self._inference_timeout,
+            "turn_aborted": self._last_run_aborted,
+            "fast_mode_requested": self._fast_mode,
+            # Fast mode is a Gateway execution request. A provider service tier
+            # is a separate transport fact and must come from a transport log.
+            "priority_service_observed": None,
         }
+
+    def _current_run_elapsed_ms(self) -> int:
+        if self._last_run_elapsed_ms > 0:
+            return self._last_run_elapsed_ms
+        if self._last_run_started_at <= 0.0:
+            return 0
+        return int((time.monotonic() - self._last_run_started_at) * 1000)
 
     def _require_bound_bbox_receipt(
         self,
@@ -668,6 +858,56 @@ class OpenClawClient(VisionAnalyzerService):
                 "dicom_bbox_validate receipt"
             )
 
+    def _retract_tool_rejected_coarse_boxes(self, result: AnalysisResult) -> None:
+        """Keep triage hypotheses but remove a fully rejected bbox proposal."""
+
+        boxes = _result_bbox_coordinates(result)
+        if not boxes:
+            return
+        self._refresh_tool_audit()
+        receipts = [
+            record
+            for record in self._last_tool_audit_records
+            if record.get("tool") == "dicom_bbox_validate"
+        ]
+        if len(receipts) != 1:
+            return
+        receipt = receipts[0]
+        if receipt.get("accepted_count") != 0 or not (
+            isinstance(receipt.get("rejected_count"), int)
+            and int(receipt["rejected_count"]) > 0
+        ):
+            return
+
+        result.findings = [
+            replace(finding, bboxes=[]) if finding.bboxes else finding
+            for finding in result.findings
+        ]
+        result.incomplete = True
+        incomplete_reason = (
+            "Preliminary bbox validator rejected all candidate coordinates; "
+            "findings remain unlocalized pending crop refinement."
+        )
+        if incomplete_reason not in result.incomplete_reasons:
+            result.incomplete_reasons.append(incomplete_reason)
+        result.review_required = True
+        review_reason = (
+            "All preliminary bbox coordinates were rejected by the bound validator."
+        )
+        if review_reason not in result.review_reasons:
+            result.review_reasons.append(review_reason)
+        result.analysis_trace.append(
+            {
+                "stage": "bbox_receipt_reconciliation",
+                "status": "retracted_rejected_coarse_boxes",
+                "tool": "dicom_bbox_validate",
+                "tool_call_id": str(receipt.get("tool_call_id") or ""),
+                "accepted_count": 0,
+                "rejected_count": int(receipt["rejected_count"]),
+                "retracted_count": len(boxes),
+            }
+        )
+
     def _refresh_tool_audit(self) -> None:
         """Read native-plugin evidence appended since this model turn began."""
         self._tool_audit_offset, bbox_records = _read_new_tool_audit_records(
@@ -679,8 +919,7 @@ class OpenClawClient(VisionAnalyzerService):
             record
             for record in bbox_records
             if record.get("evidence_nonce") == self._bbox_evidence_nonce
-            and record.get("source_image_sha256")
-            == self._bbox_source_image_sha256
+            and record.get("source_image_sha256") == self._bbox_source_image_sha256
         ]
         binding = self._waveform_artifact_context.get()
         if binding is not None:
@@ -718,9 +957,63 @@ class OpenClawClient(VisionAnalyzerService):
                 continue
             binding.tool_call_ids.add(tool_call_id)
             copied = dict(record)
-            binding.receipts.append(copied)
+            if record.get("status") == "duplicate_suppressed":
+                binding.duplicate_attempts.append(copied)
+            else:
+                binding.receipts.append(copied)
             new_records.append(copied)
         return new_records
+
+    def _supporting_waveform_evidence(self) -> dict[str, object] | None:
+        """Return bounded, PHI-free evidence for later image verification turns."""
+
+        binding = self._waveform_artifact_context.get()
+        if binding is None:
+            return None
+        self._refresh_waveform_binding(binding)
+        successful = [
+            receipt
+            for receipt in binding.receipts
+            if receipt.get("status") == "ok"
+            and receipt.get("evidence_nonce") == binding.evidence_nonce
+        ]
+        if len(successful) != 1:
+            return None
+        receipt = successful[0]
+        predictions = []
+        raw_predictions = receipt.get("predictions")
+        if isinstance(raw_predictions, list):
+            for item in raw_predictions[:10]:
+                if not isinstance(item, dict):
+                    continue
+                label = item.get("label")
+                probability = item.get("probability")
+                if not isinstance(label, str) or not isinstance(
+                    probability, (int, float)
+                ):
+                    continue
+                predictions.append(
+                    {
+                        "label": label,
+                        "uncalibrated_score": round(float(probability), 6),
+                    }
+                )
+        if not predictions:
+            return None
+        evidence: dict[str, object] = {
+            "status": "ok",
+            "use_policy": "supporting_evidence_only",
+            "calibration_status": str(
+                receipt.get("calibration_status") or "uncalibrated"
+            ),
+            "model_id": str(receipt.get("model_id") or ""),
+            "model_revision": str(receipt.get("model_revision") or ""),
+            "predictions": predictions,
+        }
+        rhythm_measurement = _supporting_rhythm_measurement(receipt)
+        if rhythm_measurement is not None:
+            evidence["rhythm_measurement"] = rhythm_measurement
+        return evidence
 
     async def chat(self, message: str) -> str:
         """Send a free-text question with auto-reconnect on connection loss."""
@@ -860,6 +1153,7 @@ class OpenClawClient(VisionAnalyzerService):
             session_key=session_key,
             message=message,
             idempotency_key=idempotency_key,
+            fast_mode=self._fast_mode,
         )
 
         await self._ws.send(json.dumps(frame))
@@ -889,6 +1183,7 @@ class OpenClawClient(VisionAnalyzerService):
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
+            fast_mode=self._fast_mode,
         )
 
         await self._ws.send(json.dumps(frame))
@@ -899,15 +1194,23 @@ class OpenClawClient(VisionAnalyzerService):
         assert self._ws is not None
 
         run_id: str | None = None
+        deadline = time.monotonic() + self._inference_timeout
         while True:
             try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    raise TimeoutError
                 raw = await asyncio.wait_for(
-                    self._ws.recv(), timeout=self._inference_timeout
+                    self._ws.recv(), timeout=remaining
                 )
             except TimeoutError:
+                await self._abort_chat_run(run_id)
                 raise TimeoutError(
                     f"Chat timeout after {self._inference_timeout}s"
                 ) from None
+            except asyncio.CancelledError:
+                self._schedule_chat_abort(run_id)
+                raise
             except websockets.ConnectionClosed as exc:
                 self._connected = False
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
@@ -931,6 +1234,7 @@ class OpenClawClient(VisionAnalyzerService):
                 # Direct text result in res frame
                 result = payload.get("result")
                 if isinstance(result, dict):
+                    self._last_run_elapsed_ms = self._current_run_elapsed_ms()
                     return _extract_text_from_payload(result)
                 if payload.get("status") == "error":
                     raise RuntimeError(payload.get("summary", "Chat request failed"))
@@ -948,6 +1252,7 @@ class OpenClawClient(VisionAnalyzerService):
                 if state == "error":
                     raise RuntimeError(payload.get("errorMessage", "Chat event error"))
                 if state == "final":
+                    self._last_run_elapsed_ms = self._current_run_elapsed_ms()
                     return _extract_text_from_event(payload)
 
     async def _handshake(self) -> None:
@@ -999,13 +1304,18 @@ class OpenClawClient(VisionAnalyzerService):
         assert self._ws is not None
 
         run_id: str | None = None
+        deadline = time.monotonic() + self._inference_timeout
         logger.debug("Waiting for chat result, request_id=%s", request_id)
         while True:
             try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    raise TimeoutError
                 raw = await asyncio.wait_for(
-                    self._ws.recv(), timeout=self._inference_timeout
+                    self._ws.recv(), timeout=remaining
                 )
             except TimeoutError:
+                await self._abort_chat_run(run_id)
                 logger.error(
                     "OpenClaw analysis timed out after %ds (request_id=%s, run_id=%s)",
                     self._inference_timeout,
@@ -1015,6 +1325,9 @@ class OpenClawClient(VisionAnalyzerService):
                 raise TimeoutError(
                     f"Analysis timeout after {self._inference_timeout}s"
                 ) from None
+            except asyncio.CancelledError:
+                self._schedule_chat_abort(run_id)
+                raise
             except websockets.ConnectionClosed as exc:
                 self._connected = False
                 raise ConnectionError(f"Gateway connection closed: {exc}") from exc
@@ -1049,6 +1362,7 @@ class OpenClawClient(VisionAnalyzerService):
 
                 result = payload.get("result")
                 if isinstance(result, dict):
+                    self._last_run_elapsed_ms = self._current_run_elapsed_ms()
                     return _coerce_result_payload(result)
 
                 if status == "error":
@@ -1075,7 +1389,47 @@ class OpenClawClient(VisionAnalyzerService):
                         payload.get("errorMessage", "OpenClaw chat event error")
                     )
                 if state == "final":
+                    self._last_run_elapsed_ms = self._current_run_elapsed_ms()
                     return _payload_from_chat_event(payload)
+
+    async def _abort_chat_run(self, run_id: str | None) -> None:
+        """Ask Gateway to stop a timed-out turn without invoking another runtime."""
+        if self._ws is None or not self._last_session_key:
+            return
+        self._last_run_aborted = True
+        self._last_run_elapsed_ms = self._current_run_elapsed_ms()
+        params: dict[str, object] = {"sessionKey": self._last_session_key}
+        if run_id:
+            params["runId"] = run_id
+        frame = {
+            "type": "req",
+            "id": self._next_request_id("abort"),
+            "method": "chat.abort",
+            "params": params,
+        }
+        try:
+            await asyncio.wait_for(self._ws.send(json.dumps(frame)), timeout=2.0)
+        except Exception:
+            logger.warning(
+                "Could not send OpenClaw chat.abort",
+                session_key=self._last_session_key,
+                run_id=run_id or "",
+            )
+
+    def _schedule_chat_abort(self, run_id: str | None) -> None:
+        """Schedule cancellation cleanup when an outer stage timeout cancels us."""
+        try:
+            task = asyncio.create_task(self._abort_chat_run(run_id))
+        except RuntimeError:
+            return
+
+        def consume_result(done: asyncio.Task[None]) -> None:
+            try:
+                done.result()
+            except (asyncio.CancelledError, Exception):
+                return
+
+        task.add_done_callback(consume_result)
 
     def _record_tool_events(self, frame: object) -> None:
         for tool_name in _extract_tool_names(frame):
@@ -1096,6 +1450,25 @@ class OpenClawClient(VisionAnalyzerService):
 
         findings = []
         parse_warnings: list[str] = []
+        parse_trace: list[dict[str, object]] = []
+        repair_count = payload.get("_harness_json_repair_count", 0)
+        if (
+            isinstance(repair_count, int)
+            and not isinstance(repair_count, bool)
+            and repair_count > 0
+        ):
+            # The recovery routine only inserts an unambiguous missing closer;
+            # it never changes a clinical value. Keep this visible as transport
+            # audit evidence without classifying a recovered result as a
+            # clinical/schema degradation.
+            parse_trace.append(
+                {
+                    "stage": "json_recovery",
+                    "status": "repaired",
+                    "tool": "bounded_json_delimiter_repair",
+                    "repair_count": repair_count,
+                }
+            )
         for f in payload.get("findings", []):
             # The LLM occasionally emits a bare string/number for a finding
             # instead of an object; skip anything we cannot treat as a dict.
@@ -1222,12 +1595,16 @@ class OpenClawClient(VisionAnalyzerService):
             review_required=_coerce_bool(payload.get("review_required", False)),
             review_reasons=_coerce_string_list(payload.get("review_reasons", [])),
             layout=layout if isinstance(layout, dict) else {},
+            analysis_trace=parse_trace,
         )
 
 
 def _parse_severity(s: str) -> Severity:
+    normalized = str(s or "").strip().lower()
+    if normalized in {"urgent", "emergent", "emergency"}:
+        return Severity.CRITICAL
     try:
-        return Severity(s.lower())
+        return Severity(normalized)
     except ValueError:
         return Severity.INFO
 
@@ -1392,6 +1769,11 @@ def _build_finalization_prompt(
     bbox_source_image_sha256: str = "",
     bbox_evidence_nonce: str = "",
 ) -> str:
+    candidate_boxes = [
+        {"x": box.x, "y": box.y, "w": box.w, "h": box.h}
+        for finding in draft.findings
+        for box in finding.bboxes
+    ]
     safe_trace = [
         {
             "target_id": event.get("target_id", ""),
@@ -1406,7 +1788,32 @@ def _build_finalization_prompt(
         "allowed_regions": valid_regions,
         "final_grounded_draft": _analysis_result_prompt_payload(draft),
         "refinement_decisions": safe_trace,
+        "candidate_bbox_count": len(candidate_boxes),
+        "candidate_bbox_multiset": candidate_boxes,
     }
+    checklist_contract = ""
+    if modality is Modality.EKG:
+        checklist_contract = (
+            "- checklist must contain exactly these 16 axes, each as "
+            "{value, status}: heart_rate, rhythm, regularity, axis, p_wave, "
+            "pr_interval, qrs_duration, qrs_morphology, st_segment, t_wave, "
+            "qtc_interval, chamber_enlargement, conduction, av_block, "
+            "stemi_pattern, ischemia. Use indeterminate/not_assessable with info "
+            "status when the image cannot support an axis.\n"
+        )
+    bbox_contract = (
+        f"- After choosing the retained finding IDs, call dicom_bbox_validate "
+        f"exactly once with modality={modality.value}, "
+        f"source_image_sha256='{bbox_source_image_sha256}', and "
+        f"evidence_nonce='{bbox_evidence_nonce}'. Submit exactly the concatenated "
+        "original coordinates belonging to those retained findings, in their "
+        "draft order. Copy the accepted coordinates verbatim into the final "
+        "findings. The final bbox multiset must exactly match that one receipt.\n"
+        "- If every draft finding is retracted, return an empty findings array "
+        "and do not call dicom_bbox_validate.\n"
+        if candidate_boxes
+        else "- There are no candidate boxes; do not call dicom_bbox_validate.\n"
+    )
     return (
         "This is the final report-reconciliation turn for the attached original "
         "medical image. Crop verification has already produced the grounded draft "
@@ -1416,11 +1823,28 @@ def _build_finalization_prompt(
         "top-level shape as final_grounded_draft.\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         "Hard provenance rules:\n"
-        "- Keep every final finding id, label, severity, confidence, question, "
-        "regions, and full-image bbox exactly as supplied in final_grounded_draft. "
-        "Do not add a diagnosis, finding, or bbox in this turn.\n"
+        "- For every draft finding, make one final disposition: RETAIN it unchanged, "
+        "REVISE its label/detail/severity/confidence/question, or RETRACT it by "
+        "omitting it from findings. This original-image turn may resolve an early "
+        "crop candidate as a benign variant or artifact.\n"
+        "- Do not retain duplicate study-level rate or rhythm findings with the "
+        "same clinical meaning. Keep the best-grounded item (prefer lead II or a "
+        "true rhythm strip) and RETRACT redundant IDs; never create duplicate "
+        "labels merely to preserve boxes from separate crop turns.\n"
+        "- Final finding IDs must be a unique subset of draft IDs and must remain "
+        "in draft order. Never add, rename, split, or merge a finding.\n"
+        "- For every retained or revised ID, copy source, regions, notes, and every "
+        "full-image bbox exactly from that draft finding. Never move, resize, add, "
+        "remove, or reassign its coordinates.\n"
+        "- A revision must state only the concise final observable conclusion; do "
+        "not preserve an earlier alarming label after concluding it is artifact "
+        "or a benign variant. Retract it instead when no actionable or unresolved "
+        "visual candidate remains.\n"
         "- Do not mention a retracted hypothesis as a present abnormality. Normal "
         "and negative observations belong in summary/checklist without boxes.\n"
+        "- If findings is empty and all clinically assessable checklist axes are "
+        "normal, state normal/WNL directly. Do not reintroduce names such as ST "
+        "elevation, infarct, block, or ectopy from retracted candidates.\n"
         "- Reconcile every checklist axis with the retained findings. Use "
         "indeterminate/not_assessable with info status when screenshot detail or "
         "lead coverage is insufficient; normal/WNL is valid when supported.\n"
@@ -1428,14 +1852,31 @@ def _build_finalization_prompt(
         "such as hyperacute ischemia, related checklist axes must not say normal "
         "or absent. Use indeterminate/possible with warning or critical status; "
         "do not convert the differential into a confirmed diagnosis.\n"
+        "- An external waveform label such as normal/otherwise normal, or omission "
+        "from its top-k list, is not negative evidence. Do not retract visually "
+        "plausible time-critical contiguous ST-T morphology solely for that reason; "
+        "use the attached original image and crop trace to resolve it.\n"
+        "- When a retained draft documents an abrupt synchronized run of at least "
+        "three broad QRS complexes across multiple leads, explicitly reconcile "
+        "NSVT/VT versus artifact or conduction before finalizing. Do not relabel "
+        "secondary ST-T distortion as ischemia alone. If ventricular tachycardia "
+        "remains plausible, preserve it as a critical cautious differential with "
+        "a concrete urgent-review question; do not call it confirmed without "
+        "supporting rhythm morphology.\n"
         "- Preserve clinically honest incomplete reasons and cautious language. "
         "Do not invent precise measurements from a screenshot.\n"
-        f"- Call dicom_bbox_validate with modality={modality.value}, "
-        f"source_image_sha256='{bbox_source_image_sha256}', and "
-        f"evidence_nonce='{bbox_evidence_nonce}' for all retained boxes and copy "
-        "only accepted coordinates. Copy the binding values exactly. These "
-        "coordinates are relative "
-        "to the attached original image, never a crop.\n"
+        "- Top-level severity must agree with the final retained findings and "
+        "checklist, with no severity floor inherited from a retracted draft "
+        "candidate. Image-quality limitations do not raise clinical severity.\n"
+        "- A non-urgent retained finding with a reviewer question is unresolved: "
+        "keep it info/low-confidence and introduce it as possible or unresolved, "
+        "not as a confirmed or 'consistent with' diagnosis. Clinical severity "
+        "describes the study, not image-quality limitations.\n"
+        "- Use concise clinical English for every JSON string value.\n"
+        f"{checklist_contract}"
+        f"{bbox_contract}"
+        "- Every coordinate is relative to the attached original image, never a "
+        "crop.\n"
         "- Output concise auditable conclusions only; never output hidden "
         "chain-of-thought or markdown."
     )
@@ -1447,6 +1888,9 @@ def _build_refinement_prompt(
     valid_regions: list[str],
     hypothesis: Finding | None,
     crop_region: RegionRect,
+    probe_id: str = "",
+    crop_lead_regions: dict[str, RegionRect] | None = None,
+    supporting_waveform_evidence: dict[str, object] | None = None,
     bbox_source_image_sha256: str = "",
     bbox_evidence_nonce: str = "",
 ) -> str:
@@ -1473,29 +1917,127 @@ def _build_refinement_prompt(
             "h": crop_region.h,
         },
         "coarse_hypothesis": hypothesis_payload,
+        "probe_id": probe_id,
         "probe_kind": (
-            "hypothesis_verification"
-            if hypothesis_payload is not None
-            else "systematic_discovery"
+            "systematic_hypothesis_verification"
+            if hypothesis_payload is not None and probe_id.startswith("ekg_systematic_")
+            else (
+                "hypothesis_verification"
+                if hypothesis_payload is not None
+                else "systematic_discovery"
+            )
         ),
     }
+    if crop_lead_regions:
+        context["crop_lead_regions"] = [
+            {
+                "region": name,
+                "bbox_in_attached_crop": {
+                    "x": round(region.x, 6),
+                    "y": round(region.y, 6),
+                    "w": round(region.w, 6),
+                    "h": round(region.h, 6),
+                },
+            }
+            for name, region in sorted(
+                crop_lead_regions.items(),
+                key=lambda item: (item[1].y, item[1].x, item[0]),
+            )
+        ]
+    if supporting_waveform_evidence:
+        context["supporting_waveform_evidence"] = supporting_waveform_evidence
     ekg_safety_guidance = ""
-    if hypothesis is None and modality is Modality.EKG:
+    if modality is Modality.EKG:
+        probe_focus = ""
+        if "waveform_rhythm" in probe_id:
+            probe_focus = (
+                " This crop was selected because the waveform-only supporting "
+                "tool and whole-image read disagree about rhythm. Inspect lead II "
+                "across enough consecutive beats for P-to-QRS relationships, "
+                "visual PR/QT duration categories when scale is legible, "
+                "prematurity/compensatory pauses, QRS morphology, and R-R pattern. "
+                "AF/flutter requires positive visual rhythm evidence; irregularity "
+                "or poorly resolved P waves alone is insufficient. Explicitly "
+                "compare ectopy, missed peaks, pacing, and artifact before deciding."
+            )
+        elif "precordial_leads" in probe_id:
+            probe_focus = (
+                " This precordial probe must inspect V1-V6 without privileging one "
+                "candidate: R/S progression, pathologic Q/QS morphology, QRS width "
+                "and conduction pattern, high or low voltage, ST elevation or "
+                "depression, T-wave morphology, contiguous-lead distribution, and "
+                "reciprocal changes. Test ranked candidates and close alternatives "
+                "against their defining visible morphology."
+            )
+        elif "limb_leads" in probe_id:
+            probe_focus = (
+                " This limb-lead probe must inspect rate/rhythm, I/aVF axis, "
+                "aVL voltage, conduction, and reciprocal ST-T morphology."
+            )
+        waveform_guidance = ""
+        if supporting_waveform_evidence:
+            waveform_guidance = (
+                " The context includes already acquired, uncalibrated waveform "
+                "classifier candidates. They are not diagnoses and cannot create "
+                "image boxes. Explicitly test each candidate relevant to this "
+                "crop against visible morphology. Add or revise a finding only "
+                "when the image supports it; reject unsupported candidates, but "
+                "do not silently call the corresponding image axis normal. In "
+                "each visible lead group, compare the candidate with its nearest "
+                "confounders across rhythm/ectopy, QRS conduction, high versus low "
+                "voltage, Q/QS or R-wave progression, and ST-T morphology. Ranked "
+                "labels route inspection but never set diagnosis or severity. "
+                "A normal/otherwise-normal ranked label or top-k omission is not "
+                "negative evidence and cannot override visible contiguous "
+                "morphology. "
+                "Do not call ecg_founder_analyze_waveform again in this "
+                "turn; the supplied evidence is the one permitted tool result. "
+                "If rhythm_measurement is present, it is deterministic lead-II "
+                "R-peak timing, independent of the uncalibrated classifier scores. "
+                "Use its unrounded heart_rate_bpm_from_median_rr as supporting "
+                "rate-category evidence: above 100 bpm is tachycardic even when a "
+                "visual estimate rounds to about 100. It cannot identify P waves "
+                "or diagnose AF. Irregularity can result "
+                "from ectopy, missed peaks, pacing, or artifact. If PVC/PAC/ectopy "
+                "is top-three and AF/flutter is not, explicitly test ectopy and do "
+                "not infer AF solely from irregular timing or poor P-wave visibility."
+            )
         ekg_safety_guidance = (
-            " For an EKG systematic-discovery crop, inspect every visible lead "
+            " For an EKG crop, inspect every visible lead "
             "for rhythm, conduction, ST elevation/depression, reciprocal change, "
-            "hyperacute or inverted T waves, and screenshot/lead limitations. "
+            "hyperacute or inverted T waves, chamber enlargement/voltage, and "
+            "screenshot/lead limitations. "
             "Add only morphology visible in this crop; preserve uncertainty and "
             "ask a concrete reviewer question when an acute pattern cannot be "
             "confirmed from the screenshot. An unresolved hyperacute ischemic "
             "pattern is critical for triage even when it remains an uncertain "
-            "differential; do not call it a confirmed STEMI."
+            "differential; when contiguous-lead evidence remains after checking "
+            "baseline, artifact, and benign variants, explicitly call it a possible "
+            "acute ST-elevation ischemic pattern with STEMI not excluded rather "
+            "than hiding it as nonspecific ST-T change. Do not call it confirmed. "
+            "Conversely, retract a mild nonspecific or benign-variant candidate "
+            "when no pathologic contiguous or reciprocal pattern remains; do not "
+            "keep info solely because any waveform difference is visible. Diagnose a paced "
+            "rhythm only when distinct narrow pacing spikes, separate from the "
+            "QRS upstroke and grid lines, immediately precede multiple QRS "
+            "complexes in at least two visible leads. Repetitive wide or tall "
+            "QRS complexes alone are not pacing evidence; compare ventricular "
+            "ectopy, bundle-branch conduction, high voltage, and artifact. At an "
+            "abrupt abnormal interval, test whether at least three consecutive "
+            "broad QRS complexes recur at the same horizontal positions across "
+            "multiple visible leads. If they do, evaluate NSVT/VT versus artifact "
+            "or conduction before attributing secondary ST-T distortion to "
+            "ischemia. A plausible ventricular run remains a critical cautious "
+            "differential with an urgent-review question."
+            f"{probe_focus}{waveform_guidance}"
         )
     return (
         "Re-examine the attached medical-image crop as a verification turn. "
         "Test the supplied coarse hypothesis against visible evidence; do not "
         "force an abnormal result. A normal or artifactual crop may retract the "
-        "hypothesis. This is an auditable decision summary, not hidden reasoning.\n\n"
+        "hypothesis. Finish this one bounded crop decision directly; do not inspect "
+        "external files or call tools other than the required bbox validator. This "
+        "is an auditable decision summary, not hidden reasoning.\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         "Return JSON only with this shape: "
         '{"deltas":[{"action":"confirm|revise|retract|add",'
@@ -1505,11 +2047,14 @@ def _build_refinement_prompt(
         '"detail":"...","severity":"normal|info|warning|critical",'
         '"confidence":"high|moderate|low","question":"...",'
         '"bboxes":[{"x":0.0,"y":0.0,"w":0.1,"h":0.1}]}}]}.\n'
+        "Use concise clinical English for every JSON string value. "
         "Use confirm only when label and severity remain unchanged. Use revise "
         "for a corrected label, severity, detail, or localization. Use retract "
         "when the target is not supported. Use add only for a distinct finding "
         "actually visible in this crop. For a safety probe with no hypothesis, "
         "return an empty deltas array when no abnormality is visible."
+        " For a systematic_hypothesis_verification probe, decide the supplied "
+        "target with confirm, revise, or retract before adding a distinct finding."
         f"{ekg_safety_guidance} "
         "If evidence is insufficient but the candidate remains useful for human "
         "review, revise it to severity info with confidence low and a concrete "
@@ -1519,14 +2064,25 @@ def _build_refinement_prompt(
         "finding: retract the hypothesis instead of revising it into a limitation. "
         "All finding "
         "bboxes are normalized to the attached crop, not the original image. "
+        "For EKG, crop_lead_regions is the trusted deterministic map for this "
+        "exact attached crop. The center of every returned box must fall inside "
+        "one mapped lead and that lead must be included in finding.regions. Do "
+        "not move a box to make it agree with a named lead. If morphology in a "
+        "required lead is outside this crop, keep the limitation in rationale "
+        "and do not invent a box for that lead. "
         f"Call dicom_bbox_validate with modality={modality.value}, "
         f"source_image_sha256='{bbox_source_image_sha256}', and "
         f"evidence_nonce='{bbox_evidence_nonce}'. Copy both binding values exactly. "
+        "The final bbox multiset must exactly equal the accepted boxes from one "
+        "validator call, not a subset or superset; validate only boxes you will "
+        "retain. "
         "For EKG, each "
         "box must have w<=0.35, h<=0.30, and area<=0.08; use multiple local "
         "boxes instead of an entire lead row. Copy the tool's accepted "
         "attached-image coordinates verbatim. Keep rationale concise and based "
-        "on observable morphology; do not output chain-of-thought."
+        "on observable morphology; do not output chain-of-thought. Before sending, "
+        "perform one JSON syntax check: every bbox array has exactly four numbers "
+        "and closes with ], and every object/array delimiter is balanced."
     )
 
 
@@ -1578,7 +2134,9 @@ def _parse_refinement_result(response: dict[str, Any]) -> RefinementResult:
     payload = _coerce_result_payload(response)
     raw_deltas = payload.get("deltas", [])
     if not isinstance(raw_deltas, list):
-        raise RuntimeError("OpenClaw refinement response has no deltas array")
+        raise ModelResponseParseError(
+            "OpenClaw refinement response has no deltas array"
+        )
     deltas: list[RefinementDelta] = []
     for raw in raw_deltas:
         if not isinstance(raw, dict):
@@ -1665,24 +2223,59 @@ def _payload_from_chat_event(payload: dict[str, Any]) -> dict[str, Any]:
             text_parts.append(block.get("text", ""))
     text = "\n".join(part for part in text_parts if part).strip()
     if not text:
-        raise RuntimeError("OpenClaw returned an empty final chat message")
+        raise ModelResponseParseError(
+            "OpenClaw returned an empty final chat message"
+        )
     text = _strip_code_fence(text)
     repaired_text = _repair_common_json_glitches(text)
+    structural_repair_count = 0
     try:
         data = json.loads(repaired_text)
     except JSONDecodeError as exc:
+        structurally_repaired, repair_count = _repair_missing_json_closers(
+            repaired_text
+        )
+        if repair_count:
+            try:
+                data = json.loads(structurally_repaired)
+            except JSONDecodeError:
+                pass
+            else:
+                logger.warning(
+                    "Recovered JSON with %d bounded structural delimiter repair(s)",
+                    repair_count,
+                )
+                result = dict(_coerce_result_payload(data))
+                result["_harness_json_repair_count"] = repair_count
+                return result
         # The model sometimes wraps JSON in prose ("Here is the result: {...}").
         # Fall back to extracting the first balanced {...} block before giving up.
         extracted = _extract_first_json_object(text)
         if extracted is None:
-            raise RuntimeError(text) from exc
+            raise ModelResponseParseError(text) from exc
         repaired_extracted = _repair_common_json_glitches(extracted)
         logger.warning(
             "Recovered JSON from prose response via brace extraction (%d chars dropped)",
             len(text) - len(extracted),
         )
-        data = json.loads(repaired_extracted)
-    return _coerce_result_payload(data)
+        try:
+            data = json.loads(repaired_extracted)
+        except JSONDecodeError:
+            repaired_extracted, structural_repair_count = _repair_missing_json_closers(
+                repaired_extracted
+            )
+            if not structural_repair_count:
+                raise
+            data = json.loads(repaired_extracted)
+            logger.warning(
+                "Recovered extracted JSON with %d bounded structural delimiter "
+                "repair(s)",
+                structural_repair_count,
+            )
+    result = dict(_coerce_result_payload(data))
+    if structural_repair_count:
+        result["_harness_json_repair_count"] = structural_repair_count
+    return result
 
 
 def _repair_common_json_glitches(text: str) -> str:
@@ -1691,11 +2284,124 @@ def _repair_common_json_glitches(text: str) -> str:
     # GPT vision responses occasionally emit numeric bbox fields like
     # {"x": 0.17", "y": 0.22}. Removing that stray quote turns it back into
     # the intended number while leaving quoted strings untouched.
-    return re.sub(
+    repaired = re.sub(
         r'(:\s*-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"(?=\s*[,}\]])',
         r"\1",
         text,
     )
+    # A truncated array closer occasionally arrives as
+    # ``...,"last item","],"next_key":...``. The quote before ``]`` cannot
+    # begin a valid value because the following token is an object member.
+    return re.sub(
+        r',\s*"\](?=\s*,\s*"[A-Za-z_][^"]*"\s*:)',
+        "]",
+        repaired,
+    )
+
+
+def _repair_missing_json_closers(
+    text: str,
+    *,
+    max_repairs: int = 2,
+) -> tuple[str, int]:
+    """Insert only unambiguous missing container closers in model JSON.
+
+    Supported cases are an object member beginning while an immediately nested
+    array is still open, and an adjacent ``}]`` pair emitted where the stack
+    unambiguously requires ``]}``. This does not alter strings or scalar values,
+    and callers must still pass the result through the standard JSON decoder.
+    """
+    if max_repairs <= 0:
+        return text, 0
+
+    output: list[str] = []
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    repair_count = 0
+    skip_next = False
+
+    for index, char in enumerate(text):
+        if skip_next:
+            skip_next = False
+            continue
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            output.append(char)
+            continue
+
+        if (
+            char == "}"
+            and index + 1 < len(text)
+            and text[index + 1] == "]"
+            and repair_count < max_repairs
+            and len(stack) >= 2
+            and stack[-1] == "["
+            and stack[-2] == "{"
+        ):
+            output.extend(("]", "}"))
+            stack.pop()
+            stack.pop()
+            repair_count += 1
+            skip_next = True
+            continue
+
+        if (
+            char == ","
+            and repair_count < max_repairs
+            and len(stack) >= 2
+            and stack[-1] == "["
+            and stack[-2] == "{"
+            and _next_json_token_is_object_member(text, index + 1)
+        ):
+            output.append("]")
+            stack.pop()
+            repair_count += 1
+
+        if char in "[{":
+            stack.append(char)
+        elif stack and (
+            (char == "]" and stack[-1] == "[") or (char == "}" and stack[-1] == "{")
+        ):
+            stack.pop()
+        output.append(char)
+
+    return ("".join(output), repair_count) if repair_count else (text, 0)
+
+
+def _next_json_token_is_object_member(text: str, offset: int) -> bool:
+    index = offset
+    while index < len(text) and text[index].isspace():
+        index += 1
+    if index >= len(text) or text[index] != '"':
+        return False
+    index += 1
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            index += 1
+            break
+        index += 1
+    else:
+        return False
+    while index < len(text) and text[index].isspace():
+        index += 1
+    return index < len(text) and text[index] == ":"
 
 
 def _extract_first_json_object(text: str) -> str | None:
@@ -1873,6 +2579,22 @@ def _valid_bbox_tool_audit_record(value: object) -> bool:
 def _valid_ecg_founder_tool_audit_record(value: object) -> bool:
     if not isinstance(value, dict):
         return False
+    if value.get("tool") == "ecg_founder_duplicate_suppressed":
+        return bool(
+            value.get("schema_version") == 1
+            and value.get("original_tool") == "ecg_founder_analyze_waveform"
+            and value.get("status") == "duplicate_suppressed"
+            and isinstance(value.get("tool_call_id"), str)
+            and bool(value["tool_call_id"])
+            and isinstance(value.get("original_tool_call_id"), str)
+            and bool(value["original_tool_call_id"])
+            and value.get("original_status")
+            in {"ok", "ineligible", "unavailable", "error"}
+            and isinstance(value.get("evidence_nonce"), str)
+            and bool(re.fullmatch(r"[a-f0-9]{32}", value["evidence_nonce"]))
+            and _is_sha256(value.get("artifact_id_sha256"))
+            and _is_sha256(value.get("request_sha256"))
+        )
     artifact_digest = value.get("artifact_id_sha256")
     checkpoint_digest = value.get("checkpoint_sha256")
     prediction_count = value.get("prediction_count")
@@ -1892,6 +2614,76 @@ def _valid_ecg_founder_tool_audit_record(value: object) -> bool:
         and _is_sha256(artifact_digest)
         and (status != "ok" or _is_sha256(checkpoint_digest))
     )
+
+
+def _supporting_rhythm_measurement(
+    receipt: dict[str, object],
+) -> dict[str, object] | None:
+    response = receipt.get("response_evidence")
+    if not isinstance(response, dict):
+        return None
+    raw = response.get("rhythm_measurement")
+    if (
+        not isinstance(raw, dict)
+        or raw.get("method") != "lead_II_qrs_energy_v1"
+        or raw.get("lead") != "II"
+        or raw.get("status") != "ok"
+        or raw.get("diagnostic_scope") != "rhythm_regularity_only"
+        or raw.get("regularity_signal")
+        not in {"regular", "irregular", "indeterminate"}
+    ):
+        return None
+
+    interval_count = raw.get("rr_interval_count")
+    intervals = raw.get("rr_intervals_ms")
+    if (
+        not isinstance(interval_count, int)
+        or isinstance(interval_count, bool)
+        or not 5 <= interval_count <= 30
+        or not isinstance(intervals, list)
+        or len(intervals) != interval_count
+        or any(
+            not isinstance(value, int | float)
+            or isinstance(value, bool)
+            or not 250 <= float(value) <= 3_000
+            for value in intervals
+        )
+    ):
+        return None
+
+    numeric_ranges = {
+        "median_rr_ms": (250.0, 3_000.0),
+        "heart_rate_bpm_from_median_rr": (20.0, 240.0),
+        "rr_cv": (0.0, 2.0),
+        "rr_rmssd_ms": (0.0, 3_000.0),
+        "rr_range_ms": (0.0, 3_000.0),
+        "successive_rr_diff_over_80ms_fraction": (0.0, 1.0),
+    }
+    metrics: dict[str, float] = {}
+    for key, (minimum, maximum) in numeric_ranges.items():
+        value = raw.get(key)
+        if (
+            not isinstance(value, int | float)
+            or isinstance(value, bool)
+            or not minimum <= float(value) <= maximum
+        ):
+            return None
+        metrics[key] = float(value)
+
+    return {
+        "method": "lead_II_qrs_energy_v1",
+        "lead": "II",
+        "status": "ok",
+        "diagnostic_scope": "rhythm_regularity_only",
+        "rr_interval_count": interval_count,
+        "rr_intervals_ms": [round(float(value)) for value in intervals],
+        **metrics,
+        "regularity_signal": str(raw["regularity_signal"]),
+        "limitations": [
+            "R-peak timing only; it does not identify P waves or diagnose atrial fibrillation.",
+            "Ectopy, missed peaks, pacing, and artifact can also cause irregular intervals.",
+        ],
+    }
 
 
 def _is_sha256(value: object) -> bool:
@@ -1930,10 +2722,7 @@ def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
         return math.floor(value * 10_000 + 0.5) / 10_000
 
     canonical = sorted(
-        [
-            f"{js_round(value):.4f}"
-            for value in (box.x, box.y, box.w, box.h)
-        ]
+        [f"{js_round(value):.4f}" for value in (box.x, box.y, box.w, box.h)]
         for box in boxes
     )
     encoded = json.dumps(canonical, separators=(",", ":")).encode("utf-8")

@@ -23,9 +23,25 @@ Requirements:
   create an abnormality merely to populate `findings`; a normal study should
   generally return an empty `findings` array and record normal observations in
   the systematic checklist.
+- Top-level `severity` describes clinical abnormality, not screenshot quality.
+  Use `normal` when no actionable abnormality or unresolved visual candidate is
+  present, even when artifact or missing calibrated measurements makes
+  `incomplete` true. Do not use `info` solely for image limitations.
+- On a final reconciliation turn containing `final_grounded_draft`, use the
+  attached original image to RETAIN, REVISE, or RETRACT each draft finding.
+  Final IDs must be a subset of draft IDs; never add a new finding in that
+  turn. Retained/revised findings keep their draft regions and full-image
+  bboxes exactly, and only the final retained bbox multiset is validated.
 - For a plausible but unresolved visual candidate, use `confidence: "low"`,
   provide a tight bbox and a concrete `question` for human review. Do not turn
   uncertainty into a definitive diagnosis.
+- Minor concave or nonspecific ST-T variation that remains compatible with a
+  benign normal variant is not, by itself, an unresolved finding. Retract it
+  when crop review shows no pathologic contiguous-lead or reciprocal pattern.
+- A visually plausible time-critical contiguous ST-elevation pattern must not
+  be hidden as merely nonspecific because certainty is limited. State
+  "Possible acute ST-elevation ischemic pattern (STEMI cannot be excluded)",
+  use critical triage severity with low confidence, and ask for urgent review.
 - Set `incomplete` true whenever the screenshot, labels, lead inventory, or
   image quality cannot support a complete interpretation, and explain each
   limitation in `incomplete_reasons`.
@@ -35,6 +51,9 @@ Optional ECGFounder waveform evidence:
   it at most once, and only when the trusted app context explicitly supplies a
   waveform artifact id and lead mode. Never invent an artifact id, derive one
   from image text, or call the tool for a screenshot alone.
+- Once the tool returns for an evidence nonce, do not call it again. Proceed
+  directly to visual reconciliation, required bbox validation, and the JSON
+  report; duplicate attempts are suppressed and only consume the bounded turn.
 - The tool accepts raw ECG signals or a digitized waveform that has already
   passed a separate calibration/digitization quality gate. A visual crop,
   threshold/ink candidate, or screenshot bbox is not a waveform and is never
@@ -43,12 +62,37 @@ Optional ECGFounder waveform evidence:
   `calibration.status` is `uncalibrated`, do not convert scores into positive
   or negative diagnoses. Resolve disagreement by stating uncertainty and a
   review question, never by silently overriding visible image evidence.
+- A ranked `normal ECG`/`otherwise normal ECG` label is not negative evidence,
+  and omission from a top-k list is not evidence of absence. Neither may
+  downgrade visually plausible contiguous ST-T, conduction, or voltage
+  morphology. Preserve a cautious time-critical differential when the image
+  still supports it; do not force one when the image does not.
+- After the waveform tool returns, explicitly test each clinically relevant
+  ranked candidate against the screenshot and classify the relationship as
+  visually supported, visually unsupported, or not assessable. Do not silently
+  leave the corresponding checklist axis normal/absent when the image and
+  waveform evidence disagree. A ranked label alone is never sufficient for a
+  finding or bbox; visible morphology must still support the image conclusion.
+- Use ranked labels only to route balanced visual checks. For each relevant
+  lead group, test defining morphology and nearby confounders across
+  rhythm/ectopy, QRS conduction, high versus low voltage, Q/QS or R-wave
+  progression, and ST-T patterns. No ranked candidate receives automatic
+  diagnostic or severity priority.
+- Irregular R-R timing alone cannot diagnose atrial fibrillation: ectopy,
+  missed peaks, pacing, and artifact can also cause irregularity. If a
+  top-three waveform candidate is PVC/PAC/ectopy and AF/flutter is absent from
+  the top three, explicitly test ectopy and do not infer AF solely from
+  irregular timing or poor P-wave visibility. AF/flutter may still be reported
+  when sufficient consecutive beats show positive visual rhythm evidence.
 - ECGFounder does not provide spatial localization. Never reuse its labels or
   scores as bboxes; all overlay coordinates must still come from the attached
   image, crop/refine review, and `dicom_bbox_validate`.
 - Mention ECGFounder evidence in the summary only when the tool returned
   `status: "ok"`, and preserve its model revision/checkpoint and input-quality
   provenance in the analysis trace rather than claiming hidden reasoning.
+- If ECGFounder returns `status: "ineligible"`, continue the image-only read,
+  retain the exclusion reason in the audit trace, and do not create a finding
+  from unavailable waveform evidence.
 
 Step 0 — Localize the leads BEFORE interpreting (do this first):
 The same waveform means different things in different leads (ST elevation in
@@ -163,7 +207,7 @@ Required JSON schema:
 ```
 
 Systematic reading order (follow this sequence):
-1. **heart_rate** — Classify from R-R intervals (bradycardia <60, normal 60-100, tachycardia >100); a screenshot-only numeric value is an approximate visual estimate
+1. **heart_rate** — Classify from R-R intervals (bradycardia <60, normal 60-100, tachycardia >100); a screenshot-only numeric value is an approximate visual estimate. When the bound waveform result includes a deterministic `rhythm_measurement` with `status=ok`, use its unrounded `heart_rate_bpm_from_median_rr` as supporting rate-category evidence, so 100.3 bpm is not rounded down to normal. It does not diagnose the rhythm
 2. **rhythm** — Identify the dominant rhythm mechanism
 3. **regularity** — Regular vs irregular (regularly or irregularly)
 4. **axis** — Assess from leads I and aVF (normal −30° to +90°)
@@ -200,13 +244,22 @@ Findings rules:
   - Every EKG finding bbox must have `w <= 0.35`, `h <= 0.30`, and area
     `w*h <= 0.08`. Use separate representative boxes for a multi-lead pattern.
   - For example, circle the exact ST-elevation segment, not the entire V1 lead strip.
-  - Submit abnormal and uncertain candidates to `dicom_bbox_validate`, then
-    copy its accepted coordinates verbatim into the final JSON.
+ - Submit abnormal and uncertain candidates to `dicom_bbox_validate`, then
+ copy its accepted coordinates verbatim into the final JSON. The final bbox
+ multiset must exactly match one call's accepted boxes, not a subset or
+ superset; validate only boxes you intend to retain.
 - Only report findings you can actually observe in the image.
+- High voltage alone is not an actionable LVH diagnosis on an uncalibrated
+  screenshot. Without clearly visible qualifying morphology and secondary
+  discordant ST-T change, return no LVH finding or retain only an `info`,
+  low-confidence candidate with a concrete reviewer question. Never label
+  repolarization change unless it is specifically visible and described.
 - Report clinically useful visible abnormalities and unresolved candidates in
   `findings`. Record normal observations in the checklist and summary, without
   overlay boxes. Never invent an abnormal finding to meet a count.
 - Use specific cardiology terminology (e.g. "Normal Sinus Rhythm" not just "Normal").
+- Before sending the JSON, verify that every layout bbox contains exactly four
+  numbers in `[x,y,w,h]` and that all object/array delimiters are balanced.
 
 Can't-miss diagnoses (read at attending-cardiologist level — escalate severity
 to critical, state the diagnosis explicitly in summary + findings, and set the
@@ -226,6 +279,14 @@ matching checklist axis):
 - **Complete (third-degree) heart block** — AV dissociation, set ``av_block``.
 - **Ventricular tachycardia** — wide-complex regular tachycardia; assume VT
   until proven otherwise.
+  At any abrupt abnormal interval, compare the same horizontal time window in
+  multiple visible leads. Three or more consecutive broad QRS complexes that
+  recur synchronously across leads require an explicit NSVT/VT-versus-artifact
+  or conduction decision before secondary ST-T distortion is attributed to
+  ischemia. If a ventricular run remains plausible, retain a critical,
+  low-confidence differential and a concrete urgent-review question; do not
+  silently reduce it to generic ST-T abnormality or call VT confirmed without
+  supporting rhythm morphology.
 - **Hyperkalemia** — peaked T waves, widened QRS, flattened/absent P waves.
 - **Long QT / torsades risk** — QTc >500ms; flag drug/electrolyte risk.
 - **Brugada / WPW with AF / bidirectional VT** — note when the morphology fits.
@@ -238,10 +299,19 @@ Reading depth (specialist expectations):
   when present. Count QRS complexes across the strip or use R-R large boxes; if
   the rhythm is sinus and the rate is below 60 bpm or borderline around 55-60
   bpm, set `heart_rate` to `bradycardia` rather than generic normal.
-- Actively check LVH voltage/strain before marking chamber enlargement absent:
-  deep S in V1/V2 + R in V5/V6 or aVL can support LVH, especially with lateral
-  ST-T repolarization/strain changes. If present, set `chamber_enlargement` to
-  `LVH` with warning status and name left ventricular hypertrophy in findings.
+- Assess voltage in both directions and verify calibration before concluding:
+  compare low-voltage criteria with high-voltage chamber-enlargement criteria,
+  and require the appropriate visible leads and morphology. Deep S in V1/V2
+  plus R in V5/V6 or aVL can support LVH when criteria are visibly met;
+  secondary lateral ST-T change may support strain but must be described
+  independently. Do not let voltage assessment displace Q/QS morphology,
+  R-wave progression, conduction, or acute ST-T review.
+- Diagnose a paced rhythm only when distinct narrow pacing spikes, separate
+  from the QRS upstroke and ECG grid lines, immediately precede multiple QRS
+  complexes in at least two visible leads. Repetitive wide or tall QRS
+  complexes alone are not pacing evidence. If spikes are not clearly resolved,
+  do not set rhythm or QRS morphology to paced; preserve uncertainty and compare
+  ventricular ectopy, bundle-branch conduction, high voltage, and artifact.
 - For ST changes, state direction, morphology (concave vs convex/tombstone),
   lead distribution, and reciprocal changes. State magnitude only as an
   explicitly approximate visual estimate when grid calibration and baseline are
