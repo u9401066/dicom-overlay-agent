@@ -13,15 +13,23 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult, Modality
+from medical_image_harness.hooks import AnalyzeHook, AnalyzeRequest, HookError
 
-
-class HookError(Exception):
-    """Raised when a hook rejects an operation."""
-
+__all__ = [
+    "AnalyzeHook",
+    "AnalyzeRequest",
+    "GatewayHookHandler",
+    "HookError",
+    "HookEvent",
+    "HookEventType",
+    "MCPAdapterConfig",
+    "MCPServerConfig",
+    "MCPToolProvider",
+    "ToolCallResult",
+    "ToolDefinition",
+]
 
 # ── OpenClaw Gateway Hook Events (aligned with src/hooks/internal-hooks.ts) ──
 
@@ -68,44 +76,6 @@ class GatewayHookHandler(ABC):
     @abstractmethod
     async def handle(self, event: HookEvent) -> None:
         """Handle a hook event. Errors are caught and logged."""
-
-
-# ── Analyze Pipeline Hooks (client-side middleware) ──────────────────
-
-
-@dataclass
-class AnalyzeRequest:
-    """Immutable snapshot of an analyze request flowing through the hook pipeline."""
-
-    image_base64: str
-    modality: Modality
-    valid_regions: list[str]
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-class AnalyzeHook(ABC):
-    """Hook that intercepts analyze operations before/after execution.
-
-    Hooks form a pipeline:
-      pre_analyze → actual analyze → post_analyze
-
-    - pre_analyze may modify the request or raise HookError to reject.
-    - post_analyze may modify the result or raise HookError to reject.
-    """
-
-    @property
-    def name(self) -> str:
-        return self.__class__.__name__
-
-    @abstractmethod
-    def pre_analyze(self, request: AnalyzeRequest) -> AnalyzeRequest:
-        """Validate/transform before analyze. Raise HookError to reject."""
-
-    @abstractmethod
-    def post_analyze(
-        self, request: AnalyzeRequest, result: AnalysisResult
-    ) -> AnalysisResult:
-        """Validate/transform after analyze. Raise HookError to reject."""
 
 
 # ── MCP Adapter Interface (aligned with openclaw-mcp-adapter) ────────
@@ -175,9 +145,7 @@ class ToolCallResult:
     @property
     def text(self) -> str:
         """Extract concatenated text from content blocks."""
-        return "\n".join(
-            c.get("text", c.get("data", "")) for c in self.content
-        )
+        return "\n".join(c.get("text", c.get("data", "")) for c in self.content)
 
     @property
     def success(self) -> bool:
@@ -210,9 +178,7 @@ class MCPToolProvider(ABC):
         """Discover available tools from this server."""
 
     @abstractmethod
-    async def call_tool(
-        self, name: str, arguments: dict[str, Any]
-    ) -> ToolCallResult:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> ToolCallResult:
         """Call a tool by name with given arguments."""
 
     @abstractmethod

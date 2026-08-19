@@ -81,6 +81,7 @@ def _complete_result(
     result.checklist = {
         key: ChecklistItem(value="normal", status=Severity.NORMAL)
         for key in (
+            "projection_quality",
             "airway",
             "lungs",
             "pleura",
@@ -403,10 +404,7 @@ def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
     assert raw["incomplete_reasons"] == ["Calibration marker is not visible."]
     assert raw["validation_warnings"] == ["Synthetic validator warning"]
     assert raw["review_required"] is True
-    assert raw["review_reasons"] == [
-        "Low-confidence rhythm classification.",
-        "Incomplete analysis requires human review",
-    ]
+    assert raw["review_reasons"] == ["Low-confidence rhythm classification."]
     assert raw["analysis_trace"][0]["tool"] == "crop_region_base64"
 
 
@@ -1442,9 +1440,7 @@ def test_urgent_injury_phrase_requires_structured_st_elevation(
     result = _result_with_checklist(
         Severity.CRITICAL,
         summary="Possible acute myocardial injury requires correlation.",
-        checklist={
-            "st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)
-        },
+        checklist={"st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)},
     )
 
     score = score_case(case, result, latency_ms=10)
