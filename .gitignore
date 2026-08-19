@@ -75,6 +75,10 @@ openclaw-home/media/
 openclaw-home/tasks/
 openclaw-home/plugin-skills/
 openclaw-home/workspace-attestations/
+openclaw-home/memory/
+openclaw-home/workspace/
+*.sqlite-wal
+*.sqlite-shm
 
 # 測試產出 (臨時檔案)
 tests/integration/real_result.txt

@@ -1,0 +1,18 @@
+{
+  "generated_files": {
+    "SKILL.md": "ecb3de6c3c0047dcd030aef7fb2faa37dff6c14b494885cf05d561f77d22c04f"
+  },
+  "generator_version": 2,
+  "source": "third_party/medical-image-agent-harness/.agents/skills/medical-image-reading",
+  "source_files": {
+    "SKILL.md": "375e6c5d9394aacdb232af30b7bf9a9cea03a1e0037769cc1b3ce2a069cdc071",
+    "agents/openai.yaml": "31c15befcfff950e52c74362f483f531bf11a7db2a9519ec64b208a630eca588",
+    "references/core-protocol.md": "bfc5c0d33304ddc3c85bc92028428feccfb795b4316f47e6d231d44ac54d3d9b",
+    "references/ct-brain.md": "0f2fe5b8436818f27ffb667393d32a06914957994264247de8541ab8af65df69",
+    "references/cxr.md": "541dea6fa22901991277b80b41b6387f31f804d996820a5b7acb2fd9332a5312",
+    "references/ekg.md": "ecb953769a1f913fa41c3a13fdc14754dd4591f681ec15668702fea05b3d1146",
+    "references/evaluation.md": "fa0821048f53ef2a428f8a88aecabb2d1d24bdc109bcdb749ea67e8b34e5eee5",
+    "references/output-contract.md": "5d8c02d01ff043cd707368a9ef64323e07ea672dc864734e6e2c86b8f5fe3531"
+  },
+  "submodule_commit": "dbeee1c6145128d65337418476c08ad407e998bf"
+}

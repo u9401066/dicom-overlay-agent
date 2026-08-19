@@ -58,6 +58,9 @@ REQUIRED_FILES = (
     "openclaw/workspace/skills/dicom-ct-brain-analysis/SKILL.md",
     "openclaw/workspace/skills/dicom-ct-brain-analysis/schema.json",
     "clinical_rules/ekg-cxr.rules.yaml.example",
+    "medical_image_harness/skills/medical-image-reading/SKILL.md",
+    "medical_image_harness/skills/medical-image-reading/references/core-protocol.md",
+    "medical_image_harness/schemas/analysis-result.schema.json",
 )
 
 _BANNED_PARTS = {
@@ -303,9 +306,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             "launcher_sha256": _sha256_file(exe),
             "payload_tree_sha256": _bundle_tree_sha256(bundle),
         },
-        "source_provenance": _source_provenance(
-            Path(__file__).resolve().parents[1]
-        ),
+        "source_provenance": _source_provenance(Path(__file__).resolve().parents[1]),
         "budgets": {
             "launcher_max_bytes": MAX_LAUNCHER_BYTES,
             "app_layer_max_bytes": MAX_APP_LAYER_BYTES,
