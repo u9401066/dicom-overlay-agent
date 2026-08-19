@@ -31,7 +31,7 @@ def test_initial_analysis_prompt_contains_structured_interpretation_protocol():
     assert "label" in prompt
     assert "detail" in prompt
     assert "next_steps" in prompt
-    assert "lead_I, rhythm_strip" in prompt
+    assert '["lead_I","rhythm_strip"]' in prompt
     assert "Return a single JSON object only" in prompt
 
 
@@ -62,7 +62,7 @@ def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> No
     assert "minimal-control" in prompt
     assert "do not call tools" in prompt
     assert "Required top-level keys" in prompt
-    assert "lead_I, lead_II" in prompt
+    assert '["lead_I","lead_II"]' in prompt
     assert "systematic image interpretation protocol" not in prompt
     assert "dicom_bbox_validate" not in prompt
 

@@ -4,6 +4,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
 const MIN_BOX_EDGE = 0.005;
+const BBOX_COORDINATE_SCALE = 10000;
 const MAX_BOXES = 12;
 const EKG_MAX_BOX_WIDTH = 0.35;
 const EKG_MAX_BOX_HEIGHT = 0.3;
@@ -111,8 +112,23 @@ function clip01(value) {
   return Math.min(1, Math.max(0, value));
 }
 
-function roundCoordinate(value) {
-  return Math.round(value * 10000) / 10000;
+function canonicalizeBox(left, top, right, bottom) {
+  const leftUnits = Math.round(clip01(left) * BBOX_COORDINATE_SCALE);
+  const topUnits = Math.round(clip01(top) * BBOX_COORDINATE_SCALE);
+  const rightUnits = Math.max(
+    leftUnits,
+    Math.round(clip01(right) * BBOX_COORDINATE_SCALE),
+  );
+  const bottomUnits = Math.max(
+    topUnits,
+    Math.round(clip01(bottom) * BBOX_COORDINATE_SCALE),
+  );
+  return {
+    x: leftUnits / BBOX_COORDINATE_SCALE,
+    y: topUnits / BBOX_COORDINATE_SCALE,
+    w: (rightUnits - leftUnits) / BBOX_COORDINATE_SCALE,
+    h: (bottomUnits - topUnits) / BBOX_COORDINATE_SCALE,
+  };
 }
 
 function validateBox(raw, index, modality) {
@@ -149,12 +165,7 @@ function validateBox(raw, index, modality) {
   return {
     accepted: true,
     id,
-    box: {
-      x: roundCoordinate(left),
-      y: roundCoordinate(top),
-      w: roundCoordinate(clippedWidth),
-      h: roundCoordinate(clippedHeight),
-    },
+    box: canonicalizeBox(left, top, right, bottom),
     reason: String(raw?.reason ?? "").trim(),
     clipped: left !== x || top !== y || right !== x + w || bottom !== y + h,
   };

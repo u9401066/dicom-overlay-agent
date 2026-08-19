@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 def optional_tree(source: str, target: str):
@@ -18,6 +18,10 @@ def optional_file(source: str, target: str):
 datas = [
     ("config.yaml", "."),
     ("THIRD_PARTY_NOTICES.md", "."),
+    *collect_data_files(
+        "medical_image_harness",
+        includes=["skills/**/*", "schemas/**/*"],
+    ),
     *optional_tree("clinical_rules", "clinical_rules"),
     *optional_tree("openclaw/workspace", "openclaw/workspace"),
     *optional_tree("build/openclaw-runtime/openclaw", "openclaw"),

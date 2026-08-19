@@ -542,6 +542,10 @@ class TestOpenClawRuntimeCompatibility:
 
         assert "build/openclaw-runtime/openclaw" in spec
         assert 'optional_tree("clinical_rules", "clinical_rules")' in spec
+        assert "collect_data_files(" in spec
+        assert '"medical_image_harness"' in spec
+        assert '"skills/**/*"' in spec
+        assert '"schemas/**/*"' in spec
         assert 'optional_tree("openclaw/node_modules/openclaw"' not in spec
 
     def test_pyinstaller_spec_bundles_portable_node_and_prunes_qt(self):

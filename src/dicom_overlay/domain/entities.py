@@ -5,6 +5,49 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    ClaimType,
+    Evidence,
+    Finding,
+    Modality,
+    Observation,
+    Polarity,
+    RegionRect,
+    Severity,
+    UserRegionAnnotation,
+    VerificationStatus,
+)
+
+__all__ = [
+    "AgentState",
+    "AnalysisConfig",
+    "AnalysisResult",
+    "AppConfig",
+    "ChecklistItem",
+    "ClaimType",
+    "DisplayFrame",
+    "Evidence",
+    "Finding",
+    "FindingDelta",
+    "FindingOp",
+    "HotkeyConfig",
+    "Modality",
+    "MonitorConfig",
+    "Observation",
+    "OpenClawConfig",
+    "OverlayConfig",
+    "Polarity",
+    "ROICrop",
+    "RegionRect",
+    "Severity",
+    "TriggerMode",
+    "UserRegionAnnotation",
+    "VerificationStatus",
+    "WindowRect",
+]
+
 
 class AgentState(Enum):
     """Agent state machine states (spec §3.5)."""
@@ -21,81 +64,12 @@ class AgentState(Enum):
     RECONNECTING = auto()
 
 
-class Modality(Enum):
-    """Supported imaging modalities."""
-
-    EKG = "EKG"
-    CXR = "CXR"
-    CT_BRAIN = "CT_BRAIN"
-    AUTO = "auto"
-
-
-class Severity(Enum):
-    """Finding severity levels (spec §3.4)."""
-
-    CRITICAL = "critical"
-    WARNING = "warning"
-    NORMAL = "normal"
-    INFO = "info"
-
-
 class TriggerMode(Enum):
     """How image changes trigger LLM analysis."""
 
     MANUAL = "manual"
     HYBRID = "hybrid"
     AUTO = "auto"
-
-
-@dataclass(frozen=True)
-class RegionRect:
-    """Percentage-based rectangle relative to ROI-cropped image."""
-
-    x: float
-    y: float
-    w: float
-    h: float
-
-    def __post_init__(self) -> None:
-        for attr in ("x", "y", "w", "h"):
-            val = getattr(self, attr)
-            if not 0.0 <= val <= 1.0:
-                raise ValueError(f"{attr} must be in [0, 1], got {val}")
-
-
-@dataclass(frozen=True)
-class UserRegionAnnotation:
-    """Reviewer-authored context attached to one normalized manual region."""
-
-    region: RegionRect
-    question: str = ""
-    answer: str = ""
-
-
-@dataclass(frozen=True)
-class Finding:
-    """A single analysis finding (spec §3.3).
-
-    ``notes`` accumulates extra provenance / discussion lines (e.g. follow-up
-    chat that revises or confirms this finding). They are kept separate from the
-    primary ``detail`` so a clinical discussion can be appended to an overlay
-    marker without clobbering the original analysis text.
-    """
-
-    id: str
-    regions: list[str]
-    label: str
-    detail: str
-    severity: Severity
-    bboxes: list[RegionRect] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-    # Model-reported certainty is intentionally qualitative.  A low-confidence
-    # finding can carry a short question that the UI surfaces for human review.
-    confidence: str = ""
-    question: str = ""
-    # Audit provenance for exports and interactive review. Primary model output
-    # defaults to ``ai``; reviewer-confirmed crop follow-ups use a distinct tag.
-    source: str = "ai"
 
 
 class FindingOp(Enum):
@@ -133,61 +107,6 @@ class FindingDelta:
     op: FindingOp
     finding: Finding
     note: str = ""
-
-
-@dataclass(frozen=True)
-class ChecklistItem:
-    """A single checklist entry."""
-
-    value: str
-    status: Severity
-
-
-@dataclass
-class AnalysisResult:
-    """Complete analysis result from Vision API (spec §3.3)."""
-
-    modality: Modality
-    summary: str
-    severity: Severity
-    findings: list[Finding]
-    checklist: dict[str, ChecklistItem]
-    analysis_time_ms: int = 0
-    model_used: str = ""
-    image_quality: str | dict[str, object] = ""
-    next_steps: list[str] = field(default_factory=list)
-    incomplete: bool = False
-    incomplete_reasons: list[str] = field(default_factory=list)
-    # Structural/parser degradation is separate from a clinically honest
-    # ``incomplete`` result (for example, cropped leads or unreadable scale).
-    # Eval schema gates use this field so image limitations are not scored as
-    # malformed model output.
-    validation_warnings: list[str] = field(default_factory=list)
-    # Advisory hints asking the user to manually zoom in their DICOM viewer and
-    # re-capture, because a region is too small in the screen-captured pixels to
-    # resolve any further by digital crop (screenshots cap at the screen
-    # resolution, e.g. 4K). Set by the multi-pass orchestrator; rendered by the
-    # overlay. Empty when no manual zoom is suggested.
-    zoom_hints: list[str] = field(default_factory=list)
-    # Clinical safety escalation: set by the data-driven clinical consistency
-    # engine when the AI's *own* structured output is internally contradictory
-    # or under-calls a can't-miss pattern (e.g. it describes ST elevation yet
-    # reads "normal"). The engine only escalates severity (never downgrades) and
-    # flags for human review — it never imposes a diagnosis. Each reason carries
-    # the medical guideline citation so the physician sees *why* it was flagged.
-    review_required: bool = False
-    review_reasons: list[str] = field(default_factory=list)
-    # Optional Step-0 layout declaration from the model (EKG): the recognized
-    # format plus the lead inventory and, when present, the rhythm-strip
-    # bounding box. Used by the rhythm-strip refinement pass to crop the strip
-    # at higher resolution without assuming a fixed layout. Empty when the model
-    # did not declare a layout (keeps non-EKG and legacy paths unchanged).
-    layout: dict = field(default_factory=dict)
-    # Auditable workflow facts for this interpretation: coarse/refine stages,
-    # deterministic local image aids, crop coordinates, registered tool names,
-    # and explicit refinement decisions. This intentionally excludes hidden
-    # chain-of-thought and stores only information safe to show to a reviewer.
-    analysis_trace: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

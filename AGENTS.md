@@ -40,11 +40,17 @@ call it out and propose mitigation before proceeding.
   event stream → artifacts) and `infrastructure/image_harness_validator.py`
   (`verify_image_harness_artifacts`: gateway contract, image payload proof,
   optional viewer).
-- `infrastructure/hooks/output_validator.py` enforces the 16-key result schema.
-  If you change the schema, update the validator, the skills, and the tests
-  together.
-- Per-modality prompts live in `openclaw/workspace/skills/dicom-*-analysis/`.
-  Runners: `scripts/run-image-harness-smoke.py`, `scripts/verify-image-harness.py`.
+- The pinned public submodule under `third_party/medical-image-agent-harness`
+  owns the provider-neutral scientific method, typed contracts, draft validator,
+  and canonical `.agents/skills/medical-image-reading` skill.
+- The private product may adapt that method to OpenClaw tools, but must not make
+  public code depend on the overlay, Gateway, plugin, or screen-capture layers.
+- Run `python scripts/sync-medical-image-harness.py --write` after advancing the
+  submodule and commit the generated `.agents` thin adapter. CI runs `--check` so Codex
+  and Copilot discovery cannot silently drift from the pinned public source.
+- `openclaw/workspace/skills/dicom-*-analysis/` remains a private OpenClaw
+  runtime adapter; it is not the scientific source of truth. Runners:
+  `scripts/run-image-harness-smoke.py`, `scripts/verify-image-harness.py`.
 
 ### Core 3 — OpenClaw plugin compatibility
 
@@ -84,6 +90,7 @@ call it out and propose mitigation before proceeding.
 - Do not let `domain/` depend on infrastructure/presentation.
 - Do not add dependencies that blow the packaging size budget without flagging it.
 - Keep harness smoke + validator green; treat them as the contract for Core 2.
+- Never use `openclaw-home/` as a source tree; it contains ignored runtime state.
 
 ## Related Files
 
@@ -91,3 +98,4 @@ call it out and propose mitigation before proceeding.
 - `README.md` / `README.zh-TW.md` — four-core overview
 - `config.yaml` — ROI, `region_maps`, hash, gateway settings
 - `memory-bank/` — project memory
+- `docs/public-harness-boundary.md` — public/private ownership and promotion rules
