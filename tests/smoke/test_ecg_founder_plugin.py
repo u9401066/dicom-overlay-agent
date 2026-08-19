@@ -9,9 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from dicom_overlay.domain.entities import RegionRect
 from dicom_overlay.infrastructure.eval_artifact_validator import (
     _valid_ecg_founder_evidence,
 )
+from dicom_overlay.infrastructure.openclaw_client import _bbox_coordinates_digest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PLUGIN_ROOT = (
@@ -214,6 +216,33 @@ console.log(JSON.stringify({{
     assert records[0]["source_image_sha256"] == source_sha
     assert records[0]["evidence_nonce"] == evidence_nonce
     assert records[0]["accepted_boxes_sha256"] == result["digest"]
+
+
+def test_bbox_tool_quantizes_endpoints_without_crossing_image_bounds() -> None:
+    module_uri = (_PLUGIN_ROOT / "index.js").as_uri()
+    source = f"""
+const module = await import({json.dumps(module_uri)});
+const tool = module.createBboxValidationTool();
+const response = await tool.execute("bbox-boundary", {{
+  modality: "CXR",
+  source_image_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  evidence_nonce: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  boxes: [{{ id: "edge", x: 0.98995, y: 0.2, w: 0.01005, h: 0.1 }}]
+}});
+console.log(JSON.stringify({{
+  box: response.details.accepted[0].box,
+  digest: module.acceptedBoxesDigest(response.details.accepted)
+}}));
+"""
+
+    result = _run_node_module(source)
+    box = result["box"]
+
+    assert box == {"x": 0.99, "y": 0.2, "w": 0.01, "h": 0.1}
+    assert box["x"] + box["w"] <= 1.0  # type: ignore[operator]
+    assert result["digest"] == _bbox_coordinates_digest(
+        [RegionRect(x=0.98995, y=0.2, w=0.01005, h=0.1)]
+    )
 
 
 def test_ecg_founder_tool_persists_bounded_success_and_failure_receipts(

@@ -27,16 +27,20 @@ from dicom_overlay.domain.entities import (
     AnalysisResult,
     AppConfig,
     ChecklistItem,
+    ClaimType,
     Finding,
     Modality,
+    Polarity,
     RegionRect,
     ROICrop,
     Severity,
     TriggerMode,
+    VerificationStatus,
     WindowRect,
 )
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.services import VisionAnalyzerService
+from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import (
     OpenClawClient,
     _coerce_result_payload,
@@ -69,6 +73,7 @@ class TestParseResult:
         client._connected = False
         client._request_counter = 0
         client._gateway_token = "test-token"
+        client._analysis_prompt_profile = "clinical"
         return client
 
     @pytest.mark.asyncio
@@ -221,10 +226,16 @@ class TestParseResult:
         assert result.image_quality["adequacy"] == "limited"
         assert result.next_steps == ["Review lead II at source resolution."]
         assert result.incomplete is True
-        assert result.incomplete_reasons == ["Lead V6 label is cropped."]
+        assert result.incomplete_reasons == [
+            "Lead V6 label is cropped.",
+            "Trusted host canonical assembly is not available",
+        ]
         assert result.zoom_hints == ["Zoom lead II at source resolution."]
         assert result.review_required is True
-        assert result.review_reasons == ["Lead II morphology remains uncertain."]
+        assert result.review_reasons == [
+            "Lead II morphology remains uncertain.",
+            "Medical-image analyzer draft requires authorized human review",
+        ]
         assert len(result.findings) == 1
 
         f = result.findings[0]
@@ -239,6 +250,76 @@ class TestParseResult:
         assert result.checklist["rate"].value == "72 bpm"
         assert result.checklist["rate"].status == Severity.NORMAL
 
+    def test_scientific_ledger_and_links_survive_adapter_parsing(self):
+        client = self._make_client()
+        result = client._parse_result(
+            {
+                "modality": "CXR",
+                "summary": "Focal right basal opacity.",
+                "summary_observation_ids": ["obs-1"],
+                "observations": [
+                    {
+                        "id": "obs-1",
+                        "anatomy": "right lower lung",
+                        "finding": "focal opacity",
+                        "polarity": "present",
+                        "status": "supported",
+                        "assessable": True,
+                        "evidence_ids": ["ev-1"],
+                        "claim_type": "descriptive_observation",
+                    }
+                ],
+                "evidence": [
+                    {
+                        "id": "ev-1",
+                        "kind": "source_image",
+                        "source_image_sha256": "model-must-not-bind-this",
+                        "description": "Visible focal opacity.",
+                        "bboxes": [{"x": 0.2, "y": 0.6, "w": 0.1, "h": 0.1}],
+                    }
+                ],
+                "findings": [
+                    {
+                        "id": "f1",
+                        "regions": ["right_lower_lung"],
+                        "label": "Focal opacity",
+                        "detail": "Visible focal opacity.",
+                        "severity": "warning",
+                        "claim_type": "descriptive_observation",
+                        "observation_ids": ["obs-1"],
+                        "evidence_ids": ["ev-1"],
+                        "bboxes": [{"x": 0.2, "y": 0.6, "w": 0.1, "h": 0.1}],
+                    }
+                ],
+                "checklist": {
+                    "projection_quality": {
+                        "value": "limited AP",
+                        "status": "info",
+                        "assessable": False,
+                        "evidence": "single screenshot",
+                    }
+                },
+            },
+            elapsed_ms=20,
+            request_modality=Modality.CXR,
+        )
+
+        assert result.summary_observation_ids == ["obs-1"]
+        assert result.observations[0].polarity is Polarity.PRESENT
+        assert result.observations[0].status is VerificationStatus.SUPPORTED
+        assert result.observations[0].claim_type is ClaimType.DESCRIPTIVE_OBSERVATION
+        assert result.evidence[0].source_image_sha256 == ""
+        assert result.evidence[0].kind == "source_region"
+        assert result.evidence[0].source_ref == ""
+        assert result.incomplete is True
+        assert "Evidence attestations require trusted host assembly" in (
+            result.validation_warnings
+        )
+        assert result.findings[0].observation_ids == ["obs-1"]
+        assert result.findings[0].evidence_ids == ["ev-1"]
+        assert result.checklist["projection_quality"].assessable is False
+        assert result.checklist["projection_quality"].evidence == "single screenshot"
+
     def test_missing_fields_default(self):
         client = self._make_client()
         result = client._parse_result({}, elapsed_ms=200)
@@ -251,6 +332,7 @@ class TestParseResult:
 
     def test_string_false_does_not_enable_incomplete_or_review_flags(self):
         client = self._make_client()
+        client._analysis_prompt_profile = "minimal_control"
         result = client._parse_result(
             {
                 "incomplete": "false",
@@ -261,6 +343,54 @@ class TestParseResult:
 
         assert result.incomplete is False
         assert result.review_required is False
+
+    def test_clinical_draft_without_ledger_fails_closed_through_validator(self):
+        client = self._make_client()
+        checklist_keys = (
+            "projection_quality",
+            "airway",
+            "lungs",
+            "pleura",
+            "cardiac_silhouette",
+            "mediastinum",
+            "hila",
+            "diaphragm",
+            "bones",
+            "soft_tissue",
+            "lines_tubes",
+        )
+        result = client._parse_result(
+            {
+                "modality": "CXR",
+                "summary": "No focal airspace opacity.",
+                "severity": "normal",
+                "findings": [],
+                "checklist": {
+                    key: {"value": "reviewed", "status": "normal"}
+                    for key in checklist_keys
+                },
+                "incomplete": False,
+                "review_required": False,
+            },
+            elapsed_ms=1,
+            request_modality=Modality.CXR,
+        )
+
+        validated = OutputValidator(strict=False).post_analyze(
+            AnalyzeRequest(
+                image_base64="ZmFrZQ==",
+                modality=Modality.CXR,
+                valid_regions=["full_image"],
+            ),
+            result,
+        )
+
+        assert validated.incomplete is True
+        assert "Trusted host canonical assembly is not available" in (
+            validated.incomplete_reasons
+        )
+        assert validated.review_required is True
+        assert "authorized human review" in " ".join(validated.review_reasons)
 
     def test_invalid_bbox_is_dropped_and_marks_result_incomplete(self):
         client = self._make_client()
@@ -284,7 +414,10 @@ class TestParseResult:
 
         assert result.findings[0].bboxes == []
         assert result.incomplete is True
-        assert result.incomplete_reasons == ["Dropped invalid bbox for finding f1"]
+        assert result.incomplete_reasons == [
+            "Dropped invalid bbox for finding f1",
+            "Trusted host canonical assembly is not available",
+        ]
         assert result.validation_warnings == ["Dropped invalid bbox for finding f1"]
 
     def test_unknown_modality_defaults_ekg(self):
