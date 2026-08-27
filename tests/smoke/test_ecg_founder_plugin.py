@@ -122,7 +122,7 @@ def test_ecg_founder_tool_is_optional_and_not_bundled_as_model_weights() -> None
         plugin_manifest["version"],
         capability_manifest["version"],
         package_manifest["version"],
-    } == {"1.5.7"}
+    } == {"1.5.8"}
     assert metadata["optional"] is True
     assert capability_manifest["capabilities"]["noScreenshotToWaveformInference"]
     assert not list(_PLUGIN_ROOT.rglob("*.pth"))

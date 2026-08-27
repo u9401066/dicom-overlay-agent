@@ -63,7 +63,7 @@ def build_harness_manifest() -> dict[str, Any]:
     """Build a plugin-like manifest for the image interpretation harness."""
     return {
         "name": HARNESS_NAME,
-        "version": "1.5.7",
+        "version": "1.5.8",
         "description": "Medical image co-reading harness for DICOM Overlay Agent.",
         "compatibility": {
             "minimumOpenClaw": MIN_SAFE_OPENCLAW_VERSION,

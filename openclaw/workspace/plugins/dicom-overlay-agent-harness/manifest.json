@@ -1,6 +1,6 @@
 {
   "name": "dicom-overlay-agent-harness",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "description": "Medical image co-reading harness for DICOM Overlay Agent.",
   "compatibility": {
     "minimumOpenClaw": "2026.4.22",

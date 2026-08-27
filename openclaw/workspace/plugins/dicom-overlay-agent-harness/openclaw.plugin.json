@@ -2,7 +2,7 @@
   "id": "dicom-overlay-agent-harness",
   "name": "DICOM Overlay Agent Harness",
   "description": "OpenClaw runtime boundary for the desktop medical-image crop/refine harness.",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "activation": {
     "onStartup": true
   },
