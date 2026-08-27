@@ -40,40 +40,73 @@ class _SiteParser(HTMLParser):
             self.h1_text.append(data.strip())
 
 
-def _parse_site() -> _SiteParser:
+def _parse_site(filename: str = "index.html") -> _SiteParser:
     parser = _SiteParser()
-    parser.feed((SITE_ROOT / "index.html").read_text(encoding="utf-8"))
+    parser.feed((SITE_ROOT / filename).read_text(encoding="utf-8"))
     return parser
 
 
 def test_pages_site_has_one_literal_product_h1_and_required_sections() -> None:
     parser = _parse_site()
 
-    assert parser.h1_text == ["DICOM Overlay Agent"]
-    assert {"overview", "workflow", "evidence", "safety"} <= parser.section_ids
+    assert parser.h1_text == ["Co-reading that stays accountable to the image."]
+    assert {"overview", "workflow", "evidence", "safety", "install"} <= (
+        parser.section_ids
+    )
 
 
 def test_pages_site_local_references_exist() -> None:
-    parser = _parse_site()
     missing: list[str] = []
-    for reference in parser.references:
-        parsed = urlparse(reference)
-        if parsed.scheme or parsed.netloc or reference.startswith("#"):
-            continue
-        path = SITE_ROOT / parsed.path
-        if not path.is_file():
-            missing.append(reference)
+    for filename in ("index.html", "docs.html"):
+        parser = _parse_site(filename)
+        for reference in parser.references:
+            parsed = urlparse(reference)
+            if parsed.scheme or parsed.netloc or reference.startswith("#"):
+                continue
+            path = SITE_ROOT / parsed.path
+            if not path.is_file():
+                missing.append(f"{filename}: {reference}")
 
     assert missing == []
     assert (SITE_ROOT / ".nojekyll").is_file()
 
 
 def test_pages_site_uses_only_synthetic_ecg_media() -> None:
-    parser = _parse_site()
-    image_references = [item for item in parser.references if item.endswith(".png")]
+    image_references = [
+        item
+        for filename in ("index.html", "docs.html")
+        for item in _parse_site(filename).references
+        if item.endswith(".png")
+    ]
 
     assert set(image_references) == {"assets/synthetic-ecg.png"}
     assert (SITE_ROOT / "assets" / "synthetic-ecg.png").stat().st_size > 1_000
+
+
+def test_pages_site_reports_live_failure_evidence_without_broken_private_cta() -> None:
+    index = (SITE_ROOT / "index.html").read_text(encoding="utf-8")
+
+    for evidence in (
+        "GPT-5.6 Luna",
+        "146.9 s",
+        "111,833",
+        "0.10–0.37 px",
+        "Accuracy miss recorded",
+        "9,922 canonical MEETI images",
+    ):
+        assert evidence in index
+    assert "github.com/u9401066/dicom-overlay-agent" not in index
+
+
+def test_pages_public_setup_uses_real_subscription_and_harness_commands() -> None:
+    docs = (SITE_ROOT / "docs.html").read_text(encoding="utf-8")
+
+    assert "uv sync --all-extras" in docs
+    assert "codex login" in docs
+    assert "openai/gpt-5.6-luna" in docs
+    assert "DICOMOverlayAgent.exe --selfcheck" in docs
+    assert "run-image-harness-smoke.py" in docs
+    assert "OpenClaw owns every image-analysis turn" in docs
 
 
 def test_pages_workflow_uses_current_official_action_majors() -> None:

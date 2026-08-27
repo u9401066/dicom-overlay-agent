@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Setup, privacy, OpenClaw, image harness, and packaging guide for DICOM Overlay Agent."
+    >
+    <meta name="theme-color" content="#087f83">
+    <title>DICOM Overlay Agent · Setup guide</title>
+    <link rel="icon" type="image/png" href="assets/synthetic-ecg.png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="DICOM Overlay Agent home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>DICOM Overlay Agent</span>
+      </a>
+      <button
+        class="menu-button"
+        type="button"
+        aria-expanded="false"
+        aria-controls="site-navigation"
+      >Menu</button>
+      <nav id="site-navigation" class="site-navigation" aria-label="Documentation">
+        <a href="index.html">Overview</a>
+        <a href="#source">Source setup</a>
+        <a href="#subscription">Subscription</a>
+        <a href="#harness">Harness</a>
+        <a href="#bundle">Bundle</a>
+      </nav>
+    </header>
+
+    <main id="main" class="docs-shell">
+      <header class="docs-hero">
+        <div>
+          <h1>Setup and verification guide.</h1>
+          <p>
+            Run the Windows co-reading loop from source or as a portable bundle,
+            keep capture inside the configured ROI, and verify the public OpenClaw
+            Gateway contract before a model sees an image.
+          </p>
+        </div>
+        <aside>
+          <strong>Research software</strong>
+          <p>Not a medical device. The physician retains the final diagnostic call.</p>
+        </aside>
+      </header>
+
+      <div class="docs-layout">
+        <nav class="docs-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#requirements">Requirements</a>
+          <a href="#source">Run from source</a>
+          <a href="#subscription">Subscription route</a>
+          <a href="#roi">ROI and privacy</a>
+          <a href="#harness">Image harness</a>
+          <a href="#bundle">Portable bundle</a>
+          <a href="#evidence">Evidence limits</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+        </nav>
+
+        <article class="docs-content">
+          <section id="requirements">
+            <h2>Requirements</h2>
+            <ul>
+              <li>Windows 10 or 11.</li>
+              <li><code>uv</code> for the repository-local Python environment.</li>
+              <li>Node.js 22+ for source runs; the portable bundle carries pinned Node.js.</li>
+              <li>A viewer window whose image area can be selected without PHI.</li>
+              <li>A local ChatGPT/Codex subscription sign-in only when using the subscription route.</li>
+            </ul>
+          </section>
+
+          <section id="source">
+            <h2>Run from source</h2>
+            <p>All dependencies stay inside the project environment and repo-local runtime.</p>
+            <pre><code>uv sync --all-extras
+scripts\install-openclaw-local.bat
+start.bat</code></pre>
+            <p>
+              The app starts and stops its local Gateway automatically. On first launch,
+              choose the viewer and save a capture ROI before enabling analysis.
+            </p>
+          </section>
+
+          <section id="subscription">
+            <h2>Subscription-backed GPT-5.6 Luna</h2>
+            <pre><code>codex login</code></pre>
+            <p>
+              In Settings, select <strong>OpenAI Subscription via OpenClaw</strong> and
+              choose <code>openai/gpt-5.6-luna</code>. The OAuth migration provider is
+              enabled only to import local sign-in state into the isolated OpenClaw home,
+              then removed from live plugin configuration before inference.
+            </p>
+            <div class="docs-callout">
+              <strong>Ownership boundary</strong>
+              <p>
+                OpenClaw owns every image-analysis turn through public
+                <code>connect</code> + <code>chat.send</code>. The bundle does not ship or
+                enable a Codex agent runtime, and subscription setup does not retain a
+                Platform API key.
+              </p>
+            </div>
+          </section>
+
+          <section id="roi">
+            <h2>ROI and privacy</h2>
+            <ol>
+              <li>Open Settings or complete the first-run ROI setup.</li>
+              <li>Select the target viewer and draw only the diagnostic image area.</li>
+              <li>Exclude names, identifiers, timestamps, accession numbers, and surrounding desktop UI.</li>
+              <li>Use manual re-trigger once to verify the captured frame before continuous monitoring.</li>
+            </ol>
+            <p>
+              Every refinement crop is a subset of the original ROI. Neither crop/refine
+              nor overlay calibration is permitted to widen capture beyond that boundary.
+            </p>
+          </section>
+
+          <section id="harness">
+            <h2>Verify the image harness</h2>
+            <p>
+              The smoke produces a synthetic ECG, takes a non-zero ROI crop, sends one
+              PNG attachment through the Gateway frame, and writes redacted evidence.
+            </p>
+            <pre><code>uv run python scripts\run-image-harness-smoke.py ^
+  --output data\harness-smoke\local
+
+uv run python scripts\verify-image-harness.py ^
+  --artifact-dir data\harness-smoke\local</code></pre>
+            <p>The validator requires all of the following in the same evidence set:</p>
+            <ul>
+              <li>public Gateway <code>connect</code> and <code>chat.send</code> frames;</li>
+              <li>one non-empty <code>image/png</code> attachment with hash and redacted content;</li>
+              <li>the production strict output hook and exact modality checklist;</li>
+              <li>meaningful image quality and next steps;</li>
+              <li>a bounded, non-full-viewer ROI capture;</li>
+              <li>positive normalized bbox geometry and overlay audit.</li>
+            </ul>
+          </section>
+
+          <section id="bundle">
+            <h2>Build and verify the portable bundle</h2>
+            <pre><code>scripts\build-exe.bat
+dist\DICOMOverlayAgent\DICOMOverlayAgent.exe --selfcheck
+uv run python scripts\verify-packaged-app.py ^
+  dist\DICOMOverlayAgent</code></pre>
+            <p>
+              The bundle includes the windowed Python/Qt app, pinned Node.js, the slim
+              OpenClaw runtime, modality skills, and required workspace templates. It
+              excludes Torch, model checkpoints, evaluation datasets, secrets, unused
+              heavy Python libraries, Qt WebEngine/QML/Multimedia/PDF payloads, debug
+              symbols, and foreign native binaries.
+            </p>
+            <div class="docs-callout docs-callout-neutral">
+              <strong>Do not prune OpenClaw internal <code>dist</code> chunks.</strong>
+              <p>
+                Those chunks are private implementation details of the pinned package.
+                Size work is limited to build inputs, debug symbols, disabled surfaces,
+                and non-Windows native payloads around the runtime.
+              </p>
+            </div>
+          </section>
+
+          <section id="evidence">
+            <h2>What current evidence means</h2>
+            <dl class="docs-facts">
+              <div><dt>Real desktop route</dt><dd>Packaged GUI → ROI capture → OpenClaw → GPT-5.6 Luna → overlay export.</dd></div>
+              <div><dt>Live latency</dt><dd>146.9 seconds across five image turns in the recorded baseline.</dd></div>
+              <div><dt>Coordinate result</dt><dd>Four exported boxes stayed in bounds with 0.10–0.37 px maximum edge drift.</dd></div>
+              <div><dt>Accuracy result</dt><dd>The recorded case missed reference rhythm, QT, and ST–T findings. It is a failure baseline.</dd></div>
+              <div><dt>Evaluation cohort</dt><dd>9,922 canonical MEETI images; a frozen full comparison is not yet complete.</dd></div>
+            </dl>
+            <p>
+              Protocol tests and mock-perfect results demonstrate plumbing only. They
+              are never reported as clinical accuracy, and a credentialed dataset image
+              is not republished on this public site.
+            </p>
+          </section>
+
+          <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <dl class="troubleshooting-list">
+              <div>
+                <dt>Gateway port is occupied</dt>
+                <dd>The app reuses only a listener that completes an authenticated public <code>connect</code>. It refuses to terminate an unknown process.</dd>
+              </div>
+              <div>
+                <dt>App reports missing workspace templates</dt>
+                <dd>Rebuild with the current staging script. A package missing any pinned OpenClaw bootstrap template now fails verification.</dd>
+              </div>
+              <div>
+                <dt>Overlay is visibly offset</dt>
+                <dd>Re-run ROI setup on the target monitor and inspect the coordinate audit. DPI conversion drift above the calibrated threshold is a failure.</dd>
+              </div>
+              <div>
+                <dt>A model turn disconnects</dt>
+                <dd>Before acceptance the identical idempotent frame may replay once. After acceptance the client observes the same run and never creates a second charged turn.</dd>
+              </div>
+            </dl>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <strong>DICOM Overlay Agent</strong>
+      <span>Research co-reading software</span>
+      <span>Apache-2.0</span>
+      <span>Not a medical device</span>
+    </footer>
+  </body>
+</html>
