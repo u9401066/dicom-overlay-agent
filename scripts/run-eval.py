@@ -486,6 +486,11 @@ def _manifest_identity(
     labels: set[str] = set()
     result_filenames: set[str] = set()
     identities: list[dict[str, Any]] = []
+    # A manifest may intentionally assign several blinded case identities to
+    # one immutable source object (for example, an offline scale-plumbing
+    # fixture).  Cache content identity by resolved path so protocol freezing
+    # remains O(case count) without re-reading identical bytes per identity.
+    source_identity_cache: dict[Path, tuple[int, str]] = {}
     for case in cases:
         label = case.label or case.image_path.name
         result_filename = _result_filename(label)
@@ -503,13 +508,18 @@ def _manifest_identity(
             raise ProtocolFingerprintError(
                 f"manifest image does not exist for {label}: {image_path}"
             )
+        source_identity = source_identity_cache.get(image_path)
+        if source_identity is None:
+            source_identity = (image_path.stat().st_size, _sha256_file(image_path))
+            source_identity_cache[image_path] = source_identity
+        size_bytes, source_sha256 = source_identity
         identities.append(
             {
                 "case": label,
                 "image": _path_for_fingerprint(image_path, manifest_path.parent),
                 "image_name": image_path.name,
-                "size_bytes": image_path.stat().st_size,
-                "sha256": _sha256_file(image_path),
+                "size_bytes": size_bytes,
+                "sha256": source_sha256,
             }
         )
     return {
@@ -1783,15 +1793,48 @@ def _pending_cases(
     union of old and newly completed results.
     """
     results_dir = output_dir / "results"
+    result_paths = {
+        path.name: path for path in results_dir.glob("*.json") if path.is_file()
+    }
+    retry_result_filenames = (
+        {
+            name
+            for name, path in result_paths.items()
+            if _persisted_result_has_error(path)
+        }
+        if retry_errors
+        else set()
+    )
+    return _partition_resume_cases(
+        cases,
+        completed_result_filenames=set(result_paths),
+        retry_result_filenames=retry_result_filenames,
+    )
+
+
+def _partition_resume_cases(
+    cases: list[EvalCase],
+    *,
+    completed_result_filenames: set[str],
+    retry_result_filenames: set[str] | None = None,
+) -> tuple[list[EvalCase], int]:
+    """Partition a frozen case sequence using already-validated result names.
+
+    Keeping the set partition pure makes the 10k+ identity invariant cheap to
+    verify.  ``_pending_cases`` remains the filesystem boundary and delegates
+    here only after protocol/result validation has run.
+    """
+
+    retry_names = retry_result_filenames or set()
     pending: list[EvalCase] = []
     skipped = 0
     for case in cases:
         label = case.label or case.image_path.name
-        result_path = results_dir / _result_filename(label)
-        if not result_path.is_file():
+        result_filename = _result_filename(label)
+        if result_filename not in completed_result_filenames:
             pending.append(case)
             continue
-        if retry_errors and _persisted_result_has_error(result_path):
+        if result_filename in retry_names:
             pending.append(case)
             continue
         skipped += 1
