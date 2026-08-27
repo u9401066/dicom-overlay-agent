@@ -1,8 +1,9 @@
 # Architecture
 
-本文件描述 2026-08-09 實作中的桌面程式、OpenClaw agent、MultiPass 影像工具、
-座標投影與 MEETI 評估邊界。歷史設計與驗證數字若有衝突，以
+本文件描述 v0.4.7（2026-08-27）的桌面程式、OpenClaw agent、MultiPass
+影像工具、座標投影與 MEETI 評估邊界。歷史 paired 結果以
 [`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)
+為準；本輪實機驗收與尚待完成項目以 [`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md)
 及實驗目錄內的機器可讀 state 為準。
 
 ## Runtime Overview
@@ -27,7 +28,8 @@ OpenClawClient -- public WebSocket connect/chat.send --> OpenClaw Gateway
                                                         | dicom_bbox_validate
                                                         | optional ECGFounder tool
                                                         v
-                                            openai/gpt-5.4-mini
+                                  release default: openai/gpt-5.4-mini
+                          explicit acceptance override: openai/gpt-5.6-luna
                                       openai-chatgpt-responses transport
     ^
     | structured result, tool receipts, timing, provenance
@@ -67,6 +69,32 @@ Subscription-backed inference follows a deliberately narrow path:
    dependencies and platform binaries are excluded from this route.
 5. A secret-free audit records `billing_route=chatgpt_codex_subscription`,
    `agent_runtime=openclaw`, and `codex_agent_runtime_enabled=false`.
+
+The release default remains `openai/gpt-5.4-mini`. The 2026-08-27 Luna run used
+an explicit `openai-codex` model override; it did not change the default and did
+not transfer the agent loop from OpenClaw to Codex.
+
+## 2026-08-27 Desktop Acceptance Boundary
+
+The packaged app was exercised on a 2560×1600 Windows display at 150% DPI. The
+viewer capture remained exactly `(19, 30, 1522, 1136)` in physical pixels, the
+app reached `DISPLAYING`, and the export contained four diagnostic boxes, two
+analysis-crop outlines, and a coordinate audit. All boxes stayed in bounds with
+no clamping and no more than 0.368 px physical-edge drift. External Windows
+capture correctly excluded the app's top-most panels.
+
+Five OpenClaw-owned `gpt-5.6-luna` image turns took 146.915 seconds and recorded
+111,833 total tokens. Subscription metering was US$0; the same traffic is about
+US$0.017135 at published API token prices. These facts establish transport,
+rendering, privacy, and geometry behavior—not diagnostic accuracy. The result
+reported sinus rhythm/possible LVH while the reference described atrial
+fibrillation with slow ventricular response, prolonged QT, poor R-wave
+progression, and inferior ST-T changes. It is an explicit accuracy miss. A
+two-case answer-free follow-up passed schema/bbox/SLA with zero JSON repair but
+scored only 1/2 strict and 0.522 mean partial credit; its warning case missed
+weak-label LVH and sinus rhythm. That run's source fingerprint was dirty while
+release metadata was being synchronized, so a fresh unseen canary against the
+final frozen release source remains pending.
 
 The desktop Settings page identifies the route as either **OpenClaw agent |
 ChatGPT subscription OAuth** or **OpenClaw agent | Provider API key**. MEETI
@@ -190,14 +218,18 @@ The authoritative status and completed results are documented in
 ## Portable Runtime
 
 The portable directory contains the PyInstaller launcher, Python/Qt payload,
-Node `v24.18.0`, slim OpenClaw `2026.7.1-2`, harness/plugin `1.5.7`, modality
+Node `v24.18.0`, slim OpenClaw `2026.7.1-2`, harness/plugin `1.5.8`, modality
 skills and the OAuth-only migration provider. Runtime paths anchor to the EXE
 directory rather than the launch working directory. Verification rejects `.env`,
 MEETI images, waveform/checkpoint data, SQLite state, Torch, Codex agent runtime
 dependencies and platform binaries.
 
-The 2026-08-09 release is 368.01 MiB total; the launcher is 7.05 MiB. Exact
-hashes and smoke evidence are recorded in the current experiment document.
+The current v0.4.7 staged OpenClaw runtime is verified at 165.162 MiB, a
+conservative 19.804 MiB reduction that retains seven required upstream
+templates, internal `dist` chunks, `quickjs-wasi`, and `playwright-core`. The
+last complete 2026-08-09 bundle was 368.01 MiB with a 7.05 MiB launcher; those
+are historical values, not an estimate for v0.4.7. The final v0.4.7 bundle size,
+file count, hash, and packaged smoke result remain pending a clean rebuild.
 
 ## Development Context
 

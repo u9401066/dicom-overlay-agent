@@ -169,6 +169,38 @@
 - [ ] Decide whether a separate single-pass and MultiPass-without-ECGFounder
   ablation is required after the primary two-arm full cohort finishes.
 
+### v0.4.7 Live Luna acceptance and release hardening (2026-08-27)
+
+- [x] Run the packaged Windows GUI on a 2560×1600 / 150%-DPI desktop against a
+  visible credentialed local MEETI evaluation ECG, using only ROI
+  `(19, 30, 1522, 1136)` and preserving
+  capture exclusion. Export four diagnostic boxes, two crop outlines, and a
+  physical/logical coordinate audit with no clamps and ≤0.368 px edge drift.
+- [x] Exercise the OpenClaw-owned subscription path with an explicit
+  `openai-codex` override for `openai/gpt-5.6-luna`: five image turns,
+  146.915 seconds, 111,833 total tokens, zero subscription API charge, and about
+  US$0.017135 API-equivalent token cost. Keep the release default at
+  `openai/gpt-5.4-mini`.
+- [x] Record the result as an accuracy miss: the agent reported sinus rhythm /
+  possible LVH instead of the reference AF with slow ventricular response,
+  prolonged QT, poor R-wave progression, and inferior ST-T changes. Do not make
+  a clinical-accuracy claim from the successful transport/geometry path.
+- [x] Harden Core 2 image/schema/event contracts, invalid-bbox rejection,
+  charge-safe Gateway recovery, and a 10,001-identity resumability scale gate.
+- [x] Publish product metadata `v0.4.7` and harness/plugin `1.5.8` while keeping
+  OpenClaw pinned at `2026.7.1-2`; rebuild the synthetic-only GitHub Pages and
+  public setup documentation.
+- [x] Reduce the verified staged OpenClaw runtime to 165.162 MiB, a conservative
+  19.804 MiB reduction, while retaining required templates and internal `dist`
+  chunks.
+- [x] Run a two-case answer-free pre-release canary with a 1,222-ID denylist:
+  schema/bbox/SLA passed with zero JSON repair, but strict was 1/2 and mean
+  partial credit 0.522 because the warning case missed weak-label LVH and sinus
+  rhythm. Its dirty source fingerprint prevents use as the frozen release gate.
+- [ ] Run and record a fresh unseen canary from the final frozen release source.
+- [ ] Perform the clean full v0.4.7 bundle rebuild, packaged verification, size
+  measurement and hash capture; do not estimate these values in advance.
+
 ## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制

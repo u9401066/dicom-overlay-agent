@@ -1,14 +1,14 @@
 # DICOM Overlay Agent — 系統規格書
 
-**Version:** 0.4.7 Acceptance Profile (draft)
-**Date:** 2026-08-27
+**Version:** 0.4.7
+**Date:** 2026-08-28
 **Author:** 寧寧 (AI Research Assistant, KMUH Anesthesiology)
 
 ---
 
 ## 0. Current Implementation Binding
 
-### 0.1 2026-08-27 acceptance target
+### 0.1 2026-08-27 acceptance binding
 
 本輪交付不得只以 mock、headless 或單元測試代替產品驗收，必須同時留下：
 
@@ -33,10 +33,10 @@
 - 桌面程式只透過 OpenClaw 公開 `connect` / `chat.send` protocol 3 傳送影像，
   agent loop 由 OpenClaw embedded agent 擁有；不提供繞過 Gateway 的 direct-API
   fallback。
-- 本輪真實桌面驗收模型為 `openai/gpt-5.6-luna`；2026-08-09 以前的
-  `openai/gpt-5.4-mini` 數據只保留為歷史基線。ChatGPT/Codex subscription
-  OAuth 只作 transport credential；官方 Codex migration provider 不作影像判讀，
-  bundle 亦不得包含或啟用 Codex agent runtime。
+- Release default 仍為 `openai/gpt-5.4-mini`；本輪真實桌面驗收透過顯式
+  `openai-codex` model override 選擇 `openai/gpt-5.6-luna`，沒有改動全域預設。
+  ChatGPT/Codex subscription OAuth 只作 transport credential；官方 Codex
+  migration provider 不作影像判讀，bundle 亦不得包含或啟用 Codex agent runtime。
 - 預設開啟 app `MultiPassAnalyzer`：完整圖 coarse read、原圖 crop/refine、EKG
   systematic/rhythm probe、選配 ECGFounder waveform evidence 及 final
   reconciliation。SLA 目標為首次概略 60 秒、首次 crop/detail 100 秒、整題
@@ -50,6 +50,21 @@
   bbox 與 SLA 分開報告，不把正常 ECG 強迫判成異常。
 - 2026-08-09 portable bundle 為 368.01 MiB，launcher 7.05 MiB，含 OpenClaw
   `2026.7.1-2`、Node `v24.18.0` 與 harness/plugin `1.5.7`。
+- v0.4.7 產品 metadata 為 `0.4.7`、harness/plugin 為 `1.5.8`，OpenClaw pin
+  維持 `2026.7.1-2`。已驗證 staged OpenClaw runtime 為 165.162 MiB，比先前
+  stage 保守減少 19.804 MiB；最終完整 bundle 尚未乾淨重建，不預估總尺寸與 hash。
+- 實機證據來自 2560×1600 / 150% DPI 桌面與 physical ROI
+  `(19, 30, 1522, 1136)`：五個 Luna 影像回合耗時 146.915 秒、111,833 total
+  tokens、subscription API charge US$0、API 等值約 US$0.017135；bbox 無 clamp，
+  最大 edge drift ≤0.368 px，capture exclusion 正常。
+- 此次模型把 reference 的 atrial fibrillation with slow ventricular response、
+  prolonged QT、poor R-wave progression 與 inferior ST-T changes 判成 sinus
+  rhythm／possible LVH。這是 accuracy miss，不得用 transport、UI 或座標成功
+  包裝成醫療正確率成功；fresh unseen canary 尚待 final frozen source 完成後補值。
+- 後續 answer-free 兩例 canary 以 1,222-ID denylist 通過 schema、bbox、SLA 且
+  零 JSON repair，但 strict 只有 1/2、mean partial 0.522；warning 例漏掉弱標籤
+  LVH 與 asserted sinus rhythm。該次 fingerprint 為 `dirty=true`，因此只算
+  pre-release bounded evidence，不能取代 final frozen-source canary。
 
 執行細節以 [`ARCHITECTURE.md`](ARCHITECTURE.md)、
 [`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md) 與
@@ -495,7 +510,7 @@ Step 5: 持續循環
     "severity": "warning",
     "findings": [...],               // 同 §3.3 JSON 格式
     "checklist": {...},
-    "model_used": "openai/gpt-5.4-mini", // OpenClaw 回報實際使用的模型
+    "model_used": "openai/gpt-5.4-mini", // release default；OpenClaw 回報實際模型
     "tokens": { "input": 1200, "output": 450 }
   }
 }
@@ -803,7 +818,7 @@ debug:
 | 視窗偵測 | pywin32 (win32gui) | pygetwindow |
 | 影像 hash | imagehash (ahash) | phash |
 | WS 通訊 | websockets | - |
-| Vision API | OpenClaw 管理 (`openai/gpt-5.4-mini`) | - |
+| Vision API | OpenClaw 管理（預設 `openai/gpt-5.4-mini`；可顯式 override） | v0.4.7 實測 `openai/gpt-5.6-luna` |
 | 設定檔 | PyYAML (yaml.safe_load) | - |
 | 打包 | PyInstaller（單一 exe） | - |
 | 系統常駐 | system tray (pystray) | Windows Task Scheduler |
@@ -892,12 +907,13 @@ overlay.exe --config config.yaml
 
 | 元件 | 大小 | 說明 |
 |------|------|------|
-| overlay 啟動器 exe | 7.05 MiB | PyInstaller launcher |
-| App + Python/Qt 層 | 94.74 MiB | PyQt6 已修剪未用模組 |
-| vendored OpenClaw runtime | 185.02 MiB | dist + node_modules（不侵入內部以保 Core 3） |
+| overlay 啟動器 exe | 7.05 MiB（2026-08-09） | 最近一次完整 PyInstaller launcher；v0.4.7 待重建 |
+| App + Python/Qt 層 | 94.74 MiB（2026-08-09） | 最近一次完整 build；v0.4.7 待重建 |
+| v0.4.7 staged OpenClaw runtime | 165.162 MiB | 保留 templates / dist / plugin surfaces；減少 19.804 MiB |
 | Node.js portable | 88.25 MiB | Node `v24.18.0` |
 | config / runtime state | 動態 | clean bundle 禁止 `.env`、token 與 SQLite state |
-| **完整 bundle** | **368.01 MiB** | 16,188 files，含固定 Node/OpenClaw |
+| 2026-08-09 完整 bundle | 368.01 MiB | 歷史實測值，非 v0.4.7 預估 |
+| **v0.4.7 完整 bundle** | **待乾淨重建** | 不預估總尺寸、file count 或 hash |
 
 ### 12.5 限制
 
@@ -964,6 +980,6 @@ overlay.exe --config config.yaml
 
 ---
 
-*本規格書保留 v0.4.1 的產品設計與 prior-art 內容，並以 2026-08-09
-v0.4.6 implementation binding 覆蓋目前 runtime、模型、MultiPass、評估與封裝
-事實。*
+*本規格書保留 v0.4.1 的產品設計與 prior-art 內容，並以 2026-08-27
+v0.4.7 implementation binding 覆蓋目前 runtime、模型、MultiPass、評估與封裝
+事實；明列為歷史日期的數字不代表 v0.4.7 最終封裝結果。*

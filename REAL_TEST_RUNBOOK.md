@@ -231,7 +231,8 @@ contained.
 ### 2c. MEETI 1000+ artifact gate
 
 Use this gate when validating production-harness completeness. It uses the
-public MEETI archive from Zenodo record `18523205` and writes all derived
+published MEETI archive from Zenodo record `18523205` under the source access
+and derivative-data terms, and writes all derived
 artifacts under `data\` (gitignored). The extractor can use Windows `tar`
 (`bsdtar`) or 7-Zip; prefer `--extractor tar` on the current Windows setup.
 
@@ -297,7 +298,8 @@ wrappers collapse non-zero exits to `1`. Once the key is present, the same
 command returns `status=ready` and records the exact command to start the real
 Gateway-backed experiment.
 
-The clean bundle currently contains OpenClaw `2026.7.1-2` and Node `v24.18.0`.
+The last completed 2026-08-09 bundle contains OpenClaw `2026.7.1-2` and Node
+`v24.18.0`; v0.4.7 retains those pins but still requires a clean full rebuild.
 The requested benchmark model is selected explicitly with
 `--model-id openai/gpt-5.4-mini`; the generated experiment config records the
 `openai-vision` profile and `text,image` input metadata without mutating the
@@ -305,7 +307,54 @@ repo config. The desktop Settings dialog can also save OpenAI/OpenRouter
 profiles without storing the secret in git. Always rerun config validation,
 the image harness smoke, and readiness after changing providers or OpenClaw.
 
-Current local evidence (2026-08-09):
+The release default remains `openai/gpt-5.4-mini`. The 2026-08-27 desktop
+acceptance did not change it: that run used an explicit `openai-codex` model
+override to select `openai/gpt-5.6-luna` on the OpenClaw-owned subscription
+transport. Record the default and the override separately in every artifact;
+an OAuth migration source is not evidence that Codex owned the agent loop.
+
+Current local evidence (2026-08-27 release candidate):
+
+- The packaged GUI ran on a 2560×1600 Windows display at 150% DPI with a
+  credentialed local MEETI evaluation ECG visible in the viewer. The configured
+  physical ROI was exactly
+  `(19, 30, 1522, 1136)`. The app reached `DISPLAYING` and exported four
+  diagnostic bboxes plus two analysis-crop outlines. External Windows capture
+  excluded the top-most app panels as designed.
+- Five OpenClaw-owned `gpt-5.6-luna` image turns completed in 146.915 seconds
+  and recorded 111,833 total tokens. Subscription metering reported US$0;
+  applying the [published Luna token prices](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
+  to the same traffic gives an
+  API-equivalent estimate of about US$0.017135.
+- All projected bboxes were in bounds, had no clamping, and had at most 0.368
+  physical-pixel edge drift. This is geometry evidence only. The interpretation
+  was wrong: it reported sinus rhythm/possible LVH while the reference described
+  atrial fibrillation with slow ventricular response, prolonged QT, poor R-wave
+  progression, and nonspecific inferior ST-T changes. Preserve this as an
+  accuracy miss; never relabel it as a successful medical read.
+- The 10,001-identity scale/resume gate proves completed/pending partition
+  completeness, disjointness, fingerprint rejection, and a sampled atomic disk
+  checkpoint. It is not evidence that 10,001 clinical images were interpreted.
+- The staged OpenClaw runtime is verified at 165.162 MiB, 19.804 MiB below the
+  prior stage while retaining seven required templates and all internal `dist`
+  chunks. The v0.4.7 complete bundle has not yet been rebuilt, so do not publish
+  an estimated total size, file count, launcher hash, or packaged pass count.
+- A later answer-free canary used seed `20260828`, one normal and one warning
+  case, and a 1,222-ID exposure denylist. Both cases passed schema/bbox and all
+  60/100/180-second SLA gates with zero parse retry or JSON repair. Aggregate
+  strict was 0.5, mean partial credit 0.522, normal specificity 1.0, and mean
+  latency 129,713.5 ms. The warning case reported abnormal R-wave progression
+  and prominent anterior T waves but missed the weak-label LVH and asserted
+  sinus-rhythm terms. Fifteen subscription transport requests recorded 73,528
+  input, 11,142 output, 82,432 cache-read, 5,272 reasoning, and 167,102 total
+  tokens (about US$0.02972464 API-equivalent; not an actual subscription charge).
+  The source fingerprint was `dirty=true` because release metadata was being
+  synchronized, so this is a pre-release bounded canary only.
+- A fresh unseen canary against the final frozen source is still pending. Fill
+  its case identity, latency, model receipt, score, and miss analysis here only
+  after the artifacts pass verification.
+
+Historical local evidence (2026-08-09):
 
 - A frozen 32-case paired run completed with OpenClaw ownership and native
   `openai-chatgpt-responses` subscription transport. MultiPass raised mean
@@ -383,6 +432,9 @@ subscription OAuth, `thinking=off`, per-turn `fastMode=true`, and a 180-second
 case timeout. The gold manifest is not opened until saved inference is scored.
 Do not commit, switch branches, edit scorer/harness files or rebuild in place
 while either arm is running; a source change makes the pair non-comparable.
+Changing this full-run model to Luna would create a different protocol
+fingerprint and cost profile; do so only as a new explicitly named experiment,
+not as an undocumented continuation of the GPT-5.4 Mini pair.
 
 Before launch, confirm `codex login` is valid, AC sleep is disabled, the desired
 commit is pushed, no other Gateway owns port 18789, and the old pre-publication
@@ -587,3 +639,11 @@ Gateway smoke that creates a runtime-only loopback token, waits for first-run
 migrations, authenticates over WebSocket, stops OpenClaw, and checks that port
 18789 is closed. It does not send a model request. Desktop startup allows 180
 seconds for Gateway readiness independently of the per-inference timeout.
+
+For v0.4.7, do not copy the previous full-bundle numbers into release notes.
+After the clean rebuild, require `bundle-manifest.json` to report `status=ok`,
+the exact frozen release commit, `git_dirty=false`, OpenClaw `2026.7.1-2`,
+harness/plugin `1.5.8`, seven non-empty hashed workspace templates, and empty
+sensitive/residue/banned-content scans. Until that completes, the only current
+packaging measurement is the verified 165.162 MiB staged OpenClaw runtime and
+its conservative 19.804 MiB reduction.

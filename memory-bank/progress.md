@@ -1,13 +1,14 @@
-# Progress (Updated: 2026-08-27)
+# Progress (Updated: 2026-08-28)
 
-> This file is append-only evidence history. The final 2026-08-09 sections are
-> authoritative; earlier `Doing`/`Running` entries describe their dated state.
+> This file is append-only evidence history. The 2026-08-28 section is the
+> current release-candidate state; earlier entries are dated historical evidence.
 
 ## Doing
 
-- **Live GPT-5.6 Luna desktop acceptance and release hardening** (2026-08-27):
+- **Live GPT-5.6 Luna desktop acceptance and release hardening** (2026-08-28):
   - [x] Launched the packaged Windows GUI and bundled OpenClaw path against a
-    visible public MEETI ECG. The real `gpt-5.6-luna` MultiPass run reached
+    visible credentialed local MEETI ECG. The real `gpt-5.6-luna` MultiPass run
+    reached
     `DISPLAYING`, and the app-owned Export action preserved the source, report,
     four diagnostic boxes, two crop outlines and coordinate audit.
   - [x] Recorded the live baseline: 146.915 s, 5 image turns, 50,607 input +
@@ -20,14 +21,26 @@
   - [x] Recorded the accuracy failure without relabelling it as success: the
     agent missed the gold AF/slow-response, prolonged-QT and inferior ST-T
     findings and instead proposed sinus rhythm/possible LVH.
-  - [ ] Repair current smoke failures and add boundary regressions for the four
-    cores without widening the PHI-safe ROI.
-  - [ ] Validate latency/accuracy changes on an unseen canary, freeze and push
-    the source, then start/resume the 9,922-image paired experiment.
-  - [ ] Measure and safely reduce the portable bundle without pruning OpenClaw
-    internal chunks or weakening the public Gateway contract.
-  - [ ] Complete GitHub Pages, bilingual README/runbooks/release evidence, then
-    publish path-scoped Conventional Commits and a tagged release.
+  - [x] Kept `openai/gpt-5.4-mini` as the release default and recorded that the
+    Luna run used an explicit `openai-codex` model override; OpenClaw retained
+    every image-analysis turn.
+  - [x] Repaired the current Core 2/Gateway/geometry smoke failures and added
+    invalid-bbox, event/schema/image, charge-safe recovery, 150%-DPI, and
+    10,001-identity resume/fingerprint boundary regressions without widening ROI.
+  - [x] Ran a two-case answer-free pre-release canary with a 1,222-ID denylist:
+    schema/bbox/SLA and zero-JSON-repair gates passed, but strict was 1/2 and
+    mean partial 0.522 after a warning-case LVH/sinus miss. Its dirty fingerprint
+    prevents treating it as the final frozen-source result.
+  - [ ] Validate the next prompt revision on a fresh frozen-source unseen canary,
+    then start/resume the 9,922-image paired experiment.
+  - [x] Reduced the verified staged OpenClaw runtime to 165.162 MiB, a
+    conservative 19.804 MiB reduction, while retaining seven required templates
+    and all internal `dist` chunks. The full v0.4.7 rebuild is still pending.
+  - [x] Rebuilt the synthetic-only GitHub Pages source and synchronized product
+    v0.4.7 / plugin 1.5.8 across bilingual README, runbook, architecture, spec,
+    roadmap, changelog, and memory-bank release evidence.
+  - [ ] Complete the clean full bundle rebuild, fill exact size/hash/test/canary
+    values, merge to `main`, verify Pages, and publish the signed-off tag/release.
 
 ## Done
 

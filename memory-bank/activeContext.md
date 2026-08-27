@@ -1,6 +1,6 @@
 # Active Context
 
-## 2026-08-27 live Luna / GUI / release acceptance in progress
+## 2026-08-28 live Luna / GUI / release acceptance in progress
 
 - Current objective requires real Windows desktop evidence: launch the packaged
   app and OpenClaw agent, display a test image in a viewer, route image analysis
@@ -19,8 +19,10 @@
   `openclaw-home/memory/main.sqlite*` are user-owned and excluded from this
   task's commits.
 - The packaged GUI acceptance reached `DISPLAYING` against a real 1000 x 720
-  public MEETI ECG shown in the harness viewer. The app captured the configured
-  1522 x 1136 viewer ROI on a 2560 x 1600 display at 150% Windows scaling, sent
+  credentialed local MEETI ECG shown in the harness viewer. The app captured the
+  configured
+  `(19, 30, 1522, 1136)` physical-pixel viewer ROI on a 2560 x 1600 display at
+  150% Windows scaling, sent
   five OpenClaw-owned `openai-chatgpt-responses` image turns to
   `gpt-5.6-luna`, and exported a review with four diagnostic boxes plus two
   analysis-crop outlines. Capture exclusion correctly kept the top-most app
@@ -36,14 +38,39 @@
   progression and nonspecific inferior ST-T changes; the GUI instead reported
   sinus rhythm and possible LVH. The bounded unseen canary and prompt/harness
   changes must address this miss before any clinical-accuracy statement.
+- A subsequent answer-free two-case canary (seed 20260828, 1,222-ID denylist)
+  passed schema, bbox and every SLA with zero JSON repair. It scored 1/2 strict,
+  0.522 mean partial, and 1.0 normal specificity; the warning case showed poor
+  R-wave progression/prominent anterior T waves but missed weak-label LVH and
+  asserted sinus rhythm. Usage was 167,102 total tokens and about USD 0.02972464
+  API-equivalent on the subscription route. Its source fingerprint was dirty
+  during release metadata synchronization, so it is pre-release evidence only.
 - Real packaging/runtime failures found by the acceptance path are now explicit
   gates: the staged OpenClaw runtime omitted required agent templates; a stale
   Gateway lock could survive forced shutdown; the GUI quit path hung; and final
   reconciliation changed one draft bbox coordinate before its receipt check,
   causing a safe incomplete fallback after the retry deadline. The local export
   and trajectories remain ignored/generated evidence and contain no secrets.
+- The release default remains `openai/gpt-5.4-mini`. The live Luna evidence used
+  an explicit `openai-codex` model override to `openai/gpt-5.6-luna`; OAuth
+  migration did not transfer the image-analysis loop away from OpenClaw.
+- Core 2 now requires a non-empty image and exact 16-key result on the correlated
+  frame, and overlay geometry rejects non-finite, zero-area, and fully off-image
+  boxes. Gateway recovery is acceptance-aware and charge-safe, never terminates
+  an unknown PID, and closes boundedly. The 10,001-identity scale gate verifies
+  resumable set partition and fingerprint rejection without claiming a
+  10,001-image clinical run.
+- Product metadata is v0.4.7 and harness/plugin metadata is 1.5.8; OpenClaw
+  remains pinned at 2026.7.1-2. Staging now retains and hashes seven required
+  upstream templates. The staged OpenClaw runtime is verified at 165.162 MiB,
+  a conservative 19.804 MiB reduction that does not prune internal `dist`
+  chunks. The final full bundle size/hash and frozen unseen canary remain pending.
+- The rebuilt GitHub Pages source is synthetic-only and exposes the real
+  engineering evidence plus the accuracy miss. It must reach `main` before the
+  public Pages deployment changes; tagging the feature branch alone will not
+  deploy it.
 
-> Current state is the 2026-08-27 section above. Earlier dated session updates
+> Current state is the 2026-08-28 section above. Earlier dated session updates
 > are historical snapshots and intentionally retain their then-valid blockers,
 > versions and run states.
 

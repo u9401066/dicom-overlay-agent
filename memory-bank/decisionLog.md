@@ -70,6 +70,12 @@
 | 2026-08-09 | EKG study-level 節律重複採窄範圍 deterministic dedupe | 只處理 exact-normalized 的 rate/rhythm duplicate，優先保留 lead II 或真 rhythm strip 且有有效 bbox 的 finding；ST elevation 等局部 morphology 不合併，並留下 retraction trace，避免為了畫面整潔改動診斷內容。 |
 | 2026-08-09 | 全量 MEETI 完成與小型真實證據嚴格分開 | 32-case paired pilot 顯示 weak-label partial score 顯著提升，8-case unseen 只證明新版工具鏈/SLA並揭露漏診；9,922 例未完成前不得宣稱完整資料集已跑完或醫療準確率已驗證。 |
 | 2026-08-09 | 全量 paired run 只從發布後 frozen commit 起算 | 發布前 run 已有 289 baseline rows，但 commit 會改變 source fingerprint；因此主動中止並保留為 launch audit，正式 baseline/candidate 改用 `meeti-paired-full9922-v157-postpublish-v1`，兩臂完成前不再修改 scoped source。 |
+| 2026-08-27 | Luna 實機驗收採顯式 override，不改 release default | v0.4.7 實機以 `openai-codex` model override 選 `openai/gpt-5.6-luna`，但產品、Gateway seed 與 paired runner 預設仍是 `openai/gpt-5.4-mini`；OAuth 只作 transport credential，OpenClaw 保持 agent ownership。 |
+| 2026-08-27 | Transport/座標成功不得遮蔽判讀 miss | 2560×1600 / 150% DPI、ROI `(19,30,1522,1136)`、capture exclusion、≤0.368 px drift 與完整 Luna receipt 只證明工程路徑；錯判 AF/slow response、QT、R progression 與 inferior ST-T 必須明列 accuracy miss，fresh canary 前不作醫療準確率宣稱。 |
+| 2026-08-27 | Gateway recovery 必須 acceptance-aware 且 charge-safe | 只重用通過公開 `connect` 的 Gateway，不終止未知 PID；只有尚未收到 acceptance 才可 bounded replay，避免 subscription 重複請求與不明程序破壞。 |
+| 2026-08-27 | 10,001 scale gate 與臨床 cohort 分開 | 10,001 identities 僅驗證 completed/pending partition、fingerprint fail-closed 與 resume plumbing；canonical MEETI 仍是 9,922，禁止把規模測試寫成超過一萬張真實判讀成果。 |
+| 2026-08-27 | OpenClaw 瘦身只修剪 runtime 周圍 | v0.4.7 保留並雜湊七個必要 upstream templates，禁止刪 `dist` chunks、`quickjs-wasi` 或 `playwright-core`；只移除 PDB、tree-sitter C/H 與 foreign native payload，已驗證 stage 165.162 MiB、減少 19.804 MiB，完整 bundle 待重建。 |
+| 2026-08-27 | 產品 v0.4.7 與 harness/plugin 1.5.8 分版 | Python/product metadata 與 release tag 使用 v0.4.7；native harness manifest 使用 1.5.8；OpenClaw runtime pin 保持 2026.7.1-2，避免把產品、plugin 與上游 runtime 版本混為一談。 |
 
 ---
 
