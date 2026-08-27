@@ -89,8 +89,15 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert '"leads":[]' in prompt
     assert "do not output per-lead bboxes" in prompt
     assert "Do not call sinus from regular timing alone" in prompt
-    assert "high voltage alone" in prompt
-    assert "poor R progression" in prompt
+    assert "High voltage alone cannot establish definite LVH" in prompt
+    assert "missing calibration pulse prevents a definite LVH claim" in prompt
+    assert "standard ECG grid and appropriate labeled leads" in prompt
+    assert "more than one qualifying lead group" in prompt
+    assert "secondary discordant ST-T/strain, axis deviation" in prompt
+    assert "do not suppress the candidate solely because" in prompt
+    assert "'Possible LVH-compatible pattern'" in prompt
+    assert "do not automatically force warning" in prompt
+    assert "report R-wave progression independently" in prompt
     assert "classify PR qualitatively" in prompt
     assert "premature P-QRS complexes" in prompt
     assert "tall or broad T waves" in prompt
@@ -102,6 +109,16 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "three consecutive broad QRS complexes" in prompt
     assert "NSVT/VT versus artifact" in prompt
     assert "16 keys" not in prompt
+
+
+def test_non_ekg_coarse_prompt_omits_lvh_balance_contract() -> None:
+    prompt = build_coarse_analysis_prompt(
+        modality=Modality.CXR,
+        valid_regions=["left_lung", "right_lung"],
+    )
+
+    assert "Possible LVH-compatible pattern" not in prompt
+    assert "calibration pulse prevents a definite LVH claim" not in prompt
 
 
 def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> None:

@@ -362,8 +362,12 @@ class TestHypothesisAwareRefinement:
         assert "three broad QRS complexes across multiple leads" in prompt
         assert "NSVT/VT versus artifact" in prompt
         assert "Do not finalize sinus from regular timing alone" in prompt
-        assert "High voltage alone is not LVH" in prompt
-        assert "poor R progression" in prompt
+        assert "High voltage alone cannot establish definite LVH" in prompt
+        assert "missing calibration pulse prevents a definite LVH claim" in prompt
+        assert "more than one qualifying lead group" in prompt
+        assert "'Possible LVH-compatible pattern'" in prompt
+        assert "do not automatically force warning" in prompt
+        assert "report R-wave progression independently" in prompt
         assert "classify PR and QT qualitatively" in prompt
         assert "premature P-QRS complexes" in prompt
         assert "tall or broad T waves persisting" in prompt
@@ -436,8 +440,13 @@ class TestHypothesisAwareRefinement:
         assert "inspect V1-V6 without privileging one candidate" in prompt
         assert "pathologic Q/QS morphology" in prompt
         assert "high or low voltage" in prompt
-        assert "High voltage alone is not LVH" in prompt
-        assert "poor R progression" in prompt
+        assert "High voltage alone cannot establish definite LVH" in prompt
+        assert "missing calibration pulse prevents a definite LVH claim" in prompt
+        assert "more than one qualifying lead group" in prompt
+        assert "do not suppress the candidate solely because" in prompt
+        assert "'Possible LVH-compatible pattern'" in prompt
+        assert "do not automatically force warning" in prompt
+        assert "report R-wave progression independently" in prompt
         assert "tall or broad contiguous T waves" in prompt
         assert "uncalibrated waveform classifier candidates" in prompt
         assert "Ranked labels route inspection but never set diagnosis" in prompt
@@ -448,6 +457,22 @@ class TestHypothesisAwareRefinement:
         assert "LVH finding with warning severity" not in prompt
         assert "Do not call ecg_founder_analyze_waveform again" in prompt
         assert "exactly equal the accepted boxes" in prompt
+
+    def test_ekg_skill_balances_lvh_false_positive_and_false_negative_guards(self):
+        skill = _load_skill_prompt("dicom-ekg-analysis")
+        normalized_skill = " ".join(skill.split())
+
+        assert "High voltage alone cannot establish definite LVH" in normalized_skill
+        assert (
+            "missing calibration pulse prevents a definite LVH claim"
+            in normalized_skill
+        )
+        assert "more than one qualifying lead group" in normalized_skill
+        assert "secondary discordant ST-T/strain, axis deviation" in normalized_skill
+        assert "do not suppress the candidate solely because" in normalized_skill
+        assert "`Possible LVH-compatible pattern`" in normalized_skill
+        assert "do not automatically force" in normalized_skill
+        assert "report R-wave progression independently" in normalized_skill
 
     def test_ekg_limb_probe_balances_rhythm_qt_and_inferior_st_t(self):
         prompt = _build_refinement_prompt(

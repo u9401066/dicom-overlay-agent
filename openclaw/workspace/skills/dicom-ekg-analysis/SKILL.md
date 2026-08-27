@@ -143,8 +143,11 @@ Lead-conditioned interpretation rules (generality guardrails):
     "indeterminate" rather than guessing.
   - Poor R-wave progression needs precordial leads V1-V6. Do not claim it when
     the precordials are not captured.
-  - Chamber-enlargement voltage criteria need the specific leads (S in V1/V2 +
-    R in V5/V6, or R in aVL). Do not assert LVH/RVH without them.
+  - Chamber-enlargement voltage assessment needs the appropriate labeled lead
+    groups (S in V1/V2 plus R in V5/V6, or R in aVL). Do not assert LVH/RVH
+    without them. A missing calibration pulse prevents a definite LVH claim but
+    does not by itself erase the bounded possible-pattern path below when a
+    standard ECG grid and multi-feature support remain visible.
   - A single rhythm strip supports rate/rhythm/regularity/ectopy ONLY — do not
     output STEMI territory, axis, R-progression, or chamber enlargement from a
     lone strip; set unsupported checklist axes to `indeterminate` or
@@ -262,11 +265,17 @@ Findings rules:
  multiset must exactly match one call's accepted boxes, not a subset or
  superset; validate only boxes you intend to retain.
 - Only report findings you can actually observe in the image.
-- High voltage alone is not an actionable LVH diagnosis on an uncalibrated
-  screenshot. Without clearly visible qualifying morphology and secondary
-  discordant ST-T change, return no LVH finding or retain only an `info`,
-  low-confidence candidate with a concrete reviewer question. Never label
-  repolarization change unless it is specifically visible and described.
+- High voltage alone cannot establish definite LVH, and a missing calibration
+  pulse prevents a definite LVH claim. When a standard ECG grid and appropriate
+  labeled leads show reproducible LVH-compatible voltage in more than one
+  qualifying lead group plus secondary discordant ST-T/strain, axis deviation,
+  or other supporting morphology, do not suppress the candidate solely because
+  the calibration pulse is missing. Retain a low-confidence finding labeled
+  `Possible LVH-compatible pattern` with a concrete calibration/criteria reviewer
+  question; choose severity from visible support and do not automatically force
+  `warning`. Never label repolarization change unless it is specifically visible
+  and described. Assess and report R-wave progression independently; voltage
+  must not displace it.
 - Report clinically useful visible abnormalities and unresolved candidates in
   `findings`. Record normal observations in the checklist and summary, without
   overlay boxes. Never invent an abnormal finding to meet a count.
@@ -317,8 +326,11 @@ Reading depth (specialist expectations):
   and require the appropriate visible leads and morphology. Deep S in V1/V2
   plus R in V5/V6 or aVL can support LVH when criteria are visibly met;
   secondary lateral ST-T change may support strain but must be described
-  independently. Do not let voltage assessment displace Q/QS morphology,
-  R-wave progression, conduction, or acute ST-T review.
+  independently. Absence of a calibration pulse still prevents a definite LVH
+  claim, but it must not erase the bounded possible-pattern path above when the
+  standard grid, multiple qualifying lead groups, and supporting morphology are
+  visible. Do not let voltage assessment displace Q/QS morphology, R-wave
+  progression, conduction, or acute ST-T review.
 - Diagnose a paced rhythm only when distinct narrow pacing spikes, separate
   from the QRS upstroke and ECG grid lines, immediately precede multiple QRS
   complexes in at least two visible leads. Repetitive wide or tall QRS
@@ -345,7 +357,10 @@ Reading depth (specialist expectations):
 - If any clinically meaningful ST-T ischemia/strain, LVH, bradycardia,
   tachyarrhythmia, conduction block, or chamber enlargement is present, set
   overall severity at least `warning` (reserve `info` for minor artifacts or
-  benign variants with all clinically relevant checklist axes normal).
+  benign variants with all clinically relevant checklist axes normal). A
+  low-confidence `Possible LVH-compatible pattern` is unresolved rather than
+  confirmed LVH: its severity follows the visible support and the candidate
+  label itself does not automatically require `warning`.
 - If tall/broad T-wave morphology is genuinely equivocal between a benign or
   electrolyte pattern and hyperacute ischemia, do not force a STEMI diagnosis.
   Preserve the differential with confidence/question fields, but use critical

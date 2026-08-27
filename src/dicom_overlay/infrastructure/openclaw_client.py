@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 from dicom_overlay.application.interpretation_harness import (
+    EKG_LVH_BALANCE_GUIDANCE,
     build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
@@ -2082,10 +2083,7 @@ def _build_finalization_prompt(
             "and pauses across multiple beats. Do not invent milliseconds, but do "
             "not mark a visibly assessable category unassessable merely because the "
             "source is a screenshot.\n"
-            "- Before retaining or revising an LVH candidate, compare V1-V6 R/S "
-            "progression and require appropriate labeled leads plus visible "
-            "calibration. High voltage alone is not LVH and must not displace poor "
-            "R progression.\n"
+            f"- {EKG_LVH_BALANCE_GUIDANCE}\n"
             "- Clearly tall or broad T waves persisting across contiguous leads may "
             "be abnormal without ST elevation. Reconcile hyperkalemia, hyperacute "
             "ischemia, and benign variants; do not downgrade pathologic-looking "
@@ -2256,9 +2254,10 @@ def _build_refinement_prompt(
                 "candidate: R/S progression, pathologic Q/QS morphology, QRS width "
                 "and conduction pattern, high or low voltage, ST elevation or "
                 "depression, T-wave morphology, contiguous-lead distribution, and "
-                "reciprocal changes. High voltage alone is not LVH: require "
-                "appropriate labeled leads, visible calibration, and qualifying "
-                "morphology, and never let voltage displace poor R progression. "
+                "reciprocal changes. Evaluate voltage across more than one qualifying "
+                "lead group and assess supporting strain, axis, or morphology; apply "
+                "the LVH balance rule below. Never let voltage displace R-wave "
+                "progression. "
                 "Clearly tall or broad contiguous T waves require an explicit "
                 "hyperkalemia-versus-hyperacute-ischemia-versus-variant comparison "
                 "even when definite ST elevation is absent. "
@@ -2315,7 +2314,9 @@ def _build_refinement_prompt(
             "than hiding it as nonspecific ST-T change. Do not call it confirmed. "
             "Conversely, retract a mild nonspecific or benign-variant candidate "
             "when no pathologic contiguous or reciprocal pattern remains; do not "
-            "keep info solely because any waveform difference is visible. Diagnose a paced "
+            "keep info solely because any waveform difference is visible. "
+            f"{EKG_LVH_BALANCE_GUIDANCE} "
+            "Diagnose a paced "
             "rhythm only when distinct narrow pacing spikes, separate from the "
             "QRS upstroke and grid lines, immediately precede multiple QRS "
             "complexes in at least two visible leads. Repetitive wide or tall "

@@ -9,6 +9,20 @@ if TYPE_CHECKING:
     from dicom_overlay.domain.entities import AnalysisResult, Modality, Severity
 
 
+EKG_LVH_BALANCE_GUIDANCE = (
+    "High voltage alone cannot establish definite LVH, and a missing calibration "
+    "pulse prevents a definite LVH claim. When a standard ECG grid and appropriate "
+    "labeled leads show reproducible LVH-compatible voltage in more than one "
+    "qualifying lead group plus secondary discordant ST-T/strain, axis deviation, "
+    "or other supporting morphology, do not suppress the candidate solely because "
+    "the calibration pulse is missing. Retain a low-confidence finding labeled "
+    "'Possible LVH-compatible pattern' with a concrete calibration/criteria "
+    "reviewer question; choose severity from visible support and do not automatically "
+    "force warning. Assess and report R-wave progression independently; voltage "
+    "must not displace it."
+)
+
+
 @dataclass(frozen=True)
 class InterpretationContext:
     """Compact state carried across multiple turns for the same image."""
@@ -184,7 +198,7 @@ def build_coarse_analysis_prompt(
             '"12lead_12x1","lead_order":["I","II","III","aVR","aVL",'
             '"aVF","V1","V2","V3","V4","V5","V6"],'
             '"rhythm_strip_leads":[],"rhythm_strip_bbox":null,"leads":[]}; '
-            'do not output '
+            "do not output "
             "per-lead bboxes. Local pixel "
             "evidence will derive row geometry. For any other EKG layout, include "
             "only visibly labeled leads with normalized [x,y,w,h] bboxes. Check "
@@ -213,9 +227,7 @@ def build_coarse_analysis_prompt(
             "across multiple beats and inspect premature P-QRS complexes, coupling, "
             "and pauses; a screenshot forbids invented milliseconds, not a visible "
             "normal/prolonged category. "
-            "Before proposing LVH, verify appropriate labeled leads and visible "
-            "calibration, and compare V1-V6 R/S progression; high voltage alone "
-            "must not become an LVH finding or displace poor R progression. "
+            f"{EKG_LVH_BALANCE_GUIDANCE} "
             "Clearly tall or broad T waves that persist across contiguous leads can "
             "be abnormal without ST elevation; compare hyperkalemia, hyperacute "
             "ischemia, and benign variants instead of downgrading them solely for "
