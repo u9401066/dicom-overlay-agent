@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import io
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -12,6 +13,7 @@ from uuid import uuid4
 import websockets
 from PIL import Image, ImageDraw, ImageFont
 
+from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import (
     AppConfig,
@@ -20,7 +22,9 @@ from dicom_overlay.domain.entities import (
     TriggerMode,
     WindowRect,
 )
+from dicom_overlay.domain.modality_profile import default_registry
 from dicom_overlay.domain.services import ScreenMonitorService
+from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.openclaw_runtime import build_harness_manifest
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
@@ -47,6 +51,8 @@ class _HarnessScreenMonitor(ScreenMonitorService):
         self._image_bytes = image_bytes
         self._hash = "1111111111111111"
         self._window = WindowRect(left=0, top=0, width=900, height=600)
+        self.captured_rects: list[WindowRect] = []
+        self.last_capture_size: tuple[int, int] | None = None
 
     def find_target_window(self, _keywords: list[str]) -> WindowRect | None:
         return self._window
@@ -54,8 +60,36 @@ class _HarnessScreenMonitor(ScreenMonitorService):
     def display_for_window(self, _window: WindowRect) -> DisplayFrame | None:
         return DisplayFrame(physical_rect=self._window, is_primary=True)
 
-    def capture_region(self, _rect: WindowRect) -> bytes:
-        return self._image_bytes
+    def capture_region(self, rect: WindowRect) -> bytes:
+        """Return exactly ``rect``; the smoke must exercise the real ROI contract."""
+
+        relative_left = rect.left - self._window.left
+        relative_top = rect.top - self._window.top
+        if (
+            rect.width <= 0
+            or rect.height <= 0
+            or relative_left < 0
+            or relative_top < 0
+            or relative_left + rect.width > self._window.width
+            or relative_top + rect.height > self._window.height
+        ):
+            raise ValueError("Smoke capture rect must stay within the viewer")
+        with Image.open(io.BytesIO(self._image_bytes)) as source:
+            if source.size != (self._window.width, self._window.height):
+                raise ValueError("Smoke source image size must match the viewer")
+            cropped = source.crop(
+                (
+                    relative_left,
+                    relative_top,
+                    relative_left + rect.width,
+                    relative_top + rect.height,
+                )
+            )
+            output = io.BytesIO()
+            cropped.save(output, format="PNG")
+        self.captured_rects.append(rect)
+        self.last_capture_size = cropped.size
+        return output.getvalue()
 
     def compute_hash(self, _image_data: bytes) -> str:
         return self._hash
@@ -137,17 +171,21 @@ async def run_image_harness_smoke(
         port = server.sockets[0].getsockname()[1]
         config = _build_smoke_config(f"ws://127.0.0.1:{port}")
         monitor = _HarnessScreenMonitor(image_bytes)
-        agent = OverlayAgent(
-            config=config,
-            screen_monitor=monitor,
-            image_processor=ImageProcessor(),
-            vision_analyzer=OpenClawClient(
+        hooked_analyzer = HookedVisionAnalyzer(
+            inner=OpenClawClient(
                 gateway_url=config.openclaw.gateway_url,
                 # This transport smoke uses an in-process Gateway stub rather
                 # than the native OpenClaw plugin. The plugin's bound-receipt
                 # contract is exercised independently by packaging/plugin tests.
                 require_bound_bbox_receipts=False,
             ),
+            hooks=[OutputValidator(strict=True, registry=default_registry())],
+        )
+        agent = OverlayAgent(
+            config=config,
+            screen_monitor=monitor,
+            image_processor=ImageProcessor(),
+            vision_analyzer=hooked_analyzer,
             region_mapper=RegionMapper(config.region_maps),
             screen_width=900,
             screen_height=600,
@@ -170,8 +208,10 @@ async def run_image_harness_smoke(
             raise RuntimeError(f"Harness produced no result; errors={errors}")
 
         result = results[0]
+        capture_rect = monitor.captured_rects[-1]
         artifact = {
             "ok": not errors,
+            "modality": result.modality.value,
             "summary": result.summary,
             "severity": result.severity.value,
             "layout": dict(result.layout),
@@ -190,6 +230,27 @@ async def run_image_harness_smoke(
                 for finding in result.findings
             ],
             "model_used": result.model_used,
+            "image_quality": result.image_quality,
+            "next_steps": list(result.next_steps),
+            "incomplete": result.incomplete,
+            "incomplete_reasons": list(result.incomplete_reasons),
+            "checklist": {
+                key: {"value": item.value, "status": item.status.value}
+                for key, item in result.checklist.items()
+            },
+            "output_contract": {
+                "analyzer": "HookedVisionAnalyzer",
+                "validator": "OutputValidator",
+                "strict": True,
+            },
+            "capture_contract": {
+                "viewer_rect": _rect_to_dict(monitor._window),
+                "capture_rect": _rect_to_dict(capture_rect),
+                "capture_rects": [
+                    _rect_to_dict(rect) for rect in monitor.captured_rects
+                ],
+                "captured_image_size": list(monitor.last_capture_size or (0, 0)),
+            },
             "harness_manifest": build_harness_manifest(),
         }
         result_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
@@ -262,7 +323,9 @@ def create_sample_ekg_image(path: Path) -> bytes:
         draw.line(points, fill=(15, 15, 15), width=2)
 
     draw.rectangle((42, 58, 205, 150), outline=(220, 53, 69), width=5)
-    draw.text((48, 154), "Harness target: lead_I ST elevation", fill=(180, 20, 35), font=font)
+    draw.text(
+        (48, 154), "Harness target: lead_I ST elevation", fill=(180, 20, 35), font=font
+    )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, format="PNG")
@@ -276,6 +339,10 @@ def _build_smoke_config(gateway_url: str) -> AppConfig:
     config.monitor.debounce_stable_sec = 0
     config.monitor.window_title_keywords = ["DICOM Harness Viewer"]
     config.phi_roi = ROICrop(
+        top=30,
+        bottom=30,
+        left=30,
+        right=30,
         configured=True,
         coordinate_space="viewer",
         reference_width=900,
@@ -294,6 +361,8 @@ def _build_smoke_config(gateway_url: str) -> AppConfig:
 
 
 def _mock_result_payload() -> dict[str, Any]:
+    checklist_keys = sorted(default_registry().resolve("EKG").checklist_keys)
+    leads = ("I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6")
     return {
         "modality": "EKG",
         "summary": "Harness detected the marked lead I ST-elevation region.",
@@ -301,6 +370,25 @@ def _mock_result_payload() -> dict[str, Any]:
         "model_used": "mock-openclaw-harness",
         "image_quality": "synthetic smoke image; diagnostic content is simulated",
         "next_steps": ["Inspect the red boxed lead I area first."],
+        "incomplete": False,
+        "incomplete_reasons": [],
+        "layout": {
+            "format": "12lead_3x4",
+            "rhythm_strip_leads": [],
+            "leads": [
+                {
+                    "name": lead,
+                    "label_visible": True,
+                    "bbox": [
+                        (index % 4) / 4,
+                        (index // 4) / 3,
+                        0.25,
+                        1 / 3,
+                    ],
+                }
+                for index, lead in enumerate(leads)
+            ],
+        },
         "findings": [
             {
                 "id": "f1",
@@ -308,13 +396,27 @@ def _mock_result_payload() -> dict[str, Any]:
                 "label": "ST elevation marker",
                 "detail": "Synthetic target finding localized to lead I.",
                 "severity": "warning",
-                "bboxes": [{"x": 0.047, "y": 0.096, "w": 0.181, "h": 0.153}],
+                "bboxes": [{"x": 0.014286, "y": 0.051852, "w": 0.194048, "h": 0.17037}],
             }
         ],
         "checklist": {
-            "image_quality": {"value": "synthetic smoke image", "status": "info"},
-            "lead_I": {"value": "target marker present", "status": "warning"},
+            key: {
+                "value": (
+                    "target marker present" if key == "st_segment" else "assessed"
+                ),
+                "status": "warning" if key == "st_segment" else "normal",
+            }
+            for key in checklist_keys
         },
+    }
+
+
+def _rect_to_dict(rect: WindowRect) -> dict[str, int]:
+    return {
+        "left": rect.left,
+        "top": rect.top,
+        "width": rect.width,
+        "height": rect.height,
     }
 
 

@@ -4,10 +4,72 @@ import json
 
 import pytest
 
+from dicom_overlay.domain.modality_profile import default_registry
 from dicom_overlay.infrastructure.image_harness_smoke import run_image_harness_smoke
 from dicom_overlay.infrastructure.image_harness_validator import (
     verify_image_harness_artifacts,
 )
+
+
+def _valid_output_and_capture_contract() -> dict:
+    leads = ("I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6")
+    return {
+        "modality": "EKG",
+        "model_used": "mock-openclaw-harness",
+        "layout": {
+            "format": "12lead_3x4",
+            "rhythm_strip_leads": [],
+            "leads": [
+                {
+                    "name": name,
+                    "label_visible": True,
+                    "bbox": [
+                        (index % 4) / 4,
+                        (index // 4) / 3,
+                        0.25,
+                        1 / 3,
+                    ],
+                }
+                for index, name in enumerate(leads)
+            ],
+        },
+        "image_quality": "Synthetic image is readable.",
+        "next_steps": ["Review the original synthetic image."],
+        "incomplete": False,
+        "incomplete_reasons": [],
+        "checklist": {
+            key: {"value": "assessed", "status": "normal"}
+            for key in default_registry().resolve("EKG").checklist_keys
+        },
+        "output_contract": {
+            "analyzer": "HookedVisionAnalyzer",
+            "validator": "OutputValidator",
+            "strict": True,
+        },
+        "capture_contract": {
+            "viewer_rect": {
+                "left": 0,
+                "top": 0,
+                "width": 900,
+                "height": 600,
+            },
+            "capture_rect": {
+                "left": 30,
+                "top": 30,
+                "width": 840,
+                "height": 540,
+            },
+            "capture_rects": [
+                {
+                    "left": 30,
+                    "top": 30,
+                    "width": 840,
+                    "height": 540,
+                }
+            ],
+            "captured_image_size": [840, 540],
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -52,10 +114,12 @@ def test_codex_verifier_rejects_bbox_extent_overflow(tmp_path):
     log_path.write_text(
         "\n".join(
             [
-                '{"method": "connect"}',
+                '{"type":"req","id":"connect-1","method":"connect","params":{}}',
                 (
-                    '{"method": "chat.send", "params": {"attachments": '
-                    '[{"mimeType": "image/png", "content": "<redacted>", '
+                    '{"type":"req","id":"chat-2","method":"chat.send",'
+                    '"params":{"sessionKey":"session","message":"analyze",'
+                    '"idempotencyKey":"nonce","attachments": '
+                    '[{"type":"image","mimeType": "image/png", "content": "<redacted>", '
                     '"contentLength": 123, "contentSha256": '
                     '"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]}}'
                 ),
@@ -68,6 +132,7 @@ def test_codex_verifier_rejects_bbox_extent_overflow(tmp_path):
     result_path.write_text(
         json.dumps(
             {
+                **_valid_output_and_capture_contract(),
                 "findings": [
                     {
                         "label": "overflow",
@@ -102,10 +167,12 @@ def test_codex_verifier_accepts_near_boundary_bbox_with_float_rounding(tmp_path)
     log_path.write_text(
         "\n".join(
             [
-                '{"method": "connect"}',
+                '{"type":"req","id":"connect-1","method":"connect","params":{}}',
                 (
-                    '{"method": "chat.send", "params": {"attachments": '
-                    '[{"mimeType": "image/png", "content": "<redacted>", '
+                    '{"type":"req","id":"chat-2","method":"chat.send",'
+                    '"params":{"sessionKey":"session","message":"analyze",'
+                    '"idempotencyKey":"nonce","attachments": '
+                    '[{"type":"image","mimeType": "image/png", "content": "<redacted>", '
                     '"contentLength": 123, "contentSha256": '
                     '"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]}}'
                 ),
@@ -118,14 +185,13 @@ def test_codex_verifier_accepts_near_boundary_bbox_with_float_rounding(tmp_path)
     result_path.write_text(
         json.dumps(
             {
+                **_valid_output_and_capture_contract(),
                 "findings": [
                     {
                         "label": "boundary",
                         "detail": "bbox ends at the right and bottom edge",
                         "regions": ["lead_I"],
-                        "bboxes": [
-                            {"x": 0.1, "y": 0.2, "w": 0.9, "h": 0.8}
-                        ],
+                        "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.9, "h": 0.8}],
                     }
                 ],
                 "harness_manifest": {

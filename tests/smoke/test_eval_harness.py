@@ -97,6 +97,8 @@ def _complete_result(
             "lines_tubes",
         )
     }
+    result.image_quality = "Synthetic evaluation image is fully readable."
+    result.next_steps = ["Review the original synthetic evaluation image."]
     return result
 
 
@@ -622,10 +624,7 @@ def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
     assert raw["incomplete_reasons"] == ["Calibration marker is not visible."]
     assert raw["validation_warnings"] == ["Synthetic validator warning"]
     assert raw["review_required"] is True
-    assert raw["review_reasons"] == [
-        "Low-confidence rhythm classification.",
-        "Incomplete analysis requires human review",
-    ]
+    assert raw["review_reasons"] == ["Low-confidence rhythm classification."]
     assert raw["analysis_trace"][0]["tool"] == "crop_region_base64"
 
 
@@ -917,7 +916,7 @@ _EKG_CHECKLIST_KEYS = (
 def _full_ekg_layout() -> dict[str, object]:
     names = ("I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6")
     return {
-        "format": "12lead_rows",
+        "format": "12lead_12x1",
         "leads": [
             {
                 "name": name,
@@ -943,6 +942,8 @@ def _result_with_checklist(
         severity=severity,
         findings=[],
         checklist=full_checklist,
+        image_quality="Synthetic 12-lead EKG is fully readable.",
+        next_steps=["Review the original synthetic tracing."],
         layout=_full_ekg_layout(),
     )
 

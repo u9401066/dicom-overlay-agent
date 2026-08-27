@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 
 import structlog
 
@@ -11,7 +12,7 @@ from dicom_overlay.domain.ekg_layout import (
     parse_ekg_lead_inventory,
     parse_normalized_region,
 )
-from dicom_overlay.domain.entities import AnalysisResult, Severity
+from dicom_overlay.domain.entities import AnalysisResult, RegionRect, Severity
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
@@ -24,6 +25,21 @@ _VALID_SEVERITIES = frozenset(s.value for s in Severity)
 _EKG_MAX_BOX_WIDTH = 0.35
 _EKG_MAX_BOX_HEIGHT = 0.30
 _EKG_MAX_BOX_AREA = 0.08
+EKG_RESULT_LAYOUT_FORMATS = frozenset(
+    {
+        "12lead_3x4",
+        "12lead_3x4_rhythm",
+        "6lead",
+        "3lead",
+        "single_rhythm_strip",
+        "partial",
+        "non_standard",
+        "unknown",
+        # Internal canonical form produced by the deterministic row-strip
+        # normalizer after the model contract has been parsed.
+        "12lead_12x1",
+    }
+)
 
 
 class OutputValidator(AnalyzeHook):
@@ -75,6 +91,11 @@ class OutputValidator(AnalyzeHook):
                 )
             ekg_inventory = parse_ekg_lead_inventory(result.layout)
             ekg_visible_regions = set(ekg_inventory.by_name())
+            layout_format = str(result.layout.get("format") or "").strip()
+            if layout_format not in EKG_RESULT_LAYOUT_FORMATS:
+                warnings.append(
+                    f"EKG layout has unsupported format: {layout_format or '(missing)'}"
+                )
             if _has_normalized_bbox(
                 result.layout.get("rhythm_strip_bbox")
                 if isinstance(result.layout, dict)
@@ -128,6 +149,16 @@ class OutputValidator(AnalyzeHook):
                     f"Finding[{i}] normal/negative observation had overlay boxes; "
                     "boxes removed"
                 )
+            if finding.bboxes:
+                accepted_boxes = [
+                    box for box in finding.bboxes if _is_positive_normalized_bbox(box)
+                ]
+                if len(accepted_boxes) != len(finding.bboxes):
+                    finding = dataclasses.replace(finding, bboxes=accepted_boxes)
+                    result.findings[i] = finding
+                    warnings.append(
+                        f"Finding[{i}] zero-area or invalid overlay boxes were removed"
+                    )
             if request.modality.value == "EKG" and finding.bboxes:
                 accepted_boxes = [
                     box
@@ -214,10 +245,16 @@ class OutputValidator(AnalyzeHook):
         # 4. Checklist completeness (modality-specific)
         required = self._registry.resolve(request.modality.value).checklist_keys
         if required:
-            missing = required - set(result.checklist.keys())
+            actual = set(result.checklist)
+            missing = required - actual
+            unexpected = actual - required
             if missing:
                 warnings.append(
                     f"Checklist missing keys: {', '.join(sorted(missing))}"
+                )
+            if unexpected:
+                warnings.append(
+                    f"Checklist has unexpected keys: {', '.join(sorted(unexpected))}"
                 )
 
         # 5. The layout drives systematic crop/refine passes, so an EKG cannot
@@ -228,8 +265,20 @@ class OutputValidator(AnalyzeHook):
 
         # 6. Checklist value validation
         for key, item in result.checklist.items():
-            if not item.value or not item.value.strip():
+            if not isinstance(item.value, str) or not item.value.strip():
                 warnings.append(f"Checklist[{key}] has empty value")
+
+        # 7. Report-level fields are part of the production result contract.
+        # Keep non-strict desktop operation fail-soft (the UI visibly marks the
+        # result incomplete), while strict smoke/eval gates reject omissions.
+        if not _has_meaningful_image_quality(result.image_quality):
+            warnings.append("image_quality is missing or empty")
+        if not isinstance(result.next_steps, list) or not result.next_steps:
+            warnings.append("next_steps is missing or empty")
+        elif any(
+            not isinstance(step, str) or not step.strip() for step in result.next_steps
+        ):
+            warnings.append("next_steps contains an empty or invalid item")
 
         # Log warnings
         for w in warnings:
@@ -277,3 +326,38 @@ def _append_review_reason(result: AnalysisResult, reason: str) -> None:
 
 def _has_normalized_bbox(value: object) -> bool:
     return parse_normalized_region(value) is not None
+
+
+def _is_positive_normalized_bbox(value: RegionRect) -> bool:
+    """Defensively validate boxes from analyzers that bypass JSON parsing."""
+
+    try:
+        raw_values = (value.x, value.y, value.w, value.h)
+    except AttributeError:
+        return False
+    if any(isinstance(item, bool) for item in raw_values):
+        return False
+    try:
+        x, y, width, height = (float(item) for item in raw_values)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return bool(
+        all(math.isfinite(item) for item in (x, y, width, height))
+        and x >= 0.0
+        and y >= 0.0
+        and width > 0.0
+        and height > 0.0
+        and x + width <= 1.0 + 1e-9
+        and y + height <= 1.0 + 1e-9
+    )
+
+
+def _has_meaningful_image_quality(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return bool(value) and any(
+            bool(item.strip()) if isinstance(item, str) else item is not None
+            for item in value.values()
+        )
+    return False

@@ -22,6 +22,7 @@ in-bounds, finding count, and latency.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -1214,7 +1215,10 @@ def _schema_check(case: EvalCase, result: AnalysisResult) -> tuple[bool, str]:
         valid_regions=list(case.valid_regions),
     )
     try:
-        validated = validator.post_analyze(request, result)
+        # OutputValidator intentionally removes unsafe overlay boxes and repairs
+        # other fields for the live UI. Scoring must retain the unmodified model
+        # output so bbox quality and finding counts remain auditable.
+        validated = validator.post_analyze(request, copy.deepcopy(result))
     except HookError as exc:
         return False, str(exc)
     if validated.validation_warnings:

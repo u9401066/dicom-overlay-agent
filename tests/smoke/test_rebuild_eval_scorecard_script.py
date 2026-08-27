@@ -93,9 +93,11 @@ def test_rebuild_scorecard_from_raw_results_adds_partial_credit(
                 "summary": "ST depression suggesting ischemia.",
                 "severity": "warning",
                 "model_used": "test-model",
+                "image_quality": "Synthetic 12-lead EKG is fully readable.",
+                "next_steps": ["Review the original synthetic tracing."],
                 "findings": [],
                 "layout": {
-                    "format": "12lead_rows",
+                    "format": "12lead_12x1",
                     "leads": [
                         {
                             "name": name,

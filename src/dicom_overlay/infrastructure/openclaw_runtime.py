@@ -160,6 +160,10 @@ def build_openclaw_chat_frame(
     fast_auto_on_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Build a Gateway ``chat.send`` request using the stable public schema."""
+    if image_base64 is not None and (
+        not isinstance(image_base64, str) or not image_base64.strip()
+    ):
+        raise ValueError("image_base64 must be a non-empty string when provided")
     if (
         fast_mode is not None
         and not isinstance(fast_mode, bool)

@@ -82,10 +82,12 @@ def _make_result(
         },
         analysis_time_ms=150,
         model_used="test",
+        image_quality="Synthetic 12-lead EKG is fully readable.",
+        next_steps=["Review the original synthetic tracing."],
     )
     if modality is Modality.EKG:
         result.layout = {
-            "format": "12lead_rows",
+            "format": "12lead_12x1",
             "leads": [
                 {
                     "name": name,

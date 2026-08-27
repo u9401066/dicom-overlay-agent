@@ -824,9 +824,11 @@ def _make_result() -> AnalysisResult:
         severity=Severity.NORMAL,
         findings=[],
         checklist=_full_ekg_checklist(),
+        image_quality="Synthetic 12-lead EKG is fully readable.",
+        next_steps=["Review the original synthetic tracing."],
     )
     result.layout = {
-        "format": "12lead_rows",
+        "format": "12lead_12x1",
         "leads": [
             {
                 "name": name,
