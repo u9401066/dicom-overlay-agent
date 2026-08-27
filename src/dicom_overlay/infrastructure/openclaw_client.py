@@ -11,7 +11,8 @@ import os
 import platform
 import re
 import time
-from contextlib import contextmanager
+from collections import deque
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from json import JSONDecodeError
@@ -21,6 +22,7 @@ from uuid import uuid4
 
 import structlog
 import websockets
+from websockets.sync.client import connect as sync_websocket_connect
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -61,6 +63,7 @@ _OPENCLAW_VERSION = "2026.3.11"
 # MiB, which overflows the default and closes the connection (close code 1009).
 # Raise the receive limit so large image payloads round-trip cleanly.
 _MAX_WS_MESSAGE_BYTES = 16 * 1024 * 1024
+_WS_CLOSE_TIMEOUT_SEC = 2.0
 _DEFAULT_SCOPES = [
     "operator.admin",
     "operator.read",
@@ -79,6 +82,23 @@ class ModelResponseParseError(ValueError):
     """A completed model turn did not contain a parseable output contract."""
 
 
+class _GatewayRunConnectionLost(ConnectionError):
+    """Transport loss carrying the Gateway acceptance state of one model turn."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        run_id: str | None,
+        accepted: bool,
+        deadline: float,
+    ) -> None:
+        super().__init__(message)
+        self.run_id = run_id
+        self.accepted = accepted
+        self.deadline = deadline
+
+
 @dataclass
 class _WaveformArtifactBinding:
     artifact_id: str
@@ -88,6 +108,76 @@ class _WaveformArtifactBinding:
     receipts: list[dict[str, object]] = field(default_factory=list)
     duplicate_attempts: list[dict[str, object]] = field(default_factory=list)
     tool_call_ids: set[str] = field(default_factory=set)
+
+
+def probe_openclaw_gateway(
+    gateway_url: str,
+    *,
+    gateway_token: str | None = None,
+    timeout_sec: float = 1.5,
+) -> bool:
+    """Verify a listener through the public Gateway ``connect`` contract.
+
+    A successful TCP connection isn't sufficient: an unrelated service can own
+    the configured port.  Startup uses this small synchronous probe because
+    :meth:`GatewayManager.start` is called from an already-running async bridge
+    and therefore cannot nest another event loop.
+    """
+
+    if timeout_sec <= 0:
+        raise ValueError("timeout_sec must be positive")
+    connect_id = f"health-{uuid4().hex}"
+    params: dict[str, Any] = {
+        "minProtocol": 3,
+        "maxProtocol": 4,
+        "client": {
+            "id": "gateway-client",
+            "version": _OPENCLAW_VERSION,
+            "platform": platform.platform(),
+            "mode": "backend",
+        },
+        "role": "operator",
+        "scopes": _DEFAULT_SCOPES,
+    }
+    clean_token = gateway_token.strip() if gateway_token else ""
+    if clean_token:
+        params["auth"] = {"token": clean_token}
+    frame = {
+        "type": "req",
+        "id": connect_id,
+        "method": "connect",
+        "params": params,
+    }
+    deadline = time.monotonic() + timeout_sec
+    try:
+        with sync_websocket_connect(
+            gateway_url,
+            open_timeout=timeout_sec,
+            close_timeout=min(timeout_sec, 1.0),
+            ping_interval=None,
+            max_size=_MAX_WS_MESSAGE_BYTES,
+        ) as websocket:
+            websocket.send(json.dumps(frame))
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                raw = websocket.recv(timeout=remaining)
+                response = json.loads(raw)
+                if (
+                    isinstance(response, dict)
+                    and response.get("type") == "res"
+                    and response.get("id") == connect_id
+                ):
+                    return bool(response.get("ok"))
+    except (
+        OSError,
+        TimeoutError,
+        ValueError,
+        json.JSONDecodeError,
+        websockets.WebSocketException,
+    ):
+        return False
 
 
 # Skill resolution is driven by the modality registry (single source of truth).
@@ -132,17 +222,19 @@ class OpenClawClient(VisionAnalyzerService):
         self._connect_timeout = connect_timeout_sec or timeout_sec
         self._inference_timeout = inference_timeout_sec or timeout_sec
         self._reconnect_interval = reconnect_interval_sec
+        self._close_timeout = _WS_CLOSE_TIMEOUT_SEC
         self._registry = registry or get_active_registry()
         self._base_dir = (base_dir or Path.cwd()).resolve()
         self._analysis_prompt_profile = analysis_prompt_profile
         self._require_bbox_receipts = bool(require_bound_bbox_receipts)
         self._fast_mode = fast_mode
         self._ws: Any = None
+        self._pending_frames: deque[str] = deque(maxlen=256)
         self._connected = False
         self._request_counter = 0
         self._gateway_token = (
             gateway_token.strip() if gateway_token else None
-        ) or _load_gateway_token(self._base_dir)
+        ) or resolve_openclaw_gateway_token(self._base_dir)
         if not self._gateway_token:
             logger.warning(
                 "No OpenClaw gateway token configured; connect() will proceed without auth"
@@ -232,6 +324,7 @@ class OpenClawClient(VisionAnalyzerService):
 
     async def connect(self) -> None:
         try:
+            self._pending_frames.clear()
             self._ws = await asyncio.wait_for(
                 websockets.connect(
                     self._url,
@@ -240,6 +333,7 @@ class OpenClawClient(VisionAnalyzerService):
                     # failures. Use the explicit inference timeout instead.
                     ping_interval=None,
                     ping_timeout=None,
+                    close_timeout=self._close_timeout,
                     max_size=_MAX_WS_MESSAGE_BYTES,
                 ),
                 timeout=self._connect_timeout,
@@ -249,14 +343,34 @@ class OpenClawClient(VisionAnalyzerService):
             logger.info("Connected to OpenClaw Gateway at %s", self._url)
         except Exception as exc:
             self._connected = False
+            websocket = self._ws
+            self._ws = None
+            if websocket is not None:
+                with suppress(Exception):
+                    await asyncio.wait_for(
+                        websocket.close(),
+                        timeout=self._close_timeout,
+                    )
             logger.warning("Failed to connect to OpenClaw Gateway: %s", exc)
             raise
 
     async def disconnect(self) -> None:
-        if self._ws:
-            await self._ws.close()
-            self._ws = None
+        websocket = self._ws
+        self._ws = None
         self._connected = False
+        if websocket is not None:
+            try:
+                await asyncio.wait_for(
+                    websocket.close(),
+                    timeout=self._close_timeout,
+                )
+            except TimeoutError:
+                logger.warning("Timed out closing OpenClaw WebSocket; detaching")
+            except Exception as exc:
+                logger.warning(
+                    "OpenClaw WebSocket close failed during shutdown; detaching",
+                    error_type=type(exc).__name__,
+                )
         logger.info("Disconnected from OpenClaw Gateway")
 
     def is_connected(self) -> bool:
@@ -274,37 +388,13 @@ class OpenClawClient(VisionAnalyzerService):
         modality: Modality,
         valid_regions: list[str],
     ) -> AnalysisResult:
-        """Analyze with auto-reconnect on connection loss."""
+        """Analyze with acceptance-aware transport recovery."""
         async with self._ws_lock:
-            try:
-                return await self._analyze_with_parse_retry(
-                    image_base64,
-                    modality,
-                    valid_regions,
-                )
-            except (
-                websockets.ConnectionClosed,
-                websockets.exceptions.ConcurrencyError,
-            ):
-                logger.warning("Connection lost during analysis, reconnecting...")
-                self._connected = False
-                try:
-                    await self.connect()
-                    return await self._analyze_with_parse_retry(
-                        image_base64,
-                        modality,
-                        valid_regions,
-                    )
-                except websockets.ConnectionClosed:
-                    self._connected = False
-                    raise ConnectionError(
-                        "Gateway connection lost after reconnect"
-                    ) from None
-                except ConnectionError:
-                    raise
-                except Exception as exc:
-                    self._connected = False
-                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+            return await self._analyze_with_parse_retry(
+                image_base64,
+                modality,
+                valid_regions,
+            )
 
     async def analyze_coarse(
         self,
@@ -314,35 +404,11 @@ class OpenClawClient(VisionAnalyzerService):
     ) -> AnalysisResult:
         """Run the compact first-look contract used by MultiPassInterpreter."""
         async with self._ws_lock:
-            try:
-                return await self._analyze_coarse_with_parse_retry(
-                    image_base64,
-                    modality,
-                    valid_regions,
-                )
-            except (
-                websockets.ConnectionClosed,
-                websockets.exceptions.ConcurrencyError,
-            ):
-                logger.warning("Connection lost during coarse read, reconnecting...")
-                self._connected = False
-                try:
-                    await self.connect()
-                    return await self._analyze_coarse_with_parse_retry(
-                        image_base64,
-                        modality,
-                        valid_regions,
-                    )
-                except websockets.ConnectionClosed:
-                    self._connected = False
-                    raise ConnectionError(
-                        "Gateway connection lost after reconnect"
-                    ) from None
-                except ConnectionError:
-                    raise
-                except Exception as exc:
-                    self._connected = False
-                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+            return await self._analyze_coarse_with_parse_retry(
+                image_base64,
+                modality,
+                valid_regions,
+            )
 
     async def refine(
         self,
@@ -357,43 +423,15 @@ class OpenClawClient(VisionAnalyzerService):
     ) -> RefinementResult:
         """Re-read one crop while explicitly testing the coarse hypothesis."""
         async with self._ws_lock:
-            try:
-                return await self._refine_with_parse_retry(
-                    image_base64,
-                    modality,
-                    valid_regions,
-                    hypothesis=hypothesis,
-                    crop_region=crop_region,
-                    probe_id=probe_id,
-                    crop_lead_regions=crop_lead_regions,
-                )
-            except (
-                websockets.ConnectionClosed,
-                websockets.exceptions.ConcurrencyError,
-            ):
-                logger.warning("Connection lost during refinement, reconnecting...")
-                self._connected = False
-                try:
-                    await self.connect()
-                    return await self._refine_with_parse_retry(
-                        image_base64,
-                        modality,
-                        valid_regions,
-                        hypothesis=hypothesis,
-                        crop_region=crop_region,
-                        probe_id=probe_id,
-                        crop_lead_regions=crop_lead_regions,
-                    )
-                except websockets.ConnectionClosed:
-                    self._connected = False
-                    raise ConnectionError(
-                        "Gateway connection lost after reconnect"
-                    ) from None
-                except ConnectionError:
-                    raise
-                except Exception as exc:
-                    self._connected = False
-                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+            return await self._refine_with_parse_retry(
+                image_base64,
+                modality,
+                valid_regions,
+                hypothesis=hypothesis,
+                crop_region=crop_region,
+                probe_id=probe_id,
+                crop_lead_regions=crop_lead_regions,
+            )
 
     async def finalize(
         self,
@@ -406,39 +444,13 @@ class OpenClawClient(VisionAnalyzerService):
     ) -> AnalysisResult:
         """Reconcile the complete report against final grounded findings."""
         async with self._ws_lock:
-            try:
-                return await self._finalize_with_parse_retry(
-                    image_base64,
-                    modality,
-                    valid_regions,
-                    draft=draft,
-                    refinement_trace=refinement_trace,
-                )
-            except (
-                websockets.ConnectionClosed,
-                websockets.exceptions.ConcurrencyError,
-            ):
-                logger.warning("Connection lost during finalization, reconnecting...")
-                self._connected = False
-                try:
-                    await self.connect()
-                    return await self._finalize_with_parse_retry(
-                        image_base64,
-                        modality,
-                        valid_regions,
-                        draft=draft,
-                        refinement_trace=refinement_trace,
-                    )
-                except websockets.ConnectionClosed:
-                    self._connected = False
-                    raise ConnectionError(
-                        "Gateway connection lost after reconnect"
-                    ) from None
-                except ConnectionError:
-                    raise
-                except Exception as exc:
-                    self._connected = False
-                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+            return await self._finalize_with_parse_retry(
+                image_base64,
+                modality,
+                valid_regions,
+                draft=draft,
+                refinement_trace=refinement_trace,
+            )
 
     async def _analyze_with_parse_retry(
         self,
@@ -656,9 +668,9 @@ class OpenClawClient(VisionAnalyzerService):
             skill,
             len(payload_json) // 1024,
         )
-        await self._ws.send(payload_json)
-
-        response = await self._wait_for_chat_result(request_id)
+        response = await self._send_chat_result_frame(
+            message, payload_json=payload_json
+        )
         elapsed_ms = int((time.monotonic() - start) * 1000)
         result = self._parse_result(response, elapsed_ms, modality)
         if coarse_triage:
@@ -716,8 +728,7 @@ class OpenClawClient(VisionAnalyzerService):
             image_base64=image_base64,
             fast_mode=self._fast_mode,
         )
-        await self._ws.send(json.dumps(frame))
-        response = await self._wait_for_chat_result(request_id)
+        response = await self._send_chat_result_frame(frame)
         result = _parse_refinement_result(response)
         self._require_bound_bbox_receipt(result)
         return result
@@ -764,12 +775,10 @@ class OpenClawClient(VisionAnalyzerService):
             fast_mode=self._fast_mode,
         )
         start = time.monotonic()
-        await self._ws.send(json.dumps(frame))
-        response = await self._wait_for_chat_result(request_id)
+        response = await self._send_chat_result_frame(frame)
         elapsed_ms = int((time.monotonic() - start) * 1000)
         result = self._parse_result(response, elapsed_ms, modality)
-        self._require_bound_bbox_receipt(result)
-        return result
+        return self._lock_finalization_geometry(draft, result)
 
     def _begin_run_trace(
         self,
@@ -857,6 +866,108 @@ class OpenClawClient(VisionAnalyzerService):
                 "boxed output lacks a matching image/turn-bound "
                 "dicom_bbox_validate receipt"
             )
+
+    def _lock_finalization_geometry(
+        self,
+        draft: AnalysisResult,
+        final: AnalysisResult,
+    ) -> AnalysisResult:
+        """Bind final dispositions to receipt-validated draft geometry.
+
+        The final turn selects retained finding IDs; it doesn't own a second
+        copy of their coordinates.  Models may shorten a decimal while
+        serializing otherwise valid JSON, so receipt verification uses the
+        exact draft boxes selected by those IDs and then replaces the redundant
+        model coordinates deterministically.  No digest tolerance is added.
+        """
+
+        draft_ids = [finding.id for finding in draft.findings]
+        if any(not finding_id for finding_id in draft_ids) or len(
+            set(draft_ids)
+        ) != len(draft_ids):
+            raise ModelResponseParseError(
+                "finalization draft findings require unique non-empty IDs"
+            )
+        final_ids = [finding.id for finding in final.findings]
+        if any(not finding_id for finding_id in final_ids) or len(
+            set(final_ids)
+        ) != len(final_ids):
+            raise ModelResponseParseError(
+                "final report findings require unique non-empty draft IDs"
+            )
+        unknown_ids = sorted(set(final_ids) - set(draft_ids))
+        if unknown_ids:
+            raise ModelResponseParseError(
+                "final report cannot add finding IDs: " + ", ".join(unknown_ids)
+            )
+        retained_ids = set(final_ids)
+        expected_order = [
+            finding_id for finding_id in draft_ids if finding_id in retained_ids
+        ]
+        if final_ids != expected_order:
+            raise ModelResponseParseError(
+                "final report finding IDs must retain draft order"
+            )
+
+        draft_by_id = {finding.id: finding for finding in draft.findings}
+        locked_findings: list[Finding] = []
+        exact_boxes: list[RegionRect] = []
+        drifted_bbox_count = 0
+        max_coordinate_drift = 0.0
+        for final_finding in final.findings:
+            draft_finding = draft_by_id[final_finding.id]
+            if len(final_finding.bboxes) != len(draft_finding.bboxes):
+                raise ModelResponseParseError(
+                    "final report bbox count changed for " + final_finding.id
+                )
+            for draft_box, model_box in zip(
+                draft_finding.bboxes,
+                final_finding.bboxes,
+                strict=True,
+            ):
+                bbox_drift = max(
+                    abs(getattr(draft_box, axis) - getattr(model_box, axis))
+                    for axis in ("x", "y", "w", "h")
+                )
+                max_coordinate_drift = max(max_coordinate_drift, bbox_drift)
+                if bbox_drift > 0.0:
+                    drifted_bbox_count += 1
+            exact_boxes.extend(draft_finding.bboxes)
+            locked_findings.append(
+                replace(final_finding, bboxes=list(draft_finding.bboxes))
+            )
+
+        locked = replace(
+            final,
+            findings=locked_findings,
+            analysis_trace=[
+                *final.analysis_trace,
+                {
+                    "stage": "final_bbox_geometry_lock",
+                    "status": "locked_to_receipt_bound_draft",
+                    "tool": "dicom_bbox_validate",
+                    "retained_finding_count": len(locked_findings),
+                    "bbox_count": len(exact_boxes),
+                    "model_bbox_drift_count": drifted_bbox_count,
+                    "model_bbox_max_coordinate_drift": round(
+                        max_coordinate_drift,
+                        8,
+                    ),
+                    "digest_tolerance_applied": False,
+                    "geometry_locked": True,
+                },
+            ],
+        )
+        self._require_bound_bbox_receipt(locked)
+        if drifted_bbox_count:
+            logger.warning(
+                "Final report bbox decimals differed from receipt-bound draft; "
+                "locked exact geometry",
+                bbox_count=len(exact_boxes),
+                drifted_bbox_count=drifted_bbox_count,
+                max_coordinate_drift=round(max_coordinate_drift, 8),
+            )
+        return locked
 
     def _retract_tool_rejected_coarse_boxes(self, result: AnalysisResult) -> None:
         """Keep triage hypotheses but remove a fully rejected bbox proposal."""
@@ -1016,29 +1127,9 @@ class OpenClawClient(VisionAnalyzerService):
         return evidence
 
     async def chat(self, message: str) -> str:
-        """Send a free-text question with auto-reconnect on connection loss."""
+        """Send a free-text question with acceptance-aware recovery."""
         async with self._ws_lock:
-            try:
-                return await self._do_chat(message)
-            except (
-                websockets.ConnectionClosed,
-                websockets.exceptions.ConcurrencyError,
-            ):
-                logger.warning("Connection lost during chat, reconnecting...")
-                self._connected = False
-                try:
-                    await self.connect()
-                    return await self._do_chat(message)
-                except websockets.ConnectionClosed:
-                    self._connected = False
-                    raise ConnectionError(
-                        "Gateway connection lost after reconnect"
-                    ) from None
-                except ConnectionError:
-                    raise
-                except Exception as exc:
-                    self._connected = False
-                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+            return await self._do_chat(message)
 
     async def chat_about_image(
         self,
@@ -1108,33 +1199,10 @@ class OpenClawClient(VisionAnalyzerService):
         image_base64: str,
     ) -> tuple[str, dict[str, object]]:
         async with self._ws_lock:
-            try:
-                response = await self._do_image_chat_prompt(
-                    prompt,
-                    image_base64=image_base64,
-                )
-            except (
-                websockets.ConnectionClosed,
-                websockets.exceptions.ConcurrencyError,
-            ):
-                logger.warning("Connection lost during image chat, reconnecting...")
-                self._connected = False
-                try:
-                    await self.connect()
-                    response = await self._do_image_chat_prompt(
-                        prompt,
-                        image_base64=image_base64,
-                    )
-                except websockets.ConnectionClosed:
-                    self._connected = False
-                    raise ConnectionError(
-                        "Gateway connection lost after reconnect"
-                    ) from None
-                except ConnectionError:
-                    raise
-                except Exception as exc:
-                    self._connected = False
-                    raise ConnectionError(f"Reconnect failed: {exc}") from None
+            response = await self._do_image_chat_prompt(
+                prompt,
+                image_base64=image_base64,
+            )
             return response, self.last_run_trace()
 
     async def _do_chat(self, message: str) -> str:
@@ -1156,8 +1224,7 @@ class OpenClawClient(VisionAnalyzerService):
             fast_mode=self._fast_mode,
         )
 
-        await self._ws.send(json.dumps(frame))
-        return await self._wait_for_chat_text(request_id)
+        return await self._send_chat_text_frame(frame)
 
     async def _do_image_chat_prompt(
         self,
@@ -1186,23 +1253,196 @@ class OpenClawClient(VisionAnalyzerService):
             fast_mode=self._fast_mode,
         )
 
-        await self._ws.send(json.dumps(frame))
-        return await self._wait_for_chat_text(request_id)
+        return await self._send_chat_text_frame(frame)
 
-    async def _wait_for_chat_text(self, request_id: str) -> str:
+    async def _send_chat_result_frame(
+        self,
+        frame: dict[str, Any],
+        *,
+        payload_json: str | None = None,
+    ) -> dict[str, Any]:
+        result = await self._send_chat_frame_with_recovery(
+            frame,
+            expect_text=False,
+            payload_json=payload_json,
+        )
+        if not isinstance(result, dict):
+            raise TypeError("Gateway result frame returned non-object payload")
+        return result
+
+    async def _send_chat_text_frame(self, frame: dict[str, Any]) -> str:
+        result = await self._send_chat_frame_with_recovery(frame, expect_text=True)
+        if not isinstance(result, str):
+            raise TypeError("Gateway text frame returned non-text payload")
+        return result
+
+    async def _send_chat_frame_with_recovery(
+        self,
+        frame: dict[str, Any],
+        *,
+        expect_text: bool,
+        payload_json: str | None = None,
+    ) -> dict[str, Any] | str:
+        """Run one immutable ``chat.send`` frame with charge-safe recovery.
+
+        Before Gateway acceptance, a single replay is allowed and uses the
+        exact same request, session, and idempotency key.  Once an acceptance
+        or run ID has been observed, reconnect only resumes the event stream
+        for that run; it never submits another model turn.
+        """
+
+        if not self.is_connected():
+            raise ConnectionError("Not connected to OpenClaw Gateway")
+        request_id = str(frame.get("id") or "")
+        if not request_id or frame.get("method") != "chat.send":
+            raise ValueError("expected a chat.send frame with a request id")
+        serialized = payload_json if payload_json is not None else json.dumps(frame)
+        deadline = time.monotonic() + self._inference_timeout
+
+        try:
+            await self._send_current_transport(serialized, deadline=deadline)
+            return await self._wait_for_chat_payload(
+                request_id,
+                expect_text=expect_text,
+                deadline=deadline,
+            )
+        except _GatewayRunConnectionLost as interrupted:
+            first_loss = interrupted
+
+        logger.warning(
+            "Gateway transport interrupted during chat turn",
+            request_id=request_id,
+            accepted=first_loss.accepted,
+            run_id=first_loss.run_id or "",
+        )
+        await self._reconnect_interrupted_turn()
+
+        if first_loss.accepted and not first_loss.run_id:
+            raise ConnectionError(
+                "Gateway accepted chat.send without a runId before disconnect; "
+                "reconnected but did not replay the accepted model turn"
+            ) from None
+
+        try:
+            if first_loss.accepted:
+                logger.info(
+                    "Observing accepted Gateway run after reconnect without replay",
+                    request_id=request_id,
+                    run_id=first_loss.run_id,
+                )
+                return await self._wait_for_chat_payload(
+                    request_id,
+                    expect_text=expect_text,
+                    deadline=first_loss.deadline,
+                    initial_run_id=first_loss.run_id,
+                    response_accepted=True,
+                )
+
+            logger.info(
+                "Replaying unaccepted Gateway frame once with the same idempotency key",
+                request_id=request_id,
+            )
+            await self._send_current_transport(
+                serialized,
+                deadline=first_loss.deadline,
+            )
+            return await self._wait_for_chat_payload(
+                request_id,
+                expect_text=expect_text,
+                deadline=first_loss.deadline,
+            )
+        except _GatewayRunConnectionLost:
+            self._connected = False
+            if first_loss.accepted:
+                raise ConnectionError(
+                    "Gateway connection lost while observing accepted run "
+                    f"{first_loss.run_id}; chat.send was not replayed"
+                ) from None
+            raise ConnectionError(
+                "Gateway connection lost after one idempotent pre-acceptance replay"
+            ) from None
+
+    async def _send_current_transport(self, payload: str, *, deadline: float) -> None:
+        if self._ws is None:
+            raise _GatewayRunConnectionLost(
+                "Gateway transport unavailable before acceptance",
+                run_id=None,
+                accepted=False,
+                deadline=deadline,
+            )
+        try:
+            await self._ws.send(payload)
+        except (
+            websockets.ConnectionClosed,
+            websockets.exceptions.ConcurrencyError,
+        ) as exc:
+            self._connected = False
+            raise _GatewayRunConnectionLost(
+                f"Gateway connection closed before acceptance: {exc}",
+                run_id=None,
+                accepted=False,
+                deadline=deadline,
+            ) from exc
+
+    async def _reconnect_interrupted_turn(self) -> None:
+        old_websocket = self._ws
+        self._ws = None
+        self._connected = False
+        if old_websocket is not None:
+            with suppress(Exception):
+                await asyncio.wait_for(
+                    old_websocket.close(),
+                    timeout=self._close_timeout,
+                )
+        try:
+            await self.connect()
+        except Exception as exc:
+            self._connected = False
+            raise ConnectionError(f"Gateway reconnect failed: {exc}") from None
+
+    async def _wait_for_chat_payload(
+        self,
+        request_id: str,
+        *,
+        expect_text: bool,
+        deadline: float,
+        initial_run_id: str | None = None,
+        response_accepted: bool = False,
+    ) -> dict[str, Any] | str:
+        if expect_text:
+            return await self._wait_for_chat_text(
+                request_id,
+                deadline=deadline,
+                initial_run_id=initial_run_id,
+                response_accepted=response_accepted,
+            )
+        return await self._wait_for_chat_result(
+            request_id,
+            deadline=deadline,
+            initial_run_id=initial_run_id,
+            response_accepted=response_accepted,
+        )
+
+    async def _wait_for_chat_text(
+        self,
+        request_id: str,
+        *,
+        deadline: float | None = None,
+        initial_run_id: str | None = None,
+        response_accepted: bool = False,
+    ) -> str:
         """Wait for a chat response and return raw text (no JSON parsing)."""
         assert self._ws is not None
 
-        run_id: str | None = None
-        deadline = time.monotonic() + self._inference_timeout
+        run_id = initial_run_id
+        accepted = response_accepted or run_id is not None
+        deadline = deadline or (time.monotonic() + self._inference_timeout)
         while True:
             try:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0.0:
                     raise TimeoutError
-                raw = await asyncio.wait_for(
-                    self._ws.recv(), timeout=remaining
-                )
+                raw = await self._recv_gateway_frame(remaining)
             except TimeoutError:
                 await self._abort_chat_run(run_id)
                 raise TimeoutError(
@@ -1213,7 +1453,12 @@ class OpenClawClient(VisionAnalyzerService):
                 raise
             except websockets.ConnectionClosed as exc:
                 self._connected = False
-                raise ConnectionError(f"Gateway connection closed: {exc}") from exc
+                raise _GatewayRunConnectionLost(
+                    f"Gateway connection closed: {exc}",
+                    run_id=run_id,
+                    accepted=accepted or run_id is not None,
+                    deadline=deadline,
+                ) from exc
 
             frame = json.loads(raw)
             frame_type = frame.get("type")
@@ -1229,7 +1474,9 @@ class OpenClawClient(VisionAnalyzerService):
                 if payload.get("runId"):
                     run_id = payload["runId"]
                     self._last_run_id = str(run_id)
+                    accepted = True
                 if payload.get("status") == "accepted":
+                    accepted = True
                     continue
                 # Direct text result in res frame
                 result = payload.get("result")
@@ -1292,6 +1539,7 @@ class OpenClawClient(VisionAnalyzerService):
             raw = await asyncio.wait_for(self._ws.recv(), timeout=self._timeout)
             response = json.loads(raw)
             if response.get("type") != "res" or response.get("id") != connect_id:
+                self._pending_frames.append(raw)
                 continue
             if not response.get("ok"):
                 error = response.get("error", {})
@@ -1300,20 +1548,37 @@ class OpenClawClient(VisionAnalyzerService):
                 )
             return
 
-    async def _wait_for_chat_result(self, request_id: str) -> dict[str, Any]:
+    async def _recv_gateway_frame(self, timeout: float) -> str:
+        pending_frames: deque[str] | None = getattr(self, "_pending_frames", None)
+        if pending_frames:
+            return pending_frames.popleft()
+        assert self._ws is not None
+        raw: str | bytes = await asyncio.wait_for(
+            self._ws.recv(),
+            timeout=timeout,
+        )
+        return raw.decode("utf-8") if isinstance(raw, bytes) else raw
+
+    async def _wait_for_chat_result(
+        self,
+        request_id: str,
+        *,
+        deadline: float | None = None,
+        initial_run_id: str | None = None,
+        response_accepted: bool = False,
+    ) -> dict[str, Any]:
         assert self._ws is not None
 
-        run_id: str | None = None
-        deadline = time.monotonic() + self._inference_timeout
+        run_id = initial_run_id
+        accepted = response_accepted or run_id is not None
+        deadline = deadline or (time.monotonic() + self._inference_timeout)
         logger.debug("Waiting for chat result, request_id=%s", request_id)
         while True:
             try:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0.0:
                     raise TimeoutError
-                raw = await asyncio.wait_for(
-                    self._ws.recv(), timeout=remaining
-                )
+                raw = await self._recv_gateway_frame(remaining)
             except TimeoutError:
                 await self._abort_chat_run(run_id)
                 logger.error(
@@ -1330,7 +1595,12 @@ class OpenClawClient(VisionAnalyzerService):
                 raise
             except websockets.ConnectionClosed as exc:
                 self._connected = False
-                raise ConnectionError(f"Gateway connection closed: {exc}") from exc
+                raise _GatewayRunConnectionLost(
+                    f"Gateway connection closed: {exc}",
+                    run_id=run_id,
+                    accepted=accepted or run_id is not None,
+                    deadline=deadline,
+                ) from exc
 
             frame = json.loads(raw)
             frame_type = frame.get("type")
@@ -1357,7 +1627,9 @@ class OpenClawClient(VisionAnalyzerService):
                 if payload.get("runId"):
                     run_id = payload["runId"]
                     self._last_run_id = str(run_id)
+                    accepted = True
                 if status == "accepted":
+                    accepted = True
                     continue
 
                 result = payload.get("result")
@@ -2223,9 +2495,7 @@ def _payload_from_chat_event(payload: dict[str, Any]) -> dict[str, Any]:
             text_parts.append(block.get("text", ""))
     text = "\n".join(part for part in text_parts if part).strip()
     if not text:
-        raise ModelResponseParseError(
-            "OpenClaw returned an empty final chat message"
-        )
+        raise ModelResponseParseError("OpenClaw returned an empty final chat message")
     text = _strip_code_fence(text)
     repaired_text = _repair_common_json_glitches(text)
     structural_repair_count = 0
@@ -2629,8 +2899,7 @@ def _supporting_rhythm_measurement(
         or raw.get("lead") != "II"
         or raw.get("status") != "ok"
         or raw.get("diagnostic_scope") != "rhythm_regularity_only"
-        or raw.get("regularity_signal")
-        not in {"regular", "irregular", "indeterminate"}
+        or raw.get("regularity_signal") not in {"regular", "irregular", "indeterminate"}
     ):
         return None
 
@@ -2729,7 +2998,9 @@ def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _load_gateway_token(base_dir: Path | None = None) -> str | None:
+def resolve_openclaw_gateway_token(base_dir: Path | None = None) -> str | None:
+    """Resolve Gateway auth without logging or returning unrelated secrets."""
+
     root = (base_dir or Path.cwd()).resolve()
     env_token = os.getenv("OPENCLAW_GATEWAY_TOKEN", "").strip()
     if env_token:
@@ -2764,3 +3035,9 @@ def _load_gateway_token(base_dir: Path | None = None) -> str | None:
         if isinstance(token, str) and token.strip():
             return token.strip()
     return None
+
+
+def _load_gateway_token(base_dir: Path | None = None) -> str | None:
+    """Backward-compatible private alias for the public secret-safe resolver."""
+
+    return resolve_openclaw_gateway_token(base_dir)
