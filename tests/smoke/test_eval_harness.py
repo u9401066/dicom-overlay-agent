@@ -694,6 +694,65 @@ def test_keyword_recall_credits_clinical_synonyms(tmp_path: Path) -> None:
     assert score.keyword_misses == []
 
 
+def test_keyword_recall_credits_strict_sinus_and_t_wave_phrasings(
+    tmp_path: Path,
+) -> None:
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("sinus rhythm", "tall t wave"),
+    )
+    result = _result(
+        Severity.WARNING,
+        summary=(
+            "Sinus mechanism with persistent prominent broad T waves "
+            "across the anterior precordial leads."
+        ),
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.keyword_hits == ["sinus rhythm", "tall t wave"]
+    assert score.keyword_misses == []
+
+
+def test_keyword_recall_does_not_credit_uncertain_sinus_or_t_waves(
+    tmp_path: Path,
+) -> None:
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("sinus rhythm", "tall t wave"),
+    )
+    result = _result(
+        Severity.WARNING,
+        summary=(
+            "Sinus mechanism is likely; prominent broad T waves are possible "
+            "in the anterior precordial leads."
+        ),
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["sinus rhythm", "tall t wave"]
+
+
+def test_keyword_recall_does_not_credit_negated_prominent_t_waves(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.WARNING, ("tall t wave",))
+    result = _result(
+        Severity.WARNING,
+        summary="No prominent broad T waves are visible in the precordial leads.",
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["tall t wave"]
+
+
 def test_keyword_recall_normalizes_hyphens_and_plurals(tmp_path: Path) -> None:
     """Hyphenation/spacing variants must not create false misses."""
     case = _case(

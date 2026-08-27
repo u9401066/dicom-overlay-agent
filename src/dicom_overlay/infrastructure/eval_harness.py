@@ -164,6 +164,11 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
         "atrial fibrillation",
         "afib",
     ),
+    "sinus rhythm": (
+        "sinus rhythm",
+        "sinus mechanism",
+        "sinus origin",
+    ),
     "atrial flutter": ("atrial flutter", "flutter waves", "sawtooth"),
     "flutter waves": ("flutter waves", "atrial flutter", "sawtooth"),
     "right bundle branch block": ("right bundle branch block", "rbbb"),
@@ -217,6 +222,14 @@ _KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
     "low voltage": ("low voltage", "low qrs voltage"),
     "long qt": ("long qt", "prolonged qt", "qtc prolongation"),
     "prolonged qt": ("prolonged qt", "long qt", "qtc prolongation"),
+    "tall t wave": (
+        "tall t wave",
+        "tall t waves",
+        "prominent broad t wave",
+        "prominent broad t waves",
+        "prominent anterior t wave",
+        "prominent anterior t waves",
+    ),
     "premature atrial complexes": (
         "premature atrial complexes",
         "premature atrial complex",
