@@ -243,18 +243,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         ).is_file()
         else None
     )
-    runtime_residue = (
-        sorted(
-            [
-                path.name
-                for path in bundle.iterdir()
-                if path.is_file() and path.suffix.casefold() == ".log"
-            ]
-            + (["openclaw-home"] if (bundle / "openclaw-home").exists() else [])
-        )
-        if bundle.is_dir()
-        else []
-    )
+    runtime_residue = _find_runtime_residue(bundle)
 
     failures: list[str] = []
     if missing:
@@ -429,12 +418,46 @@ def _is_foreign_native_payload(relative: Path) -> bool:
         return (
             package.startswith("clipboard-") and package != "clipboard-win32-x64-msvc"
         )
+    if package_parts and package_parts[0].startswith("sqlite-vec-"):
+        return package_parts[0] != "sqlite-vec-windows-x64"
+    pi_tui_native = ("@earendil-works", "pi-tui", "native")
+    if tuple(package_parts[:3]) == pi_tui_native and len(package_parts) >= 4:
+        if package_parts[3] != "win32":
+            return True
+        return bool(
+            len(package_parts) >= 6
+            and package_parts[4] == "prebuilds"
+            and package_parts[5] != "win32-x64"
+        )
     return bool(
         len(package_parts) >= 3
         and package_parts[0] == "tree-sitter-bash"
         and package_parts[1] == "prebuilds"
         and package_parts[2] != "win32-x64"
     )
+
+
+def _find_runtime_residue(bundle: Path) -> list[str]:
+    """Return mutable runtime paths that must not ship in a fresh bundle."""
+
+    if not bundle.is_dir():
+        return []
+
+    residue = {
+        path.name
+        for path in bundle.iterdir()
+        if path.is_file() and path.suffix.casefold() == ".log"
+    }
+    for relative in (
+        "openclaw-home",
+        "data",
+        "openclaw/openclaw.json",
+        "openclaw/openclaw.json.bak",
+        "openclaw/openclaw.json.last-good",
+    ):
+        if (bundle / relative).exists():
+            residue.add(relative)
+    return sorted(residue)
 
 
 def _inspect_workspace_templates(bundle: Path) -> dict[str, Any]:

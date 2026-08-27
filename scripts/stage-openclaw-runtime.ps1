@@ -175,6 +175,20 @@ if (Test-Path (Join-Path $nodeModules "@mariozechner")) {
     $nativePruneDirs += Get-ChildItem (Join-Path $nodeModules "@mariozechner") -Directory |
         Where-Object { $_.Name -like "clipboard-*" -and $_.Name -ne "clipboard-win32-x64-msvc" }
 }
+$nativePruneDirs += Get-ChildItem $nodeModules -Directory -Filter "sqlite-vec-*" |
+    Where-Object { $_.Name -ne "sqlite-vec-windows-x64" }
+$piTuiNative = Join-Path $nodeModules "@earendil-works\pi-tui\native"
+if (Test-Path $piTuiNative) {
+    # pi-tui publishes native helpers below a single package instead of using
+    # platform-specific package names.  Keep only the Windows x64 prebuild.
+    $nativePruneDirs += Get-ChildItem $piTuiNative -Directory |
+        Where-Object { $_.Name -ne "win32" }
+    $piTuiWindowsPrebuilds = Join-Path $piTuiNative "win32\prebuilds"
+    if (Test-Path $piTuiWindowsPrebuilds) {
+        $nativePruneDirs += Get-ChildItem $piTuiWindowsPrebuilds -Directory |
+            Where-Object { $_.Name -ne "win32-x64" }
+    }
+}
 $treeSitterPrebuilds = Join-Path $nodeModules "tree-sitter-bash\prebuilds"
 if (Test-Path $treeSitterPrebuilds) {
     $nativePruneDirs += Get-ChildItem $treeSitterPrebuilds -Directory |

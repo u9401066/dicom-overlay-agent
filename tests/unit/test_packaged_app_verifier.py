@@ -177,6 +177,12 @@ def test_inspect_bundle_rejects_debug_build_and_foreign_native_payloads(
         runtime / "tree-sitter-bash/src/tree_sitter/parser.h",
         runtime / "@lydell/node-pty-linux-x64/prebuilds/linux-x64/pty.node",
         runtime / "tree-sitter-bash/prebuilds/darwin-arm64/tree-sitter-bash.node",
+        runtime / "sqlite-vec-darwin-arm64/vec0.dylib",
+        runtime / "sqlite-vec-linux-x64/vec0.so",
+        runtime
+        / "@earendil-works/pi-tui/native/darwin/prebuilds/darwin-x64/darwin-modifiers.node",
+        runtime
+        / "@earendil-works/pi-tui/native/win32/prebuilds/win32-arm64/win32-console-mode.node",
     )
     for path in banned_paths:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -184,6 +190,15 @@ def test_inspect_bundle_rejects_debug_build_and_foreign_native_payloads(
     allowed = runtime / "tree-sitter-bash/prebuilds/win32-x64/tree-sitter-bash.node"
     allowed.parent.mkdir(parents=True, exist_ok=True)
     allowed.write_bytes(b"runtime")
+    allowed_sqlite = runtime / "sqlite-vec-windows-x64/vec0.dll"
+    allowed_sqlite.parent.mkdir(parents=True, exist_ok=True)
+    allowed_sqlite.write_bytes(b"runtime")
+    allowed_pi_tui = (
+        runtime
+        / "@earendil-works/pi-tui/native/win32/prebuilds/win32-x64/win32-console-mode.node"
+    )
+    allowed_pi_tui.parent.mkdir(parents=True, exist_ok=True)
+    allowed_pi_tui.write_bytes(b"runtime")
 
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
@@ -192,6 +207,14 @@ def test_inspect_bundle_rejects_debug_build_and_foreign_native_payloads(
         path.relative_to(tmp_path).as_posix() for path in banned_paths
     }
     assert allowed.relative_to(tmp_path).as_posix() not in report["banned_components"]
+    assert (
+        allowed_sqlite.relative_to(tmp_path).as_posix()
+        not in report["banned_components"]
+    )
+    assert (
+        allowed_pi_tui.relative_to(tmp_path).as_posix()
+        not in report["banned_components"]
+    )
 
 
 def test_inspect_bundle_rejects_sidecar_runtime_and_model_artifacts(
@@ -243,13 +266,48 @@ def test_inspect_bundle_rejects_fresh_release_runtime_residue(tmp_path: Path) ->
     module = _load_module()
     _write_required_bundle(tmp_path, module)
     (tmp_path / "overlay_agent.log").write_text("local build path", encoding="utf-8")
-    (tmp_path / "openclaw-home").mkdir()
+    (tmp_path / "gateway.log").write_text("gateway runtime", encoding="utf-8")
+    (tmp_path / "openclaw-home/state").mkdir(parents=True)
+    export = tmp_path / "data/exports/review.png"
+    export.parent.mkdir(parents=True)
+    export.write_bytes(b"runtime export")
+    openclaw = tmp_path / "openclaw"
+    for name in ("openclaw.json", "openclaw.json.bak", "openclaw.json.last-good"):
+        (openclaw / name).write_text("{}", encoding="utf-8")
 
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
     assert report["status"] == "failed"
-    assert report["runtime_residue"] == ["openclaw-home", "overlay_agent.log"]
+    assert report["runtime_residue"] == [
+        "data",
+        "gateway.log",
+        "openclaw-home",
+        "openclaw/openclaw.json",
+        "openclaw/openclaw.json.bak",
+        "openclaw/openclaw.json.last-good",
+        "overlay_agent.log",
+    ]
     assert "runtime residue" in " ".join(report["failures"])
+
+
+def test_inspect_bundle_allows_product_config_site_and_static_assets(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
+    site = tmp_path / "site/index.html"
+    site.parent.mkdir(parents=True)
+    site.write_text("<title>DICOM Overlay Agent</title>", encoding="utf-8")
+    static_asset = tmp_path / "assets/product-mark.svg"
+    static_asset.parent.mkdir(parents=True)
+    static_asset.write_text("<svg></svg>", encoding="utf-8")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["runtime_residue"] == []
+    assert report["status"] == "ok"
 
 
 def test_inspect_bundle_excludes_its_generated_manifest_from_payload_size(

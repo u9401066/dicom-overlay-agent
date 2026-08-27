@@ -108,6 +108,20 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
         for path in (package_root / "node_modules/tree-sitter-bash/prebuilds").iterdir()
         if path.is_dir()
     ] == ["win32-x64"]
+    assert sorted(
+        path.name
+        for path in (package_root / "node_modules").glob("sqlite-vec-*")
+        if path.is_dir()
+    ) == ["sqlite-vec-windows-x64"]
+    pi_tui_native = package_root / "node_modules/@earendil-works/pi-tui/native"
+    assert sorted(path.name for path in pi_tui_native.iterdir() if path.is_dir()) == [
+        "win32"
+    ]
+    assert sorted(
+        path.name
+        for path in (pi_tui_native / "win32/prebuilds").iterdir()
+        if path.is_dir()
+    ) == ["win32-x64"]
 
     total_bytes = sum(
         path.stat().st_size for path in output_root.rglob("*") if path.is_file()
