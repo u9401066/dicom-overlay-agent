@@ -364,6 +364,9 @@ class TestHypothesisAwareRefinement:
         assert "Do not finalize sinus from regular timing alone" in prompt
         assert "High voltage alone is not LVH" in prompt
         assert "poor R progression" in prompt
+        assert "classify PR and QT qualitatively" in prompt
+        assert "premature P-QRS complexes" in prompt
+        assert "tall or broad T waves persisting" in prompt
         assert "final bbox multiset must exactly match that one receipt" in prompt
         assert "checklist must contain exactly these 16 axes" in prompt
         assert "relative to the attached original image" in prompt
@@ -435,6 +438,7 @@ class TestHypothesisAwareRefinement:
         assert "high or low voltage" in prompt
         assert "High voltage alone is not LVH" in prompt
         assert "poor R progression" in prompt
+        assert "tall or broad contiguous T waves" in prompt
         assert "uncalibrated waveform classifier candidates" in prompt
         assert "Ranked labels route inspection but never set diagnosis" in prompt
         assert "normal/otherwise-normal ranked label" in prompt
@@ -455,7 +459,8 @@ class TestHypothesisAwareRefinement:
         )
 
         assert "Do not call sinus from regular timing alone" in prompt
-        assert "qualitative QT when legible" in prompt
+        assert "premature atrial complexes/ectopy" in prompt
+        assert "qualitative PR/QT" in prompt
         assert "II/III/aVF ST-T morphology" in prompt
         assert "reciprocal change" in prompt
 

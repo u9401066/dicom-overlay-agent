@@ -329,6 +329,11 @@ Reading depth (specialist expectations):
   lead distribution, and reciprocal changes. State magnitude only as an
   explicitly approximate visual estimate when grid calibration and baseline are
   legible; otherwise do not invent millimeters.
+- When lead II and the ECG grid are clear, classify PR and QT qualitatively
+  across several beats and inspect premature P-QRS complexes, coupling, and
+  pauses. A screenshot prevents invented millisecond values; it does not make a
+  visibly supported normal/prolonged interval category automatically
+  `not_assessable`.
 - `local_signal_candidates` and `local_ekg_signal_calibrator` help crop and align
   ink-containing image regions; they are not ECG interval or voltage measurement
   tools. ECGFounder supplies uncalibrated waveform-model probabilities, not
@@ -346,6 +351,10 @@ Reading depth (specialist expectations):
   Preserve the differential with confidence/question fields, but use critical
   triage severity and set `st_segment`, `t_wave`, `stemi_pattern`, and `ischemia`
   to possible/indeterminate rather than normal/absent until urgent expert review.
+- Clearly tall or broad T waves that persist across contiguous leads may be
+  abnormal without diagnostic ST elevation. Compare hyperkalemia, hyperacute
+  ischemia, and benign variants; do not downgrade pathologic-looking morphology
+  solely because reciprocal ST change is absent.
 - Always reconcile the checklist axes with each other (e.g. an "absent"
   ``stemi_pattern`` is inconsistent with an "elevation" ``st_segment`` of
   critical status — resolve the contradiction before returning).

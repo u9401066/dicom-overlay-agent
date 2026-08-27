@@ -2077,10 +2077,19 @@ def _build_finalization_prompt(
             "clear lead; AF/flutter likewise requires positive visible morphology. "
             "If neither is supported, keep rhythm indeterminate rather than force "
             "either.\n"
+            "- When a clear ECG grid and lead II support visual categories, classify "
+            "PR and QT qualitatively and inspect premature P-QRS complexes, coupling, "
+            "and pauses across multiple beats. Do not invent milliseconds, but do "
+            "not mark a visibly assessable category unassessable merely because the "
+            "source is a screenshot.\n"
             "- Before retaining or revising an LVH candidate, compare V1-V6 R/S "
             "progression and require appropriate labeled leads plus visible "
             "calibration. High voltage alone is not LVH and must not displace poor "
             "R progression.\n"
+            "- Clearly tall or broad T waves persisting across contiguous leads may "
+            "be abnormal without ST elevation. Reconcile hyperkalemia, hyperacute "
+            "ischemia, and benign variants; do not downgrade pathologic-looking "
+            "morphology solely because reciprocal change is absent.\n"
         )
     bbox_contract = (
         f"- After choosing the retained finding IDs, call dicom_bbox_validate "
@@ -2250,14 +2259,18 @@ def _build_refinement_prompt(
                 "reciprocal changes. High voltage alone is not LVH: require "
                 "appropriate labeled leads, visible calibration, and qualifying "
                 "morphology, and never let voltage displace poor R progression. "
+                "Clearly tall or broad contiguous T waves require an explicit "
+                "hyperkalemia-versus-hyperacute-ischemia-versus-variant comparison "
+                "even when definite ST elevation is absent. "
                 "Test ranked candidates and close alternatives against their "
                 "defining visible morphology."
             )
         elif "limb_leads" in probe_id:
             probe_focus = (
-                " This limb-lead probe must inspect rate/rhythm, I/aVF axis, "
-                "qualitative QT when legible, aVL voltage, conduction, II/III/aVF "
-                "ST-T morphology, and reciprocal change."
+                " This limb-lead probe must inspect rate/rhythm, repeatable P-QRS "
+                "relationships, premature atrial complexes/ectopy and pauses, "
+                "qualitative PR/QT when the grid is legible, I/aVF axis, aVL voltage, "
+                "conduction, II/III/aVF ST-T morphology, and reciprocal change."
             )
         waveform_guidance = ""
         if supporting_waveform_evidence:

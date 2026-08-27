@@ -16,6 +16,9 @@ def test_ekg_skill_keeps_meeti_waveform_reading_contract() -> None:
     assert "Irregular R-R timing alone cannot diagnose atrial fibrillation" in skill
     assert "Regular R-R timing alone cannot diagnose sinus rhythm" in skill
     assert "stable P-QRS" in skill
+    assert "classify PR and QT qualitatively" in skill
+    assert "premature P-QRS complexes" in skill
+    assert "abnormal without diagnostic ST elevation" in skill
     assert "otherwise normal ECG` label is not negative evidence" in skill
     assert "omission from a top-k list is not evidence of absence" in skill
     assert "ischemia` to `st_depression` or `t_wave_changes`" in skill
