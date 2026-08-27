@@ -86,6 +86,7 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "accepted=[]" in prompt
     assert "never return a rejected coordinate" in prompt
     assert "lead_order" in prompt
+    assert '"leads":[]' in prompt
     assert "do not output per-lead bboxes" in prompt
     assert "never rhythm_strip" in prompt
     assert "under 2200 characters" in prompt

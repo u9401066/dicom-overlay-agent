@@ -154,7 +154,8 @@ Required JSON schema:
 {
   "modality": "EKG",
   "layout": {
-    "format": "12lead_3x4|12lead_3x4_rhythm|6lead|3lead|single_rhythm_strip|partial|non_standard|unknown",
+    "format": "12lead_3x4|12lead_3x4_rhythm|12lead_12x1|6lead|3lead|single_rhythm_strip|partial|non_standard|unknown",
+    "lead_order": ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"],
     "rhythm_strip_leads": ["II"],
     "rhythm_strip_bbox": [0.0, 0.78, 1.0, 0.2],
     "leads": [
@@ -205,6 +206,11 @@ Required JSON schema:
   "incomplete_reasons": []
 }
 ```
+
+For a full-width 12-row strip, use `format: "12lead_12x1"` and list the
+visibly labeled rows in `lead_order`. When the bounded app prompt says local
+row geometry will be supplied, return `leads: []`; otherwise include the
+visible per-lead bboxes. Do not invent a 3x4 layout for a 12-row image.
 
 Systematic reading order (follow this sequence):
 1. **heart_rate** — Classify from R-R intervals (bradycardia <60, normal 60-100, tachycardia >100); a screenshot-only numeric value is an approximate visual estimate. When the bound waveform result includes a deterministic `rhythm_measurement` with `status=ok`, use its unrounded `heart_rate_bpm_from_median_rr` as supporting rate-category evidence, so 100.3 bpm is not rounded down to normal. It does not diagnose the rhythm

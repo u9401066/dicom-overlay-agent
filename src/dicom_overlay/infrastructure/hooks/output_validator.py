@@ -35,8 +35,8 @@ EKG_RESULT_LAYOUT_FORMATS = frozenset(
         "partial",
         "non_standard",
         "unknown",
-        # Internal canonical form produced by the deterministic row-strip
-        # normalizer after the model contract has been parsed.
+        # Compact public model form and internal canonical form used for a
+        # full-width 12-row strip. The local normalizer supplies row geometry.
         "12lead_12x1",
     }
 )

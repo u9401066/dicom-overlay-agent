@@ -21,3 +21,5 @@ def test_ekg_skill_keeps_meeti_waveform_reading_contract() -> None:
     assert "unrounded `heart_rate_bpm_from_median_rr`" in skill
     assert "Three or more consecutive broad QRS complexes" in skill
     assert "NSVT/VT-versus-artifact" in skill
+    assert 'format: "12lead_12x1"' in skill
+    assert "Do not invent a 3x4 layout for a 12-row image" in skill

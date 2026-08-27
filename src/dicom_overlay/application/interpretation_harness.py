@@ -183,7 +183,8 @@ def build_coarse_analysis_prompt(
             'For a full-width 12-row EKG strip, use compact layout={"format":'
             '"12lead_12x1","lead_order":["I","II","III","aVR","aVL",'
             '"aVF","V1","V2","V3","V4","V5","V6"],'
-            '"rhythm_strip_leads":[],"rhythm_strip_bbox":null}; do not output '
+            '"rhythm_strip_leads":[],"rhythm_strip_bbox":null,"leads":[]}; '
+            'do not output '
             "per-lead bboxes. Local pixel "
             "evidence will derive row geometry. For any other EKG layout, include "
             "only visibly labeled leads with normalized [x,y,w,h] bboxes. Check "

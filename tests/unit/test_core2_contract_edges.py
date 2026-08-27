@@ -105,7 +105,22 @@ def test_output_validator_layout_formats_track_openclaw_schema() -> None:
     schema = json.loads(schema_path.read_text("utf-8"))
     model_formats = set(schema["properties"]["layout"]["properties"]["format"]["enum"])
 
-    assert model_formats | {"12lead_12x1"} == EKG_RESULT_LAYOUT_FORMATS
+    assert model_formats == EKG_RESULT_LAYOUT_FORMATS
+    lead_order = schema["properties"]["layout"]["properties"]["lead_order"]
+    assert set(lead_order["items"]["enum"]) >= {
+        "I",
+        "II",
+        "III",
+        "aVR",
+        "aVL",
+        "aVF",
+        "V1",
+        "V2",
+        "V3",
+        "V4",
+        "V5",
+        "V6",
+    }
 
 
 @pytest.mark.parametrize("missing_field", ["image_quality", "next_steps"])

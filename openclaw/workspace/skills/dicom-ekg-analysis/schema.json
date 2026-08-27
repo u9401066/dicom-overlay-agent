@@ -26,6 +26,7 @@
           "enum": [
             "12lead_3x4",
             "12lead_3x4_rhythm",
+            "12lead_12x1",
             "6lead",
             "3lead",
             "single_rhythm_strip",
@@ -41,6 +42,15 @@
             "enum": ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6", "unknown"]
           },
           "uniqueItems": true
+        },
+        "lead_order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6", "unknown"]
+          },
+          "uniqueItems": true,
+          "maxItems": 13
         },
         "rhythm_strip_bbox": {
           "oneOf": [
