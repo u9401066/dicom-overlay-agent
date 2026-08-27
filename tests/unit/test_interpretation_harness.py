@@ -88,6 +88,9 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "lead_order" in prompt
     assert '"leads":[]' in prompt
     assert "do not output per-lead bboxes" in prompt
+    assert "Do not call sinus from regular timing alone" in prompt
+    assert "high voltage alone" in prompt
+    assert "poor R progression" in prompt
     assert "never rhythm_strip" in prompt
     assert "under 2200 characters" in prompt
     assert "Normal/WNL is valid" in prompt

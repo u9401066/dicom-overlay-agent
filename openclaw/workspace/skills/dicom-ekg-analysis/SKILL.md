@@ -84,6 +84,11 @@ Optional ECGFounder waveform evidence:
   the top three, explicitly test ectopy and do not infer AF solely from
   irregular timing or poor P-wave visibility. AF/flutter may still be reported
   when sufficient consecutive beats show positive visual rhythm evidence.
+- Regular R-R timing alone cannot diagnose sinus rhythm. A confident sinus
+  label requires repeatable P waves before QRS complexes with a stable P-QRS
+  relationship in at least one sufficiently clear lead. If neither sinus nor
+  AF/flutter has positive visible morphology, keep rhythm `other` or
+  `indeterminate` with appropriate uncertainty instead of forcing either.
 - ECGFounder does not provide spatial localization. Never reuse its labels or
   scores as bboxes; all overlay coordinates must still come from the attached
   image, crop/refine review, and `dicom_bbox_validate`.
@@ -201,7 +206,7 @@ Required JSON schema:
     "detail": "<brief quality assessment>"
   },
   "next_steps": ["<specific review or acquisition action>"],
-  "model_used": "openai/gpt-5.4-mini",
+  "model_used": "unknown",
   "incomplete": false,
   "incomplete_reasons": []
 }
@@ -211,6 +216,8 @@ For a full-width 12-row strip, use `format: "12lead_12x1"` and list the
 visibly labeled rows in `lead_order`. When the bounded app prompt says local
 row geometry will be supplied, return `leads: []`; otherwise include the
 visible per-lead bboxes. Do not invent a 3x4 layout for a 12-row image.
+Set `model_used` to the exact provider/model id supplied for the current turn;
+if it is unavailable, use `unknown`. Never infer or copy a default model id.
 
 Systematic reading order (follow this sequence):
 1. **heart_rate** — Classify from R-R intervals (bradycardia <60, normal 60-100, tachycardia >100); a screenshot-only numeric value is an approximate visual estimate. When the bound waveform result includes a deterministic `rhythm_measurement` with `status=ok`, use its unrounded `heart_rate_bpm_from_median_rr` as supporting rate-category evidence, so 100.3 bpm is not rounded down to normal. It does not diagnose the rhythm

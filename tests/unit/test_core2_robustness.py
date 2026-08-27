@@ -361,6 +361,9 @@ class TestHypothesisAwareRefinement:
         assert "omission from its top-k list" in prompt
         assert "three broad QRS complexes across multiple leads" in prompt
         assert "NSVT/VT versus artifact" in prompt
+        assert "Do not finalize sinus from regular timing alone" in prompt
+        assert "High voltage alone is not LVH" in prompt
+        assert "poor R progression" in prompt
         assert "final bbox multiset must exactly match that one receipt" in prompt
         assert "checklist must contain exactly these 16 axes" in prompt
         assert "relative to the attached original image" in prompt
@@ -430,14 +433,31 @@ class TestHypothesisAwareRefinement:
         assert "inspect V1-V6 without privileging one candidate" in prompt
         assert "pathologic Q/QS morphology" in prompt
         assert "high or low voltage" in prompt
+        assert "High voltage alone is not LVH" in prompt
+        assert "poor R progression" in prompt
         assert "uncalibrated waveform classifier candidates" in prompt
         assert "Ranked labels route inspection but never set diagnosis" in prompt
         assert "normal/otherwise-normal ranked label" in prompt
         assert "top-k omission is not negative evidence" in prompt
         assert "If PVC/PAC/ectopy is top-three" in prompt
+        assert "Do not call sinus from regular timing alone" in prompt
         assert "LVH finding with warning severity" not in prompt
         assert "Do not call ecg_founder_analyze_waveform again" in prompt
         assert "exactly equal the accepted boxes" in prompt
+
+    def test_ekg_limb_probe_balances_rhythm_qt_and_inferior_st_t(self):
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_I", "lead_II", "lead_III", "lead_aVF"],
+            hypothesis=None,
+            crop_region=RegionRect(0.0, 0.0, 1.0, 0.5),
+            probe_id="ekg_systematic_limb_leads",
+        )
+
+        assert "Do not call sinus from regular timing alone" in prompt
+        assert "qualitative QT when legible" in prompt
+        assert "II/III/aVF ST-T morphology" in prompt
+        assert "reciprocal change" in prompt
 
     def test_systematic_probe_can_verify_an_untargeted_hypothesis(self):
         finding = Finding(

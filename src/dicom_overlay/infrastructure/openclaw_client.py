@@ -2072,6 +2072,15 @@ def _build_finalization_prompt(
             "qtc_interval, chamber_enlargement, conduction, av_block, "
             "stemi_pattern, ischemia. Use indeterminate/not_assessable with info "
             "status when the image cannot support an axis.\n"
+            "- Do not finalize sinus from regular timing alone. Require repeatable "
+            "P waves before QRS complexes with a stable P-QRS relationship in a "
+            "clear lead; AF/flutter likewise requires positive visible morphology. "
+            "If neither is supported, keep rhythm indeterminate rather than force "
+            "either.\n"
+            "- Before retaining or revising an LVH candidate, compare V1-V6 R/S "
+            "progression and require appropriate labeled leads plus visible "
+            "calibration. High voltage alone is not LVH and must not displace poor "
+            "R progression.\n"
         )
     bbox_contract = (
         f"- After choosing the retained finding IDs, call dicom_bbox_validate "
@@ -2238,13 +2247,17 @@ def _build_refinement_prompt(
                 "candidate: R/S progression, pathologic Q/QS morphology, QRS width "
                 "and conduction pattern, high or low voltage, ST elevation or "
                 "depression, T-wave morphology, contiguous-lead distribution, and "
-                "reciprocal changes. Test ranked candidates and close alternatives "
-                "against their defining visible morphology."
+                "reciprocal changes. High voltage alone is not LVH: require "
+                "appropriate labeled leads, visible calibration, and qualifying "
+                "morphology, and never let voltage displace poor R progression. "
+                "Test ranked candidates and close alternatives against their "
+                "defining visible morphology."
             )
         elif "limb_leads" in probe_id:
             probe_focus = (
                 " This limb-lead probe must inspect rate/rhythm, I/aVF axis, "
-                "aVL voltage, conduction, and reciprocal ST-T morphology."
+                "qualitative QT when legible, aVL voltage, conduction, II/III/aVF "
+                "ST-T morphology, and reciprocal change."
             )
         waveform_guidance = ""
         if supporting_waveform_evidence:
@@ -2294,7 +2307,12 @@ def _build_refinement_prompt(
             "QRS upstroke and grid lines, immediately precede multiple QRS "
             "complexes in at least two visible leads. Repetitive wide or tall "
             "QRS complexes alone are not pacing evidence; compare ventricular "
-            "ectopy, bundle-branch conduction, high voltage, and artifact. At an "
+            "ectopy, bundle-branch conduction, high voltage, and artifact. Do not "
+            "call sinus from regular timing alone: require repeatable P waves "
+            "before QRS complexes with a stable P-QRS relationship in at least "
+            "one clear lead. If neither sinus nor AF/flutter has positive visible "
+            "morphology, keep the rhythm indeterminate rather than forcing either "
+            "diagnosis. At an "
             "abrupt abnormal interval, test whether at least three consecutive "
             "broad QRS complexes recur at the same horizontal positions across "
             "multiple visible leads. If they do, evaluate NSVT/VT versus artifact "
