@@ -35,9 +35,16 @@ Requirements:
 - For a plausible but unresolved visual candidate, use `confidence: "low"`,
   provide a tight bbox and a concrete `question` for human review. Do not turn
   uncertainty into a definitive diagnosis.
-- Minor concave or nonspecific ST-T variation that remains compatible with a
-  benign normal variant is not, by itself, an unresolved finding. Retract it
-  when crop review shows no pathologic contiguous-lead or reciprocal pattern.
+- An isolated one-lead or non-reproducible concave/nonspecific ST-T variation
+  that remains compatible with a benign normal variant or noise is not, by
+  itself, an unresolved finding. Absence of acute ST elevation or reciprocal
+  change may exclude an acute pattern, but it cannot exclude a separate
+  reproducible nonspecific ST-T/T-wave abnormality. After comparison with benign
+  variation and noise, retain a low-confidence nonspecific ST-T/T-wave finding
+  when inversion, flattening, or discordant repolarization morphology recurs
+  across adjacent beats in at least two mapped contiguous or anatomically
+  related leads. Use the existing non-urgent severity contract and do not imply
+  acute ischemia; one lead or non-reproducible noise alone is not a finding.
 - A visually plausible time-critical contiguous ST-elevation pattern must not
   be hidden as merely nonspecific because certainty is limited. State
   "Possible acute ST-elevation ischemic pattern (STEMI cannot be excluded)",
@@ -365,9 +372,12 @@ Reading depth (specialist expectations):
 - On every precordial review, compare V2-V4 across adjacent beats for persistent
   T-wave inversion, flattening, or nonspecific ST-T morphology independently of
   the R-wave-progression decision. Require reproducible waveform-locked shape in
-  contiguous visible leads: baseline wander, grid interference, or one isolated
-  noisy deflection is not a finding. Conversely, do not dismiss a persistent
-  aligned V2-V4 pattern merely because some noise is present.
+  at least two mapped contiguous or anatomically related leads: baseline wander,
+  grid interference, or one isolated noisy deflection is not a finding. Absence
+  of acute ST elevation or reciprocal change only excludes an acute pattern;
+  it does not negate a persistent nonspecific repolarization abnormality.
+  Conversely, do not dismiss a persistent aligned V2-V4 pattern merely because
+  some noise is present.
 - If any clinically meaningful ST-T ischemia/strain, LVH, bradycardia,
   tachyarrhythmia, conduction block, or chamber enlargement is present, set
   overall severity at least `warning` (reserve `info` for minor artifacts or

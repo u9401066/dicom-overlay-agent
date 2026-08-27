@@ -39,6 +39,13 @@
     tails, poll native audit visibility for at most 0.5 s, and enforce exact
     receipt matching for `confirm` bbox output. Routed every trusted precordial
     crop through balanced V1-V4 transition and V2-V4 ST-T/T-wave checks.
+  - [x] Exposed post-fix regression completed with 0 errors/repairs and all
+    engineering artifacts/SLAs valid. Normal specificity recovered to 1.0 and
+    aggregate strict/partial improved to 0.5/0.569, but the warning case still
+    missed nonspecific ST-T/T-wave change; this is not blind acceptance evidence.
+  - [x] Removed the prompt conflation between "no acute/reciprocal pattern" and
+    "no nonspecific repolarization abnormality" while preserving a two-related-
+    lead/adjacent-beat reproducibility gate and the no-extra-turn budget.
   - [ ] Validate the next prompt revision on a fresh frozen-source unseen canary,
     then start/resume the 9,922-image paired experiment.
   - [x] Reduced the verified staged OpenClaw runtime to 165.162 MiB, a

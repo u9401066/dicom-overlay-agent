@@ -82,7 +82,9 @@
 - **Precordial hypothesis anchoring**：任何可信 crop lead map 含 V1-V6 時，原本的
   hypothesis probe 也會進入平衡 precordial review，不增加模型 turn；PRWP 必須以
   V1-V4 缺乏預期 R/S transition 支持，V3/V4 R dominance 時撤回，且獨立檢查
-  V2-V4 可重現的 T-wave／nonspecific ST-T morphology 與 noise confounders。
+  V2-V4 可重現的 T-wave／nonspecific ST-T morphology 與 noise confounders。沒有
+  acute ST elevation／reciprocal change 只排除 acute pattern；nonspecific change
+  必須跨 adjacent beats 與至少兩個 mapped related leads 重現，單導/noise 不報。
 - **Core 2 contract 與邊界測試**：影像 smoke 現在要求同一 `chat.send` frame 內的
   non-empty PNG attachment、exact 16-key schema、ROI provenance、event correlation
   與 structured result；非有限、零面積、完全離圖 bbox 一律 fail closed。

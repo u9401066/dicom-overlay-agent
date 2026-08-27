@@ -59,6 +59,19 @@
   partial JSONL records, wait at most 0.5 s for Windows append visibility, and
   include `confirm` coordinates in exact receipt matching. A fresh blind canary
   is required after committing these changes.
+- The first explicitly exposed two-case regression on that repair completed
+  with zero errors, zero JSON repair, all refinement/final receipts present and
+  every 60/100/180 SLA met. The former normal false positive became a strict
+  normal pass, so specificity recovered to 1.0; aggregate strict/partial moved
+  to 0.5/0.569 at 103.381 s mean latency. The warning case recovered sinus and
+  retracted poor progression, but still missed reproducible nonspecific ST-T/
+  T-wave change. Because these cases are revealed, the result is development
+  regression evidence only.
+- The next prompt revision separates acute ischemic morphology from nonspecific
+  repolarization: absent ST elevation/reciprocal change cannot erase a pattern
+  that repeats across adjacent beats in at least two mapped related leads;
+  isolated one-lead variation or non-reproducible noise still stays normal. It
+  adds no turn and needs one more exposed check before the fresh blind canary.
 - Real packaging/runtime failures found by the acceptance path are now explicit
   gates: the staged OpenClaw runtime omitted required agent templates; a stale
   Gateway lock could survive forced shutdown; the GUI quit path hung; and final

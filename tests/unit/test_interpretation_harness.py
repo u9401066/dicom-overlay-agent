@@ -105,6 +105,14 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "R becomes dominant by V3/V4, retract poor R-wave progression" in prompt
     assert "persistent T-wave inversion or flattening" in prompt
     assert "baseline wander, grid interference, and isolated noise" in prompt
+    assert (
+        "Absence of acute ST elevation or reciprocal change can exclude an acute "
+        "pattern"
+    ) in prompt
+    assert "cannot exclude a reproducible nonspecific ST-T/T-wave" in prompt
+    assert "at least two mapped contiguous or anatomically related leads" in prompt
+    assert "report a low-confidence nonspecific ST-T/T-wave change" in prompt
+    assert "One lead or non-reproducible noise alone is not a finding" in prompt
     assert "classify PR qualitatively" in prompt
     assert "premature P-QRS complexes" in prompt
     assert "tall or broad T waves" in prompt

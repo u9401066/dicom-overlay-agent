@@ -373,6 +373,15 @@ class TestHypothesisAwareRefinement:
         assert "'Possible LVH-compatible pattern'" in prompt
         assert "do not automatically force warning" in prompt
         assert "report R-wave progression independently" in prompt
+        assert (
+            "Absence of acute ST elevation or reciprocal change can exclude an "
+            "acute pattern"
+        ) in prompt
+        assert "cannot exclude a reproducible nonspecific ST-T/T-wave" in prompt
+        assert "at least two mapped contiguous or anatomically related leads" in (
+            prompt
+        )
+        assert "One lead or non-reproducible noise alone is not a finding" in prompt
         assert "classify PR and QT qualitatively" in prompt
         assert "premature P-QRS complexes" in prompt
         assert "tall or broad T waves persisting" in prompt
@@ -500,6 +509,16 @@ class TestHypothesisAwareRefinement:
         )
         assert "persistent T-wave inversion or flattening" in prompt
         assert "baseline wander, grid interference, and isolated noise" in prompt
+        assert (
+            "Absence of acute ST elevation or reciprocal change can exclude an "
+            "acute pattern"
+        ) in prompt
+        assert "cannot exclude a reproducible nonspecific ST-T/T-wave" in prompt
+        assert "at least two mapped contiguous or anatomically related leads" in (
+            prompt
+        )
+        assert "report a low-confidence nonspecific ST-T/T-wave change" in prompt
+        assert "One lead or non-reproducible noise alone is not a finding" in prompt
 
     def test_ekg_skill_balances_lvh_false_positive_and_false_negative_guards(self):
         skill = _load_skill_prompt("dicom-ekg-analysis")
@@ -534,6 +553,17 @@ class TestHypothesisAwareRefinement:
         )
         assert "compare V2-V4 across adjacent beats" in normalized_skill
         assert "baseline wander, grid interference" in normalized_skill
+        assert (
+            "Absence of acute ST elevation or reciprocal change may exclude an "
+            "acute pattern"
+        ) in normalized_skill
+        assert "cannot exclude a separate reproducible nonspecific" in normalized_skill
+        assert "at least two mapped contiguous or anatomically related leads" in (
+            normalized_skill
+        )
+        assert "one lead or non-reproducible noise alone is not a finding" in (
+            normalized_skill
+        )
         assert "do not dismiss a persistent aligned V2-V4 pattern" in normalized_skill
 
     def test_ekg_limb_probe_balances_rhythm_qt_and_inferior_st_t(self):
