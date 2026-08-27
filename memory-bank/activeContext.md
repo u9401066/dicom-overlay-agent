@@ -1,8 +1,51 @@
 # Active Context
 
-> Current state is the final `2026-08-09 OpenClaw MultiPass evidence and release
-> status` section below. Earlier dated session updates are historical snapshots
-> and intentionally retain their then-valid blockers, versions and run states.
+## 2026-08-27 live Luna / GUI / release acceptance in progress
+
+- Current objective requires real Windows desktop evidence: launch the packaged
+  app and OpenClaw agent, display a test image in a viewer, route image analysis
+  through `openai/gpt-5.6-luna`, capture the rendered overlay/report, and record
+  latency plus request/token usage. Mock/headless checks are supporting gates,
+  not substitutes for this acceptance path.
+- Work is staged as: preserve the existing dirty worktree; establish live GUI
+  and model baseline; repair smoke/edge failures; validate speed/accuracy on an
+  unseen bounded canary; audit and safely slim the bundle; finish GitHub Pages
+  and bilingual docs; then make reviewed, path-scoped commits/pushes/releases.
+- The 9,922-image paired experiment remains gated by the existing frozen-source
+  rule: launch only after the scoped source is verified, committed, and pushed.
+  It must remain resumable and must not be mixed with subsequent code changes.
+- Existing unrelated changes in `.github/agents/research.agent.md`, Copilot hook
+  policy/evaluators, `.claude/skills/pubmed-research-chronicle/`, and
+  `openclaw-home/memory/main.sqlite*` are user-owned and excluded from this
+  task's commits.
+- The packaged GUI acceptance reached `DISPLAYING` against a real 1000 x 720
+  public MEETI ECG shown in the harness viewer. The app captured the configured
+  1522 x 1136 viewer ROI on a 2560 x 1600 display at 150% Windows scaling, sent
+  five OpenClaw-owned `openai-chatgpt-responses` image turns to
+  `gpt-5.6-luna`, and exported a review with four diagnostic boxes plus two
+  analysis-crop outlines. Capture exclusion correctly kept the top-most app
+  panels black to external Windows capture; the app-owned Export action is the
+  inspectable evidence path.
+- The live run took 146.915 s and recorded 50,607 input, 4,906 output, 56,320
+  cache-read, 1,970 reasoning, and 111,833 total tokens. Subscription transport
+  reported zero metered API cost; at the documented Luna token prices the same
+  traffic is approximately USD 0.017135. Every exported projection was in
+  bounds with no clamping and 0.104-0.368 physical-pixel maximum edge drift.
+- This live case is a correctness failure, not a success claim. Gold describes
+  atrial fibrillation with slow ventricular response, prolonged QT, poor R-wave
+  progression and nonspecific inferior ST-T changes; the GUI instead reported
+  sinus rhythm and possible LVH. The bounded unseen canary and prompt/harness
+  changes must address this miss before any clinical-accuracy statement.
+- Real packaging/runtime failures found by the acceptance path are now explicit
+  gates: the staged OpenClaw runtime omitted required agent templates; a stale
+  Gateway lock could survive forced shutdown; the GUI quit path hung; and final
+  reconciliation changed one draft bbox coordinate before its receipt check,
+  causing a safe incomplete fallback after the retry deadline. The local export
+  and trajectories remain ignored/generated evidence and contain no secrets.
+
+> Current state is the 2026-08-27 section above. Earlier dated session updates
+> are historical snapshots and intentionally retain their then-valid blockers,
+> versions and run states.
 
 ## Session Update (2026-08-05, evidence-v3 and GPT-5.4 Mini release default)
 

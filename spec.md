@@ -1,12 +1,31 @@
 # DICOM Overlay Agent — 系統規格書
 
-**Version:** 0.4.6 Implementation Profile
-**Date:** 2026-08-09
+**Version:** 0.4.7 Acceptance Profile (draft)
+**Date:** 2026-08-27
 **Author:** 寧寧 (AI Research Assistant, KMUH Anesthesiology)
 
 ---
 
 ## 0. Current Implementation Binding
+
+### 0.1 2026-08-27 acceptance target
+
+本輪交付不得只以 mock、headless 或單元測試代替產品驗收，必須同時留下：
+
+- Windows 封裝 GUI 實際啟動、OpenClaw Gateway ready、測試影像在 viewer 中
+  可見，以及 overlay/report 實際渲染的桌面截圖證據。
+- 精確模型路由 `openai/gpt-5.6-luna`（底層 model id
+  `gpt-5.6-luna`）的真實影像交易、每階段延遲、request/token usage 與可重算成本；
+  若外部帳號、訂閱或額度阻擋，必須保留 provider receipt 並明確標成 blocked，
+  不得用 mock 結果替代。
+- Smoke、ROI capture exclusion、16-key schema、Gateway event correlation、bbox
+  邊界/投影、deadline degradation 與 interrupted/resume 的 edge regressions。
+- 速度與正確率變更先通過未曝光 blinded canary；9,922 張正式 paired run 僅能在
+  source fingerprint 凍結、驗證、commit 且 push 後啟動，並可原子續跑。任何小樣本、
+  weak-label 或 waveform-only 結果不得宣稱為臨床正確率。
+- 封裝瘦身必須維持四核心、公開 Gateway 邊界與現有 banned-content gate；不得刪除
+  OpenClaw 內部 `dist` chunks。網站、雙語 README、runbook、release evidence 與實際
+  bundle 數字需同步，並以分段 Conventional Commit、tag 與 GitHub Release 發布。
 
 本長篇規格保留早期產品設計與 prior-art 背景；以下條款覆蓋後文仍存在的舊版
 模型、延遲、封裝尺寸與自訂 WebSocket 範例：
@@ -14,9 +33,10 @@
 - 桌面程式只透過 OpenClaw 公開 `connect` / `chat.send` protocol 3 傳送影像，
   agent loop 由 OpenClaw embedded agent 擁有；不提供繞過 Gateway 的 direct-API
   fallback。
-- 目前真實實驗模型為 `openai/gpt-5.4-mini`。ChatGPT/Codex subscription OAuth
-  只作 transport credential；官方 Codex migration provider 不作影像判讀，
-  bundle 亦不含 Codex agent runtime。
+- 本輪真實桌面驗收模型為 `openai/gpt-5.6-luna`；2026-08-09 以前的
+  `openai/gpt-5.4-mini` 數據只保留為歷史基線。ChatGPT/Codex subscription
+  OAuth 只作 transport credential；官方 Codex migration provider 不作影像判讀，
+  bundle 亦不得包含或啟用 Codex agent runtime。
 - 預設開啟 app `MultiPassAnalyzer`：完整圖 coarse read、原圖 crop/refine、EKG
   systematic/rhythm probe、選配 ECGFounder waveform evidence 及 final
   reconciliation。SLA 目標為首次概略 60 秒、首次 crop/detail 100 秒、整題

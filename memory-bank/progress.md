@@ -1,7 +1,33 @@
-# Progress (Updated: 2026-08-09)
+# Progress (Updated: 2026-08-27)
 
 > This file is append-only evidence history. The final 2026-08-09 sections are
 > authoritative; earlier `Doing`/`Running` entries describe their dated state.
+
+## Doing
+
+- **Live GPT-5.6 Luna desktop acceptance and release hardening** (2026-08-27):
+  - [x] Launched the packaged Windows GUI and bundled OpenClaw path against a
+    visible public MEETI ECG. The real `gpt-5.6-luna` MultiPass run reached
+    `DISPLAYING`, and the app-owned Export action preserved the source, report,
+    four diagnostic boxes, two crop outlines and coordinate audit.
+  - [x] Recorded the live baseline: 146.915 s, 5 image turns, 50,607 input +
+    4,906 output + 56,320 cache-read tokens, 1,970 reasoning tokens and 111,833
+    total. The subscription receipt charged USD 0; API-equivalent token pricing
+    is approximately USD 0.017135.
+  - [x] Verified the actual 2560 x 1600 / 150%-DPI projection. Exported boxes
+    stayed in bounds, were not clamped, and showed 0.104-0.368 px maximum edge
+    drift. Added a frozen geometry regression for the same 1522 x 1136 ROI.
+  - [x] Recorded the accuracy failure without relabelling it as success: the
+    agent missed the gold AF/slow-response, prolonged-QT and inferior ST-T
+    findings and instead proposed sinus rhythm/possible LVH.
+  - [ ] Repair current smoke failures and add boundary regressions for the four
+    cores without widening the PHI-safe ROI.
+  - [ ] Validate latency/accuracy changes on an unseen canary, freeze and push
+    the source, then start/resume the 9,922-image paired experiment.
+  - [ ] Measure and safely reduce the portable bundle without pruning OpenClaw
+    internal chunks or weakening the public Gateway contract.
+  - [ ] Complete GitHub Pages, bilingual README/runbooks/release evidence, then
+    publish path-scoped Conventional Commits and a tagged release.
 
 ## Done
 
