@@ -8,6 +8,7 @@ placement can be audited before it reaches the physician-facing overlay.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from dicom_overlay.domain.entities import RegionRect, ROICrop, WindowRect
@@ -195,7 +196,14 @@ def project_bbox_to_overlay_highlight(
         raise ValueError("image_rect dimensions must be positive")
     if coordinate_frame is None and (dpr is None or dpr <= 0):
         raise ValueError("dpr must be > 0 when coordinate_frame is not provided")
+    coordinates = (bbox.x, bbox.y, bbox.w, bbox.h)
+    if not all(math.isfinite(value) for value in coordinates):
+        raise ValueError("bbox coordinates must be finite")
+    if bbox.w <= 0.0 or bbox.h <= 0.0:
+        raise ValueError("bbox width and height must be positive")
     clamped = _clamp_bbox_extent(bbox)
+    if clamped.w <= 0.0 or clamped.h <= 0.0:
+        raise ValueError("bbox must overlap the captured image")
     physical = _bbox_to_physical_edges(clamped, image_rect)
     if coordinate_frame is not None:
         logical = coordinate_frame.physical_edges_to_local_rect(physical)

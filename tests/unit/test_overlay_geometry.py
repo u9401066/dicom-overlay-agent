@@ -80,6 +80,103 @@ def test_project_bbox_rejects_non_positive_dpr() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "bbox, message",
+    [
+        (RegionRect(x=0.1, y=0.1, w=0.0, h=0.2), "width and height"),
+        (RegionRect(x=0.1, y=0.1, w=0.2, h=0.0), "width and height"),
+        (RegionRect(x=1.0, y=0.2, w=0.1, h=0.2), "overlap"),
+    ],
+)
+def test_project_bbox_rejects_degenerate_or_off_image_boxes(
+    bbox: RegionRect,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        project_bbox_to_overlay_highlight(
+            bbox=bbox,
+            image_rect=WindowRect(left=0, top=0, width=1000, height=800),
+            dpr=1.5,
+            severity="warning",
+            label="invalid geometry",
+        )
+
+
+def test_real_150_percent_desktop_projection_stays_subpixel_aligned() -> None:
+    """Freeze the 2560x1600 / 150%-DPI geometry from the live Luna run."""
+
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=2560, height=1600),
+        logical_screen=WindowRect(left=0, top=0, width=1707, height=1067),
+    )
+    capture = WindowRect(left=19, top=30, width=1522, height=1136)
+    boxes = [
+        RegionRect(x=0.05, y=0.51125, w=0.18, h=0.06325),
+        RegionRect(x=0.18, y=0.59175, w=0.18, h=0.06325),
+        RegionRect(x=0.05, y=0.839, w=0.18, h=0.06325),
+        RegionRect(x=0.18, y=0.922375, w=0.18, h=0.06325),
+    ]
+
+    assert frame.physical_rect_to_local(capture) == LogicalRect(
+        x=13,
+        y=20,
+        w=1015,
+        h=758,
+    )
+    for bbox in boxes:
+        projected = project_bbox_to_overlay_highlight(
+            bbox=bbox,
+            image_rect=capture,
+            coordinate_frame=frame,
+            severity="info",
+            label="live Luna bbox",
+        )
+
+        assert projected.calibration.ok is True
+        assert projected.calibration.within_overlay_bounds is True
+        assert projected.calibration.was_clamped is False
+        assert projected.calibration.max_edge_drift_px < 0.8
+        assert projected.calibration.back_projected_bbox.x == pytest.approx(
+            bbox.x,
+            abs=0.001,
+        )
+        assert projected.calibration.back_projected_bbox.y == pytest.approx(
+            bbox.y,
+            abs=0.001,
+        )
+
+
+def test_fractional_dpi_roi_roundtrip_is_bounded_to_one_physical_pixel() -> None:
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=2560, height=1600),
+        logical_screen=WindowRect(left=0, top=0, width=1707, height=1067),
+    )
+    physical = ROICrop(
+        top=37,
+        bottom=83,
+        left=101,
+        right=47,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1522,
+        reference_height=1136,
+    )
+
+    roundtrip = frame.logical_roi_to_physical(
+        frame.physical_roi_to_logical(physical)
+    )
+
+    for field in (
+        "top",
+        "bottom",
+        "left",
+        "right",
+        "reference_width",
+        "reference_height",
+    ):
+        assert abs(getattr(roundtrip, field) - getattr(physical, field)) <= 1
+
+
 def test_secondary_display_frame_maps_absolute_physical_to_overlay_local() -> None:
     frame = OverlayCoordinateFrame(
         physical_screen=WindowRect(left=-1920, top=0, width=1920, height=1080),
