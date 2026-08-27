@@ -118,6 +118,9 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert len(report["integrity"]["payload_tree_sha256"]) == 64
     assert len(report["source_provenance"]["source_tree_sha256"]) == 64
     assert report["codex_migration_bundle_check"]["ok"] is True
+    assert report["workspace_templates"]["ok"] is True
+    assert report["workspace_templates"]["ready_count"] == 7
+    assert report["component_counts"]["workspace_templates"] == 7
     assert (
         report["codex_migration_bundle_check"][
             "codex_agent_runtime_dependencies_bundled"
@@ -139,6 +142,56 @@ def test_inspect_bundle_rejects_missing_and_banned_components(tmp_path: Path) ->
     assert report["status"] == "failed"
     assert "config.yaml" in report["missing_files"]
     assert report["banned_components"] == ["numpy/core.pyd"]
+
+
+def test_inspect_bundle_rejects_missing_or_empty_openclaw_templates(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    missing_relative = module.OPENCLAW_WORKSPACE_TEMPLATE_FILES[0]
+    empty_relative = module.OPENCLAW_WORKSPACE_TEMPLATE_FILES[1]
+    (tmp_path / missing_relative).unlink()
+    (tmp_path / empty_relative).write_bytes(b"")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert missing_relative in report["missing_files"]
+    assert report["workspace_templates"]["ok"] is False
+    assert report["workspace_templates"]["ready_count"] == 5
+    assert "missing:" in report["workspace_templates"]["error"]
+    assert "empty:" in report["workspace_templates"]["error"]
+    assert "workspace templates" in " ".join(report["failures"])
+
+
+def test_inspect_bundle_rejects_debug_build_and_foreign_native_payloads(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    runtime = tmp_path / "openclaw/node_modules/openclaw/node_modules"
+    banned_paths = (
+        runtime / "@lydell/node-pty-win32-x64/prebuilds/win32-x64/conpty.pdb",
+        runtime / "tree-sitter-bash/src/parser.c",
+        runtime / "tree-sitter-bash/src/tree_sitter/parser.h",
+        runtime / "@lydell/node-pty-linux-x64/prebuilds/linux-x64/pty.node",
+        runtime / "tree-sitter-bash/prebuilds/darwin-arm64/tree-sitter-bash.node",
+    )
+    for path in banned_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"build-only")
+    allowed = runtime / "tree-sitter-bash/prebuilds/win32-x64/tree-sitter-bash.node"
+    allowed.parent.mkdir(parents=True, exist_ok=True)
+    allowed.write_bytes(b"runtime")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert set(report["banned_components"]) == {
+        path.relative_to(tmp_path).as_posix() for path in banned_paths
+    }
+    assert allowed.relative_to(tmp_path).as_posix() not in report["banned_components"]
 
 
 def test_inspect_bundle_rejects_sidecar_runtime_and_model_artifacts(

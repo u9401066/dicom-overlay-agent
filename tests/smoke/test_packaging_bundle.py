@@ -21,19 +21,123 @@ Two layers:
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_SMOKE_ERROR_MARKER = "PACKAGED_SMOKE_EXPECTED_AUTH_FAILURE"
+
+
+@contextmanager
+def _loopback_auth_failure_provider():
+    requests: list[dict[str, Any]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            requests.append(
+                {
+                    "path": self.path,
+                    "authorization": self.headers.get("Authorization", ""),
+                    "body": body,
+                }
+            )
+            payload = json.dumps(
+                {
+                    "error": {
+                        "message": _SMOKE_ERROR_MARKER,
+                        "type": "invalid_request_error",
+                        "code": "invalid_api_key",
+                    }
+                }
+            ).encode("utf-8")
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _write_loopback_smoke_config(root: Path, *, base_url: str) -> None:
+    config = {
+        "gateway": {"mode": "local"},
+        "models": {
+            "mode": "merge",
+            "providers": {
+                "packaging-smoke": {
+                    "apiKey": {
+                        "source": "env",
+                        "provider": "default",
+                        "id": "DICOM_OVERLAY_PACKAGING_SMOKE_API_KEY",
+                    },
+                    "baseUrl": base_url,
+                    "api": "openai-responses",
+                    "models": [
+                        {
+                            "id": "image-auth-failure",
+                            "name": "Local packaging image smoke",
+                            "input": ["text", "image"],
+                            "reasoning": False,
+                            "contextWindow": 128000,
+                            "maxTokens": 4096,
+                            "agentRuntime": {"id": "openclaw"},
+                        }
+                    ],
+                }
+            },
+        },
+        "agents": {
+            "defaults": {
+                "model": {
+                    "primary": "packaging-smoke/image-auth-failure",
+                    "fallbacks": [],
+                },
+                "models": {
+                    "packaging-smoke/image-auth-failure": {
+                        "alias": "Local packaging image smoke"
+                    }
+                },
+                "imageMaxDimensionPx": 64,
+                "timeoutSeconds": 30,
+            }
+        },
+        "plugins": {
+            "allow": ["dicom-overlay-agent-harness"],
+            "entries": {"dicom-overlay-agent-harness": {"enabled": True}},
+        },
+        "tools": {"allow": ["dicom_bbox_validate"]},
+    }
+    path = root / "openclaw" / "openclaw.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
 def _assert_clean_roi_seed(config_path: Path) -> None:
@@ -70,6 +174,7 @@ def test_selfcheck_reports_all_components():
         "openclaw",
         "openclaw_bundled_skills",
         "openclaw_plugin_surfaces",
+        "openclaw_workspace_templates",
         "harness_native_plugin",
         "writable_base",
     ):
@@ -80,6 +185,38 @@ def test_selfcheck_reports_all_components():
     assert "RESULT:" in out
     assert config_path.exists()
     assert code in (0, 1)
+
+
+def test_gateway_image_smoke_rejects_real_credentials_and_non_loopback_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dicom_overlay.__main__ import _packaging_smoke_configuration_error
+
+    for name in (
+        "OPENAI_API_KEY",
+        "CODEX_HOME",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENROUTER_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        "DICOM_OVERLAY_PACKAGING_SMOKE_MODE",
+        "loopback-provider-auth-failure-v1",
+    )
+    monkeypatch.setenv(
+        "DICOM_OVERLAY_PACKAGING_SMOKE_API_KEY",
+        "invalid-packaging-smoke-key",
+    )
+    _write_loopback_smoke_config(tmp_path, base_url="http://127.0.0.1:9/v1")
+
+    assert _packaging_smoke_configuration_error(tmp_path) == ""
+
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-be-used")
+    assert "real provider credentials" in _packaging_smoke_configuration_error(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY")
+    _write_loopback_smoke_config(tmp_path, base_url="https://api.openai.com/v1")
+    assert "loopback" in _packaging_smoke_configuration_error(tmp_path)
 
 
 def _built_exe() -> Path | None:
@@ -135,19 +272,34 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
     isolated = shutil.copytree(exe.parent, tmp_path / "DICOMOverlayAgent")
     isolated_exe = isolated / exe.name
     env = os.environ.copy()
-    env.pop("OPENCLAW_GATEWAY_TOKEN", None)
-    env["OPENAI_API_KEY"] = "packaged-runtime-smoke-invalid-key"
-
-    result = subprocess.run(
-        [str(isolated_exe), "--gateway-smoke"],
-        cwd=isolated,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=300,
+    for name in (
+        "OPENCLAW_GATEWAY_TOKEN",
+        "OPENAI_API_KEY",
+        "CODEX_HOME",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENROUTER_API_KEY",
+    ):
+        env.pop(name, None)
+    env.update(
+        {
+            "DICOM_OVERLAY_PACKAGING_SMOKE_MODE": ("loopback-provider-auth-failure-v1"),
+            "DICOM_OVERLAY_PACKAGING_SMOKE_API_KEY": ("invalid-packaging-smoke-key"),
+        }
     )
+
+    with _loopback_auth_failure_provider() as (base_url, provider_requests):
+        _write_loopback_smoke_config(isolated, base_url=base_url)
+        result = subprocess.run(
+            [str(isolated_exe), "--gateway-smoke"],
+            cwd=isolated,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+        )
 
     gateway_log = (isolated / "gateway.log").read_text(
         encoding="utf-8", errors="replace"
@@ -156,10 +308,37 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
         f"packaged Gateway smoke failed (exit {result.returncode}):\n"
         f"{result.stdout}\n{result.stderr}\n{gateway_log}"
     )
-    assert "OPENCLAW_GATEWAY_TOKEN=" in (isolated / ".env").read_text(
-        encoding="utf-8"
-    )
+    assert "OPENCLAW_GATEWAY_TOKEN=" in (isolated / ".env").read_text(encoding="utf-8")
     assert "[gateway] ready" in gateway_log
+    assert provider_requests, "image turn never reached the loopback provider"
+    assert all(
+        request["authorization"] == "Bearer invalid-packaging-smoke-key"
+        for request in provider_requests
+    )
+    assert any(
+        b"input_image" in request["body"]
+        and b"data:image/png;base64," in request["body"]
+        for request in provider_requests
+    ), "loopback provider request did not contain the PNG image attachment"
+    app_log = (isolated / "overlay_agent.log").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    assert "packaged_gateway_image_turn_smoke" in app_log
+    assert "template_count=7" in app_log
+    assert "image_attachment=True" in app_log
+    workspace = isolated / "openclaw-home" / ".openclaw" / "workspace"
+    assert all(
+        (workspace / name).is_file()
+        for name in (
+            "AGENTS.md",
+            "SOUL.md",
+            "TOOLS.md",
+            "IDENTITY.md",
+            "USER.md",
+            "HEARTBEAT.md",
+            "BOOTSTRAP.md",
+        )
+    )
     deadline = time.monotonic() + 15
     while _port_open(18789) and time.monotonic() < deadline:
         time.sleep(0.25)

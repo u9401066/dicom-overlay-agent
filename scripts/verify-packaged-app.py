@@ -24,6 +24,16 @@ EXPECTED_OPENCLAW_VERSION = "2026.7.1-2"
 EXPECTED_NODE_VERSION = "v24.18.0"
 PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC = 180
 
+OPENCLAW_WORKSPACE_TEMPLATE_FILES = (
+    "openclaw/node_modules/openclaw/src/agents/templates/HEARTBEAT.md",
+    "openclaw/node_modules/openclaw/docs/reference/templates/AGENTS.md",
+    "openclaw/node_modules/openclaw/docs/reference/templates/SOUL.md",
+    "openclaw/node_modules/openclaw/docs/reference/templates/TOOLS.md",
+    "openclaw/node_modules/openclaw/docs/reference/templates/IDENTITY.md",
+    "openclaw/node_modules/openclaw/docs/reference/templates/USER.md",
+    "openclaw/node_modules/openclaw/docs/reference/templates/BOOTSTRAP.md",
+)
+
 BUILD_SOURCE_ROOTS = (
     "src/dicom_overlay",
     "openclaw/workspace",
@@ -51,6 +61,7 @@ REQUIRED_FILES = (
     "openclaw/node_modules/openclaw/dist/extensions/codex/package.json",
     "openclaw/node_modules/openclaw/dist/extensions/codex/openclaw.plugin.json",
     "openclaw/node_modules/openclaw/dist/extensions/codex/migration-bundle.json",
+    *OPENCLAW_WORKSPACE_TEMPLATE_FILES,
     "openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json",
     "openclaw/workspace/plugins/dicom-overlay-agent-harness/openclaw.plugin.json",
     "openclaw/workspace/plugins/dicom-overlay-agent-harness/package.json",
@@ -86,6 +97,7 @@ _BANNED_PART_PREFIXES = (
     "torch_",
 )
 _BANNED_FILENAMES = {"opengl32sw.dll"}
+_BANNED_DEBUG_SYMBOL_SUFFIXES = {".pdb"}
 _BANNED_MODEL_DATA_SUFFIXES = {
     ".mat",
     ".bin",
@@ -152,7 +164,10 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
                     folded_parts & _BANNED_PARTS
                     or has_banned_part_prefix
                     or folded_name in _BANNED_FILENAMES
+                    or path.suffix.casefold() in _BANNED_DEBUG_SYMBOL_SUFFIXES
                     or path.suffix.casefold() in _BANNED_MODEL_DATA_SUFFIXES
+                    or _is_tree_sitter_bash_build_source(relative)
+                    or _is_foreign_native_payload(relative)
                     or (
                         in_openclaw_workspace
                         and path.suffix.casefold() in _BANNED_WORKSPACE_ARCHIVE_SUFFIXES
@@ -190,6 +205,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         / "codex"
     )
     codex_migration_bundle = _inspect_codex_migration_bundle(codex_migration_root)
+    workspace_templates = _inspect_workspace_templates(bundle)
     component_counts = _component_counts(bundle)
     selfcheck = _run_selfcheck(exe) if run_selfcheck and exe.is_file() else None
     openclaw_cli = (
@@ -292,6 +308,11 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             "OAuth-only Codex migration provider is incomplete: "
             + str(codex_migration_bundle.get("error") or "unknown error")
         )
+    if not workspace_templates.get("ok"):
+        failures.append(
+            "OpenClaw workspace templates are incomplete or empty: "
+            + str(workspace_templates.get("error") or "unknown error")
+        )
     for component, count in component_counts.items():
         if count == 0:
             failures.append(f"bundled OpenClaw component is empty: {component}")
@@ -324,6 +345,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             "node": node_version,
         },
         "component_counts": component_counts,
+        "workspace_templates": workspace_templates,
         "sizes": {
             "file_count": file_count,
             "launcher_bytes": launcher_bytes,
@@ -359,6 +381,97 @@ def _read_openclaw_version(bundle: Path) -> str:
     except (OSError, json.JSONDecodeError):
         return ""
     return str(payload.get("version") or "")
+
+
+def _is_tree_sitter_bash_build_source(relative: Path) -> bool:
+    """Return whether ``relative`` is generated C/header build input.
+
+    The staged runtime retains tree-sitter-bash's precompiled win32-x64 module,
+    queries, and JSON metadata.  Parser C sources are only needed when building
+    that native module and cost roughly 9.5 MiB.
+    """
+
+    parts = tuple(part.casefold() for part in relative.parts)
+    vendored_prefix = (
+        "openclaw",
+        "node_modules",
+        "openclaw",
+        "node_modules",
+        "tree-sitter-bash",
+        "src",
+    )
+    return parts[: len(vendored_prefix)] == vendored_prefix and (
+        relative.suffix.casefold() in {".c", ".h"}
+    )
+
+
+def _is_foreign_native_payload(relative: Path) -> bool:
+    """Reject npm native payloads that cannot run on Windows x64."""
+
+    parts = tuple(part.casefold() for part in relative.parts)
+    vendored_prefix = (
+        "openclaw",
+        "node_modules",
+        "openclaw",
+        "node_modules",
+    )
+    if parts[: len(vendored_prefix)] != vendored_prefix:
+        return False
+    package_parts = parts[len(vendored_prefix) :]
+    if len(package_parts) >= 2 and package_parts[0] == "@napi-rs":
+        package = package_parts[1]
+        return package.startswith("canvas-") and package != "canvas-win32-x64-msvc"
+    if len(package_parts) >= 2 and package_parts[0] == "@lydell":
+        package = package_parts[1]
+        return package.startswith("node-pty-") and package != "node-pty-win32-x64"
+    if len(package_parts) >= 2 and package_parts[0] == "@mariozechner":
+        package = package_parts[1]
+        return (
+            package.startswith("clipboard-") and package != "clipboard-win32-x64-msvc"
+        )
+    return bool(
+        len(package_parts) >= 3
+        and package_parts[0] == "tree-sitter-bash"
+        and package_parts[1] == "prebuilds"
+        and package_parts[2] != "win32-x64"
+    )
+
+
+def _inspect_workspace_templates(bundle: Path) -> dict[str, Any]:
+    """Record the exact pinned OpenClaw templates available at runtime."""
+
+    files: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for relative in OPENCLAW_WORKSPACE_TEMPLATE_FILES:
+        path = bundle / relative
+        size_bytes = 0
+        digest = ""
+        try:
+            content = path.read_bytes()
+            size_bytes = len(content)
+            digest = hashlib.sha256(content).hexdigest()
+            if not content.decode("utf-8-sig").strip():
+                errors.append(f"empty: {relative}")
+        except FileNotFoundError:
+            errors.append(f"missing: {relative}")
+        except (OSError, UnicodeDecodeError) as exc:
+            errors.append(f"unreadable: {relative} ({type(exc).__name__})")
+        files.append(
+            {
+                "path": relative,
+                "size_bytes": size_bytes,
+                "sha256": digest,
+            }
+        )
+    return {
+        "ok": not errors,
+        "expected_count": len(OPENCLAW_WORKSPACE_TEMPLATE_FILES),
+        "ready_count": sum(
+            1 for item in files if item["size_bytes"] > 0 and item["sha256"]
+        ),
+        "files": files,
+        "error": "; ".join(errors),
+    }
 
 
 def _sha256_file(path: Path) -> str:
@@ -673,6 +786,11 @@ def _inspect_native_plugin(bundle: Path, plugin_root: Path) -> dict[str, Any]:
 def _component_counts(bundle: Path) -> dict[str, int]:
     package = bundle / "openclaw" / "node_modules" / "openclaw"
     return {
+        "workspace_templates": sum(
+            1
+            for relative in OPENCLAW_WORKSPACE_TEMPLATE_FILES
+            if (bundle / relative).is_file()
+        ),
         "bundled_skills": len(list((package / "skills").glob("*/SKILL.md"))),
         "dist_extensions": _file_count(package / "dist" / "extensions"),
         "dist_plugins": _file_count(package / "dist" / "plugins"),

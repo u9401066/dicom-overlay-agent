@@ -13,9 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import structlog
@@ -89,6 +92,36 @@ if TYPE_CHECKING:
     from dicom_overlay.domain.services import VisionAnalyzerService
 
 logger = structlog.get_logger("dicom_overlay")
+
+_OPENCLAW_RUNTIME_TEMPLATE_PATHS = {
+    "HEARTBEAT.md": Path(
+        "openclaw/node_modules/openclaw/src/agents/templates/HEARTBEAT.md"
+    ),
+    "AGENTS.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/AGENTS.md"
+    ),
+    "SOUL.md": Path("openclaw/node_modules/openclaw/docs/reference/templates/SOUL.md"),
+    "TOOLS.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/TOOLS.md"
+    ),
+    "IDENTITY.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/IDENTITY.md"
+    ),
+    "USER.md": Path("openclaw/node_modules/openclaw/docs/reference/templates/USER.md"),
+    "BOOTSTRAP.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/BOOTSTRAP.md"
+    ),
+}
+_PACKAGING_SMOKE_MODE_ENV = "DICOM_OVERLAY_PACKAGING_SMOKE_MODE"
+_PACKAGING_SMOKE_MODE = "loopback-provider-auth-failure-v1"
+_PACKAGING_SMOKE_API_KEY_ENV = "DICOM_OVERLAY_PACKAGING_SMOKE_API_KEY"
+_PACKAGING_SMOKE_API_KEY = "invalid-packaging-smoke-key"
+_PACKAGING_SMOKE_PROVIDER = "packaging-smoke"
+_PACKAGING_SMOKE_ERROR_MARKER = "PACKAGED_SMOKE_EXPECTED_AUTH_FAILURE"
+_PACKAGING_SMOKE_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A"
+    "AQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 class _SignalBridge(QObject):
@@ -168,6 +201,23 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
     )
     gateway = GatewayManager(repo_root=base_dir)
     rows.extend(gateway.verify_runtime())
+    missing_templates = [
+        name
+        for name, relative in _OPENCLAW_RUNTIME_TEMPLATE_PATHS.items()
+        if not (base_dir / relative).is_file()
+        or (base_dir / relative).stat().st_size <= 0
+    ]
+    rows.append(
+        (
+            "openclaw_workspace_templates",
+            not missing_templates,
+            (
+                "7 pinned upstream templates"
+                if not missing_templates
+                else f"missing or empty: {', '.join(missing_templates)}"
+            ),
+        )
+    )
 
     all_ok = all(ok for _, ok, _ in rows)
     print("DICOM Overlay Agent — self-check")
@@ -191,12 +241,122 @@ def _run_explain_rules(base_dir: Path) -> int:
     return 0
 
 
+def _packaging_smoke_configuration_error(base_dir: Path) -> str:
+    """Return why the opt-in image-turn smoke is not safely isolated.
+
+    This diagnostic is deliberately unusable with a production provider.  Its
+    config must target a loopback-only fake OpenAI-compatible endpoint and the
+    process must not expose real provider credentials or pre-existing state.
+    """
+
+    if os.environ.get(_PACKAGING_SMOKE_MODE_ENV) != _PACKAGING_SMOKE_MODE:
+        return f"{_PACKAGING_SMOKE_MODE_ENV} must equal {_PACKAGING_SMOKE_MODE}"
+    if os.environ.get(_PACKAGING_SMOKE_API_KEY_ENV) != _PACKAGING_SMOKE_API_KEY:
+        return f"{_PACKAGING_SMOKE_API_KEY_ENV} must contain the fixed invalid key"
+    forbidden_credentials = (
+        "OPENAI_API_KEY",
+        "CODEX_HOME",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENROUTER_API_KEY",
+    )
+    exposed = [name for name in forbidden_credentials if os.environ.get(name)]
+    if exposed:
+        return "real provider credentials are exposed: " + ", ".join(exposed)
+    if (base_dir / "openclaw-home").exists():
+        return "openclaw-home must not exist before the isolated smoke"
+    if (base_dir / ".env").exists():
+        return ".env must not exist before the isolated smoke"
+
+    config_path = base_dir / "openclaw" / "openclaw.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"isolated OpenClaw config is unreadable: {type(exc).__name__}"
+    agents = payload.get("agents")
+    defaults = agents.get("defaults") if isinstance(agents, dict) else None
+    model = defaults.get("model") if isinstance(defaults, dict) else None
+    primary = model.get("primary") if isinstance(model, dict) else model
+    fallbacks = model.get("fallbacks") if isinstance(model, dict) else None
+    if primary != f"{_PACKAGING_SMOKE_PROVIDER}/image-auth-failure":
+        return "primary model is not the fixed packaging-smoke model"
+    if fallbacks not in (None, []):
+        return "packaging smoke must not configure model fallbacks"
+    models = payload.get("models")
+    providers = models.get("providers") if isinstance(models, dict) else None
+    provider = (
+        providers.get(_PACKAGING_SMOKE_PROVIDER)
+        if isinstance(providers, dict)
+        else None
+    )
+    if not isinstance(provider, dict):
+        return "packaging-smoke provider is missing"
+    if provider.get("api") != "openai-responses":
+        return "packaging-smoke provider must use openai-responses"
+    api_key = provider.get("apiKey")
+    if not (
+        isinstance(api_key, dict)
+        and api_key.get("source") == "env"
+        and api_key.get("id") == _PACKAGING_SMOKE_API_KEY_ENV
+    ):
+        return "packaging-smoke API key must be the dedicated env SecretRef"
+    base_url = provider.get("baseUrl")
+    parsed = urlsplit(base_url) if isinstance(base_url, str) else None
+    try:
+        parsed_port = parsed.port if parsed is not None else None
+    except ValueError:
+        parsed_port = None
+    if not (
+        parsed is not None
+        and parsed.scheme == "http"
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and parsed_port is not None
+        and parsed.username is None
+        and parsed.password is None
+    ):
+        return "packaging-smoke baseUrl must be an explicit loopback HTTP port"
+    configured_models = provider.get("models")
+    configured_inputs = (
+        configured_models[0].get("input")
+        if isinstance(configured_models, list)
+        and len(configured_models) == 1
+        and isinstance(configured_models[0], dict)
+        else None
+    )
+    if not (
+        isinstance(configured_models, list)
+        and len(configured_models) == 1
+        and isinstance(configured_models[0], dict)
+        and configured_models[0].get("id") == "image-auth-failure"
+        and isinstance(configured_inputs, list)
+        and "image" in configured_inputs
+    ):
+        return "packaging-smoke provider must expose only the fixed image model"
+    auth = payload.get("auth")
+    profiles = auth.get("profiles") if isinstance(auth, dict) else None
+    if profiles:
+        return "packaging-smoke config must not contain auth profiles"
+    return ""
+
+
 def _run_gateway_smoke(
     base_dir: Path,
     config_path: Path,
     config: AppConfig,
 ) -> int:
-    """Start, authenticate to, and stop the bundled Gateway without inference."""
+    """Exercise a packaged image ``chat.send`` without any external provider.
+
+    The opt-in release test replaces ``openclaw.json`` with a loopback-only
+    provider that always returns a marked HTTP 401.  Success means Gateway
+    accepted the image turn, initialized all seven workspace templates, and
+    reached that explicit local auth failure.  A real API/OAuth configuration
+    is rejected before the Gateway starts.
+    """
+
+    safety_error = _packaging_smoke_configuration_error(base_dir)
+    if safety_error:
+        logger.error("Unsafe packaged Gateway smoke configuration: %s", safety_error)
+        return 1
 
     settings = DesktopSettingsStore(repo_root=base_dir, config_path=config_path)
     gateway_token = settings.ensure_gateway_token()
@@ -221,8 +381,65 @@ def _run_gateway_smoke(
             if not await gateway.wait_ready():
                 logger.error("Gateway runtime smoke did not become ready")
                 return 1
-            await client.connect()
+            connect_deadline = (
+                asyncio.get_running_loop().time()
+                + config.openclaw.gateway_start_timeout_sec
+            )
+            while True:
+                try:
+                    await client.connect()
+                    break
+                except ConnectionError as exc:
+                    if (
+                        "gateway starting" not in str(exc).casefold()
+                        or asyncio.get_running_loop().time() >= connect_deadline
+                    ):
+                        raise
+                    with contextlib.suppress(Exception):
+                        await client.disconnect()
+                    await asyncio.sleep(1)
             logger.info("Gateway runtime smoke authenticated successfully")
+            try:
+                await client.chat_about_image(
+                    "Packaging-only image attachment probe; no clinical inference.",
+                    image_base64=_PACKAGING_SMOKE_PNG_BASE64,
+                )
+            except RuntimeError as exc:
+                error_text = str(exc)
+                if _PACKAGING_SMOKE_ERROR_MARKER not in error_text:
+                    logger.error(
+                        "Image turn failed before the marked loopback auth gate: %s",
+                        error_text,
+                    )
+                    return 1
+            else:
+                logger.error("Loopback provider unexpectedly completed image inference")
+                return 1
+
+            trace = client.last_run_trace()
+            run_id = str(trace.get("run_id") or "")
+            workspace = base_dir / "openclaw-home" / ".openclaw" / "workspace"
+            missing_workspace_files = [
+                name
+                for name in _OPENCLAW_RUNTIME_TEMPLATE_PATHS
+                if not (workspace / name).is_file()
+            ]
+            if not run_id:
+                logger.error("Image chat.send was not accepted with a runId")
+                return 1
+            if missing_workspace_files:
+                logger.error(
+                    "Fresh Gateway workspace is missing templates: %s",
+                    ", ".join(missing_workspace_files),
+                )
+                return 1
+            logger.info(
+                "packaged_gateway_image_turn_smoke",
+                run_id=run_id,
+                template_count=len(_OPENCLAW_RUNTIME_TEMPLATE_PATHS),
+                image_attachment=True,
+                provider_outcome="expected_loopback_auth_failure",
+            )
             return 0
         except Exception:
             logger.exception("Gateway runtime smoke failed")
@@ -1370,7 +1587,9 @@ def main() -> None:
         control_bar.set_gateway_status(status)
         if agent.state == AgentState.SETUP:
             control_bar.set_status("請開啟 DICOM viewer 以設定安全影像區域")
-        logger.info("Desktop runtime started — gateway=%s state=%s", status, agent.state.name)
+        logger.info(
+            "Desktop runtime started — gateway=%s state=%s", status, agent.state.name
+        )
 
     signals.runtime_started.connect(on_runtime_started)
 
