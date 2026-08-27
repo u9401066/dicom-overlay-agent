@@ -45,6 +45,20 @@
   asserted sinus rhythm. Usage was 167,102 total tokens and about USD 0.02972464
   API-equivalent on the subscription route. Its source fingerprint was dirty
   during release metadata synchronization, so it is pre-release evidence only.
+- The first clean-source frozen canary (seed 20260829, 1,224-ID denylist) also
+  failed the release gate: strict 0/2, mean partial 0.456 and normal specificity
+  0.0 despite 2/2 schema, bbox and SLA passes. The normal case had a false
+  poor-R-progression call; the warning case missed asserted sinus and ST-T/T-wave
+  changes. One successful parse-retry refinement also lost its already-written
+  bbox receipt from the captured trace, so the artifact verifier correctly
+  rejected the run. This remains negative evidence, not a release result.
+- The post-canary repair keeps the same turn budget. Every trusted precordial
+  crop now receives a hypothesis-independent V1-V4 R/S-transition and V2-V4
+  ST-T/T-wave review; V1/V2 deep S alone cannot establish poor progression and
+  V3/V4 R dominance requires retraction. Native bbox audit reads preserve
+  partial JSONL records, wait at most 0.5 s for Windows append visibility, and
+  include `confirm` coordinates in exact receipt matching. A fresh blind canary
+  is required after committing these changes.
 - Real packaging/runtime failures found by the acceptance path are now explicit
   gates: the staged OpenClaw runtime omitted required agent templates; a stale
   Gateway lock could survive forced shutdown; the GUI quit path hung; and final
@@ -64,7 +78,8 @@
   remains pinned at 2026.7.1-2. Staging now retains and hashes seven required
   upstream templates. The staged OpenClaw runtime is verified at 165.162 MiB,
   a conservative 19.804 MiB reduction that does not prune internal `dist`
-  chunks. The final full bundle size/hash and frozen unseen canary remain pending.
+  chunks. The final full bundle size/hash and post-fix frozen unseen canary
+  remain pending.
 - The rebuilt GitHub Pages source is synthetic-only and exposes the real
   engineering evidence plus the accuracy miss. It must reach `main` before the
   public Pages deployment changes; tagging the feature branch alone will not

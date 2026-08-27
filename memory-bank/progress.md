@@ -31,6 +31,14 @@
     schema/bbox/SLA and zero-JSON-repair gates passed, but strict was 1/2 and
     mean partial 0.522 after a warning-case LVH/sinus miss. Its dirty fingerprint
     prevents treating it as the final frozen-source result.
+  - [x] Ran a clean-source two-case frozen canary with a 1,224-ID denylist. It
+    passed schema/bbox/SLA but failed release acceptance at 0/2 strict, 0.456
+    mean partial and 0.0 normal specificity, and exposed a delayed native bbox
+    receipt missing from a parse-retry refinement trace.
+  - [x] Fixed that trace race without another model turn: preserve partial JSONL
+    tails, poll native audit visibility for at most 0.5 s, and enforce exact
+    receipt matching for `confirm` bbox output. Routed every trusted precordial
+    crop through balanced V1-V4 transition and V2-V4 ST-T/T-wave checks.
   - [ ] Validate the next prompt revision on a fresh frozen-source unseen canary,
     then start/resume the 9,922-image paired experiment.
   - [x] Reduced the verified staged OpenClaw runtime to 165.162 MiB, a

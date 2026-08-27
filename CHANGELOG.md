@@ -75,6 +75,14 @@
 
 ### Fixed
 
+- **Refinement receipt 競態與 `confirm` 漏驗**：JSONL reader 不再消耗尚未完成的
+  native audit 行；boxed turn 在 Gateway final 後最多等待 0.5 秒讓 Windows append
+  可見，並把 `confirm` finding 的 bbox 納入 exact nonce／source／coordinate digest
+  比對，避免成功 tool call 因 trace 競態觸發不必要重試或 artifact failure。
+- **Precordial hypothesis anchoring**：任何可信 crop lead map 含 V1-V6 時，原本的
+  hypothesis probe 也會進入平衡 precordial review，不增加模型 turn；PRWP 必須以
+  V1-V4 缺乏預期 R/S transition 支持，V3/V4 R dominance 時撤回，且獨立檢查
+  V2-V4 可重現的 T-wave／nonspecific ST-T morphology 與 noise confounders。
 - **Core 2 contract 與邊界測試**：影像 smoke 現在要求同一 `chat.send` frame 內的
   non-empty PNG attachment、exact 16-key schema、ROI provenance、event correlation
   與 structured result；非有限、零面積、完全離圖 bbox 一律 fail closed。

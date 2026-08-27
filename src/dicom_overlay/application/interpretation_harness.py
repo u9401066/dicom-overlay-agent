@@ -22,6 +22,19 @@ EKG_LVH_BALANCE_GUIDANCE = (
     "must not displace it."
 )
 
+EKG_PRECORDIAL_REVIEW_GUIDANCE = (
+    "For every crop containing mapped precordial leads, inspect the visible "
+    "V1-V4 sequence for both R/S transition and ST-T/T-wave morphology, "
+    "regardless of the coarse hypothesis. Poor R-wave progression requires a "
+    "lack of the expected transition across V1-V4; deep S waves or small R "
+    "waves in V1/V2 alone are insufficient. If R amplitude increases and R "
+    "becomes dominant by V3/V4, retract poor R-wave progression. Separately "
+    "check V2-V4 for persistent T-wave inversion or flattening and nonspecific "
+    "ST-T change across adjacent beats/leads, distinguishing reproducible "
+    "waveform-locked morphology from baseline wander, grid interference, and "
+    "isolated noise."
+)
+
 
 @dataclass(frozen=True)
 class InterpretationContext:
@@ -228,6 +241,7 @@ def build_coarse_analysis_prompt(
             "and pauses; a screenshot forbids invented milliseconds, not a visible "
             "normal/prolonged category. "
             f"{EKG_LVH_BALANCE_GUIDANCE} "
+            f"{EKG_PRECORDIAL_REVIEW_GUIDANCE} "
             "Clearly tall or broad T waves that persist across contiguous leads can "
             "be abnormal without ST elevation; compare hyperkalemia, hyperacute "
             "ischemia, and benign variants instead of downgrading them solely for "

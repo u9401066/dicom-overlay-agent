@@ -140,6 +140,9 @@ _EKG_SYSTEMATIC_LEAD_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
         ),
     ),
 )
+_EKG_PRECORDIAL_LEADS: frozenset[str] = frozenset(
+    {"lead_V1", "lead_V2", "lead_V3", "lead_V4", "lead_V5", "lead_V6"}
+)
 _WAVEFORM_RHYTHM_ATTENTION_TERMS: tuple[str, ...] = (
     "atrial fibrillation",
     "atrial flutter",
@@ -483,6 +486,34 @@ def project_ekg_lead_regions_to_crop(
             h=projected_h,
         )
     return projected
+
+
+def _refinement_probe_id(
+    target_key: str,
+    modality: Modality,
+    crop_lead_regions: dict[str, RegionRect] | None,
+) -> str:
+    """Route every trusted precordial crop through the balanced lead review.
+
+    The target key remains unchanged for merge/audit identity.  This probe id is
+    prompt context only, so a hypothesis such as ``f1`` cannot accidentally
+    bypass the precordial R/S-transition and ST-T cross-check merely because its
+    label named a different candidate.
+    """
+    if (
+        modality is not Modality.EKG
+        or not crop_lead_regions
+        or "precordial_leads" in target_key
+    ):
+        return target_key
+    mapped_leads = {
+        canonical
+        for name in crop_lead_regions
+        if (canonical := canonical_ekg_lead_name(name)) is not None
+    }
+    if mapped_leads & _EKG_PRECORDIAL_LEADS:
+        return f"{target_key}_precordial_leads"
+    return target_key
 
 
 def select_zoom_targets(
@@ -2893,7 +2924,11 @@ class MultiPassInterpreter:
                             valid_regions,
                             hypothesis=target.hypothesis,
                             crop_region=crop_region,
-                            probe_id=target.key,
+                            probe_id=_refinement_probe_id(
+                                target.key,
+                                modality,
+                                crop_lead_regions,
+                            ),
                             **context,
                         ),
                         deadline=deadline,

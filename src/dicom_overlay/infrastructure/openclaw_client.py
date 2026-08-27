@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 from dicom_overlay.application.interpretation_harness import (
     EKG_LVH_BALANCE_GUIDANCE,
+    EKG_PRECORDIAL_REVIEW_GUIDANCE,
     build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
@@ -65,6 +66,8 @@ _OPENCLAW_VERSION = "2026.3.11"
 # Raise the receive limit so large image payloads round-trip cleanly.
 _MAX_WS_MESSAGE_BYTES = 16 * 1024 * 1024
 _WS_CLOSE_TIMEOUT_SEC = 2.0
+_BBOX_AUDIT_FLUSH_GRACE_SEC = 0.5
+_BBOX_AUDIT_POLL_INTERVAL_SEC = 0.01
 _DEFAULT_SCOPES = [
     "operator.admin",
     "operator.read",
@@ -674,6 +677,7 @@ class OpenClawClient(VisionAnalyzerService):
         )
         elapsed_ms = int((time.monotonic() - start) * 1000)
         result = self._parse_result(response, elapsed_ms, modality)
+        await self._await_bbox_tool_audit(result)
         if coarse_triage:
             self._retract_tool_rejected_coarse_boxes(result)
         self._require_bound_bbox_receipt(result)
@@ -731,6 +735,7 @@ class OpenClawClient(VisionAnalyzerService):
         )
         response = await self._send_chat_result_frame(frame)
         result = _parse_refinement_result(response)
+        await self._await_bbox_tool_audit(result)
         self._require_bound_bbox_receipt(result)
         return result
 
@@ -779,6 +784,7 @@ class OpenClawClient(VisionAnalyzerService):
         response = await self._send_chat_result_frame(frame)
         elapsed_ms = int((time.monotonic() - start) * 1000)
         result = self._parse_result(response, elapsed_ms, modality)
+        await self._await_bbox_tool_audit(result)
         return self._lock_finalization_geometry(draft, result)
 
     def _begin_run_trace(
@@ -867,6 +873,38 @@ class OpenClawClient(VisionAnalyzerService):
                 "boxed output lacks a matching image/turn-bound "
                 "dicom_bbox_validate receipt"
             )
+
+    async def _await_bbox_tool_audit(
+        self,
+        result: AnalysisResult | RefinementResult,
+    ) -> None:
+        """Let a just-finished native tool append its turn-bound receipt.
+
+        OpenClaw can publish the final Gateway event a few milliseconds before
+        the native plugin's JSONL append becomes visible on Windows.  A bounded
+        poll prevents that filesystem ordering race from triggering a second
+        paid model turn or producing an incomplete refinement trace.  Turns
+        without boxes do not pay the grace-period cost.
+        """
+
+        if (
+            self._analysis_prompt_profile != "clinical"
+            or not self._require_bbox_receipts
+            or not _result_bbox_coordinates(result)
+        ):
+            return
+        deadline = time.monotonic() + _BBOX_AUDIT_FLUSH_GRACE_SEC
+        while True:
+            self._refresh_tool_audit()
+            if any(
+                record.get("tool") == "dicom_bbox_validate"
+                for record in self._last_tool_audit_records
+            ):
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                return
+            await asyncio.sleep(min(_BBOX_AUDIT_POLL_INTERVAL_SEC, remaining))
 
     def _lock_finalization_geometry(
         self,
@@ -2262,7 +2300,8 @@ def _build_refinement_prompt(
                 "hyperkalemia-versus-hyperacute-ischemia-versus-variant comparison "
                 "even when definite ST elevation is absent. "
                 "Test ranked candidates and close alternatives against their "
-                "defining visible morphology."
+                "defining visible morphology. "
+                f"{EKG_PRECORDIAL_REVIEW_GUIDANCE}"
             )
         elif "limb_leads" in probe_id:
             probe_focus = (
@@ -2820,21 +2859,31 @@ def _read_new_tool_audit_records(
     validator: Callable[[object], bool],
 ) -> tuple[int, list[dict[str, object]]]:
     """Read and validate JSONL receipts appended after ``offset``."""
+    start_offset = offset
     try:
         size = path.stat().st_size
         if size < offset:
             offset = 0
+            start_offset = 0
         if size == offset:
             return offset, []
         with path.open("rb") as handle:
             handle.seek(offset)
             payload = handle.read()
-            offset = handle.tell()
     except OSError:
         return offset, []
 
+    # Do not consume a record while another process is still appending it.  If
+    # a reader advances past a partial JSON object, the completed receipt can
+    # never be reconstructed on the next poll.  Native audit writers terminate
+    # every JSONL record with a newline, so only complete lines are consumable.
+    last_newline = payload.rfind(b"\n")
+    if last_newline < 0:
+        return start_offset, []
+    complete_payload = payload[: last_newline + 1]
+    offset = start_offset + len(complete_payload)
     records: list[dict[str, object]] = []
-    for line in payload.splitlines():
+    for line in complete_payload.splitlines():
         try:
             record = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -3013,7 +3062,12 @@ def _result_bbox_coordinates(
             delta.finding
             for delta in result.deltas
             if delta.finding is not None
-            and delta.action in {RefinementAction.REVISE, RefinementAction.ADD}
+            and delta.action
+            in {
+                RefinementAction.CONFIRM,
+                RefinementAction.REVISE,
+                RefinementAction.ADD,
+            }
         ]
     return [box for finding in findings for box in finding.bboxes]
 

@@ -19,6 +19,11 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
+from dicom_overlay.application.multi_pass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     AppConfig,
@@ -458,6 +463,44 @@ class TestHypothesisAwareRefinement:
         assert "Do not call ecg_founder_analyze_waveform again" in prompt
         assert "exactly equal the accepted boxes" in prompt
 
+    def test_hypothesis_id_precordial_probe_gets_bounded_transition_review(self):
+        finding = Finding(
+            id="f1",
+            regions=["lead_V2", "lead_V3"],
+            label="Possible anterior waveform change",
+            detail="Coarse candidate requires balanced crop review.",
+            severity=Severity.INFO,
+            confidence="low",
+            question="Is a reproducible abnormality present?",
+        )
+
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V1", "lead_V2", "lead_V3", "lead_V4"],
+            hypothesis=finding,
+            crop_region=RegionRect(0.0, 0.5, 1.0, 0.34),
+            probe_id="f1_precordial_leads",
+            crop_lead_regions={
+                "lead_V1": RegionRect(0.0, 0.0, 1.0, 0.25),
+                "lead_V2": RegionRect(0.0, 0.25, 1.0, 0.25),
+                "lead_V3": RegionRect(0.0, 0.5, 1.0, 0.25),
+                "lead_V4": RegionRect(0.0, 0.75, 1.0, 0.25),
+            },
+        )
+
+        assert '"probe_kind": "hypothesis_verification"' in prompt
+        assert '"probe_id": "f1_precordial_leads"' in prompt
+        assert "regardless of the coarse hypothesis" in prompt
+        assert "lack of the expected transition across V1-V4" in prompt
+        assert "deep S waves or small R waves in V1/V2 alone are insufficient" in (
+            prompt
+        )
+        assert "R becomes dominant by V3/V4, retract poor R-wave progression" in (
+            prompt
+        )
+        assert "persistent T-wave inversion or flattening" in prompt
+        assert "baseline wander, grid interference, and isolated noise" in prompt
+
     def test_ekg_skill_balances_lvh_false_positive_and_false_negative_guards(self):
         skill = _load_skill_prompt("dicom-ekg-analysis")
         normalized_skill = " ".join(skill.split())
@@ -473,6 +516,25 @@ class TestHypothesisAwareRefinement:
         assert "`Possible LVH-compatible pattern`" in normalized_skill
         assert "do not automatically force" in normalized_skill
         assert "report R-wave progression independently" in normalized_skill
+
+    def test_ekg_skill_requires_balanced_precordial_crop_review(self):
+        skill = _load_skill_prompt("dicom-ekg-analysis")
+        normalized_skill = " ".join(skill.split())
+
+        assert (
+            "Every whole-image or crop/refinement turn whose trusted lead map "
+            "includes any precordial lead"
+        ) in normalized_skill
+        assert "regardless of the coarse hypothesis or probe id" in normalized_skill
+        assert "Deep S waves or small R waves in V1/V2 alone are insufficient" in (
+            normalized_skill
+        )
+        assert "R becomes dominant by V3/V4, retract poor R-wave progression" in (
+            normalized_skill
+        )
+        assert "compare V2-V4 across adjacent beats" in normalized_skill
+        assert "baseline wander, grid interference" in normalized_skill
+        assert "do not dismiss a persistent aligned V2-V4 pattern" in normalized_skill
 
     def test_ekg_limb_probe_balances_rhythm_qt_and_inferior_st_t(self):
         prompt = _build_refinement_prompt(
@@ -1119,6 +1181,109 @@ class TestNativeToolAuditTrace:
 
         assert trace["tools"] == ["dicom_bbox_validate"]
         assert [row["tool_call_id"] for row in trace["tool_audit"]] == ["current-call"]
+
+    def test_partial_jsonl_append_is_retried_from_record_boundary(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        client._begin_run_trace(
+            "refine-partial-append",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "split-write-call",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": "c" * 64,
+            "details_sha256": "d" * 64,
+        }
+        payload = json.dumps(receipt).encode("utf-8")
+        split_at = len(payload) // 2
+        audit_path.write_bytes(payload[:split_at])
+
+        assert client.last_run_trace()["tool_audit"] == []
+
+        with audit_path.open("ab") as handle:
+            handle.write(payload[split_at:] + b"\n")
+        trace = client.last_run_trace()
+
+        assert [row["tool_call_id"] for row in trace["tool_audit"]] == [
+            "split-write-call"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_delayed_confirm_receipt_is_captured_without_model_retry(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        box = RegionRect(0.1, 0.2, 0.3, 0.1)
+        result = RefinementResult(
+            (
+                RefinementDelta(
+                    action=RefinementAction.CONFIRM,
+                    target_id="f1",
+                    finding=Finding(
+                        id="f1",
+                        regions=["lead_V2"],
+                        label="Candidate",
+                        detail="Visible candidate",
+                        severity=Severity.INFO,
+                        bboxes=[box],
+                    ),
+                    rationale="Confirmed on the source crop.",
+                ),
+            )
+        )
+        client._begin_run_trace(
+            "refine-delayed-audit",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "delayed-confirm-call",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": _bbox_coordinates_digest([box]),
+            "details_sha256": "c" * 64,
+        }
+
+        async def append_after_gateway_final() -> None:
+            await asyncio.sleep(0.02)
+            audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+
+        writer = asyncio.create_task(append_after_gateway_final())
+        await client._await_bbox_tool_audit(result)
+        assert writer.done() is True
+        await writer
+        client._require_bound_bbox_receipt(result)
+        trace = client.last_run_trace()
+
+        assert trace["bbox_evidence"]["receipt_count"] == 1
+        assert trace["parse_retry_count"] == 0
+        assert [row["tool_call_id"] for row in trace["tool_audit"]] == [
+            "delayed-confirm-call"
+        ]
 
     def test_boxed_result_requires_exact_bound_coordinate_receipt(
         self,

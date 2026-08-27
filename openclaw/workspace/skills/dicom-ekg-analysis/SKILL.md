@@ -134,6 +134,11 @@ Canonical semantic region names (use only those actually present; add
 Lead-conditioned interpretation rules (generality guardrails):
 - Only attribute a finding to a lead that is in your inventory. Set each
   finding's `regions` to the lead(s) the finding actually falls in.
+- Every whole-image or crop/refinement turn whose trusted lead map includes any
+  precordial lead must inspect the visible precordials for both R/S transition
+  and ST-T/T-wave morphology, regardless of the coarse hypothesis or probe id.
+  Restrict conclusions to mapped, visible leads; an unseen lead is not negative
+  evidence.
 - Do NOT state a conclusion the captured leads cannot support:
   - STEMI territory naming needs its territory leads present (anterior V1-V4,
     inferior II/III/aVF, lateral I/aVL/V5-V6). If they are not captured, say
@@ -141,8 +146,11 @@ Lead-conditioned interpretation rules (generality guardrails):
     instead of naming a territory.
   - Axis needs leads I and aVF (or I and II). If absent, set `axis` value to
     "indeterminate" rather than guessing.
-  - Poor R-wave progression needs precordial leads V1-V6. Do not claim it when
-    the precordials are not captured.
+  - Poor R-wave progression needs a visible V1-V4 sequence showing absent or
+    delayed expected R/S transition. Deep S waves or small R waves in V1/V2
+    alone are insufficient. If R amplitude increases and R becomes dominant by
+    V3/V4, retract poor R-wave progression. If enough of V1-V4 is outside the
+    crop, mark progression not assessable instead of inventing a finding.
   - Chamber-enlargement voltage assessment needs the appropriate labeled lead
     groups (S in V1/V2 plus R in V5/V6, or R in aVL). Do not assert LVH/RVH
     without them. A missing calibration pulse prevents a definite LVH claim but
@@ -354,6 +362,12 @@ Reading depth (specialist expectations):
   repolarization changes are visible in multiple contiguous or anatomically
   related leads, set `st_segment`/`t_wave` accordingly and set `ischemia` to `st_depression` or `t_wave_changes`.
   Do not hide these as only "nonspecific" with normal/absent checklist axes.
+- On every precordial review, compare V2-V4 across adjacent beats for persistent
+  T-wave inversion, flattening, or nonspecific ST-T morphology independently of
+  the R-wave-progression decision. Require reproducible waveform-locked shape in
+  contiguous visible leads: baseline wander, grid interference, or one isolated
+  noisy deflection is not a finding. Conversely, do not dismiss a persistent
+  aligned V2-V4 pattern merely because some noise is present.
 - If any clinically meaningful ST-T ischemia/strain, LVH, bradycardia,
   tachyarrhythmia, conduction block, or chamber enlargement is present, set
   overall severity at least `warning` (reserve `info` for minor artifacts or

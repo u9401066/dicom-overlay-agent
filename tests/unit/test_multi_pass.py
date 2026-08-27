@@ -1445,6 +1445,60 @@ class TestMultiPassInterpreter:
             for event in result.analysis_trace
         )
 
+    async def test_precordial_hypothesis_crop_enables_balanced_lead_probe(self):
+        finding = dataclasses.replace(
+            _finding(
+                "f1",
+                Severity.INFO,
+                RegionRect(0.2, 0.59, 0.12, 0.04),
+                label="Unresolved anterior waveform change",
+            ),
+            regions=["lead_V2"],
+        )
+        coarse = _ekg_row_layout_result([finding])
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        interpreter = MultiPassInterpreter(
+            analyzer=analyzer,
+            cropper=_RecordingCropper(),
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+            zoom_padding=0.0,
+        )
+
+        await interpreter.interpret("image", Modality.EKG, [])
+
+        call = analyzer.refine_calls[0]
+        assert call["hypothesis"].id == "f1"
+        assert call["probe_id"] == "f1_precordial_leads"
+        assert set(call["crop_lead_regions"]) == {"lead_V2"}
+
+    async def test_limb_hypothesis_crop_keeps_original_probe_identity(self):
+        finding = dataclasses.replace(
+            _finding(
+                "f1",
+                Severity.INFO,
+                RegionRect(0.2, 0.10, 0.12, 0.04),
+                label="Unresolved limb-lead waveform change",
+            ),
+            regions=["lead_II"],
+        )
+        coarse = _ekg_row_layout_result([finding])
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        interpreter = MultiPassInterpreter(
+            analyzer=analyzer,
+            cropper=_RecordingCropper(),
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+            zoom_padding=0.0,
+        )
+
+        await interpreter.interpret("image", Modality.EKG, [])
+
+        call = analyzer.refine_calls[0]
+        assert call["hypothesis"].id == "f1"
+        assert call["probe_id"] == "f1"
+        assert set(call["crop_lead_regions"]) == {"lead_II"}
+
 
 def test_unlocalized_ekg_grounding_guard_preserves_study_triage() -> None:
     unlocalized = _finding(

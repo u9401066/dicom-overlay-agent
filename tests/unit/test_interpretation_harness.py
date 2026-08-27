@@ -98,6 +98,13 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "'Possible LVH-compatible pattern'" in prompt
     assert "do not automatically force warning" in prompt
     assert "report R-wave progression independently" in prompt
+    assert "For every crop containing mapped precordial leads" in prompt
+    assert "deep s waves or small r waves in v1/v2 alone are insufficient" in (
+        prompt.casefold()
+    )
+    assert "R becomes dominant by V3/V4, retract poor R-wave progression" in prompt
+    assert "persistent T-wave inversion or flattening" in prompt
+    assert "baseline wander, grid interference, and isolated noise" in prompt
     assert "classify PR qualitatively" in prompt
     assert "premature P-QRS complexes" in prompt
     assert "tall or broad T waves" in prompt

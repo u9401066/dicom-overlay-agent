@@ -76,6 +76,8 @@
 | 2026-08-27 | 10,001 scale gate 與臨床 cohort 分開 | 10,001 identities 僅驗證 completed/pending partition、fingerprint fail-closed 與 resume plumbing；canonical MEETI 仍是 9,922，禁止把規模測試寫成超過一萬張真實判讀成果。 |
 | 2026-08-27 | OpenClaw 瘦身只修剪 runtime 周圍 | v0.4.7 保留並雜湊七個必要 upstream templates，禁止刪 `dist` chunks、`quickjs-wasi` 或 `playwright-core`；只移除 PDB、tree-sitter C/H 與 foreign native payload，已驗證 stage 165.162 MiB、減少 19.804 MiB，完整 bundle 待重建。 |
 | 2026-08-27 | 產品 v0.4.7 與 harness/plugin 1.5.8 分版 | Python/product metadata 與 release tag 使用 v0.4.7；native harness manifest 使用 1.5.8；OpenClaw runtime pin 保持 2026.7.1-2，避免把產品、plugin 與上游 runtime 版本混為一談。 |
+| 2026-08-28 | Refinement bbox receipt 需容忍 native append 可見性競態但仍 fail closed | Gateway final event 與 Windows JSONL 可見順序不保證；讀取器不得越過半行，boxed turn 最多等 0.5 秒再做 exact nonce/source/coordinate digest 驗證。`confirm` 也能更新/保留 bbox，因此不能再略過 receipt。等待只處理本機證據，不新增模型 turn。 |
+| 2026-08-28 | 所有可信 precordial crop 都做平衡複核 | hypothesis id 不能決定是否檢查 R/S transition 與 ST-T。只改 prompt routing、不增加 turn；V1/V2 深 S 不足以判 PRWP，V3/V4 R dominance 需撤回，V2-V4 T/ST-T 需跨相鄰 beat/lead 重現並排除 noise。 |
 
 ---
 
