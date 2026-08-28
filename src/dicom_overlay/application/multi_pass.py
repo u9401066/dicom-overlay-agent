@@ -243,6 +243,59 @@ _EKG_MULTI_LEAD_CONTEXT_TERMS: tuple[str, ...] = (
     "rvh",
     "strain",
 )
+_GENERIC_CRITICAL_LABELS: frozenset[str] = frozenset(
+    {
+        "abnormal finding",
+        "abnormality",
+        "acute abnormality",
+        "critical finding",
+        "critical observation",
+        "finding",
+        "lesion",
+        "observation",
+        "urgent finding",
+    }
+)
+_CRITICAL_TEMPORAL_SUPPORT_TERMS: tuple[str, ...] = (
+    *_EKG_TEMPORAL_CONTEXT_TERMS,
+    "ventricular fibrillation",
+    "wide complex",
+    "wide-complex",
+    "torsade",
+)
+_CRITICAL_TERRITORIAL_SUPPORT_TERMS: tuple[str, ...] = (
+    "infarct",
+    "ischemi",
+    "st elevation",
+    "st depression",
+    "stemi",
+    "wellens",
+    "de winter",
+    "hyperacute",
+    "reciprocal",
+    "coronary occlusion",
+    "acute injury",
+)
+_CRITICAL_MORPHOLOGY_SUPPORT_TERMS: tuple[str, ...] = (
+    "hyperkalemia",
+    "hyperkalaemia",
+    "peaked t",
+    "tall t",
+    "long qt",
+    "prolonged qt",
+    "qt prolongation",
+    "brugada",
+    "sodium channel",
+    "bundle branch",
+    "fascicular",
+    "conduction",
+    "wide qrs",
+)
+_CRITICAL_TRIAGE_REASON = (
+    "Critical-first triage intentionally deferred unrelated lower-priority "
+    "refinements and checklist exclusions so the time-critical image finding "
+    "could be adjudicated first; native-study review remains required."
+)
 
 
 class ImageCropper(Protocol):
@@ -553,6 +606,39 @@ def select_zoom_targets(
     return candidates[:max_targets]
 
 
+def _is_specific_critical_candidate(finding: Finding) -> bool:
+    label = " ".join(
+        "".join(
+            character if character.isalnum() else " "
+            for character in finding.label.casefold()
+        ).split()
+    )
+    return bool(
+        finding.severity is Severity.CRITICAL
+        and finding.id.strip()
+        and label
+        and finding.detail.strip()
+        and label not in _GENERIC_CRITICAL_LABELS
+    )
+
+
+def select_critical_triage_candidates(result: AnalysisResult) -> list[Finding]:
+    """Return structured, localizable critical findings in deterministic order.
+
+    Top-level severity alone is not sufficient. A critical finding also needs
+    a stable ID, a non-generic clinical label, concrete detail, and either a
+    usable bbox or a bounded EKG layout route supplied by select_zoom_targets.
+    This keeps vague urgency language from suppressing the normal systematic
+    review path.
+    """
+
+    zoomable = select_zoom_targets(
+        result,
+        max_targets=max(1, len(result.findings)),
+    )
+    return [finding for finding in zoomable if _is_specific_critical_candidate(finding)]
+
+
 def _clamp_region(region: RegionRect) -> RegionRect | None:
     """Clamp a candidate region to the unit square, dropping empty boxes."""
     if (
@@ -701,6 +787,83 @@ def select_ekg_systematic_probe_regions(
             continue
         probes.append((key, region))
     return probes[:max_probes]
+
+
+def _critical_candidate_text(findings: list[Finding]) -> str:
+    return " ".join(
+        f"{finding.label} {finding.detail} {finding.question or ''}".casefold()
+        for finding in findings
+    )
+
+
+def select_ekg_critical_support_probe(
+    result: AnalysisResult,
+    critical_findings: list[Finding],
+    planned_regions: list[RegionRect],
+    *,
+    systematic_candidates: list[tuple[str, RegionRect]] | None = None,
+) -> tuple[str, RegionRect, str] | None:
+    """Choose at most one non-redundant, mechanism-related EKG support crop."""
+
+    if result.modality is not Modality.EKG or not critical_findings:
+        return None
+    text = _critical_candidate_text(critical_findings)
+    temporal = any(term in text for term in _CRITICAL_TEMPORAL_SUPPORT_TERMS)
+    territorial = any(term in text for term in _CRITICAL_TERRITORIAL_SUPPORT_TERMS)
+    morphology = any(term in text for term in _CRITICAL_MORPHOLOGY_SUPPORT_TERMS)
+    if not (temporal or territorial or morphology):
+        return None
+
+    generic = list(
+        systematic_candidates
+        if systematic_candidates is not None
+        else select_ekg_systematic_probe_regions(
+            result,
+            max_probes=len(_EKG_SYSTEMATIC_LEAD_GROUPS),
+        )
+    )
+    candidates: list[tuple[str, RegionRect]] = []
+    reason: str
+    if temporal:
+        reason = "critical_temporal_crosscheck"
+        rhythm_strip = _layout_region(result.layout, "rhythm_strip_bbox")
+        if rhythm_strip is not None:
+            candidates.append(("declared_rhythm_strip", rhythm_strip))
+        lead_ii = parse_ekg_lead_inventory(result.layout).by_name().get("lead_II")
+        if lead_ii is not None:
+            candidates.append(("lead_II", lead_ii))
+        candidates.extend(item for item in generic if item[0] == "limb_leads")
+    else:
+        reason = (
+            "critical_territorial_reciprocal_crosscheck"
+            if territorial
+            else "critical_morphology_crosslead_check"
+        )
+        candidates.extend(
+            sorted(
+                generic,
+                key=lambda item: max(
+                    (
+                        _overlap_fraction(item[1], planned)
+                        for planned in planned_regions
+                    ),
+                    default=0.0,
+                ),
+            )
+        )
+
+    seen: set[RegionRect] = set()
+    for key, region in candidates:
+        if region in seen:
+            continue
+        seen.add(region)
+        if any(
+            _overlap_fraction(region, planned) >= 0.85
+            for planned in planned_regions
+        ):
+            continue
+        return key, region, reason
+    return None
 
 
 def select_ekg_waveform_attention_probe_regions(
@@ -1984,6 +2147,127 @@ def complete_unassessed_checklist_fallback(
     )
 
 
+def _critical_ekg_evidence_axes(findings: list[Finding]) -> frozenset[str]:
+    text = _critical_candidate_text(findings)
+    axes: set[str] = set()
+    if any(term in text for term in _CRITICAL_TEMPORAL_SUPPORT_TERMS):
+        axes.update(
+            {
+                "heart_rate",
+                "rhythm",
+                "regularity",
+                "p_wave",
+                "pr_interval",
+                "qrs_duration",
+                "qrs_morphology",
+                "qtc_interval",
+                "av_block",
+            }
+        )
+    if any(term in text for term in _CRITICAL_TERRITORIAL_SUPPORT_TERMS):
+        axes.update(
+            {
+                "qrs_morphology",
+                "st_segment",
+                "t_wave",
+                "stemi_pattern",
+                "ischemia",
+            }
+        )
+    if any(term in text for term in _CRITICAL_MORPHOLOGY_SUPPORT_TERMS):
+        axes.update(
+            {
+                "qrs_duration",
+                "qrs_morphology",
+                "st_segment",
+                "t_wave",
+                "qtc_interval",
+                "conduction",
+            }
+        )
+    if any(
+        term in text
+        for term in (
+            "av block",
+            "heart block",
+            "bundle branch",
+            "conduction",
+            "wide qrs",
+            "wide complex",
+        )
+    ):
+        axes.update(
+            {
+                "rhythm",
+                "pr_interval",
+                "qrs_duration",
+                "qrs_morphology",
+                "conduction",
+                "av_block",
+            }
+        )
+    return frozenset(axes)
+
+
+def apply_critical_triage_guard(
+    result: AnalysisResult,
+    critical_findings: list[Finding],
+    *,
+    phase: str,
+) -> AnalysisResult:
+    """Keep deferred checklist conclusions explicit after critical-first triage."""
+
+    checklist = dict(result.checklist)
+    deferred_axes: list[str] = []
+    changed_axes: list[str] = []
+    protected_axes: frozenset[str] = frozenset()
+    if result.modality is Modality.EKG:
+        required = get_active_registry().resolve(result.modality.value).checklist_keys
+        protected_axes = _critical_ekg_evidence_axes(critical_findings)
+        deferred_axes = sorted(required - protected_axes)
+        for key in deferred_axes:
+            item = checklist.get(key)
+            if item is not None and item.status is not Severity.NORMAL:
+                continue
+            checklist[key] = ChecklistItem(
+                value="not_assessed_due_to_critical_triage",
+                status=Severity.INFO,
+            )
+            changed_axes.append(key)
+
+    analysis_trace = list(result.analysis_trace)
+    if changed_axes:
+        analysis_trace.append(
+            {
+                "stage": "critical_triage_checklist_guard",
+                "status": "deferred_normal_entries_marked_unassessed",
+                "tool": "critical_first_checklist_guard",
+                "phase": phase,
+                "critical_finding_ids": [
+                    finding.id for finding in critical_findings
+                ],
+                "protected_axes": sorted(protected_axes),
+                "deferred_checklist_axes": deferred_axes,
+                "changed_axes": changed_axes,
+                "clinical_status_inferred": False,
+                "diagnosis_forced": False,
+            }
+        )
+    return dataclasses.replace(
+        result,
+        checklist=checklist,
+        incomplete=True,
+        incomplete_reasons=list(
+            dict.fromkeys([*result.incomplete_reasons, _CRITICAL_TRIAGE_REASON])
+        ),
+        review_required=True,
+        review_reasons=list(
+            dict.fromkeys([*result.review_reasons, _CRITICAL_TRIAGE_REASON])
+        ),
+        analysis_trace=analysis_trace,
+    )
+
+
 class MultiPassInterpreter:
     """Coarse -> crop -> hypothesis-aware refinement orchestrator."""
 
@@ -2213,9 +2497,18 @@ class MultiPassInterpreter:
         trace.extend(calibration_trace)
         coarse.analysis_trace = trace
 
-        model_findings = select_zoom_targets(
+        all_model_findings = select_zoom_targets(
             coarse,
-            max_targets=self._max_zoom_targets,
+            max_targets=max(1, len(coarse.findings)),
+        )
+        critical_triage_candidates = select_critical_triage_candidates(coarse)
+        critical_triage_active = bool(
+            critical_triage_candidates and self._max_zoom_targets > 0
+        )
+        model_findings = (
+            critical_triage_candidates
+            if critical_triage_active
+            else all_model_findings[: self._max_zoom_targets]
         )
         waveform_attention_candidates = select_ekg_waveform_attention_probe_regions(
             coarse
@@ -2239,7 +2532,11 @@ class MultiPassInterpreter:
             seen_systematic_regions.add(region)
             systematic_candidates.append((key, region))
         systematic_budget = 0
-        if systematic_candidates and self._max_zoom_targets > 0:
+        if (
+            not critical_triage_active
+            and systematic_candidates
+            and self._max_zoom_targets > 0
+        ):
             if model_findings:
                 desired = 1 if len(model_findings) >= 2 else 2
                 systematic_budget = min(
@@ -2305,7 +2602,11 @@ class MultiPassInterpreter:
                     }
                 )
         remaining = specific_budget - len(targets)
-        if remaining > 0 and local_candidate_regions:
+        if (
+            not critical_triage_active
+            and remaining > 0
+            and local_candidate_regions
+        ):
             local_targets = select_local_candidate_targets(
                 coarse,
                 local_candidate_regions,
@@ -2324,7 +2625,12 @@ class MultiPassInterpreter:
                 )
                 for finding in local_targets
             )
-        if not targets and remaining > 0 and local_candidate_regions:
+        if (
+            not critical_triage_active
+            and not targets
+            and remaining > 0
+            and local_candidate_regions
+        ):
             safety_regions = select_normal_safety_probe_regions(
                 coarse,
                 local_candidate_regions,
@@ -2435,6 +2741,115 @@ class MultiPassInterpreter:
                         ],
                     }
                 )
+        if critical_triage_active:
+            selected_critical_ids = [
+                target.hypothesis.id
+                for target in targets
+                if target.hypothesis is not None
+            ]
+            support_probe_id = ""
+            support_reason = ""
+            if (
+                coarse.modality is Modality.EKG
+                and self._max_ekg_systematic_probes > 0
+                and len(targets) < self._max_zoom_targets
+            ):
+                support = select_ekg_critical_support_probe(
+                    coarse,
+                    critical_triage_candidates,
+                    [target.crop_region for target in targets],
+                    systematic_candidates=generic_systematic_candidates,
+                )
+                if support is not None:
+                    key, region, support_reason = support
+                    support_target = _RefinementTarget(
+                        crop_region=region,
+                        hypothesis=None,
+                        key=f"ekg_systematic_critical_support_{key}",
+                    )
+                    targets.append(support_target)
+                    support_probe_id = support_target.key
+                    trace.append(
+                        {
+                            "stage": "systematic_assist",
+                            "status": "planned_critical_support",
+                            "tool": "critical_mechanism_support_router",
+                            "probes": [
+                                {
+                                    "target_id": support_target.key,
+                                    "crop_region": _region_payload(region),
+                                    "hypothesis_id": "",
+                                    "reason": support_reason,
+                                }
+                            ],
+                        }
+                    )
+
+            selected_id_set = set(selected_critical_ids)
+            candidate_id_set = {
+                finding.id for finding in critical_triage_candidates
+            }
+            overflow_ids = [
+                finding.id
+                for finding in critical_triage_candidates
+                if finding.id not in selected_id_set
+            ]
+            skipped_lower_priority = [
+                finding
+                for finding in all_model_findings
+                if finding.id not in candidate_id_set
+                and finding.severity is not Severity.CRITICAL
+            ]
+            skipped_unstructured_critical_ids = [
+                finding.id
+                for finding in all_model_findings
+                if finding.severity is Severity.CRITICAL
+                and finding.id not in candidate_id_set
+            ]
+            deferred_checklist_axes: list[str] = []
+            if coarse.modality is Modality.EKG:
+                required_axes = get_active_registry().resolve("EKG").checklist_keys
+                deferred_checklist_axes = sorted(
+                    required_axes
+                    - _critical_ekg_evidence_axes(critical_triage_candidates)
+                )
+            skipped_categories = {
+                severity.value: sum(
+                    finding.severity is severity
+                    for finding in skipped_lower_priority
+                )
+                for severity in (Severity.WARNING, Severity.INFO)
+                if any(
+                    finding.severity is severity
+                    for finding in skipped_lower_priority
+                )
+            }
+            trace.append(
+                {
+                    "stage": "critical_triage",
+                    "status": "activated",
+                    "tool": "critical_first_refinement_planner",
+                    "candidate_ids": [
+                        finding.id for finding in critical_triage_candidates
+                    ],
+                    "selected_critical_ids": selected_critical_ids,
+                    "support_probe_id": support_probe_id,
+                    "support_reason": support_reason,
+                    "skipped_lower_priority_ids": [
+                        finding.id for finding in skipped_lower_priority
+                    ],
+                    "skipped_lower_priority_categories": skipped_categories,
+                    "skipped_unstructured_critical_ids": (
+                        skipped_unstructured_critical_ids
+                    ),
+                    "overflow_critical_ids": overflow_ids,
+                    "deferred_checklist_axes": deferred_checklist_axes,
+                    "max_refinement_turns": self._max_zoom_targets,
+                    "planned_turn_count": len(targets),
+                    "extra_turns_beyond_configured_budget": 0,
+                    "diagnosis_forced": False,
+                }
+            )
         zoom_hints: list[str] = []
         refinements: list[tuple[_RefinementTarget, RegionRect, RefinementResult]] = []
         first_crop_created_ms: int | None = None
@@ -2641,6 +3056,12 @@ class MultiPassInterpreter:
         merged = qualify_boxed_info_findings(merged)
         merged = apply_unlocalized_ekg_grounding_guard(merged)
         merged = deduplicate_ekg_study_level_findings(merged)
+        if critical_triage_active:
+            merged = apply_critical_triage_guard(
+                merged,
+                critical_triage_candidates,
+                phase="before_finalization",
+            )
         if can_finalize:
             finalization_remaining = deadline.remaining_sec(
                 self._total_analysis_sla_sec - _SLA_RETURN_BUFFER_SEC
@@ -2675,6 +3096,12 @@ class MultiPassInterpreter:
                     merged,
                     reason=reason,
                 )
+        if critical_triage_active:
+            merged = apply_critical_triage_guard(
+                merged,
+                critical_triage_candidates,
+                phase="final_output",
+            )
         return self._finish_with_sla(
             merged,
             deadline=deadline,

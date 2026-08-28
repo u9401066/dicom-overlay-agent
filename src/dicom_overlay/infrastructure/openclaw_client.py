@@ -2094,6 +2094,33 @@ def _build_finalization_prompt(
         }
         for event in refinement_trace
     ]
+    critical_triage_event = next(
+        (
+            event
+            for event in reversed(draft.analysis_trace)
+            if isinstance(event, dict)
+            and event.get("stage") == "critical_triage"
+            and event.get("status") == "activated"
+        ),
+        None,
+    )
+    critical_triage_context: dict[str, object] = {"active": False}
+    if critical_triage_event is not None:
+        critical_triage_context = {
+            "active": True,
+            "candidate_ids": critical_triage_event.get("candidate_ids", []),
+            "selected_critical_ids": critical_triage_event.get(
+                "selected_critical_ids", []
+            ),
+            "support_probe_id": critical_triage_event.get("support_probe_id", ""),
+            "support_reason": critical_triage_event.get("support_reason", ""),
+            "overflow_critical_ids": critical_triage_event.get(
+                "overflow_critical_ids", []
+            ),
+            "deferred_checklist_axes": critical_triage_event.get(
+                "deferred_checklist_axes", []
+            ),
+        }
     context = {
         "modality": modality.value,
         "allowed_regions": valid_regions,
@@ -2101,7 +2128,25 @@ def _build_finalization_prompt(
         "refinement_decisions": safe_trace,
         "candidate_bbox_count": len(candidate_boxes),
         "candidate_bbox_multiset": candidate_boxes,
+        "critical_triage": critical_triage_context,
     }
+    critical_triage_contract = ""
+    if critical_triage_event is not None:
+        critical_triage_contract = (
+            "- This draft used critical-first triage. Reconcile every selected "
+            "critical candidate and its mechanism-related support evidence before "
+            "any lower-priority narrative. Do not add a deferred lower-priority "
+            "finding; final IDs remain constrained to the draft subset.\n"
+            "- Preserve incomplete=true, review_required=true, and the critical-"
+            "triage limitation even if the original-image turn retracts every "
+            "critical candidate. Retraction does not retroactively complete the "
+            "deferred review.\n"
+            "- Checklist axes listed in critical_triage.deferred_checklist_axes "
+            "must use value=not_assessed_due_to_critical_triage with info status, "
+            "not normal/absent/WNL. Only axes directly supported by the selected "
+            "critical mechanism or its crop evidence may carry a clinical "
+            "conclusion.\n"
+        )
     checklist_contract = ""
     if modality is Modality.EKG:
         checklist_contract = (
@@ -2200,6 +2245,7 @@ def _build_finalization_prompt(
         "not as a confirmed or 'consistent with' diagnosis. Clinical severity "
         "describes the study, not image-quality limitations.\n"
         "- Use concise clinical English for every JSON string value.\n"
+        f"{critical_triage_contract}"
         f"{checklist_contract}"
         f"{bbox_contract}"
         "- Every coordinate is relative to the attached original image, never a "

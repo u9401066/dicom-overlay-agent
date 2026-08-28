@@ -846,3 +846,21 @@
   Node/OpenClaw, and released port 18789 on shutdown. Release smoke did not call
   a model. The pinned npm tree still has 7 moderate/4 high/0 critical upstream
   advisories.
+
+## 2026-08-28 Critical-first phased interpretation
+
+- MultiPass planning now distinguishes a structured/localizable critical
+  finding from top-level urgency or a generic label. Only the former activates
+  critical-first triage.
+- Every available refinement slot is assigned to critical hypotheses first.
+  When budget remains, EKG may add at most one mechanism-related lead-II,
+  reciprocal-lead, or cross-lead morphology support crop. CXR receives no
+  invented generic support turn.
+- Lower-priority finding crops, local safety candidates, and unrelated
+  systematic probes are skipped with an explicit critical_triage receipt,
+  including overflow, selected IDs, support reason, skipped categories, budget,
+  and deferred checklist axes.
+- Deferred normal EKG axes are changed to
+  not_assessed_due_to_critical_triage with info status. Final reconciliation
+  must preserve incomplete/review state even if all critical candidates are
+  retracted; bbox geometry and the original-ROI final turn remain unchanged.

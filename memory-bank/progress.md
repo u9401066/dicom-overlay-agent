@@ -894,3 +894,19 @@
 - 依 8-case 實測 71.058 秒/candidate case，MultiPass 單臂 sequential 約 196
   小時，另加 baseline 與後處理；須維持 AC power、machine uptime 與
   subscription capacity，完成前不作 full-scale accuracy claim。
+
+## Done (critical-first planning) - 2026-08-28
+
+- 新增 critical-first refinement planner：只有具體、可定位的 critical
+  finding 啟動，top-level critical 或泛稱 finding 仍走原本 systematic path。
+- 多個 critical candidates 在有限 budget 內依序直接驗證；只有剩餘 slot
+  才加一個 EKG 同機轉 support crop，不再拿第二個 critical 的 turn 去跑一般
+  discovery。
+- warning/info、local safety 與無關 systematic crop 會明確延後；trace 記錄
+  selected/overflow/skipped/support/deferred axes，且不超出 configured budget。
+- Finalization prompt 與 deterministic guard 共同禁止將 deferred axes 寫成
+  normal/absent，並在 critical candidate 最終撤回時仍保留
+  incomplete/review-required。
+- Critical planning、VT/lead-II、STEMI reciprocal、hyperkalemia morphology、
+  overflow、CXR、top-level-only、final retraction 與 prompt contract 均有
+  targeted coverage；相關 unit/integration/artifact/wiring tests 全數通過。

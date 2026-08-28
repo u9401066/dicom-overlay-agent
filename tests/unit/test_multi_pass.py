@@ -19,6 +19,7 @@ from dicom_overlay.application.multi_pass import (
     RefinementAction,
     RefinementDelta,
     RefinementResult,
+    apply_critical_triage_guard,
     apply_ekg_overlay_bbox_guard,
     apply_ekg_waveform_rhythm_conflict_guard,
     apply_refinement_delta,
@@ -36,6 +37,8 @@ from dicom_overlay.application.multi_pass import (
     reconcile_unavailable_ekg_rhythm_regions,
     region_source_edge_px,
     remap_bbox,
+    select_critical_triage_candidates,
+    select_ekg_critical_support_probe,
     select_ekg_systematic_probe_regions,
     select_ekg_waveform_attention_probe_regions,
     select_hypothesis_crop_region,
@@ -739,6 +742,116 @@ class TestSelectZoomTargets:
         assert select_zoom_targets(res, max_targets=0) == []
 
 
+class TestCriticalTriagePlanning:
+    def test_requires_specific_structured_localizable_finding(self):
+        box = RegionRect(0.1, 0.1, 0.2, 0.2)
+        result = _result(
+            [
+                _finding(
+                    "specific",
+                    Severity.CRITICAL,
+                    box,
+                    label="Tension pneumothorax",
+                    detail="Pleural line with mediastinal shift.",
+                ),
+                _finding(
+                    "generic",
+                    Severity.CRITICAL,
+                    box,
+                    label="Critical finding.",
+                    detail="Urgent abnormality.",
+                ),
+                _finding(
+                    "empty-detail",
+                    Severity.CRITICAL,
+                    box,
+                    label="Acute process",
+                ),
+                _finding(
+                    "unlocalized",
+                    Severity.CRITICAL,
+                    None,
+                    label="Large effusion",
+                    detail="Possible tension physiology.",
+                ),
+            ]
+        )
+        result.severity = Severity.CRITICAL
+
+        candidates = select_critical_triage_candidates(result)
+
+        assert [finding.id for finding in candidates] == ["specific"]
+
+    def test_temporal_support_prefers_nonredundant_lead_ii(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.0, 0.75, 1.0, 0.08),
+            label="Ventricular tachycardia",
+            detail="Synchronized wide-complex run.",
+        )
+        result = _ekg_row_layout_result([critical])
+
+        support = select_ekg_critical_support_probe(
+            result,
+            [critical],
+            [critical.bboxes[0]],
+        )
+
+        assert support == (
+            "lead_II",
+            RegionRect(0.0, 1 / 12, 1.0, 1 / 12),
+            "critical_temporal_crosscheck",
+        )
+
+    def test_hyperkalemia_support_is_morphology_not_territorial(self):
+        critical = _finding(
+            "hyperk",
+            Severity.CRITICAL,
+            RegionRect(0.2, 0.55, 0.2, 0.08),
+            label="Possible hyperkalemia",
+            detail="Tall peaked T waves with QRS widening.",
+        )
+        result = _ekg_row_layout_result([critical])
+
+        support = select_ekg_critical_support_probe(
+            result,
+            [critical],
+            [critical.bboxes[0]],
+        )
+
+        assert support is not None
+        assert support[2] == "critical_morphology_crosslead_check"
+
+    def test_guard_marks_only_deferred_normal_axes_unassessed(self):
+        critical = _finding(
+            "stemi",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.6, 0.2, 0.1),
+            label="Anterior STEMI pattern",
+            detail="Contiguous ST elevation in V2-V4.",
+        )
+        result = _ekg_row_layout_result([critical])
+        result.checklist = {
+            "rhythm": ChecklistItem(value="sinus", status=Severity.NORMAL),
+            "st_segment": ChecklistItem(value="elevated", status=Severity.CRITICAL),
+        }
+
+        guarded = apply_critical_triage_guard(
+            result,
+            [critical],
+            phase="unit_test",
+        )
+
+        assert guarded.checklist["st_segment"].status is Severity.CRITICAL
+        assert guarded.checklist["rhythm"].value == (
+            "not_assessed_due_to_critical_triage"
+        )
+        assert guarded.checklist["rhythm"].status is Severity.INFO
+        assert guarded.incomplete is True
+        assert guarded.review_required is True
+
+
 class TestRefinementDeltaContract:
     def test_targeted_actions_require_target_id(self):
         with pytest.raises(ValueError):
@@ -1373,7 +1486,7 @@ class TestMultiPassInterpreter:
             "ekg_systematic_limb_leads",
         ]
 
-    async def test_systematic_probe_verifies_overlapping_untargeted_hypothesis(self):
+    async def test_critical_triage_verifies_each_critical_before_support(self):
         rhythm = _finding(
             "rhythm",
             Severity.CRITICAL,
@@ -1406,11 +1519,183 @@ class TestMultiPassInterpreter:
             zoom_padding=0.0,
         )
 
-        await interpreter.interpret("img", Modality.EKG, [])
+        result = await interpreter.interpret("img", Modality.EKG, [])
 
         assert analyzer.refine_calls[0]["hypothesis"].id == "rhythm"
-        assert analyzer.refine_calls[1]["probe_id"].startswith("ekg_systematic_")
         assert analyzer.refine_calls[1]["hypothesis"].id == "st-t"
+        triage = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage"
+        )
+        assert triage["selected_critical_ids"] == ["rhythm", "st-t"]
+        assert triage["support_probe_id"] == ""
+        assert triage["overflow_critical_ids"] == []
+        assert triage["planned_turn_count"] == 2
+        assert result.incomplete is True
+        assert result.review_required is True
+
+    async def test_cxr_critical_triage_skips_unrelated_lower_priority_crops(self):
+        box = RegionRect(0.1, 0.1, 0.2, 0.2)
+        critical = _finding(
+            "tension",
+            Severity.CRITICAL,
+            box,
+            label="Tension pneumothorax",
+            detail="Pleural line and contralateral mediastinal shift.",
+        )
+        warning = _finding(
+            "effusion",
+            Severity.WARNING,
+            RegionRect(0.6, 0.6, 0.2, 0.2),
+            label="Small pleural effusion",
+            detail="Blunted costophrenic angle.",
+        )
+        info = _finding(
+            "scar",
+            Severity.INFO,
+            RegionRect(0.4, 0.4, 0.1, 0.1),
+            label="Apical scar",
+            detail="Thin linear opacity.",
+        )
+        coarse = _result([warning, info, critical])
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=3,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.CXR, [])
+
+        assert [call["hypothesis"].id for call in analyzer.refine_calls] == [
+            "tension"
+        ]
+        triage = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage"
+        )
+        assert triage["skipped_lower_priority_ids"] == ["effusion", "scar"]
+        assert triage["skipped_lower_priority_categories"] == {
+            "warning": 1,
+            "info": 1,
+        }
+        assert triage["support_probe_id"] == ""
+
+    async def test_critical_stemi_uses_one_reciprocal_support_crop(self):
+        critical = dataclasses.replace(
+            _finding(
+                "stemi",
+                Severity.CRITICAL,
+                RegionRect(0.1, 0.55, 0.2, 0.08),
+                label="Anterior STEMI pattern",
+                detail="Contiguous ST elevation in V2-V4.",
+            ),
+            regions=["lead_V2", "lead_V3", "lead_V4"],
+        )
+        warning = _finding(
+            "axis",
+            Severity.WARNING,
+            RegionRect(0.1, 0.1, 0.2, 0.08),
+            label="Left axis deviation",
+            detail="Predominantly negative inferior leads.",
+        )
+        coarse = _ekg_row_layout_result([warning, critical])
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            max_ekg_systematic_probes=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert analyzer.refine_calls[0]["hypothesis"].id == "stemi"
+        assert analyzer.refine_calls[1]["hypothesis"] is None
+        assert analyzer.refine_calls[1]["probe_id"] == (
+            "ekg_systematic_critical_support_limb_leads"
+        )
+        triage = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage"
+        )
+        assert triage["support_reason"] == (
+            "critical_territorial_reciprocal_crosscheck"
+        )
+        assert triage["skipped_lower_priority_ids"] == ["axis"]
+        assert triage["planned_turn_count"] == 2
+
+    async def test_critical_overflow_is_explicit_and_never_adds_extra_turn(self):
+        findings = [
+            _finding(
+                f"critical-{index}",
+                Severity.CRITICAL,
+                RegionRect(0.1 * index, 0.1, 0.08, 0.08),
+                label=f"Acute process {index}",
+                detail=f"Localized time-critical morphology {index}.",
+            )
+            for index in range(1, 4)
+        ]
+        coarse = _result(findings)
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.CXR, [])
+
+        assert [call["hypothesis"].id for call in analyzer.refine_calls] == [
+            "critical-1",
+            "critical-2",
+        ]
+        triage = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage"
+        )
+        assert triage["overflow_critical_ids"] == ["critical-3"]
+        assert triage["planned_turn_count"] == 2
+        assert triage["extra_turns_beyond_configured_budget"] == 0
+
+    async def test_top_level_critical_alone_does_not_activate_triage(self):
+        warning = _finding(
+            "warning",
+            Severity.WARNING,
+            RegionRect(0.2, 0.2, 0.2, 0.2),
+            label="Focal opacity",
+            detail="Needs review.",
+        )
+        coarse = _result([warning])
+        coarse.severity = Severity.CRITICAL
+        analyzer = _HypothesisAwareAnalyzer(coarse, [RefinementResult()])
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.CXR, [])
+
+        assert analyzer.refine_calls[0]["hypothesis"].id == "warning"
+        assert not any(
+            event.get("stage") == "critical_triage"
+            for event in result.analysis_trace
+        )
 
     async def test_systematic_probe_survives_complete_crop_overlap(self):
         coarse = _ekg_row_layout_result(
@@ -1811,6 +2096,42 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert finalize_event["status"] == "completed"
         assert finalize_event["retracted_count"] == 1
         assert result.analysis_trace[-1]["stage"] == "analysis_sla"
+
+    async def test_final_retraction_cannot_erase_critical_triage_limitation(self):
+        critical = _finding(
+            "critical",
+            Severity.CRITICAL,
+            RegionRect(0.2, 0.2, 0.2, 0.2),
+            label="Tension pneumothorax",
+            detail="Possible pleural line and mediastinal shift.",
+        )
+        coarse = _result([critical])
+        coarse.severity = Severity.CRITICAL
+        final = _result([])
+        final.summary = "Critical candidate was not reproduced on the original image."
+        analyzer = _FinalizingAnalyzer(coarse, [RefinementResult()], final)
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.CXR, [])
+
+        assert result.findings == []
+        assert result.incomplete is True
+        assert result.review_required is True
+        assert any(
+            "Critical-first triage intentionally deferred" in reason
+            for reason in result.incomplete_reasons
+        )
+        assert analyzer.finalize_calls[0]["draft"].incomplete is True
+        assert any(
+            event.get("stage") == "final_disposition"
+            and event.get("status") == "retracted"
+            for event in result.analysis_trace
+        )
 
     async def test_no_crop_target_still_runs_final_report_turn(self):
         coarse = _result([])

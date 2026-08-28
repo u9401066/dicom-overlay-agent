@@ -390,6 +390,63 @@ class TestHypothesisAwareRefinement:
         assert "relative to the attached original image" in prompt
         assert "dicom_bbox_validate" in prompt
 
+    def test_finalization_prompt_preserves_critical_triage_deferrals(self):
+        finding = Finding(
+            id="critical-1",
+            regions=["lead_V2", "lead_V3"],
+            label="Anterior STEMI pattern",
+            detail="Contiguous ST elevation.",
+            severity=Severity.CRITICAL,
+            bboxes=[RegionRect(0.2, 0.3, 0.1, 0.1)],
+        )
+        draft = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Time-critical candidate prioritized.",
+            severity=Severity.CRITICAL,
+            findings=[finding],
+            checklist={
+                "axis": ChecklistItem(
+                    value="not_assessed_due_to_critical_triage",
+                    status=Severity.INFO,
+                )
+            },
+            incomplete=True,
+            review_required=True,
+            incomplete_reasons=["Critical-first triage deferred other review."],
+            analysis_trace=[
+                {
+                    "stage": "critical_triage",
+                    "status": "activated",
+                    "candidate_ids": ["critical-1"],
+                    "selected_critical_ids": ["critical-1"],
+                    "support_probe_id": "ekg_systematic_critical_support_limb_leads",
+                    "support_reason": (
+                        "critical_territorial_reciprocal_crosscheck"
+                    ),
+                    "overflow_critical_ids": [],
+                    "deferred_checklist_axes": ["axis", "chamber_enlargement"],
+                }
+            ],
+        )
+
+        prompt = _build_finalization_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V2", "lead_V3"],
+            draft=draft,
+            refinement_trace=[],
+        )
+
+        assert '"critical_triage": {"active": true' in prompt
+        assert '"deferred_checklist_axes": ["axis", "chamber_enlargement"]' in (
+            prompt
+        )
+        assert "Reconcile every selected critical candidate" in prompt
+        assert "Retraction does not retroactively complete the deferred review" in (
+            prompt
+        )
+        assert "value=not_assessed_due_to_critical_triage" in prompt
+        assert "not normal/absent/WNL" in prompt
+
     def test_prompt_carries_hypothesis_and_crop_coordinate_contract(self):
         finding = Finding(
             id="f1",
