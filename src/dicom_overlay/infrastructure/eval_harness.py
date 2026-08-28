@@ -290,6 +290,10 @@ _CANDIDATE_KEYWORD_ALIASES: dict[str, tuple[str, ...]] = {
     # as "VT versus artifact?" is useful evidence of recognition, not a safe VT
     # call.
     "ventricular tachycardia": ("v tach", "vt", "wide complex tachycardia"),
+    # A wide-QRS conduction abnormality is a useful IVCD candidate but is not
+    # diagnostic by itself: pacing, ectopy, ventricular rhythm, and artifact
+    # remain plausible. Keep it out of asserted/full-credit aliases.
+    "intraventricular conduction delay": ("wide qrs conduction abnormality",),
 }
 
 # Controlled positive-concept vocabulary used to find *extra* diagnoses.  The
@@ -547,6 +551,11 @@ class EvalReport:
     multi_diagnosis_3_to_5_complete_recall_rate: float = 0.0
     normal_control_count: int = 0
     normal_control_specificity: float = 0.0
+    # Binary clinical specificity intentionally treats ``normal`` and ``info``
+    # as non-abnormal. These companion metrics expose the extra review burden
+    # that a low-confidence advisory can still create on a normal control.
+    normal_control_clean_read_rate: float = 0.0
+    normal_control_review_burden_rate: float = 0.0
     urgent_concern_total: int = 0
     urgent_concern_caught_count: int = 0
     urgent_concern_missed: list[str] = field(default_factory=list)
@@ -2156,6 +2165,17 @@ def _aggregate(
             score.severity_abnormal_match and not score.concept_false_positives
         ),
     )
+    normal_control_clean_read_rate = _rate(
+        normal_controls,
+        lambda score: (
+            score.actual_severity == Severity.NORMAL.value
+            and score.finding_count == 0
+            and not score.concept_false_positives
+        ),
+    )
+    normal_control_review_burden_rate = (
+        round(1.0 - normal_control_clean_read_rate, 3) if normal_controls else 0.0
+    )
     # End-to-end latency is an attempt-level operational metric. Excluding
     # timed-out/error cases would make the aggregate look faster precisely when
     # the SLA is failing.
@@ -2285,6 +2305,8 @@ def _aggregate(
         ),
         normal_control_count=len(normal_controls),
         normal_control_specificity=normal_control_specificity,
+        normal_control_clean_read_rate=normal_control_clean_read_rate,
+        normal_control_review_burden_rate=normal_control_review_burden_rate,
         urgent_concern_total=urgent_concern_total,
         urgent_concern_caught_count=urgent_concern_caught_count,
         urgent_concern_missed=urgent_concern_missed,

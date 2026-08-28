@@ -2044,6 +2044,10 @@ def _print_summary(
         f"(n={report.normal_control_count})"
     )
     print(
+        f"  normal clean read ... {report.normal_control_clean_read_rate:.0%} "
+        f"(review burden {report.normal_control_review_burden_rate:.0%})"
+    )
+    print(
         f"  negative recall ..... {report.mean_negative_recall:.0%} "
         f"(n={report.negative_scorable_count})"
     )

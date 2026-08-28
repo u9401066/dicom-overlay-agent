@@ -809,7 +809,57 @@ def _headline(
         headline[f"baseline_{field}"] = baseline_value
         headline[f"candidate_{field}"] = candidate_value
         headline[f"{field}_delta"] = round(candidate_value - baseline_value, 3)
+    for field, getter in (
+        ("normal_control_clean_read_rate", _scorecard_normal_clean_read_rate),
+        (
+            "normal_control_review_burden_rate",
+            _scorecard_normal_review_burden_rate,
+        ),
+    ):
+        baseline_value = getter(baseline)
+        candidate_value = getter(candidate)
+        headline[f"baseline_{field}"] = baseline_value
+        headline[f"candidate_{field}"] = candidate_value
+        headline[f"{field}_delta"] = round(candidate_value - baseline_value, 3)
     return headline
+
+
+def _normal_control_cases(scorecard: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        case
+        for case in scorecard.get("cases", [])
+        if isinstance(case, dict)
+        and case.get("expected_severity") == "normal"
+        and case.get("clinical_scorable", True) is not False
+        and not case.get("error")
+    ]
+
+
+def _scorecard_normal_clean_read_rate(scorecard: dict[str, Any]) -> float:
+    explicit = scorecard.get("normal_control_clean_read_rate")
+    if explicit is not None:
+        return _float(explicit)
+    controls = _normal_control_cases(scorecard)
+    if not controls:
+        return 0.0
+    clean = sum(
+        1
+        for case in controls
+        if case.get("actual_severity") == "normal"
+        and _int(case.get("finding_count")) == 0
+        and not case.get("concept_false_positives", [])
+    )
+    return round(clean / len(controls), 3)
+
+
+def _scorecard_normal_review_burden_rate(scorecard: dict[str, Any]) -> float:
+    explicit = scorecard.get("normal_control_review_burden_rate")
+    if explicit is not None:
+        return _float(explicit)
+    controls = _normal_control_cases(scorecard)
+    if not controls:
+        return 0.0
+    return round(1.0 - _scorecard_normal_clean_read_rate(scorecard), 3)
 
 
 def _paired_sign_test(rows: list[dict[str, Any]]) -> dict[str, Any]:

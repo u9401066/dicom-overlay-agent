@@ -570,6 +570,99 @@ def test_weak_reference_records_half_weighted_candidate_credit(
     assert score.strict_pass is False
 
 
+def test_wide_qrs_conduction_abnormality_is_candidate_only_ivcd_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="possible_ivcd",
+        keywords=("intraventricular conduction delay",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Regular rhythm with a possible wide-QRS conduction abnormality.",
+        checklist={
+            "conduction": ChecklistItem(
+                value="Possible wide-QRS conduction abnormality versus ectopy",
+                status=Severity.WARNING,
+            )
+        },
+    )
+    result.findings = [
+        Finding(
+            id="wide-qrs",
+            regions=["lead_V1", "lead_V2"],
+            label="Possible wide-QRS conduction abnormality",
+            detail="Broad complexes recur, but pacing, ectopy, and artifact remain.",
+            severity=Severity.WARNING,
+            confidence="low",
+            question="Is this a true intraventricular conduction delay?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == []
+    assert score.concept_misses == ["intraventricular conduction delay"]
+    assert score.candidate_concept_hits == ["intraventricular conduction delay"]
+    assert score.candidate_concept_misses == []
+    assert score.candidate_concept_recall == 1.0
+    assert score.weighted_concept_recall == 0.5
+    assert score.strict_pass is False
+
+
+def test_asserted_wide_qrs_phrase_still_remains_candidate_only_ivcd_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="broad_ivcd_candidate",
+        keywords=("intraventricular conduction delay",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="A wide-QRS conduction abnormality is present.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == []
+    assert score.candidate_concept_hits == ["intraventricular conduction delay"]
+    assert score.weighted_concept_recall == 0.5
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "No wide-QRS conduction abnormality is present.",
+        "Broad QRS complexes may reflect ventricular ectopy or pacing artifact.",
+    ],
+)
+def test_ivcd_candidate_alias_rejects_negated_or_ambiguous_wide_qrs(
+    tmp_path: Path,
+    summary: str,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="ivcd_candidate_guard",
+        keywords=("intraventricular conduction delay",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(Severity.INFO, summary=summary, checklist={})
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == []
+    assert score.candidate_concept_hits == []
+    assert score.candidate_concept_misses == ["intraventricular conduction delay"]
+
+
 def test_rather_than_phrase_does_not_assert_rejected_diagnosis(
     tmp_path: Path,
 ) -> None:
@@ -1146,6 +1239,8 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert report.mean_concept_f1 == 1.0
     assert report.normal_control_count == 1
     assert report.normal_control_specificity == 1.0
+    assert report.normal_control_clean_read_rate == 1.0
+    assert report.normal_control_review_burden_rate == 0.0
     assert report.diagnosis_scorable_count == 1
     assert report.single_diagnosis_exact_set_accuracy == 1.0
     scorecard = json.loads((out / "scorecard.json").read_text(encoding="utf-8"))
@@ -1173,6 +1268,8 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert scorecard["json_repair_case_count"] == 1
     assert scorecard["json_repair_total_count"] == 2
     assert scorecard["raw_json_clean_rate"] == 0.5
+    assert scorecard["normal_control_clean_read_rate"] == 1.0
+    assert scorecard["normal_control_review_burden_rate"] == 0.0
     assert scorecard["cases"][1]["json_repair_count"] == 2
     assert scorecard["manifest_total"] == 2
     assert scorecard["result_count"] == 2
@@ -1183,6 +1280,61 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert partial["manifest_total"] == 2
     assert partial["result_count"] == 2
     assert partial["is_partial"] is False
+
+
+async def test_normal_review_candidate_is_visible_beside_binary_specificity(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.NORMAL, (), name="normal_review_candidate")
+    result = _complete_result(
+        Severity.INFO,
+        summary="No acute finding; a low-confidence review candidate remains.",
+        bbox=RegionRect(x=0.1, y=0.1, w=0.2, h=0.2),
+    )
+
+    async def analyze(_: EvalCase) -> AnalysisResult:
+        return result
+
+    report = await run_evaluation(
+        [case],
+        analyze,
+        output_dir=tmp_path / "review-burden",
+        gateway_mode="mock",
+    )
+
+    assert report.normal_control_specificity == 1.0
+    assert report.normal_control_clean_read_rate == 0.0
+    assert report.normal_control_review_burden_rate == 1.0
+
+
+async def test_normal_review_metrics_are_zero_without_normal_controls(
+    tmp_path: Path,
+) -> None:
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("consolidation",),
+        name="warning_only",
+    )
+    result = _complete_result(
+        Severity.WARNING,
+        summary="Consolidation is present.",
+        bbox=RegionRect(x=0.1, y=0.1, w=0.2, h=0.2),
+    )
+
+    async def analyze(_: EvalCase) -> AnalysisResult:
+        return result
+
+    report = await run_evaluation(
+        [case],
+        analyze,
+        output_dir=tmp_path / "no-normal-controls",
+        gateway_mode="mock",
+    )
+
+    assert report.normal_control_count == 0
+    assert report.normal_control_clean_read_rate == 0.0
+    assert report.normal_control_review_burden_rate == 0.0
 
 
 async def test_run_evaluation_atomically_replaces_all_json_artifacts(

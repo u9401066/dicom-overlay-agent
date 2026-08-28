@@ -700,6 +700,44 @@ def test_mcnemar_exact_handles_no_discordance_and_small_n() -> None:
     assert too_small["reason"] == "requires_at_least_two_paired_cases"
 
 
+def test_headline_compares_normal_review_burden_with_legacy_case_fallback() -> None:
+    module = _load_compare_module()
+    baseline = _scorecard(1.0, strict=True, latency_ms=1)
+    candidate = _scorecard(1.0, strict=True, latency_ms=1)
+    for payload in (baseline, candidate):
+        case = payload["cases"][0]
+        case["expected_severity"] = "normal"
+        case["actual_severity"] = "normal"
+        case["finding_count"] = 0
+    candidate_case = candidate["cases"][0]
+    candidate_case["actual_severity"] = "info"
+    candidate_case["finding_count"] = 1
+
+    headline = module._headline(baseline, candidate, [])
+
+    assert headline["baseline_normal_control_clean_read_rate"] == 1.0
+    assert headline["candidate_normal_control_clean_read_rate"] == 0.0
+    assert headline["normal_control_clean_read_rate_delta"] == -1.0
+    assert headline["baseline_normal_control_review_burden_rate"] == 0.0
+    assert headline["candidate_normal_control_review_burden_rate"] == 1.0
+    assert headline["normal_control_review_burden_rate_delta"] == 1.0
+
+
+def test_headline_prefers_explicit_normal_review_metrics() -> None:
+    module = _load_compare_module()
+    baseline = _scorecard(1.0, strict=True, latency_ms=1)
+    candidate = _scorecard(1.0, strict=True, latency_ms=1)
+    baseline["normal_control_clean_read_rate"] = 0.75
+    baseline["normal_control_review_burden_rate"] = 0.25
+    candidate["normal_control_clean_read_rate"] = 0.5
+    candidate["normal_control_review_burden_rate"] = 0.5
+
+    headline = module._headline(baseline, candidate, [])
+
+    assert headline["normal_control_clean_read_rate_delta"] == -0.25
+    assert headline["normal_control_review_burden_rate_delta"] == 0.25
+
+
 def test_clinical_safety_reports_normal_false_positives_and_urgent_regression(
     tmp_path: Path,
 ) -> None:
