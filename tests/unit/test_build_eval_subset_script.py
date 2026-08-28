@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 
@@ -242,6 +243,7 @@ def test_build_subset_writes_blind_pair_and_verifiable_report(
                 "dataset": "test",
                 "modality": "EKG",
                 "note": "ground-truth generation details",
+                "private_diagnosis_metadata": "must not leak",
                 "labeling": {"classifier": "test-classifier"},
                 "counts": {"by_severity": {"normal": 2, "warning": 2}},
                 "waveform_registry": {"path": registry.name},
@@ -267,6 +269,24 @@ def test_build_subset_writes_blind_pair_and_verifiable_report(
     gold_ids = [row["label"] for row in gold["cases"]]
     inference_ids = [row["label"] for row in inference["cases"]]
     assert gold_ids == inference_ids
+    input_image_records = [
+        {
+            "case_identity": row["label"],
+            "image_sha256": _sha256(
+                (gold_path.parent / row["image"]).resolve()
+            ),
+        }
+        for row in gold["cases"]
+    ]
+    expected_input_order_sha256 = module._canonical_sha256(input_image_records)
+    assert (
+        gold["selection"]["input_image_order_sha256"]
+        == expected_input_order_sha256
+    )
+    assert (
+        inference["selection"]["input_image_order_sha256"]
+        == expected_input_order_sha256
+    )
     assert gold["selection"]["manifest_role"] == "gold"
     assert inference["selection"]["manifest_role"] == "inference"
     assert gold["selection"]["pair_id"] == inference["selection"]["pair_id"]
@@ -308,6 +328,7 @@ def test_build_subset_writes_blind_pair_and_verifiable_report(
 
     assert "note" not in inference
     assert "labeling" not in inference
+    assert "private_diagnosis_metadata" not in inference
     assert inference["counts"] == {"cases": 2}
     assert (
         gold_path.parent / gold["waveform_registry"]["path"]
@@ -316,6 +337,10 @@ def test_build_subset_writes_blind_pair_and_verifiable_report(
         inference_path.parent / inference["waveform_registry"]["path"]
     ).resolve() == registry.resolve()
     assert report["sampling"]["selected"]["case_identities"] == gold_ids
+    assert (
+        report["sampling"]["selected"]["input_image_order_sha256"]
+        == expected_input_order_sha256
+    )
     assert report["manifests"]["gold"]["sha256"] == _sha256(gold_path)
     assert report["manifests"]["inference"]["sha256"] == _sha256(inference_path)
     assert report["source_manifest"]["sha256"] == _sha256(manifest)
@@ -453,6 +478,260 @@ def test_meeti_blind_pilot_profile_is_mutually_stratified_and_seals_five() -> No
     }
     assert metadata["sealed_critical_cant_miss_remaining"] == 5
     assert len({str(row["label"]) for row in selected}) == 64
+
+
+def test_important_multi_canonical_diagnoses_remove_non_diagnostic_aliases() -> None:
+    module = _load_module()
+
+    assert module._canonical_diagnoses(
+        {
+            "concepts": [
+                "normal",
+                "sinus",
+                "infarct",
+                "old_infarct",
+                "long_qt",
+                "high_risk_long_qt",
+                "rbbb",
+                "stemi",
+            ],
+            "uncertain_concepts": ["stemi"],
+        }
+    ) == ("high_risk_long_qt", "old_infarct", "rbbb")
+
+
+def test_important_multi_rejects_unknown_acute_case_level_signal() -> None:
+    module = _load_module()
+    row = {
+        "label_status": "asserted",
+        "ungradable_reasons": [],
+        "concepts": ["rbbb", "lvh", "afib"],
+        "uncertain_concepts": [],
+        "report": "three asserted abnormalities",
+        "expected_severity": "critical",
+        "urgent_concerns": ["unmapped emergency"],
+        "cant_miss": [],
+    }
+
+    assert module._important_multi_128_eligibility_tier(row) == ""
+
+
+def test_answer_free_assertion_rejects_nested_answer_metadata() -> None:
+    module = _load_module()
+    inference = {
+        "dataset": "test",
+        "modality": "EKG",
+        "selection": {
+            "mode": "deterministic_blind_inference_subset",
+            "manifest_role": "inference",
+            "pair_id": "pair",
+            "case_identity_order_sha256": "order",
+            "input_image_order_sha256": "images",
+        },
+        "counts": {"cases": 1},
+        "cases": [
+            {
+                "label": "case-1",
+                "image": "case-1.png",
+                "regions": [
+                    {
+                        "id": "full",
+                        "bbox": [0, 0, 1, 1],
+                        "expected_diagnosis": "must not leak",
+                    }
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(RuntimeError, match="answer-bearing field"):
+        module._assert_answer_free_manifest(inference)
+
+
+def test_build_subset_refuses_to_overwrite_an_input(tmp_path: Path) -> None:
+    module = _load_module()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"cases": []}))
+
+    with pytest.raises(ValueError, match="must not overwrite"):
+        module.build_subset(
+            manifest_path=manifest,
+            output_path=manifest,
+            severity_counts={"warning": 1},
+            seed=1,
+        )
+
+
+def test_blind_pair_id_is_bound_to_exact_input_image_bytes(tmp_path: Path) -> None:
+    module = _load_module()
+    image = tmp_path / "case-1.png"
+    Image.new("RGB", (4, 4), "white").save(image)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "dataset": "test",
+                "modality": "EKG",
+                "cases": [
+                    {
+                        "label": "case-1",
+                        "image": image.name,
+                        "expected_severity": "warning",
+                    }
+                ],
+            }
+        )
+    )
+
+    def build(stem: str) -> dict[str, object]:
+        gold = module.build_subset(
+            manifest_path=manifest,
+            output_path=tmp_path / f"{stem}.gold.json",
+            inference_output_path=tmp_path / f"{stem}.inference.json",
+            selection_report_path=tmp_path / f"{stem}.report.json",
+            severity_counts={"warning": 1},
+            seed=19,
+        )
+        return gold["selection"]
+
+    first = build("first")
+    Image.new("RGB", (4, 4), "black").save(image)
+    second = build("second")
+
+    assert first["source_manifest_sha256"] == second["source_manifest_sha256"]
+    assert first["case_identity_order_sha256"] == second[
+        "case_identity_order_sha256"
+    ]
+    assert first["input_image_order_sha256"] != second[
+        "input_image_order_sha256"
+    ]
+    assert first["pair_id"] != second["pair_id"]
+
+
+def test_important_multi_128_profile_enforces_all_fixed_quotas() -> None:
+    module = _load_module()
+    rows = _important_multi_rows(module)
+
+    selected, metadata = module._select_meeti_blind_important_multi_128(
+        rows,
+        seed=module._MEETI_BLIND_IMPORTANT_MULTI_128_SEED,
+    )
+
+    assert len(selected) == 128
+    assert metadata["selected_by_tier"] == {
+        "acute_risk": 24,
+        "ischemic_infarct": 28,
+        "rhythm_ectopy": 28,
+        "conduction_qt": 32,
+        "structure_voltage": 16,
+    }
+    assert metadata["selected_by_label_status"] == {
+        "asserted": 48,
+        "partially_uncertain": 80,
+    }
+    assert metadata["selected_by_severity"] == {"critical": 24, "warning": 104}
+    assert min(metadata["selected_axis_coverage"].values()) == 128
+    assert metadata["critical_cant_miss_selected"] == 1
+    assert metadata["exposure_control"]["model_execution_status"] == "not_run"
+    assert (
+        metadata["exposure_control"]["cohort_case_status_after_construction"]
+        == "exposed_reserved"
+    )
+
+
+def test_important_multi_128_profile_fails_closed_on_axis_deficit() -> None:
+    module = _load_module()
+    rows = _important_multi_rows(module)
+    for row in rows:
+        row["target_axes"] = []
+
+    with pytest.raises(ValueError, match="target-axis minima"):
+        module._select_meeti_blind_important_multi_128(
+            rows,
+            seed=module._MEETI_BLIND_IMPORTANT_MULTI_128_SEED,
+        )
+
+
+def test_important_multi_128_profile_requires_fixed_seed_and_denylist(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    common = {
+        "manifest_path": tmp_path / "missing-source.json",
+        "output_path": tmp_path / "gold.json",
+        "severity_counts": {},
+        "sampling_profile": module._MEETI_BLIND_IMPORTANT_MULTI_128,
+        "inference_output_path": tmp_path / "inference.json",
+        "selection_report_path": tmp_path / "report.json",
+    }
+
+    with pytest.raises(ValueError, match="seed is fixed"):
+        module.build_subset(seed=1, exposure_denylist_path=tmp_path / "deny.txt", **common)
+    with pytest.raises(ValueError, match="frozen preselection exposure denylist"):
+        module.build_subset(
+            seed=module._MEETI_BLIND_IMPORTANT_MULTI_128_SEED,
+            exposure_denylist_path=None,
+            **common,
+        )
+
+
+def _important_multi_rows(module) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    first_concept_by_tier = {
+        "acute_risk": "acute_mi",
+        "ischemic_infarct": "infarct",
+        "rhythm_ectopy": "afib",
+        "conduction_qt": "rbbb",
+        "structure_voltage": "lvh",
+    }
+    for tier in module._MEETI_BLIND_IMPORTANT_MULTI_128_TIER_ORDER:
+        quotas = module._MEETI_BLIND_IMPORTANT_MULTI_128_STATUS_QUOTAS[tier]
+        count = sum(quotas.values())
+        required_concepts = [
+            token
+            for token, minimum in (
+                module._MEETI_BLIND_IMPORTANT_MULTI_128_COVERAGE_MINIMA[tier].items()
+            )
+            if token != "cant_miss" and not token.startswith("urgent:")
+            for _ in range(minimum)
+        ]
+        required_concepts.extend(
+            [first_concept_by_tier[tier]] * (count - len(required_concepts))
+        )
+        asserted = quotas["asserted"]
+        for index, concept in enumerate(required_concepts):
+            urgent_concerns: list[str] = []
+            if tier == "acute_risk" and index < 16:
+                urgent_concerns = ["STEMI"]
+            elif tier == "acute_risk" and index < 22:
+                urgent_concerns = ["acute MI"]
+            rows.append(
+                {
+                    "label": f"{tier}-{index}",
+                    "image": f"{tier}-{index}.png",
+                    "report": f"unique report for {tier} {index}",
+                    "expected_severity": (
+                        "critical" if tier == "acute_risk" else "warning"
+                    ),
+                    "label_status": (
+                        "asserted" if index < asserted else "partially_uncertain"
+                    ),
+                    "concepts": [
+                        concept,
+                        f"generic_{tier}_{index}",
+                        f"extra_{tier}_{index}",
+                    ],
+                    "cant_miss": ["acute MI"]
+                    if tier == "acute_risk" and index == 0
+                    else [],
+                    "urgent_concerns": urgent_concerns,
+                    "ungradable_reasons": [],
+                    "target_axes": list(
+                        module._MEETI_BLIND_IMPORTANT_MULTI_128_AXES
+                    ),
+                }
+            )
+    return rows
 
 
 def _sha256(path: Path) -> str:

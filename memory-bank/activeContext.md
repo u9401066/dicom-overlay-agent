@@ -864,3 +864,25 @@
   not_assessed_due_to_critical_triage with info status. Final reconciliation
   must preserve incomplete/review state even if all critical candidates are
   retracted; bbox geometry and the original-ROI final turn remain unchanged.
+
+## 2026-08-28 Frozen important multi-diagnosis 128 cohort
+
+- A fixed-seed, answer-free inference cohort of 128 important multi-diagnosis
+  MEETI cases is frozen from the 9,922-case manifest. It is a purposefully
+  gold-enriched safety/uncertainty stress cohort, not a prevalence-weighted
+  population-accuracy sample and not independent physician adjudication.
+- Selection excludes 1,230 previously exposed cases and requires at least three
+  canonical diagnoses, five mutually exclusive clinical tiers, fixed
+  asserted/partially-uncertain quotas, and at least 12 examples for every one
+  of the 16 EKG axes. The source has no patient-group field, so patient-level
+  independence cannot be claimed.
+- The pair contract now binds the ordered SHA-256 of all 128 actual PNG files,
+  rejects duplicate image bytes, strips uncertain concepts before diagnosis
+  counting, rejects unknown acute-signal vocabulary, recursively blocks answer
+  fields, and fails when frozen local artifacts are only partially present.
+- Frozen pair id is
+  `7bdc87f6d184b321938a09e4f02335692fbda75a378127305742b6f41e8a46e0`;
+  ordered image digest is
+  `38bcf5b0bd4008ac3bb6a39da3cb7f430278c55aff4c818d0a08a1fd2348c7ca`.
+  Local gold/inference/report artifacts stay gitignored; they must never be
+  published or treated as available in clean CI without a controlled download.

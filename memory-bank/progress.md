@@ -910,3 +910,19 @@
 - Critical planning、VT/lead-II、STEMI reciprocal、hyperkalemia morphology、
   overflow、CXR、top-level-only、final retraction 與 prompt contract 均有
   targeted coverage；相關 unit/integration/artifact/wiring tests 全數通過。
+
+## Done (frozen important multi-diagnosis 128 cohort) - 2026-08-28
+
+- 從 9,922-case MEETI manifest 以固定 seed 與 1,230-case preselection
+  denylist 建立 128 例 answer-free inference/gold pair；包含 acute 24、
+  ischemic 28、rhythm 28、conduction/QT 32、structure/voltage 16，且 16
+  個 EKG axes 各至少 12 例。
+- 修正凍結契約未綁實際影像 bytes 的 fail-open：pair id 現包含 128 張 PNG 的
+  ordered SHA-256，並拒絕 exact-byte duplicate。partial artifact 不再 skip，
+  source/denylist/gold/inference/report/pair/profile 均有固定 anchor。
+- `concepts` 與 `uncertain_concepts` 重疊時先排除不確定概念；未知
+  cant-miss/urgent vocabulary、巢狀 answer/diagnosis/ground-truth 欄位與 output
+  覆寫 source/denylist 均 fail closed。
+- 128 個 case/report/image 皆唯一；124 個 canonical signatures，最多重複 2。
+  這是 gold-enriched stress cohort，不代表盛行率加權準確率；source 也沒有
+  patient-group 欄位。Targeted Ruff 通過，unit/smoke 15 passed。
