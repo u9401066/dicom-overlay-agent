@@ -53,6 +53,7 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
+from dicom_overlay.domain.modality_profile import get_active_registry
 from dicom_overlay.domain.services import VisionAnalyzerService
 
 
@@ -118,6 +119,16 @@ def _ekg_row_layout_result(findings: list[Finding]) -> AnalysisResult:
         ],
     }
     return result
+
+
+def _complete_ekg_checklist(
+    *, status: Severity = Severity.NORMAL
+) -> dict[str, ChecklistItem]:
+    keys = get_active_registry().resolve(Modality.EKG.value).checklist_keys
+    return {
+        key: ChecklistItem(value=f"explicitly assessed {key}", status=status)
+        for key in keys
+    }
 
 
 # ── clamp_unit ───────────────────────────────────────────────────────
@@ -650,8 +661,7 @@ class TestEkgWaveformRhythmConflictGuard:
                         "tool": "ecg_founder_analyze_waveform",
                         "status": "ok",
                         "predictions": [
-                            {"label": label, "probability": 0.9}
-                            for label in labels
+                            {"label": label, "probability": 0.9} for label in labels
                         ],
                         "response_evidence": {
                             "rhythm_measurement": {
@@ -900,6 +910,100 @@ class TestCriticalTriagePlanning:
         assert guarded.checklist["rhythm"].status is Severity.INFO
         assert guarded.incomplete is True
         assert guarded.review_required is True
+
+    def test_final_guard_preserves_explicitly_resumed_normal_axes(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.1, 0.2, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        result = _ekg_row_layout_result([])
+        result.severity = Severity.INFO
+        result.checklist = _complete_ekg_checklist()
+
+        guarded = apply_critical_triage_guard(
+            result,
+            [critical],
+            phase="final_output",
+        )
+
+        assert guarded.severity is Severity.INFO
+        assert all(
+            item.value.startswith("explicitly assessed")
+            for item in guarded.checklist.values()
+        )
+        event = guarded.analysis_trace[-1]
+        assert event["stage"] == "critical_triage_resume_guard"
+        assert event["status"] == "deferred_axes_resumed_on_original_study"
+        assert event["unresolved_axes"] == []
+        assert event["clinical_status_inferred"] is False
+
+    def test_final_guard_flags_unresolved_deferred_axes_without_diagnosis(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.1, 0.2, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        draft = apply_critical_triage_guard(
+            _ekg_row_layout_result([critical]),
+            [critical],
+            phase="before_finalization",
+        )
+        downgraded = dataclasses.replace(
+            draft,
+            severity=Severity.INFO,
+            findings=[],
+        )
+
+        guarded = apply_critical_triage_guard(
+            downgraded,
+            [critical],
+            phase="final_output",
+        )
+
+        assert guarded.severity is Severity.INFO
+        event = guarded.analysis_trace[-1]
+        assert event["status"] == "deferred_axes_incomplete_fail_safe"
+        assert event["retained_critical_ids"] == []
+        assert event["unresolved_axes"]
+        assert event["clinical_severity_changed"] is False
+        assert event["diagnosis_forced"] is False
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "not_assessable",
+            "Cannot assess from this image",
+            "indeterminate",
+            "unknown",
+        ],
+    )
+    def test_final_guard_treats_nonassessable_semantics_as_unresolved(self, value):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.1, 0.2, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        result = _ekg_row_layout_result([])
+        result.checklist = _complete_ekg_checklist()
+        result.checklist["axis"] = ChecklistItem(value=value, status=Severity.INFO)
+
+        guarded = apply_critical_triage_guard(
+            result,
+            [critical],
+            phase="final_output",
+        )
+
+        event = guarded.analysis_trace[-1]
+        assert event["status"] == "deferred_axes_incomplete_fail_safe"
+        assert "axis" in event["unresolved_axes"]
+        assert guarded.severity is result.severity
 
 
 class TestRefinementDeltaContract:
@@ -1499,10 +1603,7 @@ class TestMultiPassInterpreter:
         await interpreter.interpret("img", Modality.EKG, [])
 
         assert analyzer.refine_calls[0]["hypothesis"].id == "rhythm"
-        assert (
-            analyzer.refine_calls[1]["probe_id"]
-            == "ekg_systematic_precordial_leads"
-        )
+        assert analyzer.refine_calls[1]["probe_id"] == "ekg_systematic_precordial_leads"
 
     async def test_identical_waveform_and_generic_probe_regions_are_deduplicated(self):
         coarse = _ekg_row_layout_result([])
@@ -1619,9 +1720,7 @@ class TestMultiPassInterpreter:
 
         result = await interpreter.interpret("img", Modality.CXR, [])
 
-        assert [call["hypothesis"].id for call in analyzer.refine_calls] == [
-            "tension"
-        ]
+        assert [call["hypothesis"].id for call in analyzer.refine_calls] == ["tension"]
         triage = next(
             event
             for event in result.analysis_trace
@@ -1743,8 +1842,7 @@ class TestMultiPassInterpreter:
 
         assert analyzer.refine_calls[0]["hypothesis"].id == "warning"
         assert not any(
-            event.get("stage") == "critical_triage"
-            for event in result.analysis_trace
+            event.get("stage") == "critical_triage" for event in result.analysis_trace
         )
 
     async def test_systematic_probe_survives_complete_crop_overlap(self):
@@ -1959,7 +2057,9 @@ def test_ekg_duplicate_guard_does_not_collapse_local_morphology_findings() -> No
     assert deduplicate_ekg_study_level_findings(result) is result
 
 
-def test_unavailable_rhythm_strip_region_uses_bbox_center_lead_without_moving_box() -> None:
+def test_unavailable_rhythm_strip_region_uses_bbox_center_lead_without_moving_box() -> (
+    None
+):
     box = RegionRect(0.1, 0.09, 0.2, 0.04)
     finding = _finding(
         "rhythm",
@@ -2091,9 +2191,7 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert analyzer.finalize_calls[0]["image"] == "original-image"
         assert analyzer.finalize_calls[0]["refinement_trace"]
         finalize_event = next(
-            event
-            for event in result.analysis_trace
-            if event.get("stage") == "finalize"
+            event for event in result.analysis_trace if event.get("stage") == "finalize"
         )
         assert finalize_event["status"] == "failed"
         assert finalize_event["error_type"] == "ValueError"
@@ -2139,9 +2237,7 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         )
         assert disposition["status"] == "retracted"
         finalize_event = next(
-            event
-            for event in result.analysis_trace
-            if event.get("stage") == "finalize"
+            event for event in result.analysis_trace if event.get("stage") == "finalize"
         )
         assert finalize_event["status"] == "completed"
         assert finalize_event["retracted_count"] == 1
@@ -2183,13 +2279,168 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
             for event in result.analysis_trace
         )
 
+    async def test_retracted_ekg_critical_resumes_deferred_axes_in_final_turn(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.2, 0.1, 0.1, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        coarse = _ekg_row_layout_result([critical])
+        coarse.severity = Severity.CRITICAL
+        refinement = RefinementResult(
+            (
+                RefinementDelta(
+                    action=RefinementAction.RETRACT,
+                    target_id="vt",
+                    rationale="Not reproduced on the original-study crop.",
+                ),
+            )
+        )
+        final = _ekg_row_layout_result([])
+        final.severity = Severity.INFO
+        final.checklist = _complete_ekg_checklist()
+        analyzer = _FinalizingAnalyzer(coarse, [refinement], final)
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert result.findings == []
+        assert result.severity is Severity.INFO
+        assert all(
+            item.value.startswith("explicitly assessed")
+            for item in result.checklist.values()
+        )
+        resume = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage_resume_guard"
+        )
+        assert resume["status"] == "deferred_axes_resumed_on_original_study"
+        assert resume["unresolved_axes"] == []
+        assert result.incomplete is True
+        assert result.review_required is True
+
+    async def test_finalizer_downgrade_keeps_unresolved_axes_explicit(self):
+        box = RegionRect(0.2, 0.1, 0.1, 0.05)
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            box,
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        coarse = _ekg_row_layout_result([critical])
+        coarse.severity = Severity.CRITICAL
+        final_finding = _finding(
+            "vt",
+            Severity.INFO,
+            box,
+            label="Artifact-limited rhythm concern",
+            detail="No confirmed ventricular run on original-study review.",
+        )
+        final = _ekg_row_layout_result([final_finding])
+        final.severity = Severity.INFO
+        final.checklist = {
+            key: ChecklistItem(
+                value="not_assessed_due_to_critical_triage",
+                status=Severity.INFO,
+            )
+            for key in get_active_registry().resolve(Modality.EKG.value).checklist_keys
+        }
+        final.checklist["axis"] = ChecklistItem(
+            value="Not assessed because the bounded final turn expired.",
+            status=Severity.INFO,
+        )
+        analyzer = _FinalizingAnalyzer(coarse, [RefinementResult()], final)
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert result.findings[0].severity is Severity.INFO
+        assert result.severity is Severity.INFO
+        assert result.incomplete is True
+        assert result.review_required is True
+        resume = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage_resume_guard"
+        )
+        assert resume["status"] == "deferred_axes_incomplete_fail_safe"
+        assert resume["retained_critical_ids"] == []
+        assert resume["unresolved_axes"]
+        assert "axis" in resume["unresolved_axes"]
+        assert resume["diagnosis_forced"] is False
+
+    async def test_critical_finalization_timeout_fails_safe_without_false_severity(
+        self,
+    ):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.2, 0.1, 0.1, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        coarse = _ekg_row_layout_result([critical])
+        coarse.severity = Severity.CRITICAL
+        refinement = RefinementResult(
+            (
+                RefinementDelta(
+                    action=RefinementAction.RETRACT,
+                    target_id="vt",
+                    rationale="Not reproduced on the bounded crop.",
+                ),
+            )
+        )
+        analyzer = _FailingFinalizingAnalyzer(coarse, [refinement])
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret("img", Modality.EKG, [])
+
+        assert result.findings == []
+        assert result.severity is Severity.INFO
+        assert result.incomplete is True
+        assert result.review_required is True
+        assert any(
+            event.get("stage") == "finalize"
+            and event.get("status") == "failed"
+            and event.get("error_type") == "TimeoutError"
+            for event in result.analysis_trace
+        )
+        resume = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "critical_triage_resume_guard"
+        )
+        assert resume["status"] == "deferred_axes_incomplete_fail_safe"
+        assert resume["unresolved_axes"]
+        assert resume["clinical_status_inferred"] is False
+
     async def test_no_crop_target_still_runs_final_report_turn(self):
         coarse = _result([])
         final = _result([])
         final.summary = "Normal study after complete review."
-        final.checklist = {
-            "x": ChecklistItem(value="normal", status=Severity.NORMAL)
-        }
+        final.checklist = {"x": ChecklistItem(value="normal", status=Severity.NORMAL)}
         analyzer = _FinalizingAnalyzer(coarse, [], final)
         interpreter = MultiPassInterpreter(
             analyzer=analyzer,
@@ -2207,7 +2458,9 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert sla["stage"] == "analysis_sla"
         assert sla["first_crop_applicable"] is False
 
-    async def test_failed_final_turn_has_retry_budget_and_explicit_unknown_checklist(self):
+    async def test_failed_final_turn_has_retry_budget_and_explicit_unknown_checklist(
+        self,
+    ):
         coarse = _ekg_row_layout_result([])
         analyzer = _FailingFinalizingAnalyzer(coarse, [])
         interpreter = MultiPassInterpreter(
@@ -2226,9 +2479,7 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert result.incomplete is True
         assert result.review_required is True
         finalize_event = next(
-            event
-            for event in result.analysis_trace
-            if event.get("stage") == "finalize"
+            event for event in result.analysis_trace if event.get("stage") == "finalize"
         )
         assert finalize_event["status"] == "failed"
         assert finalize_event["turn_budget_ms"] >= 75_000

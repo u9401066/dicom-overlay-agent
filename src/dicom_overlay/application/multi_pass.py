@@ -145,6 +145,7 @@ def _bounded_operation_timeout_sec(
     effective_grace = min(max(0.0, completion_grace_sec), remaining * 0.01)
     return remaining + effective_grace
 
+
 _EKG_SYSTEMATIC_LEAD_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
     (
         "precordial_leads",
@@ -328,6 +329,24 @@ _CRITICAL_TRIAGE_REASON = (
     "Critical-first triage intentionally deferred unrelated lower-priority "
     "refinements and checklist exclusions so the time-critical image finding "
     "could be adjudicated first; native-study review remains required."
+)
+_CRITICAL_TRIAGE_UNASSESSED = "not_assessed_due_to_critical_triage"
+_CRITICAL_TRIAGE_UNRESOLVED_REASON = (
+    "Critical-first triage ended before every deferred checklist axis was "
+    "assessed on the original study; the unresolved axes remain explicitly "
+    "unassessed and the result remains incomplete for clinician review."
+)
+_CRITICAL_TRIAGE_UNRESOLVED_VALUE_MARKERS = (
+    "not assessed",
+    "not assessable",
+    "unassessed",
+    "cannot assess",
+    "unable to assess",
+    "insufficient to assess",
+    "not evaluated",
+    "indeterminate",
+    "unknown",
+    "deferred",
 )
 
 
@@ -631,9 +650,7 @@ def select_zoom_targets(
         if result.modality is Modality.EKG:
             contextual = _ekg_contextual_crop_strategy(finding, result.layout)
             if contextual is not None:
-                candidates.append(
-                    dataclasses.replace(finding, bboxes=[contextual[0]])
-                )
+                candidates.append(dataclasses.replace(finding, bboxes=[contextual[0]]))
     # Critical first, then warning, then info; preserve original order in a tier.
     candidates.sort(key=lambda f: _ZOOM_PRIORITY[f.severity])
     return candidates[:max_targets]
@@ -922,8 +939,7 @@ def select_ekg_critical_support_probe(
             continue
         seen.add(region)
         if any(
-            _overlap_fraction(region, planned) >= 0.85
-            for planned in planned_regions
+            _overlap_fraction(region, planned) >= 0.85 for planned in planned_regions
         ):
             continue
         return key, region, reason
@@ -1099,10 +1115,8 @@ def apply_ekg_waveform_rhythm_conflict_guard(
     if existing_index is not None:
         existing = findings[existing_index]
         if (
-            _SEVERITY_RANK[existing.severity]
-            >= _SEVERITY_RANK[Severity.WARNING]
-            and _SEVERITY_RANK[result.severity]
-            >= _SEVERITY_RANK[Severity.WARNING]
+            _SEVERITY_RANK[existing.severity] >= _SEVERITY_RANK[Severity.WARNING]
+            and _SEVERITY_RANK[result.severity] >= _SEVERITY_RANK[Severity.WARNING]
         ):
             return result
         reconciled_finding_id = existing.id
@@ -1186,9 +1200,7 @@ def apply_ekg_waveform_rhythm_conflict_guard(
         findings=findings,
         checklist=checklist,
         incomplete=True,
-        incomplete_reasons=list(
-            dict.fromkeys([*result.incomplete_reasons, reason])
-        ),
+        incomplete_reasons=list(dict.fromkeys([*result.incomplete_reasons, reason])),
         review_required=True,
         review_reasons=list(dict.fromkeys([*result.review_reasons, reason])),
         analysis_trace=trace,
@@ -1688,9 +1700,7 @@ def apply_unlocalized_ekg_grounding_guard(
         result,
         findings=findings,
         incomplete=True,
-        incomplete_reasons=list(
-            dict.fromkeys([*result.incomplete_reasons, reason])
-        ),
+        incomplete_reasons=list(dict.fromkeys([*result.incomplete_reasons, reason])),
         review_required=True,
         review_reasons=list(dict.fromkeys([*result.review_reasons, reason])),
         analysis_trace=[*result.analysis_trace, *events],
@@ -1731,8 +1741,7 @@ def qualify_boxed_info_findings(result: AnalysisResult) -> AnalysisResult:
             )
         )
         reason = (
-            f"Boxed info finding requires confirmation: "
-            f"{finding.label or finding.id}."
+            f"Boxed info finding requires confirmation: {finding.label or finding.id}."
         )
         if reason not in reasons:
             reasons.append(reason)
@@ -1854,11 +1863,7 @@ def reconcile_unavailable_ekg_rhythm_regions(
         regions = list(
             dict.fromkeys(
                 [
-                    *(
-                        region
-                        for region in finding.regions
-                        if region != "rhythm_strip"
-                    ),
+                    *(region for region in finding.regions if region != "rhythm_strip"),
                     *geometric_leads,
                 ]
             )
@@ -1950,7 +1955,9 @@ def deduplicate_ekg_study_level_findings(result: AnalysisResult) -> AnalysisResu
     for finding in result.findings:
         label_key = _normalized_label(finding.label)
         is_study_level = any(term in label_key for term in _EKG_STUDY_LEVEL_DEDUP_TERMS)
-        existing_index = by_label.get(label_key) if label_key and is_study_level else None
+        existing_index = (
+            by_label.get(label_key) if label_key and is_study_level else None
+        )
         if existing_index is None:
             if label_key and is_study_level:
                 by_label[label_key] = len(retained)
@@ -2039,9 +2046,7 @@ def reconcile_final_report(
         raise ValueError("final findings must have unique non-empty IDs")
     added_ids = sorted(set(final_by_id) - set(draft_by_id))
     if added_ids:
-        raise ValueError(
-            "final report cannot add findings: " + ", ".join(added_ids)
-        )
+        raise ValueError("final report cannot add findings: " + ", ".join(added_ids))
 
     findings: list[Finding] = []
     disposition_trace: list[dict[str, object]] = []
@@ -2070,10 +2075,7 @@ def reconcile_final_report(
             draft_finding.bboxes,
             final_finding.bboxes,
         )
-        if (
-            bbox_drift is None
-            or bbox_drift > _FINAL_BBOX_COORDINATE_TOLERANCE
-        ):
+        if bbox_drift is None or bbox_drift > _FINAL_BBOX_COORDINATE_TOLERANCE:
             raise ValueError(
                 f"final report cannot change bboxes for {draft_finding.id}"
             )
@@ -2273,6 +2275,15 @@ def _critical_ekg_evidence_axes(findings: list[Finding]) -> frozenset[str]:
     return frozenset(axes)
 
 
+def _critical_triage_axis_is_unresolved(item: ChecklistItem | None) -> bool:
+    if item is None:
+        return True
+    normalized = item.value.strip().casefold().replace("_", " ")
+    return not normalized or any(
+        marker in normalized for marker in _CRITICAL_TRIAGE_UNRESOLVED_VALUE_MARKERS
+    )
+
+
 def apply_critical_triage_guard(
     result: AnalysisResult,
     critical_findings: list[Finding],
@@ -2291,10 +2302,16 @@ def apply_critical_triage_guard(
         deferred_axes = sorted(required - protected_axes)
         for key in deferred_axes:
             item = checklist.get(key)
+            if phase == "final_output" and item is not None:
+                # The bounded final turn sees the original ROI and is the one
+                # permitted place to resume axes deferred by critical-first
+                # routing.  Preserve any explicit final assessment, including
+                # a normal one; an existing sentinel remains unresolved.
+                continue
             if item is not None and item.status is not Severity.NORMAL:
                 continue
             checklist[key] = ChecklistItem(
-                value="not_assessed_due_to_critical_triage",
+                value=_CRITICAL_TRIAGE_UNASSESSED,
                 status=Severity.INFO,
             )
             changed_axes.append(key)
@@ -2307,12 +2324,58 @@ def apply_critical_triage_guard(
                 "status": "deferred_normal_entries_marked_unassessed",
                 "tool": "critical_first_checklist_guard",
                 "phase": phase,
-                "critical_finding_ids": [
-                    finding.id for finding in critical_findings
-                ],
+                "critical_finding_ids": [finding.id for finding in critical_findings],
                 "protected_axes": sorted(protected_axes),
                 "deferred_checklist_axes": deferred_axes,
                 "changed_axes": changed_axes,
+                "clinical_status_inferred": False,
+                "diagnosis_forced": False,
+            }
+        )
+    incomplete_reasons = list(
+        dict.fromkeys([*result.incomplete_reasons, _CRITICAL_TRIAGE_REASON])
+    )
+    review_reasons = list(
+        dict.fromkeys([*result.review_reasons, _CRITICAL_TRIAGE_REASON])
+    )
+    if phase == "final_output" and deferred_axes:
+        unresolved_axes = [
+            key
+            for key in deferred_axes
+            if _critical_triage_axis_is_unresolved(checklist.get(key))
+        ]
+        resumed_axes = sorted(set(deferred_axes) - set(unresolved_axes))
+        retained_critical_ids = sorted(
+            finding.id
+            for finding in result.findings
+            if finding.id in {item.id for item in critical_findings}
+            and finding.severity is Severity.CRITICAL
+        )
+        if unresolved_axes:
+            # Clinical severity is never raised solely because a workflow axis
+            # remains unassessed.  The explicit sentinel plus incomplete/review
+            # flags carry that operational safety state without inventing an
+            # abnormal image finding.
+            incomplete_reasons = list(
+                dict.fromkeys([*incomplete_reasons, _CRITICAL_TRIAGE_UNRESOLVED_REASON])
+            )
+            review_reasons = list(
+                dict.fromkeys([*review_reasons, _CRITICAL_TRIAGE_UNRESOLVED_REASON])
+            )
+        analysis_trace.append(
+            {
+                "stage": "critical_triage_resume_guard",
+                "status": (
+                    "deferred_axes_incomplete_fail_safe"
+                    if unresolved_axes
+                    else "deferred_axes_resumed_on_original_study"
+                ),
+                "tool": "critical_first_deferred_axis_guard",
+                "critical_candidate_ids": [finding.id for finding in critical_findings],
+                "retained_critical_ids": retained_critical_ids,
+                "resumed_axes": resumed_axes,
+                "unresolved_axes": unresolved_axes,
+                "clinical_severity_changed": False,
                 "clinical_status_inferred": False,
                 "diagnosis_forced": False,
             }
@@ -2321,13 +2384,9 @@ def apply_critical_triage_guard(
         result,
         checklist=checklist,
         incomplete=True,
-        incomplete_reasons=list(
-            dict.fromkeys([*result.incomplete_reasons, _CRITICAL_TRIAGE_REASON])
-        ),
+        incomplete_reasons=incomplete_reasons,
         review_required=True,
-        review_reasons=list(
-            dict.fromkeys([*result.review_reasons, _CRITICAL_TRIAGE_REASON])
-        ),
+        review_reasons=review_reasons,
         analysis_trace=analysis_trace,
     )
 
@@ -2540,9 +2599,7 @@ class MultiPassInterpreter:
                 "severity": coarse.severity.value,
                 "finding_count": len(coarse.findings),
                 "completed_ms": initial_response_ms,
-                "absolute_deadline_ms": int(
-                    self._initial_response_sla_sec * 1000
-                ),
+                "absolute_deadline_ms": int(self._initial_response_sla_sec * 1000),
                 **runtime_trace,
             }
         ]
@@ -2666,11 +2723,7 @@ class MultiPassInterpreter:
                     }
                 )
         remaining = specific_budget - len(targets)
-        if (
-            not critical_triage_active
-            and remaining > 0
-            and local_candidate_regions
-        ):
+        if not critical_triage_active and remaining > 0 and local_candidate_regions:
             local_targets = select_local_candidate_targets(
                 coarse,
                 local_candidate_regions,
@@ -2721,9 +2774,7 @@ class MultiPassInterpreter:
                 if target.hypothesis is not None
             }
             untargeted_hypotheses = [
-                finding
-                for finding in model_findings
-                if finding.id not in targeted_ids
+                finding for finding in model_findings if finding.id not in targeted_ids
             ]
             ranked_systematic = sorted(
                 systematic_candidates,
@@ -2850,9 +2901,7 @@ class MultiPassInterpreter:
                     )
 
             selected_id_set = set(selected_critical_ids)
-            candidate_id_set = {
-                finding.id for finding in critical_triage_candidates
-            }
+            candidate_id_set = {finding.id for finding in critical_triage_candidates}
             overflow_ids = [
                 finding.id
                 for finding in critical_triage_candidates
@@ -2879,13 +2928,11 @@ class MultiPassInterpreter:
                 )
             skipped_categories = {
                 severity.value: sum(
-                    finding.severity is severity
-                    for finding in skipped_lower_priority
+                    finding.severity is severity for finding in skipped_lower_priority
                 )
                 for severity in (Severity.WARNING, Severity.INFO)
                 if any(
-                    finding.severity is severity
-                    for finding in skipped_lower_priority
+                    finding.severity is severity for finding in skipped_lower_priority
                 )
             }
             trace.append(
@@ -3274,9 +3321,7 @@ class MultiPassInterpreter:
                 "turn_started_ms": turn_started_ms,
                 "turn_budget_ms": turn_budget_ms,
                 "absolute_deadline_ms": absolute_deadline_ms,
-                "scheduler_grace_used_ms": max(
-                    0, completed_ms - absolute_deadline_ms
-                ),
+                "scheduler_grace_used_ms": max(0, completed_ms - absolute_deadline_ms),
                 **self._read_runtime_trace(),
             }
         )
@@ -3331,9 +3376,7 @@ class MultiPassInterpreter:
                 "The first planned crop did not complete a detail read; review "
                 "the marked region manually."
             )
-        initial_met = initial_response_ms <= int(
-            self._initial_response_sla_sec * 1000
-        )
+        initial_met = initial_response_ms <= int(self._initial_response_sla_sec * 1000)
         first_refinement_met: bool | None = None
         if first_crop_applicable:
             first_refinement_met = (
@@ -3519,9 +3562,7 @@ class MultiPassInterpreter:
                                 "tool": "crop_coverage_guard",
                                 "target_id": target.key,
                                 "crop_region": _region_payload(crop_region),
-                                "source_bbox_count": len(
-                                    target.hypothesis.bboxes
-                                ),
+                                "source_bbox_count": len(target.hypothesis.bboxes),
                                 "uncovered_bbox_count": len(uncovered),
                                 "uncovered_bboxes": [
                                     _region_payload(region) for region in uncovered
