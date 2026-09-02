@@ -70,9 +70,9 @@ call it out and propose mitigation before proceeding.
   minimal. `scripts/fetch-node.ps1` provides the opt-in portable `node\node.exe`
   that `gateway_manager._find_node()` prefers for zero-install. `pywin32` stays a
   Windows-only conditional dependency.
-- **Measured budget:** launcher `.exe` < 50 MiB (currently ~6.97 MiB); app +
-  Python/Qt layer < 100 MiB (currently ~94.66 MiB); full zero-install bundle
-  including pinned Node/OpenClaw is ~363.94 MiB. Do NOT prune OpenClaw's internal `dist`
+- **Measured budget:** launcher `.exe` < 50 MiB (currently 7.05 MiB); app +
+  Python/Qt layer < 100 MiB (currently 94.74 MiB); full zero-install bundle
+  including pinned Node/OpenClaw is 368.01 MiB. Do NOT prune OpenClaw's internal `dist`
   chunks to hit a smaller number — that couples to OpenClaw internals and breaks
   Core 3. Trim only *around* the vendored runtime, and re-check sizes after any
   dependency change.
@@ -81,6 +81,9 @@ call it out and propose mitigation before proceeding.
 
 - Do not bypass the ROI crop or send full-screen captures.
 - Do not couple to OpenClaw internals; keep the Gateway protocol boundary.
+- Subscription auth may import OAuth through the pinned migration provider, but
+  must not enable a Codex agent runtime, retain Platform API keys, or transfer
+  image interpretation ownership away from OpenClaw.
 - Do not let `domain/` depend on infrastructure/presentation.
 - Do not add dependencies that blow the packaging size budget without flagging it.
 - Keep harness smoke + validator green; treat them as the contract for Core 2.

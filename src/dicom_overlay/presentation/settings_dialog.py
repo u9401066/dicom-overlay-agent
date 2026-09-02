@@ -26,6 +26,7 @@ from dicom_overlay.domain.entities import TriggerMode
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.openclaw_settings import (
     DEFAULT_VISION_PROFILE_KEY,
+    ProviderAuthMode,
     ProviderProfile,
     default_provider_profiles,
 )
@@ -38,7 +39,7 @@ class SettingsDialog(QDialog):
     """GUI control panel for the OpenClaw settings this app owns."""
 
     trigger_mode_saved = pyqtSignal(object)
-    analysis_settings_saved = pyqtSignal(bool, int)
+    analysis_settings_saved = pyqtSignal(bool, int, bool)
     vision_test_requested = pyqtSignal(object)
     roi_setup_requested = pyqtSignal()
 
@@ -49,6 +50,7 @@ class SettingsDialog(QDialog):
         current_mode: TriggerMode = TriggerMode.HYBRID,
         multi_pass_enabled: bool = True,
         multi_pass_max_zoom_targets: int = 2,
+        fast_mode_enabled: bool = True,
         config_path: Path | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -69,6 +71,7 @@ class SettingsDialog(QDialog):
             self._build_analysis_tab(
                 multi_pass_enabled,
                 multi_pass_max_zoom_targets,
+                fast_mode_enabled,
             ),
             "Analysis",
         )
@@ -153,6 +156,11 @@ class SettingsDialog(QDialog):
         self._profile_notes.setWordWrap(True)
         form.addRow("Notes", self._profile_notes)
 
+        self._inference_route = QLabel("")
+        self._inference_route.setWordWrap(True)
+        self._inference_route.setStyleSheet("color: #176b45; font-weight: 600;")
+        form.addRow("Inference route", self._inference_route)
+
         button_row = QHBoxLayout()
         self._save_provider_btn = QPushButton("Save provider")
         self._save_provider_btn.clicked.connect(self._save_provider_profile)
@@ -169,17 +177,33 @@ class SettingsDialog(QDialog):
 
     def _select_initial_provider(self) -> None:
         active_model = self._store.load_model_ref().lower()
+        active_api = self._store.load_provider_api().lower()
         preferred_index = 0
         for index, profile in enumerate(self._profiles):
             if profile.key == DEFAULT_VISION_PROFILE_KEY:
                 preferred_index = index
-            if active_model and profile.model_ref.lower() == active_model:
+            if (
+                active_model
+                and profile.model_ref.lower() == active_model
+                and active_api
+                and profile.api.lower() == active_api
+            ):
                 preferred_index = index
                 break
+            if (
+                active_model
+                and profile.model_ref.lower() == active_model
+                and not active_api
+                and profile.key == DEFAULT_VISION_PROFILE_KEY
+            ):
+                preferred_index = index
         self._provider_combo.setCurrentIndex(preferred_index)
 
     def _build_analysis_tab(
-        self, multi_pass_enabled: bool, max_zoom_targets: int
+        self,
+        multi_pass_enabled: bool,
+        max_zoom_targets: int,
+        fast_mode_enabled: bool,
     ) -> QWidget:
         tab = QWidget()
         form = QFormLayout(tab)
@@ -199,6 +223,14 @@ class SettingsDialog(QDialog):
             "Total crop budget shared by finding verification and discovery probes"
         )
         form.addRow("Pass budget", self._max_zoom_targets)
+
+        self._fast_mode_check = QCheckBox("Priority inference")
+        self._fast_mode_check.setChecked(fast_mode_enabled)
+        self._fast_mode_check.setToolTip(
+            "Requests OpenClaw fast mode for each whole-image and crop turn; "
+            "this may consume priority subscription capacity"
+        )
+        form.addRow("Response speed", self._fast_mode_check)
 
         waveform_configured = self._store.ecg_founder_configured()
         self._waveform_assist_status = QLabel(
@@ -229,6 +261,19 @@ class SettingsDialog(QDialog):
         self._base_url_edit.setText(profile.base_url)
         self._api_key_env_edit.setText(profile.api_key_env)
         self._profile_notes.setText(profile.notes)
+        uses_subscription = profile.auth_mode is ProviderAuthMode.CODEX_SUBSCRIPTION
+        self._base_url_edit.setEnabled(not uses_subscription)
+        self._api_key_env_edit.setEnabled(not uses_subscription)
+        self._api_key_edit.setEnabled(not uses_subscription)
+        self._api_key_edit.clear()
+        self._api_key_edit.setPlaceholderText(
+            "Uses local Codex sign-in" if uses_subscription else ""
+        )
+        self._inference_route.setText(
+            "OpenClaw agent | ChatGPT subscription OAuth"
+            if uses_subscription
+            else "OpenClaw agent | Provider API key"
+        )
 
     def _save_trigger_mode(self) -> None:
         mode = self.selected_trigger_mode()
@@ -239,11 +284,13 @@ class SettingsDialog(QDialog):
     def _save_analysis_settings(self) -> None:
         enabled = self._multi_pass_check.isChecked()
         max_targets = self._max_zoom_targets.value()
+        fast_mode_enabled = self._fast_mode_check.isChecked()
         self._store.save_analysis_settings(
             multi_pass_enabled=enabled,
             max_zoom_targets=max_targets,
+            fast_mode_enabled=fast_mode_enabled,
         )
-        self.analysis_settings_saved.emit(enabled, max_targets)
+        self.analysis_settings_saved.emit(enabled, max_targets, fast_mode_enabled)
         QMessageBox.information(self, "Settings", "Analysis settings applied.")
 
     def _save_provider_profile(self) -> None:

@@ -858,6 +858,107 @@ class TestOverlayAgent:
         assert agent.review_snapshot.result is agent.last_result
 
     @pytest.mark.asyncio
+    async def test_analysis_publishes_verified_gateway_receipt_for_desktop_export(
+        self, agent_deps
+    ):
+        from dicom_overlay.application.overlay_agent import OverlayAgent
+
+        inner = MockVisionAnalyzer()
+
+        def receipt() -> dict[str, object]:
+            return {
+                "verified": True,
+                "advertised_min_protocol": 3,
+                "advertised_max_protocol": 4,
+                "negotiated_protocol": 4,
+                "server_version": "2026.7.1-2",
+                "secret_should_not_be_exported": "test-token",
+            }
+
+        inner.gateway_protocol_receipt = receipt  # type: ignore[attr-defined]
+
+        class AnalyzerWrapper(MockVisionAnalyzer):
+            def __init__(self, wrapped: MockVisionAnalyzer) -> None:
+                super().__init__()
+                self._inner = wrapped
+
+            async def connect(self) -> None:
+                await self._inner.connect()
+
+            def is_connected(self) -> bool:
+                return self._inner.is_connected()
+
+            async def analyze(
+                self,
+                image_base64: str,
+                modality: Modality,
+                valid_regions: list[str],
+            ) -> AnalysisResult:
+                return await self._inner.analyze(
+                    image_base64,
+                    modality,
+                    valid_regions,
+                )
+
+        agent_deps["vision_analyzer"] = AnalyzerWrapper(inner)
+        agent = OverlayAgent(
+            config=AppConfig(phi_roi=_configured_roi()),
+            **agent_deps,
+        )
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+
+        await agent.trigger_manual()
+
+        assert agent.state is AgentState.DISPLAYING
+        assert agent.last_result is not None
+        trace = agent.last_result.analysis_trace[-1]
+        assert trace == {
+            "stage": "gateway_connect",
+            "status": "verified",
+            "gateway_protocol_receipt": {
+                "verified": True,
+                "advertised_min_protocol": 3,
+                "advertised_max_protocol": 4,
+                "negotiated_protocol": 4,
+                "server_version": "2026.7.1-2",
+            },
+        }
+        assert agent.review_snapshot is not None
+        assert agent.review_snapshot.result.analysis_trace[-1] == trace
+
+    @pytest.mark.asyncio
+    async def test_analysis_rejects_unverified_gateway_receipt(self, agent_deps):
+        from dicom_overlay.application.overlay_agent import OverlayAgent
+
+        analyzer = MockVisionAnalyzer()
+        analyzer.gateway_protocol_receipt = lambda: {  # type: ignore[attr-defined]
+            "verified": False,
+            "advertised_min_protocol": 3,
+            "advertised_max_protocol": 4,
+            "negotiated_protocol": None,
+            "server_version": "",
+        }
+        agent_deps["vision_analyzer"] = analyzer
+        agent = OverlayAgent(
+            config=AppConfig(phi_roi=_configured_roi()),
+            **agent_deps,
+        )
+        await agent.start()
+        agent_deps["screen_monitor"].window = WindowRect(
+            left=0, top=0, width=1920, height=1080
+        )
+        await agent.tick()
+
+        await agent.trigger_manual()
+
+        assert agent.state is AgentState.RECONNECTING
+        assert agent.last_result is None
+
+    @pytest.mark.asyncio
     async def test_review_snapshot_is_published_only_after_analysis_completes(
         self, agent_deps
     ):
@@ -945,3 +1046,191 @@ class TestOverlayAgent:
         assert agent.display_frame == monitor.display
         assert agent.last_capture_rect == expected
         assert monitor.capture_rects[-1] == expected
+
+@pytest.mark.asyncio
+async def test_auto_mode_analyzes_initial_stable_image():
+    """AUTO mode must analyze a study already visible when monitoring starts.
+
+    Regression: the first monitoring tick used to only set the hash baseline,
+    so a clinician who launched the App on an already-open study never got an
+    analysis without an artificial image change or a manual click.
+    """
+    from dicom_overlay.application.overlay_agent import OverlayAgent
+
+    monitor = MockScreenMonitor()
+    analyzer = MockVisionAnalyzer()
+    config = AppConfig(phi_roi=_configured_roi())
+    config.analysis.trigger_mode = TriggerMode.AUTO
+    agent = OverlayAgent(
+        config=config,
+        screen_monitor=monitor,
+        image_processor=MockImageProcessor(),
+        vision_analyzer=analyzer,
+        region_mapper=MockRegionMapper(),
+    )
+    monitor.window = WindowRect(left=100, top=100, width=1000, height=720)
+
+    await agent.start()
+    await agent.tick()  # WAITING -> MONITORING (viewer found)
+    assert agent.state is AgentState.MONITORING
+
+    await agent.tick()  # first stable baseline: must trigger exactly once
+    assert analyzer.analyze_calls == 1
+    assert agent.state is AgentState.DISPLAYING
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_initial_trigger_is_one_shot():
+    """A completed analysis must not retrigger on later baseline resets."""
+
+    from dicom_overlay.application.overlay_agent import OverlayAgent
+
+    monitor = MockScreenMonitor()
+    analyzer = MockVisionAnalyzer()
+    config = AppConfig(phi_roi=_configured_roi())
+    config.analysis.trigger_mode = TriggerMode.AUTO
+    agent = OverlayAgent(
+        config=config,
+        screen_monitor=monitor,
+        image_processor=MockImageProcessor(),
+        vision_analyzer=analyzer,
+        region_mapper=MockRegionMapper(),
+    )
+    monitor.window = WindowRect(left=100, top=100, width=1000, height=720)
+
+    await agent.start()
+    await agent.tick()
+    await agent.tick()
+    assert analyzer.analyze_calls == 1
+
+    # Simulate the DISPLAYING baseline reset path: same unchanged image must
+    # not be re-analyzed merely because the hash baseline was cleared.
+    agent._state = AgentState.MONITORING
+    agent._last_hash = ""
+    await agent.tick()
+    assert analyzer.analyze_calls == 1
+
+@pytest.mark.asyncio
+async def test_auto_mode_recovers_initial_trigger_after_reconnect():
+    """A cold Gateway start must not permanently drop the first AUTO study.
+
+    Regression: the initial AUTO capture raced Gateway startup, fell into
+    RECONNECTING, and the still-visible study was never analyzed again.
+    """
+    from dicom_overlay.application.overlay_agent import OverlayAgent
+
+    monitor = MockScreenMonitor()
+    analyzer = MockVisionAnalyzer()
+    config = AppConfig(phi_roi=_configured_roi())
+    config.analysis.trigger_mode = TriggerMode.AUTO
+    config.openclaw.reconnect_interval_sec = 0
+    agent = OverlayAgent(
+        config=config,
+        screen_monitor=monitor,
+        image_processor=MockImageProcessor(),
+        vision_analyzer=analyzer,
+        region_mapper=MockRegionMapper(),
+    )
+    monitor.window = WindowRect(left=100, top=100, width=1000, height=720)
+    analyzer.should_fail = True
+
+    await agent.start()
+    await agent.tick()
+    await agent.tick()
+    assert agent.state is AgentState.RECONNECTING
+    assert analyzer.analyze_calls == 0
+
+    analyzer.should_fail = False
+    await agent.tick()
+    assert agent.state is AgentState.MONITORING
+    await agent.tick()
+    assert analyzer.analyze_calls == 1
+    assert agent.state is AgentState.DISPLAYING
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_initial_retry_is_capped_for_charge_safety():
+    """A flapping backend must not re-send billable analysis forever."""
+
+    from dicom_overlay.application.overlay_agent import OverlayAgent
+
+    monitor = MockScreenMonitor()
+    analyzer = MockVisionAnalyzer()
+    config = AppConfig(phi_roi=_configured_roi())
+    config.analysis.trigger_mode = TriggerMode.AUTO
+    config.openclaw.reconnect_interval_sec = 0
+    agent = OverlayAgent(
+        config=config,
+        screen_monitor=monitor,
+        image_processor=MockImageProcessor(),
+        vision_analyzer=analyzer,
+        region_mapper=MockRegionMapper(),
+    )
+    monitor.window = WindowRect(left=100, top=100, width=1000, height=720)
+    analyzer.should_fail = True
+
+    await agent.start()
+    await agent.tick()  # WAITING -> MONITORING
+    for _ in range(3):
+        analyzer._connected = False
+        analyzer.should_fail = True
+        await agent.tick()  # baseline -> AUTO attempt -> RECONNECTING
+        assert agent.state is AgentState.RECONNECTING
+        analyzer.should_fail = False
+        await agent.tick()  # reconnect ok -> MONITORING (baseline reset)
+        assert agent.state is AgentState.MONITORING
+
+    # The initial AUTO attempts are exhausted; the same visible image must not
+    # trigger another billable analysis without a real image change.
+    await agent.tick()
+    assert agent._initial_auto_attempts == 3
+    assert analyzer.analyze_calls == 0
+
+class _TimeoutOnceAnalyzer(MockVisionAnalyzer):
+    """Fail the first analysis with a timeout, then behave normally."""
+
+    def __init__(self):
+        super().__init__()
+        self.timeout_once = True
+
+    async def analyze(self, image_base64, modality, valid_regions):
+        if self.timeout_once:
+            self.timeout_once = False
+            self.analyze_calls += 1
+            raise TimeoutError("coarse SLA deadline")
+        return await super().analyze(image_base64, modality, valid_regions)
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_retries_initial_study_after_sla_error():
+    """An SLA-killed first analysis must retrigger within the attempt cap."""
+
+    from dicom_overlay.application.overlay_agent import OverlayAgent
+
+    monitor = MockScreenMonitor()
+    analyzer = _TimeoutOnceAnalyzer()
+    config = AppConfig(phi_roi=_configured_roi())
+    config.analysis.trigger_mode = TriggerMode.AUTO
+    config.openclaw.analyze_retries = 0
+    agent = OverlayAgent(
+        config=config,
+        screen_monitor=monitor,
+        image_processor=MockImageProcessor(),
+        vision_analyzer=analyzer,
+        region_mapper=MockRegionMapper(),
+    )
+    monitor.window = WindowRect(left=100, top=100, width=1000, height=720)
+
+    await agent.start()
+    await agent.tick()
+    await agent.tick()
+    assert agent.state is AgentState.ERROR
+    assert analyzer.analyze_calls == 1
+
+    agent._error_time = 0.0  # fast-forward the error cooldown
+    await agent.tick()  # ERROR -> MONITORING with re-armed baseline
+    assert agent.state is AgentState.MONITORING
+    await agent.tick()  # baseline -> bounded AUTO retry -> success
+    assert analyzer.analyze_calls == 2
+    assert agent.state is AgentState.DISPLAYING
+    assert agent._initial_auto_attempts == 2

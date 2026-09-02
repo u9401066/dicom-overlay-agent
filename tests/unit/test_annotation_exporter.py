@@ -6,7 +6,17 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from dicom_overlay.infrastructure.annotation_exporter import export_eval_annotations
+from dicom_overlay.infrastructure.annotation_exporter import (
+    _result_status_label,
+    export_eval_annotations,
+)
+
+
+def test_result_status_label_surfaces_incomplete_review_state() -> None:
+    assert _result_status_label(
+        {"severity": "normal", "incomplete": True, "review_required": True}
+    ) == "normal | INCOMPLETE | REVIEW"
+    assert _result_status_label({"severity": "warning"}) == "warning"
 
 
 def test_export_eval_annotations_draws_boxes_and_description_panel(
@@ -75,6 +85,82 @@ def test_export_eval_annotations_draws_boxes_and_description_panel(
     assert (eval_dir / "review" / "index.html").exists()
 
 
+def test_export_eval_annotations_separates_analysis_crops_from_diagnostic_boxes(
+    tmp_path: Path,
+) -> None:
+    dataset = tmp_path / "dataset"
+    image_dir = dataset / "ekg"
+    image_dir.mkdir(parents=True)
+    source = image_dir / "case.png"
+    Image.new("RGB", (100, 80), "white").save(source)
+    manifest = dataset / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "label": "case_1",
+                        "image": "ekg/case.png",
+                        "modality": "EKG",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    eval_dir = tmp_path / "eval"
+    results = eval_dir / "results"
+    results.mkdir(parents=True)
+    (results / "case_1.json").write_text(
+        json.dumps(
+            {
+                "case": "case_1",
+                "image": "case.png",
+                "modality": "EKG",
+                "summary": "No retained diagnostic box.",
+                "severity": "normal",
+                "findings": [],
+                "analysis_trace": [
+                    {
+                        "stage": "refine",
+                        "status": "completed",
+                        "target_id": "ekg_systematic_limb_leads",
+                        "hypothesis": "Systematic limb-lead review",
+                        "crop_source": "original_roi",
+                        "crop_region": {"x": 0.1, "y": 0.25, "w": 0.4, "h": 0.5},
+                        "crop_created_ms": 12000,
+                        "completed_ms": 24000,
+                    }
+                ],
+                "checklist": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    paths = export_eval_annotations(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        output_dir=eval_dir / "review",
+    )
+
+    annotated = Image.open(paths[0])
+    assert annotated.getpixel((30, 20)) != (255, 255, 255)
+    crop_path = eval_dir / "review" / "crops" / "case_1-analysis-c01.png"
+    assert crop_path.exists()
+    rows = [
+        json.loads(line)
+        for line in (eval_dir / "review" / "bbox-audit.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert [row["audit_type"] for row in rows] == ["analysis_crop", "case"]
+    assert rows[0]["pixels"] == {"x0": 10, "y0": 20, "x1": 50, "y1": 60}
+    assert rows[0]["diagnostic_bbox"] is False
+    assert rows[0]["projection_ok"] is True
+    assert rows[1]["bbox_count"] == 0
+
+
 def test_export_eval_annotations_writes_bbox_audit_and_crops(
     tmp_path: Path,
 ) -> None:
@@ -114,6 +200,13 @@ def test_export_eval_annotations_writes_bbox_audit_and_crops(
                 "modality": "EKG",
                 "summary": "Two boxes, one over waveform and one blank.",
                 "severity": "warning",
+                "layout": {
+                    "format": "12lead_rows",
+                    "leads": [
+                        {"name": "I", "bbox": [0.0, 0.0, 1.0, 0.5]},
+                        {"name": "II", "bbox": [0.0, 0.5, 1.0, 0.5]},
+                    ],
+                },
                 "findings": [
                     {
                         "id": "f1",
@@ -147,6 +240,11 @@ def test_export_eval_annotations_writes_bbox_audit_and_crops(
     assert len(audit_rows) == 2
     assert audit_rows[0]["low_signal"] is False
     assert audit_rows[1]["low_signal"] is True
+    assert audit_rows[0]["declared_regions"] == ["lead_I"]
+    assert audit_rows[0]["geometry_region"] == "lead_I"
+    assert audit_rows[0]["geometry_region_declared"] is True
+    assert audit_rows[1]["geometry_region"] == "lead_II"
+    assert audit_rows[1]["geometry_region_declared"] is False
     assert audit_rows[0]["pixels"] == {"x0": 8, "y0": 14, "x1": 43, "y1": 26}
     assert audit_rows[0]["projection_ok"] is True
     assert audit_rows[0]["audit_type"] == "bbox"

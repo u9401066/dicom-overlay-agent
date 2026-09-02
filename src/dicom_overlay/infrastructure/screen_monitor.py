@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import statistics
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import TypedDict
 
 import mss
 import structlog
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 from dicom_overlay.domain.entities import DisplayFrame, RegionRect, WindowRect
 from dicom_overlay.domain.services import ImageProcessorService, ScreenMonitorService
@@ -21,14 +22,17 @@ logger = structlog.get_logger(__name__)
 win32api = None
 win32con = None
 win32gui = None
+win32process = None
 try:
     import win32api as _win32api
     import win32con as _win32con
     import win32gui as _win32gui
+    import win32process as _win32process
 
     win32api = _win32api
     win32con = _win32con
     win32gui = _win32gui
+    win32process = _win32process
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
@@ -91,7 +95,12 @@ _HASH_FUNCS: dict[str, _HashFunc] = {
 class ScreenMonitor(ScreenMonitorService):
     """Detects DICOM viewer window and captures screen regions (spec §3.1)."""
 
-    def __init__(self, hash_algorithm: str = "ahash") -> None:
+    def __init__(
+        self,
+        hash_algorithm: str = "ahash",
+        *,
+        excluded_process_ids: Iterable[int] = (),
+    ) -> None:
         algo = hash_algorithm.lower()
         if algo not in _HASH_FUNCS:
             logger.warning(
@@ -101,40 +110,91 @@ class ScreenMonitor(ScreenMonitorService):
             )
             algo = "ahash"
         self._hash_func = _HASH_FUNCS[algo]
+        self._excluded_process_ids = frozenset(
+            {os.getpid(), *(int(pid) for pid in excluded_process_ids)}
+        )
+        self._target_hwnd: int | None = None
         logger.info("Hash algorithm: %s", algo)
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
-        if not HAS_WIN32 or win32gui is None:
+        if not HAS_WIN32 or win32gui is None or win32process is None:
             return None
 
         gui = win32gui
+        process = win32process
+        normalized_keywords = tuple(
+            keyword.strip().casefold() for keyword in keywords if keyword.strip()
+        )
+        if not normalized_keywords:
+            self._target_hwnd = None
+            return None
 
-        result: WindowRect | None = None
+        def _candidate(hwnd: int) -> tuple[tuple[int, int, int, int], WindowRect] | None:
+            if not gui.IsWindowVisible(hwnd):
+                return None
+            is_iconic = getattr(gui, "IsIconic", None)
+            if callable(is_iconic) and is_iconic(hwnd):
+                return None
+            try:
+                _thread_id, process_id = process.GetWindowThreadProcessId(hwnd)
+            except Exception:
+                return None
+            if int(process_id) in self._excluded_process_ids:
+                return None
+            title = gui.GetWindowText(hwnd).strip()
+            if not title:
+                return None
+            folded_title = title.casefold()
+            matches = [
+                index
+                for index, keyword in enumerate(normalized_keywords)
+                if keyword in folded_title
+            ]
+            if not matches:
+                return None
+            left, top, right, bottom = gui.GetWindowRect(hwnd)
+            width = right - left
+            height = bottom - top
+            if width <= 100 or height <= 100:
+                return None
+            starts_with_keyword = int(
+                any(folded_title.startswith(keyword) for keyword in normalized_keywords)
+            )
+            # Multiple independent keyword hits (for example, "DICOM Viewer")
+            # and an explicit title prefix outrank incidental mentions such as
+            # a source-code editor showing this repository name.  Area is only
+            # a final tie-breaker and never overrides title specificity.
+            score = (
+                len(matches),
+                starts_with_keyword,
+                -min(matches),
+                width * height,
+            )
+            return score, WindowRect(left=left, top=top, width=width, height=height)
+
+        if self._target_hwnd is not None:
+            existing = _candidate(self._target_hwnd)
+            if existing is not None:
+                return existing[1]
+            self._target_hwnd = None
+
+        candidates: list[tuple[tuple[int, int, int, int], int, WindowRect]] = []
 
         def _enum_callback(hwnd: int, _: object) -> None:
-            nonlocal result
-            if result is not None:
-                return
-            if not gui.IsWindowVisible(hwnd):
-                return
-            title = gui.GetWindowText(hwnd)
-            if not title:
-                return
-            for kw in keywords:
-                if kw.lower() in title.lower():
-                    rect = gui.GetWindowRect(hwnd)
-                    left, top, right, bottom = rect
-                    w = right - left
-                    h = bottom - top
-                    if w > 100 and h > 100:
-                        result = WindowRect(left=left, top=top, width=w, height=h)
-                    return
+            candidate = _candidate(hwnd)
+            if candidate is not None:
+                score, rect = candidate
+                candidates.append((score, hwnd, rect))
 
         try:
             gui.EnumWindows(_enum_callback, None)
         except Exception:
             logger.exception("Error enumerating windows")
 
+        if not candidates:
+            return None
+        _score, hwnd, result = max(candidates, key=lambda item: item[0])
+        self._target_hwnd = hwnd
         return result
 
     def display_for_window(self, window: WindowRect) -> DisplayFrame | None:
@@ -381,6 +441,118 @@ class ImageProcessor(ImageProcessorService):
             "source_short_edge_px": source_short_edge_px,
             "insufficient_source_resolution": insufficient_source_resolution,
             "low_signal": low_signal,
+        }
+
+    def ekg_row_strip_evidence(self, image_base64: str) -> dict[str, object]:
+        """Detect a 12-row ECG strip from full-width black-ink periodicity.
+
+        Red graph-paper lines are excluded by thresholding the maximum RGB
+        channel instead of grayscale. The detector only reports geometry; it
+        does not identify waveforms, leads, or diagnoses.
+        """
+
+        import base64
+
+        raw = base64.b64decode(image_base64, validate=True)
+        with Image.open(io.BytesIO(raw)) as source:
+            image = source.convert("RGB")
+        width, height = image.size
+        method = "local_black_ink_row_periodicity_v2"
+        if width < 240 or height < 240:
+            return {
+                "method": method,
+                "status": "insufficient",
+                "is_12_row_strip": False,
+                "detected_row_count": 0,
+                "reason": "image_too_small",
+            }
+
+        red, green, blue = image.split()
+        max_channel = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+        black_mask = max_channel.point(
+            [255 if value < 110 else 0 for value in range(256)],
+            mode="L",
+        )
+        left = max(1, round(width * 0.05))
+        content = black_mask.crop((left, 0, width, height))
+        content_width = content.width
+        pixels = content.tobytes()
+        row_counts = [
+            sum(pixels[y * content_width : (y + 1) * content_width]) / 255.0
+            for y in range(height)
+        ]
+        smooth_radius = max(1, round(height * 0.003))
+        smoothed = [
+            statistics.fmean(
+                row_counts[
+                    max(0, y - smooth_radius) : min(
+                        height,
+                        y + smooth_radius + 1,
+                    )
+                ]
+            )
+            for y in range(height)
+        ]
+        minimum_distance = max(4, round(height * 0.05))
+        # ``smoothed`` is a vertical mean, so a one-pixel trace is diluted by
+        # the smoothing-window height.  The former fixed 8% threshold therefore
+        # became progressively stricter as screenshots got taller: at 1079 px,
+        # a seven-row window required roughly 56% of a lead baseline to be
+        # perfectly horizontal.  Scale the threshold back to a resolution-
+        # independent horizontal-coherence requirement while retaining the old
+        # 8% ceiling for smaller captures.
+        smoothing_window_rows = 2 * smooth_radius + 1
+        minimum_horizontal_coherence_ratio = 0.32
+        minimum_peak_ink_ratio = min(
+            0.08,
+            minimum_horizontal_coherence_ratio / smoothing_window_rows,
+        )
+        minimum_strength = content_width * minimum_peak_ink_ratio
+        # Window screenshots can contribute a solid one-pixel border.  It is
+        # not ECG evidence and can otherwise displace the first/last lead peak.
+        edge_guard = max(smooth_radius + 1, round(height * 0.01))
+        peaks: list[int] = []
+        candidate_rows = range(edge_guard, max(edge_guard, height - edge_guard))
+        for y in sorted(candidate_rows, key=smoothed.__getitem__, reverse=True):
+            if smoothed[y] < minimum_strength:
+                break
+            if all(abs(y - existing) >= minimum_distance for existing in peaks):
+                peaks.append(y)
+        peaks.sort()
+        gaps = [peaks[index] - peaks[index - 1] for index in range(1, len(peaks))]
+        median_gap = statistics.median(gaps) if gaps else 0.0
+        consistent_gap_count = (
+            sum(
+                0.65 * median_gap <= gap <= 1.55 * median_gap
+                for gap in gaps
+            )
+            if median_gap > 0.0
+            else 0
+        )
+        period_ratio = median_gap / height
+        span_ratio = (peaks[-1] - peaks[0]) / height if len(peaks) >= 2 else 0.0
+        confirmed = (
+            len(peaks) == 12
+            and consistent_gap_count >= 10
+            and 0.065 <= period_ratio <= 0.10
+            and span_ratio >= 0.85
+        )
+        return {
+            "method": method,
+            "status": "ok",
+            "is_12_row_strip": confirmed,
+            "detected_row_count": len(peaks),
+            "peak_y_normalized": [round(y / height, 6) for y in peaks],
+            "median_row_period_normalized": round(period_ratio, 6),
+            "consistent_gap_count": consistent_gap_count,
+            "vertical_span_ratio": round(span_ratio, 6),
+            "black_threshold_max_rgb": 110,
+            "minimum_peak_ink_ratio": round(minimum_peak_ink_ratio, 6),
+            "minimum_horizontal_coherence_ratio": (
+                minimum_horizontal_coherence_ratio
+            ),
+            "smoothing_window_rows": smoothing_window_rows,
+            "edge_guard_ratio": round(edge_guard / height, 6),
         }
 
     def local_signal_candidates(self, image_data: bytes) -> dict[str, object]:

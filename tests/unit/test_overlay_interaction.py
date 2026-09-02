@@ -120,6 +120,25 @@ def _result() -> AnalysisResult:
                         "status": "ok",
                         "prediction_count": 10,
                         "calibration_status": "uncalibrated",
+                        "model_id": "PKUDigitalHealth/ECGFounder",
+                        "predictions": [
+                            {
+                                "label": "SINUS TACHYCARDIA",
+                                "probability": 0.996,
+                            },
+                            {
+                                "label": "NONSPECIFIC T WAVE ABNORMALITY",
+                                "probability": 0.958,
+                            },
+                        ],
+                        "response_evidence": {
+                            "rhythm_measurement": {
+                                "status": "ok",
+                                "heart_rate_bpm_from_median_rr": 102.0,
+                                "regularity_signal": "irregular",
+                                "rr_interval_count": 17,
+                            }
+                        },
                     },
                 ],
             },
@@ -145,19 +164,33 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     inventory = panel._process_layout.itemAt(0).widget()
     assert inventory is not None
     assert "12/12 visible and valid" in inventory.text()
-    process = panel._process_layout.itemAt(1).widget()
+    process_summary = panel._process_layout.itemAt(1).widget()
+    assert process_summary is not None
+    assert "2 model turn(s) | 1 source crop read(s)" in process_summary.text()
+    assert "dicom_bbox_validate" in process_summary.text()
+    assert "ecg_founder_analyze_waveform" in process_summary.text()
+    assert "crop_region_base64" in process_summary.text()
+    process = panel._process_layout.itemAt(2).widget()
     assert process is not None
     assert "dicom_bbox_validate" in process.text()
-    systematic = panel._process_layout.itemAt(2).widget()
+    systematic = panel._process_layout.itemAt(3).widget()
     assert systematic is not None
     assert "ekg_systematic_precordial_leads" in systematic.text()
-    refined = panel._process_layout.itemAt(3).widget()
+    refined = panel._process_layout.itemAt(4).widget()
     assert refined is not None
     assert "Source: original_roi" in refined.text()
     assert "accepted=2" in refined.text()
     assert "ecg_founder_analyze_waveform" in refined.text()
     assert "predictions=10" in refined.text()
     assert "calibration=uncalibrated" in refined.text()
+    assert "PKUDigitalHealth/ECGFounder" in refined.text()
+    assert "supporting evidence only, uncalibrated, no image localization" in (
+        refined.text()
+    )
+    assert "SINUS TACHYCARDIA 0.996" in refined.text()
+    assert "rate=102.0 bpm" in refined.text()
+    assert "regularity=irregular" in refined.text()
+    assert "rhythm diagnosis not inferred" in refined.text()
     panel.close()
 
 
@@ -233,7 +266,7 @@ def test_report_panel_marks_retained_checklist_after_review_writeback(
     notice = panel._checklist_layout.itemAt(0).widget()
     assert notice is not None
     assert "pending reconciliation" in notice.text()
-    process = panel._process_layout.itemAt(4).widget()
+    process = panel._process_layout.itemAt(5).widget()
     assert process is not None
     assert "Report reconciliation" in process.text()
     assert "warning -> warning (structured=info)" in process.text()
@@ -406,7 +439,7 @@ def test_process_tab_exposes_interactive_writeback_receipt(
 
     panel.update_result(result)
 
-    receipt = panel._process_layout.itemAt(4).widget()
+    receipt = panel._process_layout.itemAt(5).widget()
     assert receipt is not None
     assert "Operation: revise" in receipt.text()
     assert "Box source: app_selected_original_roi" in receipt.text()

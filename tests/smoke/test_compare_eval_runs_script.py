@@ -140,6 +140,8 @@ def _write_protocol_identity(*paths: Path, manifest_sha: str = "b" * 64) -> None
                             "dirty": False,
                             "worktree_status_sha256": "d" * 64,
                             "tracked_diff_sha256": "e" * 64,
+                            "worktree_content_sha256": "9" * 64,
+                            "worktree_file_count": 12,
                         },
                         "model": {
                             "id": "openai/gpt-5.4-mini",
@@ -150,15 +152,9 @@ def _write_protocol_identity(*paths: Path, manifest_sha: str = "b" * 64) -> None
                                 "cli_sha256": "1" * 64,
                             },
                         },
-                        "prompts": [
-                            {"path": "prompt.py", "sha256": "2" * 64}
-                        ],
-                        "skills": [
-                            {"path": "SKILL.md", "sha256": "3" * 64}
-                        ],
-                        "clinical_rules": [
-                            {"path": "rules.yaml", "sha256": "4" * 64}
-                        ],
+                        "prompts": [{"path": "prompt.py", "sha256": "2" * 64}],
+                        "skills": [{"path": "SKILL.md", "sha256": "3" * 64}],
+                        "clinical_rules": [{"path": "rules.yaml", "sha256": "4" * 64}],
                         "manifest": {
                             "sha256": manifest_sha,
                             "selected_case_count": 1,
@@ -229,6 +225,11 @@ def test_build_comparison_pairs_cases_and_records_improvement(tmp_path: Path) ->
     assert report["candidate_cost"]["mean_openclaw_analyze_calls"] == 3.0
     assert report["cases"][0]["status"] == "improved"
     assert report["cases"][0]["safety_status"] == "unchanged"
+    partial_inference = report["paired_partial_credit_inference"]
+    assert partial_inference["metric"] == "weak_label_partial_credit"
+    assert partial_inference["bootstrap_95_ci"]["available"] is False
+    assert partial_inference["random_sign_permutation_test"]["available"] is False
+    assert partial_inference["significant_improvement"]["supported"] is False
     assert report["clinical_safety"]["abnormal_detection"] == {
         "pairs": 1,
         "baseline_hits": 1,
@@ -243,6 +244,17 @@ def test_build_comparison_pairs_cases_and_records_improvement(tmp_path: Path) ->
             "two_sided_p": 1.0,
         },
     }
+
+    output_dir = tmp_path / "comparison"
+    module.write_report(report, output_dir)
+    saved = json.loads((output_dir / "comparison.json").read_text(encoding="utf-8"))
+    markdown = (output_dir / "comparison.md").read_text(encoding="utf-8")
+    assert "paired_partial_credit_inference" in saved
+    assert "paired_binary_inference" in saved
+    assert "## Paired Statistical Inference" in markdown
+    assert "Weak-label partial-credit inference: not available" in markdown
+    assert "Normal detection McNemar exact" in markdown
+    assert "not diagnostic accuracy" in markdown
 
 
 def test_resolve_eval_dir_accepts_experiment_root(tmp_path: Path) -> None:
@@ -508,6 +520,7 @@ def test_build_comparison_allows_declared_arm_flag_differences(
     fingerprint["protocol"]["flags"].update(
         {
             "analysis_prompt_profile": "clinical",
+            "local_signal_candidates": "image_processor",
             "multi_pass": True,
             "multi_pass_max_targets": 3,
             "rhythm_strip_pass": True,
@@ -519,6 +532,10 @@ def test_build_comparison_allows_declared_arm_flag_differences(
 
     assert report["protocol_compatible"] is True
     assert report["candidate_shared_invariants"]["arm"]["multi_pass"] is True
+    assert (
+        report["candidate_shared_invariants"]["arm"]["local_signal_candidates"]
+        == "image_processor"
+    )
 
 
 def test_paired_sign_test_quantifies_improvement_signal() -> None:
@@ -534,6 +551,191 @@ def test_paired_sign_test_quantifies_improvement_signal() -> None:
         "informative_pairs": 5,
         "two_sided_p": 0.0625,
     }
+
+
+def test_paired_partial_credit_inference_supports_significant_improvement() -> None:
+    module = _load_compare_module()
+    rows = [
+        {
+            "baseline_partial_credit": 0.4,
+            "candidate_partial_credit": 0.6,
+        }
+        for _ in range(6)
+    ]
+
+    result = module._paired_partial_credit_inference(
+        rows,
+        bootstrap_iterations=500,
+        permutation_iterations=500,
+        random_seed=7,
+    )
+
+    assert result["mean_delta"] == 0.2
+    assert result["bootstrap_95_ci"] == {
+        "available": True,
+        "method": "paired_case_percentile_bootstrap",
+        "confidence_level": 0.95,
+        "paired_cases": 6,
+        "iterations": 500,
+        "seed": 7,
+        "lower": 0.2,
+        "upper": 0.2,
+        "reason": None,
+    }
+    assert result["random_sign_permutation_test"]["method"] == (
+        "exact_random_sign_enumeration"
+    )
+    assert result["random_sign_permutation_test"]["iterations"] == 64
+    assert result["random_sign_permutation_test"]["seed"] is None
+    assert result["random_sign_permutation_test"]["two_sided_p"] == 0.03125
+    assert result["significant_improvement"]["supported"] is True
+    markdown_line = module._format_partial_credit_inference(result)
+    assert "paired bootstrap 95% CI" in markdown_line
+    assert "iterations=500, seed=7" in markdown_line
+    assert "method=exact_random_sign_enumeration" in markdown_line
+
+
+def test_paired_partial_credit_inference_requires_two_cases() -> None:
+    module = _load_compare_module()
+    result = module._paired_partial_credit_inference(
+        [
+            {
+                "baseline_partial_credit": 0.2,
+                "candidate_partial_credit": 0.8,
+            }
+        ],
+        bootstrap_iterations=50,
+        permutation_iterations=50,
+        random_seed=11,
+    )
+
+    assert result["mean_delta"] == 0.6
+    assert result["bootstrap_95_ci"]["lower"] is None
+    assert result["bootstrap_95_ci"]["upper"] is None
+    assert result["bootstrap_95_ci"]["reason"] == ("requires_at_least_two_paired_cases")
+    permutation = result["random_sign_permutation_test"]
+    assert permutation["method"] == "not_computed"
+    assert permutation["iterations"] == 0
+    assert permutation["seed"] == 11
+    assert permutation["two_sided_p"] is None
+    assert result["significant_improvement"]["supported"] is False
+
+    empty = module._paired_partial_credit_inference(
+        [],
+        bootstrap_iterations=50,
+        permutation_iterations=50,
+        random_seed=11,
+    )
+    assert empty["paired_cases"] == 0
+    assert empty["mean_delta"] is None
+    assert empty["bootstrap_95_ci"]["available"] is False
+    assert empty["random_sign_permutation_test"]["available"] is False
+
+
+def test_random_sign_monte_carlo_is_deterministic() -> None:
+    module = _load_compare_module()
+    deltas = [0.1 if index % 3 else -0.05 for index in range(17)]
+
+    first = module._paired_random_sign_test(
+        deltas,
+        monte_carlo_iterations=1_000,
+        seed=23,
+    )
+    second = module._paired_random_sign_test(
+        deltas,
+        monte_carlo_iterations=1_000,
+        seed=23,
+    )
+
+    assert first == second
+    assert first["method"] == "monte_carlo_random_sign"
+    assert first["iterations"] == 1_000
+    assert first["seed"] == 23
+    assert 0.0 < first["two_sided_p"] <= 1.0
+
+
+def test_mcnemar_exact_reports_directional_discordant_pairs() -> None:
+    module = _load_compare_module()
+
+    result = {
+        "population": "normal cases",
+        "correctness_definition": "normal classification",
+        **module._mcnemar_exact_test(
+            [
+                (True, False),
+                (False, True),
+                (False, True),
+                (False, True),
+            ]
+        ),
+    }
+
+    assert result["a_both_correct"] == 0
+    assert result["b_baseline_correct_candidate_incorrect"] == 1
+    assert result["c_baseline_incorrect_candidate_correct"] == 3
+    assert result["d_both_incorrect"] == 0
+    assert result["discordant_pairs"] == 4
+    assert result["two_sided_p"] == 0.625
+    markdown_line = module._format_mcnemar("Normal detection", result)
+    assert "b=1 (baseline correct/candidate incorrect)" in markdown_line
+    assert "c=3 (baseline incorrect/candidate correct)" in markdown_line
+    assert "population=normal cases" in markdown_line
+    assert "correctness=normal classification" in markdown_line
+
+
+def test_mcnemar_exact_handles_no_discordance_and_small_n() -> None:
+    module = _load_compare_module()
+
+    no_discordance = module._mcnemar_exact_test([(True, True), (False, False)])
+    assert no_discordance["available"] is True
+    assert no_discordance["discordant_pairs"] == 0
+    assert no_discordance["two_sided_p"] == 1.0
+    assert no_discordance["reason"] == "no_discordant_pairs"
+
+    too_small = module._mcnemar_exact_test([(True, False)])
+    assert too_small["available"] is False
+    assert too_small["b_baseline_correct_candidate_incorrect"] == 1
+    assert too_small["c_baseline_incorrect_candidate_correct"] == 0
+    assert too_small["two_sided_p"] is None
+    assert too_small["reason"] == "requires_at_least_two_paired_cases"
+
+
+def test_headline_compares_normal_review_burden_with_legacy_case_fallback() -> None:
+    module = _load_compare_module()
+    baseline = _scorecard(1.0, strict=True, latency_ms=1)
+    candidate = _scorecard(1.0, strict=True, latency_ms=1)
+    for payload in (baseline, candidate):
+        case = payload["cases"][0]
+        case["expected_severity"] = "normal"
+        case["actual_severity"] = "normal"
+        case["finding_count"] = 0
+    candidate_case = candidate["cases"][0]
+    candidate_case["actual_severity"] = "info"
+    candidate_case["finding_count"] = 1
+
+    headline = module._headline(baseline, candidate, [])
+
+    assert headline["baseline_normal_control_clean_read_rate"] == 1.0
+    assert headline["candidate_normal_control_clean_read_rate"] == 0.0
+    assert headline["normal_control_clean_read_rate_delta"] == -1.0
+    assert headline["baseline_normal_control_review_burden_rate"] == 0.0
+    assert headline["candidate_normal_control_review_burden_rate"] == 1.0
+    assert headline["normal_control_review_burden_rate_delta"] == 1.0
+
+
+def test_headline_prefers_explicit_normal_review_metrics() -> None:
+    module = _load_compare_module()
+    baseline = _scorecard(1.0, strict=True, latency_ms=1)
+    candidate = _scorecard(1.0, strict=True, latency_ms=1)
+    baseline["normal_control_clean_read_rate"] = 0.75
+    baseline["normal_control_review_burden_rate"] = 0.25
+    candidate["normal_control_clean_read_rate"] = 0.5
+    candidate["normal_control_review_burden_rate"] = 0.5
+
+    headline = module._headline(baseline, candidate, [])
+
+    assert headline["normal_control_clean_read_rate_delta"] == -0.25
+    assert headline["normal_control_review_burden_rate_delta"] == 0.25
 
 
 def test_clinical_safety_reports_normal_false_positives_and_urgent_regression(
@@ -584,12 +786,26 @@ def test_clinical_safety_reports_normal_false_positives_and_urgent_regression(
     report = module.build_comparison(baseline, candidate)
     safety = report["clinical_safety"]
 
-    assert safety["normal_without_false_positive"]["baseline_false_positive_rate"] == 0.0
-    assert safety["normal_without_false_positive"]["candidate_false_positive_rate"] == 1.0
+    assert (
+        safety["normal_without_false_positive"]["baseline_false_positive_rate"] == 0.0
+    )
+    assert (
+        safety["normal_without_false_positive"]["candidate_false_positive_rate"] == 1.0
+    )
     assert safety["critical_exact_recall"]["rate_delta"] == -1.0
     assert safety["urgent_concern_recall"]["baseline_hits"] == 1
     assert safety["urgent_concern_recall"]["candidate_hits"] == 0
     assert safety["urgent_concern_recall"]["paired_exact_test"]["two_sided_p"] == 1.0
+    normal_test = report["paired_binary_inference"]["normal_detection"]
+    assert normal_test["paired_cases"] == 1
+    assert normal_test["b_baseline_correct_candidate_incorrect"] == 1
+    assert normal_test["c_baseline_incorrect_candidate_correct"] == 0
+    assert normal_test["two_sided_p"] is None
+    critical_test = report["paired_binary_inference"]["critical_safety"]
+    assert critical_test["paired_cases"] == 1
+    assert critical_test["b_baseline_correct_candidate_incorrect"] == 1
+    assert critical_test["c_baseline_incorrect_candidate_correct"] == 0
+    assert critical_test["two_sided_p"] is None
     assert report["safety_case_status_counts"] == {
         "improved": 0,
         "regressed": 2,

@@ -1,6 +1,6 @@
 {
   "name": "@dicom-overlay-agent/openclaw-harness",
-  "version": "1.2.0",
+  "version": "1.5.8",
   "private": true,
   "type": "module",
   "main": "./index.js",

@@ -17,6 +17,7 @@ import ipaddress
 import json
 import os
 import re
+import statistics
 import threading
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -66,6 +67,12 @@ MAX_REQUEST_BYTES = 16 * 1024
 MAX_PREDICTIONS = 20
 _ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
+_RHYTHM_MEASUREMENT_METHOD = "lead_II_qrs_energy_v1"
+_RHYTHM_MIN_RR_INTERVALS = 5
+_RHYTHM_IRREGULAR_CV_MIN = 0.10
+_RHYTHM_IRREGULAR_DIFF_FRACTION_MIN = 0.25
+_RHYTHM_REGULAR_CV_MAX = 0.08
+_RHYTHM_REGULAR_DIFF_FRACTION_MAX = 0.20
 
 
 class RegistryError(ValueError):
@@ -78,6 +85,130 @@ class ArtifactIneligible(ValueError):
 
 class RuntimeUnavailable(RuntimeError):
     """The optional model runtime or checkpoint is not ready."""
+
+
+def summarize_rr_intervals_ms(rr_intervals_ms: list[float]) -> dict[str, Any]:
+    """Summarize beat timing without converting it into an AF diagnosis."""
+
+    intervals = [float(value) for value in rr_intervals_ms]
+    if (
+        len(intervals) < _RHYTHM_MIN_RR_INTERVALS
+        or any(not 250.0 <= value <= 3_000.0 for value in intervals)
+    ):
+        return {
+            "method": _RHYTHM_MEASUREMENT_METHOD,
+            "lead": "II",
+            "status": "insufficient",
+            "diagnostic_scope": "rhythm_regularity_only",
+            "reason": "insufficient_valid_rr_intervals",
+            "rr_interval_count": len(intervals),
+            "limitations": [
+                "R-peak timing alone does not identify P waves or diagnose atrial fibrillation."
+            ],
+        }
+
+    mean_rr = statistics.fmean(intervals)
+    median_rr = statistics.median(intervals)
+    rr_cv = statistics.stdev(intervals) / mean_rr
+    successive_differences = [
+        abs(intervals[index] - intervals[index - 1])
+        for index in range(1, len(intervals))
+    ]
+    rr_rmssd = (
+        statistics.fmean(value * value for value in successive_differences) ** 0.5
+    )
+    over_80_fraction = statistics.fmean(
+        1.0 if value >= 80.0 else 0.0 for value in successive_differences
+    )
+    if (
+        rr_cv >= _RHYTHM_IRREGULAR_CV_MIN
+        and over_80_fraction >= _RHYTHM_IRREGULAR_DIFF_FRACTION_MIN
+    ):
+        regularity_signal = "irregular"
+    elif (
+        rr_cv < _RHYTHM_REGULAR_CV_MAX
+        and over_80_fraction < _RHYTHM_REGULAR_DIFF_FRACTION_MAX
+    ):
+        regularity_signal = "regular"
+    else:
+        regularity_signal = "indeterminate"
+
+    rounded_intervals = [round(value) for value in intervals]
+    return {
+        "method": _RHYTHM_MEASUREMENT_METHOD,
+        "lead": "II",
+        "status": "ok",
+        "diagnostic_scope": "rhythm_regularity_only",
+        "beat_count": len(intervals) + 1,
+        "rr_interval_count": len(intervals),
+        "rr_intervals_ms": rounded_intervals,
+        "median_rr_ms": round(median_rr, 1),
+        "heart_rate_bpm_from_median_rr": round(60_000.0 / median_rr, 1),
+        "rr_cv": round(rr_cv, 4),
+        "rr_rmssd_ms": round(rr_rmssd, 1),
+        "rr_range_ms": round(max(intervals) - min(intervals), 1),
+        "successive_rr_diff_over_80ms_fraction": round(over_80_fraction, 4),
+        "regularity_signal": regularity_signal,
+        "rule": {
+            "irregular_rr_cv_min": _RHYTHM_IRREGULAR_CV_MIN,
+            "irregular_successive_diff_fraction_min": (
+                _RHYTHM_IRREGULAR_DIFF_FRACTION_MIN
+            ),
+        },
+        "limitations": [
+            "R-peak timing only; this measurement does not identify P waves or diagnose atrial fibrillation.",
+            "Ectopy, missed peaks, pacing, and artifact can also produce irregular R-R intervals.",
+        ],
+    }
+
+
+def measure_lead_ii_rhythm_regularity(signal: Any) -> dict[str, Any]:
+    """Detect QRS-energy peaks on preprocessed lead II and report RR timing."""
+
+    try:
+        import numpy as np
+        from scipy.signal import butter, filtfilt, find_peaks
+
+        lead_ii = np.asarray(signal[1], dtype=np.float64)
+        band_b, band_a = butter(
+            N=3,
+            Wn=[5, 20],
+            btype="bandpass",
+            fs=SAMPLE_RATE_HZ,
+        )
+        qrs_band = filtfilt(band_b, band_a, lead_ii)
+        derivative = np.diff(qrs_band, prepend=qrs_band[0])
+        integration_window = max(1, round(0.12 * SAMPLE_RATE_HZ))
+        energy = np.convolve(
+            derivative * derivative,
+            np.ones(integration_window) / integration_window,
+            mode="same",
+        )
+        energy_std = float(np.std(energy))
+        if not np.isfinite(energy).all() or energy_std <= 1e-12:
+            raise ValueError("unusable_qrs_energy")
+        peaks, _properties = find_peaks(
+            energy,
+            distance=round(0.32 * SAMPLE_RATE_HZ),
+            height=float(np.percentile(energy, 75)),
+            prominence=energy_std * 0.25,
+        )
+        rr_intervals_ms = [
+            float(value) * 1000.0 / SAMPLE_RATE_HZ for value in np.diff(peaks)
+        ]
+        return summarize_rr_intervals_ms(rr_intervals_ms)
+    except Exception:
+        return {
+            "method": _RHYTHM_MEASUREMENT_METHOD,
+            "lead": "II",
+            "status": "unavailable",
+            "diagnostic_scope": "rhythm_regularity_only",
+            "reason": "rr_measurement_failed",
+            "rr_interval_count": 0,
+            "limitations": [
+                "R-peak timing could not be measured; no rhythm inference was made."
+            ],
+        }
 
 
 @dataclass(frozen=True)
@@ -431,6 +562,7 @@ class ECGFounderRuntime:
     ) -> dict[str, Any]:
         self._ensure_model()
         signal = self._load_and_preprocess(record)
+        rhythm_measurement = measure_lead_ii_rhythm_regularity(signal)
         assert self._torch is not None
         assert self._model is not None
         with self._inference_lock, self._torch.inference_mode():
@@ -500,6 +632,7 @@ class ECGFounderRuntime:
                 "revision": self._calibration.revision,
             },
             "predictions": predictions,
+            "rhythm_measurement": rhythm_measurement,
             "limitations": limitations,
         }
 

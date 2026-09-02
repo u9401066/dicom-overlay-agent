@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import TYPE_CHECKING
+
+import pytest
+from PIL import Image
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,15 +20,23 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
+from dicom_overlay.infrastructure.ecg_variant_corpus import (
+    EKG_CHECKLIST_AXES,
+    VARIANT_NAMES,
+    build_variant_corpus,
+    parse_partial_ecg_input_contract,
+)
 from dicom_overlay.infrastructure.eval_harness import (
     CaseScore,
     EvalCase,
     EvalReport,
+    _atomic_write_json,
     _write_raw_result,
     is_empty_read,
     run_evaluation,
     score_case,
 )
+from dicom_overlay.infrastructure.openclaw_client import _bbox_coordinates_digest
 
 
 def _case(
@@ -93,6 +105,8 @@ def _complete_result(
             "lines_tubes",
         )
     }
+    result.image_quality = "Synthetic evaluation image is fully readable."
+    result.next_steps = ["Review the original synthetic evaluation image."]
     return result
 
 
@@ -133,6 +147,136 @@ def test_keyword_recall_does_not_count_negated_positive(tmp_path: Path) -> None:
     assert score.strict_pass is False
 
 
+def test_keyword_recall_rejects_unsupported_classifier_mention(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="unsupported_af",
+        keywords=("atrial fibrillation",),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary=(
+            "Regular sinus rhythm; automated atrial fibrillation scoring is "
+            "not visually supported on this screenshot."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["atrial fibrillation"]
+    assert score.concept_hits == []
+
+
+def test_normal_case_does_not_penalize_visually_unsupported_candidate_list(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="unsupported_candidates",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.NORMAL,
+        summary=(
+            "Normal sinus rhythm. Low-probability left atrial enlargement, "
+            "incomplete RBBB, and RBBB candidates are visually unsupported."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "right bundle branch block" not in score.concept_false_positives
+    assert score.keyword_recall == 1.0
+
+
+def test_normal_case_does_not_count_late_item_in_shared_no_clause(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="shared_no_clause",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.NORMAL,
+        summary=(
+            "Normal sinus rhythm. QRS is narrow, with no convincing conduction "
+            "block, pathologic Q waves, or acute ST-segment elevation/depression."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "st elevation" not in score.concept_false_positives
+    assert score.false_positive_penalty == 0.0
+
+
+def test_normal_case_does_not_count_excluded_definitive_read_as_diagnosis(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="excluded_ischemia_read",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.NORMAL,
+        summary=(
+            "Normal sinus rhythm. Screenshot-only capture limits exact interval "
+            "quantification and excludes a fully definitive ischemia read."
+        ),
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert "ischemia" not in score.concept_false_positives
+    assert score.false_positive_penalty == 0.0
+
+
+def test_normal_case_does_not_score_info_review_marker_as_diagnosis(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.NORMAL,
+        name="info_review_marker",
+        keywords=("normal", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.INFO,
+        summary="Normal sinus rhythm; no actionable abnormality is confirmed.",
+        checklist={},
+    )
+    result.findings = [
+        Finding(
+            id="candidate",
+            regions=["lead_V1"],
+            label="LVH voltage candidate",
+            detail="High voltage is not confirmed on a calibrated source.",
+            severity=Severity.INFO,
+            confidence="low",
+            question="Can a reviewer confirm calibrated voltage criteria?",
+            bboxes=[RegionRect(0.1, 0.1, 0.1, 0.1)],
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_false_positives == []
+    assert score.severity_abnormal_match is True
+
+
 def test_score_case_marks_incomplete_schema_as_not_ok(tmp_path: Path) -> None:
     case = _case(tmp_path, Severity.WARNING, ("consolidation",))
     result = _result(
@@ -162,6 +306,276 @@ def test_score_case_accepts_clinically_incomplete_but_structurally_valid_result(
     assert score.schema_issue == ""
 
 
+def _partial_ecg_case(tmp_path: Path, variant_name: str = "crop_top_20") -> EvalCase:
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    corpus = tmp_path / "partial-corpus"
+    manifest = build_variant_corpus([source], corpus)
+    entry = next(
+        case
+        for case in manifest["cases"]
+        if case["partial_input"]["variant"] == variant_name
+    )
+    image_path = corpus / entry["image"]
+    contract = parse_partial_ecg_input_contract(entry, image_path=image_path)
+    assert contract is not None
+    return EvalCase(
+        image_path=image_path,
+        modality=Modality.EKG,
+        expected_severity=Severity.NORMAL,
+        label=entry["label"],
+        label_status="blinded_inference",
+        valid_regions=(),
+        partial_input=contract,
+    )
+
+
+_LIMITATION_TEXT_BY_CLASS = {
+    "top_edge_cropped": "The top edge of the ECG image is cropped.",
+    "bottom_edge_cropped": "The bottom edge of the ECG image is cropped.",
+    "left_edge_cropped": "The left edge of the ECG image is cropped.",
+    "right_edge_cropped": "The right edge of the ECG image is cropped.",
+    "central_horizontal_band_only": "Only a central horizontal band is present.",
+    "left_labels_masked": "Labels at the left margin are masked and unreadable.",
+    "narrow_horizontal_band_only": "Only an isolated narrow horizontal band remains.",
+    "low_resolution_downsample": "The ECG is downsampled and low-resolution.",
+}
+
+
+def _safe_partial_ecg_result(case: EvalCase) -> AnalysisResult:
+    assert case.partial_input is not None
+    limitation = _LIMITATION_TEXT_BY_CLASS[case.partial_input.limitation_class]
+    return AnalysisResult(
+        modality=Modality.EKG,
+        summary=f"Incomplete ECG: {limitation}",
+        severity=Severity.NORMAL,
+        findings=[],
+        checklist={
+            axis: ChecklistItem(value="not_assessable", status=Severity.INFO)
+            for axis in EKG_CHECKLIST_AXES
+        },
+        image_quality=limitation,
+        next_steps=["Review the uncropped source ECG."],
+        model_used="test-model",
+        incomplete=True,
+        incomplete_reasons=[limitation],
+        review_required=True,
+        review_reasons=["Incomplete ECG requires human review."],
+        layout={"format": "partial", "leads": []},
+    )
+
+
+def test_partial_ecg_contract_accepts_incomplete_review_and_unassessable_axes(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+
+    score = score_case(case, _safe_partial_ecg_result(case), latency_ms=12)
+
+    assert score.schema_ok is True
+    assert score.partial_input_expected is True
+    assert score.partial_input_contract_ok is True
+    assert score.partial_input_failures == []
+    assert score.bbox_receipt_matches_variant is None
+    assert score.partial_limitation_class == "top_edge_cropped"
+    assert score.partial_limitation_class_verified is True
+
+
+def test_partial_ecg_contract_rejects_full_layout_and_false_normal_axes(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+    result = _safe_partial_ecg_result(case)
+    result.layout = {"format": "12lead_12x1", "leads": []}
+    for axis in case.partial_input.context_dependent_axes:
+        result.checklist[axis] = ChecklistItem(value="normal", status=Severity.NORMAL)
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_input_contract_ok is False
+    assert any("full/named layout" in issue for issue in score.partial_input_failures)
+    assert any(
+        "not-assessable or abnormal" in issue for issue in score.partial_input_failures
+    )
+
+
+@pytest.mark.parametrize("variant_name", VARIANT_NAMES)
+def test_partial_ecg_contract_verifies_each_transform_limitation_class(
+    tmp_path: Path,
+    variant_name: str,
+) -> None:
+    case = _partial_ecg_case(tmp_path, variant_name)
+
+    score = score_case(case, _safe_partial_ecg_result(case), latency_ms=12)
+
+    assert score.partial_input_contract_ok is True
+    assert score.partial_limitation_class_verified is True
+
+
+def test_partial_ecg_contract_rejects_generic_limitation_template(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path, "crop_right_20")
+    result = _safe_partial_ecg_result(case)
+    result.summary = "Incomplete ECG image."
+    result.image_quality = "incomplete image"
+    result.incomplete_reasons = ["Image content is incomplete."]
+    result.review_reasons = ["Incomplete ECG requires review."]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_limitation_class_verified is False
+    assert any(
+        "transform-specific limitation" in issue
+        for issue in score.partial_input_failures
+    )
+
+
+def test_partial_ecg_contract_rejects_template_listing_multiple_transforms(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path, "crop_right_20")
+    result = _safe_partial_ecg_result(case)
+    all_classes_template = " ".join(_LIMITATION_TEXT_BY_CLASS.values())
+    result.summary = all_classes_template
+    result.image_quality = "incomplete image"
+    result.incomplete_reasons = ["Image content is incomplete."]
+    result.review_reasons = ["Incomplete ECG requires review."]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_limitation_class_verified is False
+    assert any(
+        "transform-specific limitation" in issue
+        for issue in score.partial_input_failures
+    )
+
+
+@pytest.mark.parametrize("status", [Severity.WARNING, Severity.CRITICAL])
+def test_partial_ecg_context_axis_rejects_normal_value_with_abnormal_status(
+    tmp_path: Path,
+    status: Severity,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+    result = _safe_partial_ecg_result(case)
+    axis = case.partial_input.context_dependent_axes[0]
+    result.checklist[axis] = ChecklistItem(value="normal", status=status)
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_input_contract_ok is False
+    assert any(
+        f"{axis}='normal'/{status.value}" in issue
+        for issue in score.partial_input_failures
+    )
+
+
+def test_partial_ecg_contract_rejects_named_leads_in_presented_text(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+
+    summary_result = _safe_partial_ecg_result(case)
+    summary_result.summary += " Visible change in V3."
+    detail_result = _safe_partial_ecg_result(case)
+    detail_result.findings = [
+        Finding(
+            id="candidate",
+            regions=[],
+            label="Visible waveform change",
+            detail="Abnormal morphology in lead II.",
+            severity=Severity.WARNING,
+        )
+    ]
+    checklist_result = _safe_partial_ecg_result(case)
+    axis = case.partial_input.context_dependent_axes[0]
+    checklist_result.checklist[axis] = ChecklistItem(
+        value="Abnormal morphology in aVR",
+        status=Severity.WARNING,
+    )
+
+    scores = [
+        score_case(case, result, latency_ms=12)
+        for result in (summary_result, detail_result, checklist_result)
+    ]
+
+    assert all(
+        any(
+            "unverified named regions" in issue
+            for issue in score.partial_input_failures
+        )
+        for score in scores
+    )
+
+
+def test_partial_ecg_contract_rejects_positive_full_layout_claim_in_text(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    result = _safe_partial_ecg_result(case)
+    result.summary += " This is a complete 12-lead ECG."
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert any(
+        "unverified full lead layout" in issue for issue in score.partial_input_failures
+    )
+
+
+def test_partial_ecg_bbox_receipt_must_bind_exact_variant_bytes(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+    result = _safe_partial_ecg_result(case)
+    box = RegionRect(x=0.2, y=0.3, w=0.1, h=0.1)
+    result.severity = Severity.WARNING
+    result.findings = [
+        Finding(
+            id="visible-candidate",
+            regions=[],
+            label="Visible waveform abnormality",
+            detail="Abnormal morphology is visible but lead identity is unavailable.",
+            severity=Severity.WARNING,
+            bboxes=[box],
+        )
+    ]
+    nonce = "d" * 32
+    result.analysis_trace = [
+        {
+            "stage": "finalize",
+            "status": "completed",
+            "source": "original_roi",
+            "bbox_evidence": {
+                "source_image_sha256": case.partial_input.variant_sha256,
+                "evidence_nonce": nonce,
+            },
+            "tool_audit": [
+                {
+                    "schema_version": 2,
+                    "tool": "dicom_bbox_validate",
+                    "accepted_count": 1,
+                    "source_image_sha256": case.partial_input.variant_sha256,
+                    "evidence_nonce": nonce,
+                    "accepted_boxes_sha256": _bbox_coordinates_digest([box]),
+                }
+            ],
+        }
+    ]
+
+    accepted = score_case(case, result, latency_ms=12)
+    result.analysis_trace[0]["tool_audit"][0]["source_image_sha256"] = "0" * 64
+    rejected = score_case(case, result, latency_ms=12)
+
+    assert accepted.partial_input_contract_ok is True
+    assert accepted.bbox_receipt_matches_variant is True
+    assert rejected.partial_input_contract_ok is False
+    assert rejected.bbox_receipt_matches_variant is False
+
+
 def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None:
     case = _case(
         tmp_path,
@@ -187,6 +601,8 @@ def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None
         "concept_precision": 1.0,
         "concept_recall": 1.0,
         "concept_f1": 1.0,
+        "candidate_concept_recall": 0.0,
+        "weighted_concept_recall": 1.0,
         "false_positive_penalty": 0.0,
         "negative_recall": 1.0,
     }
@@ -210,6 +626,8 @@ def test_partial_credit_does_not_award_empty_negative_recall(
         "concept_precision": 0.0,
         "concept_recall": 0.0,
         "concept_f1": 0.0,
+        "candidate_concept_recall": 0.0,
+        "weighted_concept_recall": 0.0,
         "false_positive_penalty": 0.0,
         "negative_recall": 1.0,
     }
@@ -276,6 +694,38 @@ def test_extra_diagnoses_reduce_concept_precision_and_partial_credit(
     assert noisy_score.strict_pass is False
 
 
+def test_cautious_expected_finding_label_is_not_a_new_false_positive(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="afib_cautious_finding",
+        keywords=("atrial fibrillation",),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Irregularly irregular rhythm most consistent with atrial fibrillation.",
+        checklist={},
+    )
+    result.findings = [
+        Finding(
+            id="f1",
+            regions=["lead_II"],
+            label="Irregular rhythm; atrial fibrillation possible",
+            detail="Native ECG confirmation remains appropriate.",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.1, 0.1, 0.2, 0.08)],
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_recall == 1.0
+    assert score.concept_false_positives == []
+    assert score.concept_precision == 1.0
+
+
 def test_specific_expected_phrase_does_not_create_broader_false_positive(
     tmp_path: Path,
 ) -> None:
@@ -321,7 +771,7 @@ def test_separate_broader_assertion_remains_a_false_positive(tmp_path: Path) -> 
     assert score.strict_pass is False
 
 
-def test_partial_uncertain_reference_is_exploratory_not_formal_accuracy(
+def test_partial_uncertain_reference_scores_asserted_concepts_without_precision(
     tmp_path: Path,
 ) -> None:
     case = _ekg_case(
@@ -341,12 +791,154 @@ def test_partial_uncertain_reference_is_exploratory_not_formal_accuracy(
 
     assert score.false_positive_scorable is False
     assert score.reference_complete is False
-    assert score.clinical_scorable is False
+    assert score.clinical_scorable is True
+    assert score.severity_scorable is True
     assert score.concept_false_positives == []
     assert score.false_positive_penalty == 0.0
     assert score.concept_hits == ["atrial fibrillation"]
     assert score.strict_pass is False
-    assert score.partial_credit == 0.0
+    assert score.partial_credit == 1.0
+    assert score.partial_credit_breakdown["concept_recall"] == 1.0
+
+
+def test_weak_reference_records_half_weighted_candidate_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="cautious_candidates",
+        keywords=(
+            "tachycardia",
+            "fascicular block",
+            "ventricular tachycardia",
+        ),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.INFO,
+        summary="Tachycardic ECG with possible LAFB.",
+        checklist={},
+    )
+    result.findings = [
+        Finding(
+            id="wide-run",
+            regions=["lead_V2", "lead_V3"],
+            label="Wide-complex run",
+            detail="Three broad complexes recur across the sampled leads.",
+            severity=Severity.INFO,
+            confidence="low",
+            question="Does this represent VT versus artifact?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == ["tachycardia"]
+    assert score.candidate_concept_hits == [
+        "fascicular block",
+        "ventricular tachycardia",
+    ]
+    assert score.candidate_concept_misses == []
+    assert score.concept_recall == 0.333
+    assert score.candidate_concept_recall == 0.667
+    assert score.weighted_concept_recall == 0.667
+    assert score.partial_credit_breakdown["concept_recall"] == 0.333
+    assert score.partial_credit_breakdown["weighted_concept_recall"] == 0.667
+    assert score.strict_pass is False
+
+
+def test_wide_qrs_conduction_abnormality_is_candidate_only_ivcd_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="possible_ivcd",
+        keywords=("intraventricular conduction delay",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Regular rhythm with a possible wide-QRS conduction abnormality.",
+        checklist={
+            "conduction": ChecklistItem(
+                value="Possible wide-QRS conduction abnormality versus ectopy",
+                status=Severity.WARNING,
+            )
+        },
+    )
+    result.findings = [
+        Finding(
+            id="wide-qrs",
+            regions=["lead_V1", "lead_V2"],
+            label="Possible wide-QRS conduction abnormality",
+            detail="Broad complexes recur, but pacing, ectopy, and artifact remain.",
+            severity=Severity.WARNING,
+            confidence="low",
+            question="Is this a true intraventricular conduction delay?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == []
+    assert score.concept_misses == ["intraventricular conduction delay"]
+    assert score.candidate_concept_hits == ["intraventricular conduction delay"]
+    assert score.candidate_concept_misses == []
+    assert score.candidate_concept_recall == 1.0
+    assert score.weighted_concept_recall == 0.5
+    assert score.strict_pass is False
+
+
+def test_asserted_wide_qrs_phrase_still_remains_candidate_only_ivcd_credit(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="broad_ivcd_candidate",
+        keywords=("intraventricular conduction delay",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="A wide-QRS conduction abnormality is present.",
+        checklist={},
+    )
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == []
+    assert score.candidate_concept_hits == ["intraventricular conduction delay"]
+    assert score.weighted_concept_recall == 0.5
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "No wide-QRS conduction abnormality is present.",
+        "Broad QRS complexes may reflect ventricular ectopy or pacing artifact.",
+    ],
+)
+def test_ivcd_candidate_alias_rejects_negated_or_ambiguous_wide_qrs(
+    tmp_path: Path,
+    summary: str,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="ivcd_candidate_guard",
+        keywords=("intraventricular conduction delay",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(Severity.INFO, summary=summary, checklist={})
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.concept_hits == []
+    assert score.candidate_concept_hits == []
+    assert score.candidate_concept_misses == ["intraventricular conduction delay"]
 
 
 def test_rather_than_phrase_does_not_assert_rejected_diagnosis(
@@ -403,10 +995,7 @@ def test_write_raw_result_includes_local_case_metadata(tmp_path: Path) -> None:
     assert raw["incomplete_reasons"] == ["Calibration marker is not visible."]
     assert raw["validation_warnings"] == ["Synthetic validator warning"]
     assert raw["review_required"] is True
-    assert raw["review_reasons"] == [
-        "Low-confidence rhythm classification.",
-        "Incomplete analysis requires human review",
-    ]
+    assert raw["review_reasons"] == ["Low-confidence rhythm classification."]
     assert raw["analysis_trace"][0]["tool"] == "crop_region_base64"
 
 
@@ -474,6 +1063,65 @@ def test_keyword_recall_credits_clinical_synonyms(tmp_path: Path) -> None:
     )
     score = score_case(case, result, latency_ms=0)
     assert score.keyword_misses == []
+
+
+def test_keyword_recall_credits_strict_sinus_and_t_wave_phrasings(
+    tmp_path: Path,
+) -> None:
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("sinus rhythm", "tall t wave"),
+    )
+    result = _result(
+        Severity.WARNING,
+        summary=(
+            "Sinus mechanism with persistent prominent broad T waves "
+            "across the anterior precordial leads."
+        ),
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.keyword_hits == ["sinus rhythm", "tall t wave"]
+    assert score.keyword_misses == []
+
+
+def test_keyword_recall_does_not_credit_uncertain_sinus_or_t_waves(
+    tmp_path: Path,
+) -> None:
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("sinus rhythm", "tall t wave"),
+    )
+    result = _result(
+        Severity.WARNING,
+        summary=(
+            "Sinus mechanism is likely; prominent broad T waves are possible "
+            "in the anterior precordial leads."
+        ),
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["sinus rhythm", "tall t wave"]
+
+
+def test_keyword_recall_does_not_credit_negated_prominent_t_waves(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.WARNING, ("tall t wave",))
+    result = _result(
+        Severity.WARNING,
+        summary="No prominent broad T waves are visible in the precordial leads.",
+    )
+
+    score = score_case(case, result, latency_ms=0)
+
+    assert score.keyword_hits == []
+    assert score.keyword_misses == ["tall t wave"]
 
 
 def test_keyword_recall_normalizes_hyphens_and_plurals(tmp_path: Path) -> None:
@@ -698,7 +1346,7 @@ _EKG_CHECKLIST_KEYS = (
 def _full_ekg_layout() -> dict[str, object]:
     names = ("I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6")
     return {
-        "format": "12lead_rows",
+        "format": "12lead_12x1",
         "leads": [
             {
                 "name": name,
@@ -724,6 +1372,8 @@ def _result_with_checklist(
         severity=severity,
         findings=[],
         checklist=full_checklist,
+        image_quality="Synthetic 12-lead EKG is fully readable.",
+        next_steps=["Review the original synthetic tracing."],
         layout=_full_ekg_layout(),
     )
 
@@ -821,6 +1471,14 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
         ),
         cases[1].image_path: _complete_result(Severity.NORMAL, summary="clear"),
     }
+    answers[cases[1].image_path].analysis_trace = [
+        {
+            "stage": "json_recovery",
+            "status": "repaired",
+            "tool": "bounded_json_delimiter_repair",
+            "repair_count": 2,
+        }
+    ]
 
     async def analyze(case: EvalCase) -> AnalysisResult:
         return answers[case.image_path]
@@ -844,6 +1502,8 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
         "negative_recall": 0,
         "concept_precision": 2,
         "concept_recall": 1,
+        "candidate_concept_recall": 0,
+        "weighted_concept_recall": 0,
         "false_positive_penalty": 2,
         "urgent_concern_recall": 0,
     }
@@ -857,6 +1517,8 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert report.mean_concept_f1 == 1.0
     assert report.normal_control_count == 1
     assert report.normal_control_specificity == 1.0
+    assert report.normal_control_clean_read_rate == 1.0
+    assert report.normal_control_review_burden_rate == 0.0
     assert report.diagnosis_scorable_count == 1
     assert report.single_diagnosis_exact_set_accuracy == 1.0
     scorecard = json.loads((out / "scorecard.json").read_text(encoding="utf-8"))
@@ -873,6 +1535,20 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert scorecard["cases"][0]["concept_f1"] == 1.0
     assert scorecard["mean_partial_credit"] == 1.0
     assert scorecard["strict_pass_rate"] == 1.0
+    assert scorecard["sla_metrics"]["profile"] == {
+        "initial_response_sec": 60.0,
+        "first_crop_refinement_sec": 100.0,
+        "total_sec": 180.0,
+    }
+    assert scorecard["sla_metrics"]["initial_response"]["rate"] == 1.0
+    assert scorecard["sla_metrics"]["first_crop_refinement"]["rate"] is None
+    assert scorecard["sla_metrics"]["total"]["rate"] == 1.0
+    assert scorecard["json_repair_case_count"] == 1
+    assert scorecard["json_repair_total_count"] == 2
+    assert scorecard["raw_json_clean_rate"] == 0.5
+    assert scorecard["normal_control_clean_read_rate"] == 1.0
+    assert scorecard["normal_control_review_burden_rate"] == 0.0
+    assert scorecard["cases"][1]["json_repair_count"] == 2
     assert scorecard["manifest_total"] == 2
     assert scorecard["result_count"] == 2
     assert scorecard["is_partial"] is False
@@ -882,6 +1558,132 @@ async def test_run_evaluation_writes_scorecard_and_aggregates(tmp_path: Path) ->
     assert partial["manifest_total"] == 2
     assert partial["result_count"] == 2
     assert partial["is_partial"] is False
+
+
+async def test_normal_review_candidate_is_visible_beside_binary_specificity(
+    tmp_path: Path,
+) -> None:
+    case = _case(tmp_path, Severity.NORMAL, (), name="normal_review_candidate")
+    result = _complete_result(
+        Severity.INFO,
+        summary="No acute finding; a low-confidence review candidate remains.",
+        bbox=RegionRect(x=0.1, y=0.1, w=0.2, h=0.2),
+    )
+
+    async def analyze(_: EvalCase) -> AnalysisResult:
+        return result
+
+    report = await run_evaluation(
+        [case],
+        analyze,
+        output_dir=tmp_path / "review-burden",
+        gateway_mode="mock",
+    )
+
+    assert report.normal_control_specificity == 1.0
+    assert report.normal_control_clean_read_rate == 0.0
+    assert report.normal_control_review_burden_rate == 1.0
+
+
+async def test_normal_review_metrics_are_zero_without_normal_controls(
+    tmp_path: Path,
+) -> None:
+    case = _case(
+        tmp_path,
+        Severity.WARNING,
+        ("consolidation",),
+        name="warning_only",
+    )
+    result = _complete_result(
+        Severity.WARNING,
+        summary="Consolidation is present.",
+        bbox=RegionRect(x=0.1, y=0.1, w=0.2, h=0.2),
+    )
+
+    async def analyze(_: EvalCase) -> AnalysisResult:
+        return result
+
+    report = await run_evaluation(
+        [case],
+        analyze,
+        output_dir=tmp_path / "no-normal-controls",
+        gateway_mode="mock",
+    )
+
+    assert report.normal_control_count == 0
+    assert report.normal_control_clean_read_rate == 0.0
+    assert report.normal_control_review_burden_rate == 0.0
+
+
+async def test_run_evaluation_atomically_replaces_all_json_artifacts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    case = _case(tmp_path, Severity.NORMAL, (), name="atomic")
+    result = _complete_result(Severity.NORMAL, summary="Within normal limits.")
+    result.review_required = True
+    result.review_reasons = ["Expert review requested."]
+    replacements: list[str] = []
+    real_replace = os.replace
+
+    def tracked_replace(source, destination) -> None:
+        source_path = tmp_path.__class__(source)
+        destination_path = tmp_path.__class__(destination)
+        assert source_path.parent == destination_path.parent
+        assert source_path.name.startswith(f".{destination_path.name}.")
+        assert source_path.suffix == ".tmp"
+        json.loads(source_path.read_text(encoding="utf-8"))
+        replacements.append(destination_path.relative_to(tmp_path).as_posix())
+        real_replace(source, destination)
+
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.eval_harness.os.replace",
+        tracked_replace,
+    )
+
+    async def analyze(_case: EvalCase) -> AnalysisResult:
+        return result
+
+    out = tmp_path / "atomic-output"
+    await run_evaluation(
+        [case],
+        analyze,
+        output_dir=out,
+        gateway_mode="mock",
+        case_metadata=lambda _case: {"review_metadata": {"arm": "candidate"}},
+    )
+
+    assert replacements == [
+        "atomic-output/results/atomic.json",
+        "atomic-output/scorecard.partial.json",
+        "atomic-output/scorecard.json",
+    ]
+    raw = json.loads((out / "results" / "atomic.json").read_text(encoding="utf-8"))
+    assert raw["review_required"] is True
+    assert raw["review_metadata"] == {"arm": "candidate"}
+    assert not list(out.rglob("*.tmp"))
+
+
+def test_atomic_json_write_preserves_previous_file_when_replace_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    target = tmp_path / "scorecard.json"
+    target.write_text('{"state": "previous"}', encoding="utf-8")
+
+    def fail_replace(_source, _destination) -> None:
+        raise OSError("simulated interruption before replace")
+
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.eval_harness.os.replace",
+        fail_replace,
+    )
+
+    with pytest.raises(OSError, match="simulated interruption"):
+        _atomic_write_json(target, '{"state": "new"}')
+
+    assert json.loads(target.read_text(encoding="utf-8")) == {"state": "previous"}
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 async def test_diagnosis_metrics_separate_single_and_three_to_five_sets(
@@ -1046,6 +1848,92 @@ async def test_run_evaluation_fail_fast_on_consecutive_gateway_errors(
     assert scorecard["aborted_reason"] == "consecutive_infrastructure_errors"
 
 
+@pytest.mark.parametrize(
+    ("message", "expected_reason"),
+    [
+        (
+            "OpenClaw error: 401 Unauthorized - OAuth access token expired",
+            "fatal_provider_authentication",
+        ),
+        (
+            "OpenClaw error: status=403 Forbidden",
+            "fatal_provider_authentication",
+        ),
+        (
+            "Provider code=insufficient_quota; subscription usage quota exhausted",
+            "fatal_provider_quota_exhausted",
+        ),
+        (
+            "ChatGPT subscription is expired",
+            "fatal_provider_subscription_unavailable",
+        ),
+    ],
+)
+async def test_run_evaluation_stops_after_fatal_provider_error(
+    tmp_path: Path,
+    message: str,
+    expected_reason: str,
+) -> None:
+    cases = [
+        _case(tmp_path, Severity.WARNING, (), name=f"fatal_{index}")
+        for index in range(5)
+    ]
+    attempted: list[str] = []
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        attempted.append(case.label)
+        raise RuntimeError(message)
+
+    out = tmp_path / expected_reason
+    report = await run_evaluation(
+        cases,
+        analyze,
+        output_dir=out,
+        gateway_mode="real",
+    )
+
+    assert attempted == ["fatal_0"]
+    assert report.total == 1
+    assert report.error_count == 1
+    assert report.aborted_reason == expected_reason
+    assert len(list((out / "results").glob("*.json"))) == 1
+    raw = json.loads((out / "results" / "fatal_0.json").read_text(encoding="utf-8"))
+    assert raw["abort_reason"] == expected_reason
+    for name in ("scorecard.partial.json", "scorecard.json"):
+        scorecard = json.loads((out / name).read_text(encoding="utf-8"))
+        assert scorecard["manifest_total"] == 5
+        assert scorecard["result_count"] == 1
+        assert scorecard["aborted_reason"] == expected_reason
+
+
+async def test_run_evaluation_does_not_abort_on_clinical_parse_or_schema_error(
+    tmp_path: Path,
+) -> None:
+    cases = [
+        _case(tmp_path, Severity.NORMAL, (), name=f"parse_{index}")
+        for index in range(3)
+    ]
+    attempted: list[str] = []
+
+    async def analyze(case: EvalCase) -> AnalysisResult:
+        attempted.append(case.label)
+        if case.label == "parse_0":
+            raise ValueError("Clinical response JSON schema validation failed")
+        return _complete_result(Severity.NORMAL, summary="Within normal limits.")
+
+    report = await run_evaluation(
+        cases,
+        analyze,
+        output_dir=tmp_path / "parse-errors",
+        gateway_mode="real",
+    )
+
+    assert attempted == ["parse_0", "parse_1", "parse_2"]
+    assert report.total == 3
+    assert report.error_count == 1
+    assert report.aborted_reason == ""
+
+
 async def test_run_evaluation_aggregates_target_axis_performance(
     tmp_path: Path,
 ) -> None:
@@ -1189,6 +2077,45 @@ def _ekg_case(
         label_status=label_status,
         label=name,
     )
+
+
+def test_ekg_ectopy_singular_and_plural_are_one_clinical_concept(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.WARNING,
+        name="pvc_plural_reference",
+        keywords=("premature ventricular complexes", "sinus rhythm"),
+    )
+    result = _result_with_checklist(
+        Severity.WARNING,
+        summary="Sinus rhythm with a premature ventricular complex.",
+        checklist={
+            "rhythm": ChecklistItem(
+                value="sinus rhythm with ventricular ectopy",
+                status=Severity.WARNING,
+            )
+        },
+    )
+    result.findings = [
+        Finding(
+            id="pvc-1",
+            regions=["lead_II"],
+            label="Premature ventricular complex",
+            detail="One wide premature beat with a compensatory pause.",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.2, 0.1, 0.08, 0.05)],
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.keyword_recall == 1.0
+    assert score.concept_hits == ["premature ventricular complexes", "sinus rhythm"]
+    assert score.concept_misses == []
+    assert score.concept_false_positives == []
+    assert score.concept_f1 == 1.0
 
 
 def test_compute_axis_coverage_normal_and_abnormal(tmp_path: Path) -> None:
@@ -1383,6 +2310,48 @@ def test_urgent_stemi_concern_accepts_critical_hyperacute_ischemia(
     assert score.urgent_concern_recall == 1.0
 
 
+def test_urgent_stemi_concern_accepts_standardized_acute_st_elevation_phrase(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_standardized_st_elevation",
+        urgent_concerns=("STEMI",),
+        label_status="partially_ungradable",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Acute ischemia is possible but not confirmed.",
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="possible anterior",
+                status=Severity.CRITICAL,
+            ),
+            "ischemia": ChecklistItem(
+                value="possible acute",
+                status=Severity.CRITICAL,
+            ),
+        },
+    )
+    result.findings = [
+        Finding(
+            id="acute-pattern",
+            regions=["lead_V1", "lead_V2", "lead_V3", "lead_V4"],
+            label="Possible acute ST-elevation ischemic pattern",
+            detail="Contiguous anterior ST-T abnormality remains visible.",
+            severity=Severity.CRITICAL,
+            confidence="low",
+            question="Are reciprocal changes present on the native ECG?",
+        )
+    ]
+
+    score = score_case(case, result, latency_ms=10)
+
+    assert score.urgent_concern_hits == ["STEMI"]
+    assert score.urgent_concern_missed == []
+
+
 def test_urgent_stemi_concern_accepts_uncertain_injury_with_st_elevation(
     tmp_path: Path,
 ) -> None:
@@ -1442,9 +2411,7 @@ def test_urgent_injury_phrase_requires_structured_st_elevation(
     result = _result_with_checklist(
         Severity.CRITICAL,
         summary="Possible acute myocardial injury requires correlation.",
-        checklist={
-            "st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)
-        },
+        checklist={"st_segment": ChecklistItem(value="normal", status=Severity.NORMAL)},
     )
 
     score = score_case(case, result, latency_ms=10)
@@ -1524,6 +2491,68 @@ def test_urgent_acute_mi_is_distinct_from_stemi(tmp_path: Path) -> None:
 
     assert score_case(case, acute_mi, 10).urgent_concern_hits == ["acute MI"]
     assert score_case(case, stemi_only, 10).urgent_concern_missed == ["acute MI"]
+
+
+def test_urgent_acute_mi_accepts_structured_critical_stemi_differential(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_acute_mi_structured",
+        urgent_concerns=("acute MI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary=(
+            "Possible acute anterior-lateral ischemic ST-elevation pattern; "
+            "STEMI cannot be excluded."
+        ),
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="possible; not excluded",
+                status=Severity.CRITICAL,
+            ),
+            "ischemia": ChecklistItem(
+                value="possible acute ischemic pattern",
+                status=Severity.CRITICAL,
+            ),
+        },
+    )
+
+    score = score_case(case, result, 10)
+
+    assert score.urgent_concern_hits == ["acute MI"]
+    assert score.urgent_concern_missed == []
+
+
+def test_urgent_acute_mi_rejects_stemi_without_structured_acute_ischemia(
+    tmp_path: Path,
+) -> None:
+    case = _ekg_case(
+        tmp_path,
+        Severity.CRITICAL,
+        name="urgent_acute_mi_unstructured",
+        urgent_concerns=("acute MI",),
+        label_status="partially_uncertain",
+    )
+    result = _result_with_checklist(
+        Severity.CRITICAL,
+        summary="Possible STEMI cannot be excluded.",
+        checklist={
+            "stemi_pattern": ChecklistItem(
+                value="possible; not excluded",
+                status=Severity.CRITICAL,
+            ),
+            "ischemia": ChecklistItem(
+                value="indeterminate",
+                status=Severity.INFO,
+            ),
+        },
+    )
+
+    assert score_case(case, result, 10).urgent_concern_missed == ["acute MI"]
 
 
 async def test_info_ungradable_case_is_excluded_from_accuracy_denominators(

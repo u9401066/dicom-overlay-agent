@@ -1,6 +1,6 @@
 [project]
 name = "dicom-overlay-agent"
-version = "0.1.0"
+version = "0.4.7"
 description = "AI-assisted DICOM image overlay agent for medical image co-reading"
 readme = "README.md"
 license = { file = "LICENSE" }

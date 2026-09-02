@@ -10,14 +10,20 @@ Covers the hardening fixes for the OpenClaw interpretation harness:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
+from dicom_overlay.application.multi_pass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     AppConfig,
@@ -31,6 +37,7 @@ from dicom_overlay.domain.hooks import AnalyzeRequest
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import (
     BboxEvidenceError,
+    ModelResponseParseError,
     OpenClawClient,
     _bbox_coordinates_digest,
     _build_finalization_prompt,
@@ -200,14 +207,119 @@ class TestProseJsonFallback:
         data = _payload_from_chat_event(payload)
         assert data["findings"][0]["bboxes"][0]["x"] == 0.17
 
+    def test_payload_repairs_missing_nested_array_closer_without_retry(self):
+        payload = {
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            '{"modality":"EKG","layout":{"leads":['
+                            '{"name":"I","bbox":[0,0,1,0.1]},'
+                            '"notes":"visible labels"},"summary":"LVH strain",'
+                            '"findings":[]}'
+                        ),
+                    }
+                ]
+            }
+        }
+
+        data = _payload_from_chat_event(payload)
+
+        assert data["layout"]["leads"][0]["name"] == "I"
+        assert data["layout"]["notes"] == "visible labels"
+        assert data["summary"] == "LVH strain"
+        assert data["_harness_json_repair_count"] == 1
+
+    def test_payload_repairs_reversed_closer_then_missing_parent_closer(self):
+        payload = {
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            '{"modality":"EKG","layout":{"leads":['
+                            '{"name":"I","bbox":[0,0,1,0.1]},'
+                            '{"name":"II","bbox":[0,0.1,1,0.1]},'
+                            '{"name":"V6","bbox":[0,0.9,1,0.075]},'
+                            '"notes":"visible labels"},"summary":"LVH strain",'
+                            '"findings":[]}'
+                        ).replace("0.075]}", "0.075}]"),
+                    }
+                ]
+            }
+        }
+
+        data = _payload_from_chat_event(payload)
+
+        assert [lead["name"] for lead in data["layout"]["leads"]] == [
+            "I",
+            "II",
+            "V6",
+        ]
+        assert data["layout"]["notes"] == "visible labels"
+        assert data["_harness_json_repair_count"] == 2
+
     def test_payload_from_chat_event_raises_without_json(self):
         payload = {"message": {"content": [{"type": "text", "text": "no json at all"}]}}
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ModelResponseParseError):
             _payload_from_chat_event(payload)
+
+    def test_payload_repairs_stray_quote_before_array_closer(self):
+        payload = {
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            '{"summary":"Abnormal ECG","severity":"urgent",'
+                            '"findings":[],"next_steps":["Refine rhythm.",'
+                            '"Check ST-T morphology.","],'
+                            '"image_quality":"Adequate"}'
+                        ),
+                    }
+                ]
+            }
+        }
+
+        data = _payload_from_chat_event(payload)
+
+        assert data["next_steps"] == ["Refine rhythm.", "Check ST-T morphology."]
+        assert data["image_quality"] == "Adequate"
+
+    @pytest.mark.asyncio
+    async def test_coarse_model_parse_error_retries_once(self):
+        client = _bare_client()
+        calls = 0
+
+        async def coarse_turn(*_args):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise ModelResponseParseError("malformed model JSON")
+            return AnalysisResult(
+                modality=Modality.EKG,
+                summary="Sinus rhythm.",
+                severity=Severity.NORMAL,
+                findings=[],
+                checklist={},
+            )
+
+        client._do_coarse_analyze = coarse_turn
+
+        result = await client._analyze_coarse_with_parse_retry(
+            "image",
+            Modality.EKG,
+            [],
+        )
+
+        assert result.severity is Severity.NORMAL
+        assert calls == 2
+        assert client._last_parse_retry_count == 1
 
 
 class TestHypothesisAwareRefinement:
-    def test_finalization_prompt_locks_grounded_findings_and_original_coordinates(
+    def test_finalization_prompt_allows_disposition_but_locks_original_coordinates(
         self,
     ):
         finding = Finding(
@@ -243,9 +355,97 @@ class TestHypothesisAwareRefinement:
 
         assert '"id": "f1"' in prompt
         assert '"x": 0.2' in prompt
-        assert "Do not add a diagnosis, finding, or bbox" in prompt
+        assert '"candidate_bbox_count": 1' in prompt
+        assert "RETAIN it unchanged" in prompt
+        assert "REVISE its label/detail/severity/confidence/question" in prompt
+        assert "RETRACT it by omitting it" in prompt
+        assert "unique subset of draft IDs" in prompt
+        assert "duplicate study-level rate or rhythm findings" in prompt
+        assert "Never move, resize, add" in prompt
+        assert "normal/otherwise normal" in prompt
+        assert "omission from its top-k list" in prompt
+        assert "three broad QRS complexes across multiple leads" in prompt
+        assert "NSVT/VT versus artifact" in prompt
+        assert "Do not finalize sinus from regular timing alone" in prompt
+        assert "High voltage alone cannot establish definite LVH" in prompt
+        assert "missing calibration pulse prevents a definite LVH claim" in prompt
+        assert "more than one qualifying lead group" in prompt
+        assert "'Possible LVH-compatible pattern'" in prompt
+        assert "do not automatically force warning" in prompt
+        assert "report R-wave progression independently" in prompt
+        assert (
+            "Absence of acute ST elevation or reciprocal change can exclude an "
+            "acute pattern"
+        ) in prompt
+        assert "cannot exclude a reproducible nonspecific ST-T/T-wave" in prompt
+        assert "at least two mapped contiguous or anatomically related leads" in (
+            prompt
+        )
+        assert "One lead or non-reproducible noise alone is not a finding" in prompt
+        assert "classify PR and QT qualitatively" in prompt
+        assert "premature P-QRS complexes" in prompt
+        assert "tall or broad T waves persisting" in prompt
+        assert "final bbox multiset must exactly match that one receipt" in prompt
+        assert "checklist must contain exactly these 16 axes" in prompt
         assert "relative to the attached original image" in prompt
         assert "dicom_bbox_validate" in prompt
+
+    def test_finalization_prompt_preserves_critical_triage_deferrals(self):
+        finding = Finding(
+            id="critical-1",
+            regions=["lead_V2", "lead_V3"],
+            label="Anterior STEMI pattern",
+            detail="Contiguous ST elevation.",
+            severity=Severity.CRITICAL,
+            bboxes=[RegionRect(0.2, 0.3, 0.1, 0.1)],
+        )
+        draft = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Time-critical candidate prioritized.",
+            severity=Severity.CRITICAL,
+            findings=[finding],
+            checklist={
+                "axis": ChecklistItem(
+                    value="not_assessed_due_to_critical_triage",
+                    status=Severity.INFO,
+                )
+            },
+            incomplete=True,
+            review_required=True,
+            incomplete_reasons=["Critical-first triage deferred other review."],
+            analysis_trace=[
+                {
+                    "stage": "critical_triage",
+                    "status": "activated",
+                    "candidate_ids": ["critical-1"],
+                    "selected_critical_ids": ["critical-1"],
+                    "support_probe_id": "ekg_systematic_critical_support_limb_leads",
+                    "support_reason": (
+                        "critical_territorial_reciprocal_crosscheck"
+                    ),
+                    "overflow_critical_ids": [],
+                    "deferred_checklist_axes": ["axis", "chamber_enlargement"],
+                }
+            ],
+        )
+
+        prompt = _build_finalization_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V2", "lead_V3"],
+            draft=draft,
+            refinement_trace=[],
+        )
+
+        assert '"critical_triage": {"active": true' in prompt
+        assert '"deferred_checklist_axes": ["axis", "chamber_enlargement"]' in (
+            prompt
+        )
+        assert "Reconcile every selected critical candidate" in prompt
+        assert "Retraction does not retroactively complete the deferred review" in (
+            prompt
+        )
+        assert "value=not_assessed_due_to_critical_triage" in prompt
+        assert "not normal/absent/WNL" in prompt
 
     def test_prompt_carries_hypothesis_and_crop_coordinate_contract(self):
         finding = Finding(
@@ -262,6 +462,10 @@ class TestHypothesisAwareRefinement:
             valid_regions=["lead_V2"],
             hypothesis=finding,
             crop_region=RegionRect(0.15, 0.25, 0.3, 0.2),
+            crop_lead_regions={
+                "lead_V2": RegionRect(0.0, 0.1, 1.0, 0.4),
+                "lead_V3": RegionRect(0.0, 0.5, 1.0, 0.4),
+            },
         )
 
         assert '"id": "f1"' in prompt
@@ -270,6 +474,10 @@ class TestHypothesisAwareRefinement:
         assert "dicom_bbox_validate" in prompt
         assert "modality=EKG" in prompt
         assert "w<=0.35" in prompt
+        assert '"crop_lead_regions"' in prompt
+        assert '"region": "lead_V2"' in prompt
+        assert "center of every returned box must fall inside" in prompt
+        assert "Do not move a box" in prompt
 
     def test_ekg_safety_probe_requests_systematic_visible_lead_search(self):
         prompt = _build_refinement_prompt(
@@ -277,12 +485,179 @@ class TestHypothesisAwareRefinement:
             valid_regions=["lead_I", "lead_II", "lead_V1"],
             hypothesis=None,
             crop_region=RegionRect(0.0, 0.0, 1.0, 0.5),
+            probe_id="ekg_systematic_precordial_leads",
+            supporting_waveform_evidence={
+                "status": "ok",
+                "calibration_status": "uncalibrated",
+                "predictions": [
+                    {
+                        "label": "LEFT VENTRICULAR HYPERTROPHY",
+                        "uncalibrated_score": 0.42,
+                    }
+                ],
+            },
         )
 
         assert '"probe_kind": "systematic_discovery"' in prompt
         assert "ST elevation/depression" in prompt
         assert "reciprocal change" in prompt
         assert "ask a concrete reviewer question" in prompt
+        assert "distinct narrow pacing spikes" in prompt
+        assert "Repetitive wide or tall QRS complexes alone" in prompt
+        assert "heart_rate_bpm_from_median_rr" in prompt
+        assert "three consecutive broad QRS complexes" in prompt
+        assert "NSVT/VT versus artifact" in prompt
+        assert '"probe_id": "ekg_systematic_precordial_leads"' in prompt
+        assert "inspect V1-V6 without privileging one candidate" in prompt
+        assert "pathologic Q/QS morphology" in prompt
+        assert "high or low voltage" in prompt
+        assert "High voltage alone cannot establish definite LVH" in prompt
+        assert "missing calibration pulse prevents a definite LVH claim" in prompt
+        assert "more than one qualifying lead group" in prompt
+        assert "do not suppress the candidate solely because" in prompt
+        assert "'Possible LVH-compatible pattern'" in prompt
+        assert "do not automatically force warning" in prompt
+        assert "report R-wave progression independently" in prompt
+        assert "tall or broad contiguous T waves" in prompt
+        assert "uncalibrated waveform classifier candidates" in prompt
+        assert "Ranked labels route inspection but never set diagnosis" in prompt
+        assert "normal/otherwise-normal ranked label" in prompt
+        assert "top-k omission is not negative evidence" in prompt
+        assert "If PVC/PAC/ectopy is top-three" in prompt
+        assert "Do not call sinus from regular timing alone" in prompt
+        assert "LVH finding with warning severity" not in prompt
+        assert "Do not call ecg_founder_analyze_waveform again" in prompt
+        assert "exactly equal the accepted boxes" in prompt
+
+    def test_hypothesis_id_precordial_probe_gets_bounded_transition_review(self):
+        finding = Finding(
+            id="f1",
+            regions=["lead_V2", "lead_V3"],
+            label="Possible anterior waveform change",
+            detail="Coarse candidate requires balanced crop review.",
+            severity=Severity.INFO,
+            confidence="low",
+            question="Is a reproducible abnormality present?",
+        )
+
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V1", "lead_V2", "lead_V3", "lead_V4"],
+            hypothesis=finding,
+            crop_region=RegionRect(0.0, 0.5, 1.0, 0.34),
+            probe_id="f1_precordial_leads",
+            crop_lead_regions={
+                "lead_V1": RegionRect(0.0, 0.0, 1.0, 0.25),
+                "lead_V2": RegionRect(0.0, 0.25, 1.0, 0.25),
+                "lead_V3": RegionRect(0.0, 0.5, 1.0, 0.25),
+                "lead_V4": RegionRect(0.0, 0.75, 1.0, 0.25),
+            },
+        )
+
+        assert '"probe_kind": "hypothesis_verification"' in prompt
+        assert '"probe_id": "f1_precordial_leads"' in prompt
+        assert "regardless of the coarse hypothesis" in prompt
+        assert "lack of the expected transition across V1-V4" in prompt
+        assert "deep S waves or small R waves in V1/V2 alone are insufficient" in (
+            prompt
+        )
+        assert "R becomes dominant by V3/V4, retract poor R-wave progression" in (
+            prompt
+        )
+        assert "persistent T-wave inversion or flattening" in prompt
+        assert "baseline wander, grid interference, and isolated noise" in prompt
+        assert (
+            "Absence of acute ST elevation or reciprocal change can exclude an "
+            "acute pattern"
+        ) in prompt
+        assert "cannot exclude a reproducible nonspecific ST-T/T-wave" in prompt
+        assert "at least two mapped contiguous or anatomically related leads" in (
+            prompt
+        )
+        assert "report a low-confidence nonspecific ST-T/T-wave change" in prompt
+        assert "One lead or non-reproducible noise alone is not a finding" in prompt
+
+    def test_ekg_skill_balances_lvh_false_positive_and_false_negative_guards(self):
+        skill = _load_skill_prompt("dicom-ekg-analysis")
+        normalized_skill = " ".join(skill.split())
+
+        assert "High voltage alone cannot establish definite LVH" in normalized_skill
+        assert (
+            "missing calibration pulse prevents a definite LVH claim"
+            in normalized_skill
+        )
+        assert "more than one qualifying lead group" in normalized_skill
+        assert "secondary discordant ST-T/strain, axis deviation" in normalized_skill
+        assert "do not suppress the candidate solely because" in normalized_skill
+        assert "`Possible LVH-compatible pattern`" in normalized_skill
+        assert "do not automatically force" in normalized_skill
+        assert "report R-wave progression independently" in normalized_skill
+
+    def test_ekg_skill_requires_balanced_precordial_crop_review(self):
+        skill = _load_skill_prompt("dicom-ekg-analysis")
+        normalized_skill = " ".join(skill.split())
+
+        assert (
+            "Every whole-image or crop/refinement turn whose trusted lead map "
+            "includes any precordial lead"
+        ) in normalized_skill
+        assert "regardless of the coarse hypothesis or probe id" in normalized_skill
+        assert "Deep S waves or small R waves in V1/V2 alone are insufficient" in (
+            normalized_skill
+        )
+        assert "R becomes dominant by V3/V4, retract poor R-wave progression" in (
+            normalized_skill
+        )
+        assert "compare V2-V4 across adjacent beats" in normalized_skill
+        assert "baseline wander, grid interference" in normalized_skill
+        assert (
+            "Absence of acute ST elevation or reciprocal change may exclude an "
+            "acute pattern"
+        ) in normalized_skill
+        assert "cannot exclude a separate reproducible nonspecific" in normalized_skill
+        assert "at least two mapped contiguous or anatomically related leads" in (
+            normalized_skill
+        )
+        assert "one lead or non-reproducible noise alone is not a finding" in (
+            normalized_skill
+        )
+        assert "do not dismiss a persistent aligned V2-V4 pattern" in normalized_skill
+
+    def test_ekg_limb_probe_balances_rhythm_qt_and_inferior_st_t(self):
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_I", "lead_II", "lead_III", "lead_aVF"],
+            hypothesis=None,
+            crop_region=RegionRect(0.0, 0.0, 1.0, 0.5),
+            probe_id="ekg_systematic_limb_leads",
+        )
+
+        assert "Do not call sinus from regular timing alone" in prompt
+        assert "premature atrial complexes/ectopy" in prompt
+        assert "qualitative PR/QT" in prompt
+        assert "II/III/aVF ST-T morphology" in prompt
+        assert "reciprocal change" in prompt
+
+    def test_systematic_probe_can_verify_an_untargeted_hypothesis(self):
+        finding = Finding(
+            id="st-t",
+            regions=["lead_V2", "lead_V3"],
+            label="Anterior ST-T abnormality",
+            detail="Unlocalized coarse concern",
+            severity=Severity.CRITICAL,
+        )
+
+        prompt = _build_refinement_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_V2", "lead_V3"],
+            hypothesis=finding,
+            crop_region=RegionRect(0.0, 0.5, 1.0, 0.5),
+            probe_id="ekg_systematic_precordial_leads",
+        )
+
+        assert '"probe_kind": "systematic_hypothesis_verification"' in prompt
+        assert '"id": "st-t"' in prompt
+        assert "decide the supplied target" in prompt
 
     def test_refinement_parser_keeps_explicit_retract_and_revise(self):
         parsed = _parse_refinement_result(
@@ -361,7 +736,11 @@ class TestHypothesisAwareRefinement:
 async def test_image_followup_uses_unique_session_and_ignores_stale_tool_events(
     tmp_path: Path,
 ) -> None:
-    client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+    client = OpenClawClient(
+        gateway_token="test",
+        base_dir=tmp_path,
+        fast_mode=True,
+    )
 
     class FakeWebSocket:
         def __init__(self) -> None:
@@ -428,9 +807,68 @@ async def test_image_followup_uses_unique_session_and_ignores_stale_tool_events(
     session_key = websocket.sent["params"]["sessionKey"]  # type: ignore[index]
     assert str(session_key).startswith("image-followup-")
     assert session_key != "main"
+    assert websocket.sent["params"]["fastMode"] is True  # type: ignore[index]
     trace = client.last_run_trace()
     assert trace["run_id"] == "current-run"
     assert trace["tools"] == ["dicom_bbox_validate"]
+    assert trace["fast_mode_requested"] is True
+    assert trace["priority_service_observed"] is None
+    assert "priority_service_requested" not in trace
+
+
+@pytest.mark.asyncio
+async def test_openclaw_stream_events_do_not_reset_absolute_turn_timeout(
+    tmp_path: Path,
+) -> None:
+    client = OpenClawClient(
+        gateway_token="test",
+        base_dir=tmp_path,
+        inference_timeout_sec=1,
+    )
+    client._inference_timeout = 0.04
+
+    class BusyWebSocket:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, object]] = []
+            self.recv_count = 0
+
+        async def send(self, raw: str) -> None:
+            self.sent.append(json.loads(raw))
+
+        async def recv(self) -> str:
+            await asyncio.sleep(0.015)
+            self.recv_count += 1
+            if self.recv_count == 1:
+                return json.dumps(
+                    {
+                        "type": "res",
+                        "id": "request-1",
+                        "ok": True,
+                        "payload": {"status": "accepted", "runId": "run-1"},
+                    }
+                )
+            return json.dumps(
+                {
+                    "type": "event",
+                    "payload": {"runId": "run-1", "state": "working"},
+                }
+            )
+
+    websocket = BusyWebSocket()
+    client._ws = websocket
+    client._connected = True
+    client._begin_run_trace("analysis-sla-test")
+
+    with pytest.raises(TimeoutError, match="Analysis timeout"):
+        await client._wait_for_chat_result("request-1")
+
+    abort = websocket.sent[-1]
+    assert abort["method"] == "chat.abort"
+    assert abort["params"] == {
+        "sessionKey": "analysis-sla-test",
+        "runId": "run-1",
+    }
+    assert client.last_run_trace()["turn_aborted"] is True
 
 
 # ── Item 6: out-of-bounds bbox dropped, not crashed ──────────────────
@@ -464,6 +902,45 @@ class TestBboxDropping:
         # Finding kept, only the valid bbox survives
         assert len(result.findings) == 1
         assert len(result.findings[0].bboxes) == 1
+
+    def test_bounded_json_repair_is_audited_without_clinical_degradation(self):
+        client = _bare_client()
+        payload = {
+            "modality": "EKG",
+            "summary": "Sinus rhythm within normal limits.",
+            "severity": "normal",
+            "findings": [],
+            "checklist": {},
+            "_harness_json_repair_count": 2,
+        }
+
+        result = client._parse_result(payload, elapsed_ms=100)
+
+        assert result.incomplete is False
+        assert result.validation_warnings == []
+        assert result.analysis_trace == [
+            {
+                "stage": "json_recovery",
+                "status": "repaired",
+                "tool": "bounded_json_delimiter_repair",
+                "repair_count": 2,
+            }
+        ]
+
+    @pytest.mark.parametrize("value", ["urgent", "emergent", "emergency"])
+    def test_urgent_severity_aliases_fail_safe_to_critical(self, value):
+        result = _bare_client()._parse_result(
+            {
+                "modality": "EKG",
+                "summary": "Urgent review is required.",
+                "severity": value,
+                "findings": [],
+                "checklist": {},
+            },
+            elapsed_ms=100,
+        )
+
+        assert result.severity is Severity.CRITICAL
 
 
 # ── Regression: checklist returned as a list instead of a dict ───────
@@ -546,9 +1023,11 @@ def _make_result() -> AnalysisResult:
         severity=Severity.NORMAL,
         findings=[],
         checklist=_full_ekg_checklist(),
+        image_quality="Synthetic 12-lead EKG is fully readable.",
+        next_steps=["Review the original synthetic tracing."],
     )
     result.layout = {
-        "format": "12lead_rows",
+        "format": "12lead_12x1",
         "leads": [
             {
                 "name": name,
@@ -790,6 +1269,109 @@ class TestNativeToolAuditTrace:
         assert trace["tools"] == ["dicom_bbox_validate"]
         assert [row["tool_call_id"] for row in trace["tool_audit"]] == ["current-call"]
 
+    def test_partial_jsonl_append_is_retried_from_record_boundary(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        client._begin_run_trace(
+            "refine-partial-append",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "split-write-call",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": "c" * 64,
+            "details_sha256": "d" * 64,
+        }
+        payload = json.dumps(receipt).encode("utf-8")
+        split_at = len(payload) // 2
+        audit_path.write_bytes(payload[:split_at])
+
+        assert client.last_run_trace()["tool_audit"] == []
+
+        with audit_path.open("ab") as handle:
+            handle.write(payload[split_at:] + b"\n")
+        trace = client.last_run_trace()
+
+        assert [row["tool_call_id"] for row in trace["tool_audit"]] == [
+            "split-write-call"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_delayed_confirm_receipt_is_captured_without_model_retry(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        box = RegionRect(0.1, 0.2, 0.3, 0.1)
+        result = RefinementResult(
+            (
+                RefinementDelta(
+                    action=RefinementAction.CONFIRM,
+                    target_id="f1",
+                    finding=Finding(
+                        id="f1",
+                        regions=["lead_V2"],
+                        label="Candidate",
+                        detail="Visible candidate",
+                        severity=Severity.INFO,
+                        bboxes=[box],
+                    ),
+                    rationale="Confirmed on the source crop.",
+                ),
+            )
+        )
+        client._begin_run_trace(
+            "refine-delayed-audit",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "delayed-confirm-call",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": _bbox_coordinates_digest([box]),
+            "details_sha256": "c" * 64,
+        }
+
+        async def append_after_gateway_final() -> None:
+            await asyncio.sleep(0.02)
+            audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+
+        writer = asyncio.create_task(append_after_gateway_final())
+        await client._await_bbox_tool_audit(result)
+        assert writer.done() is True
+        await writer
+        client._require_bound_bbox_receipt(result)
+        trace = client.last_run_trace()
+
+        assert trace["bbox_evidence"]["receipt_count"] == 1
+        assert trace["parse_retry_count"] == 0
+        assert [row["tool_call_id"] for row in trace["tool_audit"]] == [
+            "delayed-confirm-call"
+        ]
+
     def test_boxed_result_requires_exact_bound_coordinate_receipt(
         self,
         tmp_path: Path,
@@ -843,6 +1425,56 @@ class TestNativeToolAuditTrace:
         with pytest.raises(BboxEvidenceError):
             client._require_bound_bbox_receipt(result)
 
+    def test_coarse_result_retracts_boxes_when_bound_tool_rejects_all(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "bbox-audit.jsonl"
+        monkeypatch.setenv("DICOM_BBOX_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        result = _make_result()
+        result.findings = [
+            Finding(
+                id="f1",
+                regions=["lead_II"],
+                label="Candidate",
+                detail="Unlocalized candidate",
+                severity=Severity.WARNING,
+                bboxes=[RegionRect(0.0, 0.0, 1.0, 1.0)],
+            )
+        ]
+        client._begin_run_trace(
+            "analysis-rejected",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": "rejected-call",
+            "accepted_count": 0,
+            "rejected_count": 1,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": _bbox_coordinates_digest([]),
+            "details_sha256": "c" * 64,
+        }
+        audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+
+        client._retract_tool_rejected_coarse_boxes(result)
+        client._require_bound_bbox_receipt(result)
+
+        assert result.findings[0].bboxes == []
+        assert result.incomplete is True
+        assert result.review_required is True
+        assert result.analysis_trace[-1]["status"] == (
+            "retracted_rejected_coarse_boxes"
+        )
+        assert result.analysis_trace[-1]["retracted_count"] == 1
+
     def test_reads_phi_free_ecg_founder_receipt_from_current_turn(
         self,
         tmp_path: Path,
@@ -862,9 +1494,33 @@ class TestNativeToolAuditTrace:
                 "evidence_nonce": evidence_nonce,
                 "artifact_id_sha256": "a" * 64,
                 "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+                "model_id": "PKUDigitalHealth/ECGFounder",
                 "checkpoint_sha256": "b" * 64,
                 "calibration_status": "uncalibrated",
                 "prediction_count": 10,
+                "predictions": [
+                    {
+                        "label": "LEFT VENTRICULAR HYPERTROPHY",
+                        "probability": 0.42,
+                    }
+                ],
+                "response_evidence": {
+                    "rhythm_measurement": {
+                        "method": "lead_II_qrs_energy_v1",
+                        "lead": "II",
+                        "status": "ok",
+                        "diagnostic_scope": "rhythm_regularity_only",
+                        "rr_interval_count": 6,
+                        "rr_intervals_ms": [860, 720, 650, 810, 690, 840],
+                        "median_rr_ms": 765.0,
+                        "heart_rate_bpm_from_median_rr": 78.4,
+                        "rr_cv": 0.11,
+                        "rr_rmssd_ms": 130.0,
+                        "rr_range_ms": 210.0,
+                        "successive_rr_diff_over_80ms_fraction": 0.8,
+                        "regularity_signal": "irregular",
+                    }
+                },
             }
             foreign_receipt = {
                 **receipt,
@@ -877,10 +1533,43 @@ class TestNativeToolAuditTrace:
             )
 
             trace = client.last_run_trace()
+            supporting = client._supporting_waveform_evidence()
 
         assert trace["tools"] == ["ecg_founder_analyze_waveform"]
         assert trace["tool_audit"] == [receipt]
         assert "artifact_id" not in trace["tool_audit"][0]
+        assert supporting == {
+            "status": "ok",
+            "use_policy": "supporting_evidence_only",
+            "calibration_status": "uncalibrated",
+            "model_id": "PKUDigitalHealth/ECGFounder",
+            "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
+            "predictions": [
+                {
+                    "label": "LEFT VENTRICULAR HYPERTROPHY",
+                    "uncalibrated_score": 0.42,
+                }
+            ],
+            "rhythm_measurement": {
+                "method": "lead_II_qrs_energy_v1",
+                "lead": "II",
+                "status": "ok",
+                "diagnostic_scope": "rhythm_regularity_only",
+                "rr_interval_count": 6,
+                "rr_intervals_ms": [860, 720, 650, 810, 690, 840],
+                "median_rr_ms": 765.0,
+                "heart_rate_bpm_from_median_rr": 78.4,
+                "rr_cv": 0.11,
+                "rr_rmssd_ms": 130.0,
+                "rr_range_ms": 210.0,
+                "successive_rr_diff_over_80ms_fraction": 0.8,
+                "regularity_signal": "irregular",
+                "limitations": [
+                    "R-peak timing only; it does not identify P waves or diagnose atrial fibrillation.",
+                    "Ectopy, missed peaks, pacing, and artifact can also cause irregular intervals.",
+                ],
+            },
+        }
 
     def test_waveform_binding_accumulates_receipts_across_turn_resets(
         self,
@@ -913,6 +1602,49 @@ class TestNativeToolAuditTrace:
             "ecg-call-1",
             "ecg-call-2",
         ]
+
+    def test_waveform_binding_separates_suppressed_duplicate_attempts(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        audit_path = tmp_path / "ecgfounder-audit.jsonl"
+        monkeypatch.setenv("DICOM_ECGFOUNDER_AUDIT_PATH", str(audit_path))
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+
+        with client.use_waveform_artifact("wf-opaque-123") as evidence_nonce:
+            receipt = {
+                "schema_version": 1,
+                "tool": "ecg_founder_analyze_waveform",
+                "tool_call_id": "ecg-call-1",
+                "status": "ok",
+                "evidence_nonce": evidence_nonce,
+                "artifact_id_sha256": "a" * 64,
+                "checkpoint_sha256": "b" * 64,
+                "prediction_count": 1,
+            }
+            duplicate = {
+                "schema_version": 1,
+                "tool": "ecg_founder_duplicate_suppressed",
+                "original_tool": "ecg_founder_analyze_waveform",
+                "tool_call_id": "ecg-call-2",
+                "original_tool_call_id": "ecg-call-1",
+                "status": "duplicate_suppressed",
+                "original_status": "ok",
+                "evidence_nonce": evidence_nonce,
+                "artifact_id_sha256": "a" * 64,
+                "request_sha256": "c" * 64,
+            }
+            audit_path.write_text(
+                f"{json.dumps(receipt)}\n{json.dumps(duplicate)}\n",
+                encoding="utf-8",
+            )
+
+        receipts = client.waveform_evidence_receipts(evidence_nonce)
+        attempts = client.waveform_duplicate_attempts(evidence_nonce)
+
+        assert [row["tool_call_id"] for row in receipts] == ["ecg-call-1"]
+        assert [row["tool_call_id"] for row in attempts] == ["ecg-call-2"]
 
 
 # ── Item 5: image size guard ─────────────────────────────────────────
@@ -1073,6 +1805,112 @@ class TestImageDownscale:
         assert profile["suppressed_candidate_count"] > 0
         assert profile["selection_rule"] == "localized_density_outlier"
         assert profile["low_signal"] is False
+
+    @pytest.mark.parametrize(
+        ("row_count", "expected"),
+        [(12, True), (3, False), (8, False)],
+    )
+    def test_ekg_row_strip_evidence_requires_twelve_periodic_full_width_rows(
+        self,
+        row_count: int,
+        expected: bool,
+    ):
+        width, height = 600, 480
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        for y in range(0, height, 10):
+            draw.line((0, y, width - 1, y), fill=(255, 80, 80), width=1)
+        for index in range(row_count):
+            y = round((index + 0.5) * height / row_count)
+            draw.line((30, y, width - 1, y), fill="black", width=3)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        evidence = ImageProcessor().ekg_row_strip_evidence(encoded)
+
+        assert evidence["is_12_row_strip"] is expected
+        assert evidence["detected_row_count"] == row_count
+        assert evidence["method"] == "local_black_ink_row_periodicity_v2"
+
+    def test_high_resolution_sparse_rows_survive_smoothing_and_sync_event(self):
+        width, height = 900, 960
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        for y in range(0, height, 10):
+            draw.line((0, y, width - 1, y), fill=(255, 80, 80), width=1)
+        draw.rectangle((0, 0, width - 1, height - 1), outline="black", width=2)
+        for index in range(12):
+            baseline = round((index + 0.5) * height / 12)
+            # Only about 40% of each trace is perfectly horizontal.  This is
+            # enough lead-row evidence, but deliberately below the old fixed
+            # threshold after a seven-row smoothing mean.
+            draw.line((50, baseline, 210, baseline), fill="black", width=1)
+            draw.line((650, baseline, 860, baseline), fill="black", width=1)
+            draw.line(
+                (
+                    210,
+                    baseline,
+                    260,
+                    baseline - 6,
+                    300,
+                    baseline + 10,
+                    350,
+                    baseline,
+                ),
+                fill="black",
+                width=1,
+            )
+        # A synchronized high-amplitude event crosses row boundaries.  It must
+        # not erase the weaker full-width row-periodicity evidence.
+        draw.line((410, 15, 410, height - 16), fill="black", width=4)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        evidence = ImageProcessor().ekg_row_strip_evidence(encoded)
+
+        assert evidence["is_12_row_strip"] is True
+        assert evidence["detected_row_count"] == 12
+        assert evidence["consistent_gap_count"] == 11
+        assert evidence["vertical_span_ratio"] > 0.90
+        assert evidence["minimum_peak_ink_ratio"] < 0.08
+
+    def test_high_resolution_three_by_four_layout_is_not_a_row_strip(self):
+        width, height = 900, 960
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        for y in range(0, height, 10):
+            draw.line((0, y, width - 1, y), fill=(255, 80, 80), width=1)
+        for baseline in (160, 480, 800):
+            for column in range(4):
+                x_start = 25 + column * 220
+                x_end = x_start + 190
+                draw.line(
+                    (x_start, baseline, x_end, baseline),
+                    fill="black",
+                    width=2,
+                )
+                draw.line(
+                    (
+                        x_start + 70,
+                        baseline,
+                        x_start + 78,
+                        baseline - 35,
+                        x_start + 86,
+                        baseline + 45,
+                    ),
+                    fill="black",
+                    width=2,
+                )
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        evidence = ImageProcessor().ekg_row_strip_evidence(encoded)
+
+        assert evidence["is_12_row_strip"] is False
+        assert evidence["detected_row_count"] == 3
 
 
 # ── Multi-pass cropper (ImageCropper protocol) ───────────────────────

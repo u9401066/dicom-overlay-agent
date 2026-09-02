@@ -54,6 +54,32 @@
 | 2026-08-05 | 正式準確率只計 asserted references | MEETI 701 筆 weak/partial labels 只回報探索性 recall，299 筆 asserted references 才進 strict、partial、diagnosis 與 normal-specificity 正式分母，避免把報告沉默或不確定概念當成完整 ground truth。 |
 | 2026-08-05 | Bbox receipt 綁定精確原圖與座標 payload | production receipt 必須同時吻合原圖 SHA-256、case nonce、turn/session 與 canonical exact-coordinate digest；舊 receipt 或只驗證範圍不再足以讓框進 overlay/export。 |
 | 2026-08-05 | 壞波形以可見 coverage 排除，不強迫 ECGFounder 作答 | held-out evaluator 預設仍拒絕 non-ok；只有明確 `--allow-ineligible` 才能在確認 1,000 筆完整遍歷、status counts 與排除原因後計算 999 eligible metrics，並在 protocol/report 中保留 99.9% coverage 與全零 V5 exclusion。 |
+| 2026-08-06 | Codex OAuth 只作 OpenClaw 訂閱 transport | 每張影像必須由 OpenClaw embedded agent 執行模型 turn、MultiPass 與工具；Codex app-server 不得代判。官方 Codex plugin 只暫時遷移 OAuth，live config 隨即移除，並以 runtime log 與 bundle verifier證明。 |
+| 2026-08-06 | 正式 A/B 必須共享凍結來源指紋 | baseline 與 candidate 之間若修改 harness、prompt、scorer 或 UI，結果只能算探索性，不能做 paired improvement 宣稱。正式 supervisor 依序執行兩臂並記錄相同 shared invariants。 |
+| 2026-08-06 | Safety miss 是實驗結果，不是 artifact corruption | 非 perfect 模式仍完整記錄 urgent/cant-miss 漏診與 verifier failure detail，但不強迫模型輸出異常；只有 release acceptance/perfect gate 才要求零 safety misses。 |
+| 2026-08-06 | Codex extension discovery 不等於 Codex agent ownership | OpenClaw 會自動 discover bundled extension；正式證據必須是 embedded route 為 OpenAI model、subscription transport、零 app-server handoff marker，且磁碟上沒有 `@openai/codex` 或 `codex.exe`。只宣稱 plugin 未載入會與真實 log 不符。 |
+| 2026-08-07 | 臨床多輪採 60/100/180 秒 hard SLA | coarse、首 crop/refine、整題各自有絕對 deadline；逾時保留最佳已完成結果並要求覆核，不讓 provider latency 無限延長，也不為趕時限強迫異常答案。 |
+| 2026-08-07 | R-R timing 是節律規則性工具，不是 AF 診斷器 | 只有 deterministic irregular timing 加上 ECGFounder top-3 AF/flutter 才能觸發衝突覆核；若已有 lead-II finding 就升級合併，避免重複無框 finding。 |
+| 2026-08-07 | 缺漏 EKG lead layout 必須有影像幾何佐證才修復 | 使用 RGB black-ink row periodicity 排除紅格線並確認 12 橫列；沒有 12-row 證據時保留 partial/3x4 狀態，禁止憑標準版型補座標。 |
+| 2026-08-07 | 正式 scorer 必須區分否定、不確定與確診 | 被 `no/without/excludes/not confirmed` 約束的概念不算陽性；cautious finding 若只是重述 expected concept，也不能再製造 free-form false positive。原始 result JSON 不因 scorer 更新而改寫。 |
+| 2026-08-07 | OpenClaw fastMode 不等同 provider priority tier | `chat.send.fastMode=true` 可由 trajectory 證明 Gateway 已接受，但 ChatGPT subscription native transport 會移除不支援的 `service_tier`。實驗只記 fast request；priority 必須由 verbose transport receipt 實際觀察，禁止由設定值推論。 |
+| 2026-08-07 | Crop 只能裁決其實際涵蓋的證據 | 節律/ectopy/AV block 需連續 beats，傳導/缺血等需 declared multi-lead context；若實際 padded crop 未涵蓋 coarse finding 的全部 bboxes，局部 normal read 不得 RETRACT 整項，只能保留並記錄 coverage guard。 |
+| 2026-08-07 | 修 prompt 後必須換未曝光 paired gate | 已人工檢視的 64 例只能作開發診斷，不能再證明 `1.4.9` 提升。新 gate 排除既有 1,080 與當前 64 identities，OpenClaw 只取得 answer-free inference manifest，gold 只供 run 後 scorer。 |
+| 2026-08-07 | ECGFounder 每個 nonce 只允許一次 acquisition | 真實 coarse timeout 顯示 agent 可能違反 prompt 重複叫 tool。Plugin 以 bounded nonce cache 保證 sidecar 只執行一次；duplicate 取 cached compact result 並另記 suppression audit，成功 evidence receipt 仍恰好一筆。 |
+| 2026-08-09 | 弱標籤 candidate concept 只給半權重且不進 safety gate | MEETI 報告可能只列候選診斷。明確不確定但未否定的概念可在 incomplete weak-label case 得 0.5 recall 權重；strict、cant-miss、urgent 仍只接受 asserted evidence，避免把試探性鑑別當成答對。 |
+| 2026-08-09 | EKG study-level 節律重複採窄範圍 deterministic dedupe | 只處理 exact-normalized 的 rate/rhythm duplicate，優先保留 lead II 或真 rhythm strip 且有有效 bbox 的 finding；ST elevation 等局部 morphology 不合併，並留下 retraction trace，避免為了畫面整潔改動診斷內容。 |
+| 2026-08-09 | 全量 MEETI 完成與小型真實證據嚴格分開 | 32-case paired pilot 顯示 weak-label partial score 顯著提升，8-case unseen 只證明新版工具鏈/SLA並揭露漏診；9,922 例未完成前不得宣稱完整資料集已跑完或醫療準確率已驗證。 |
+| 2026-08-09 | 全量 paired run 只從發布後 frozen commit 起算 | 發布前 run 已有 289 baseline rows，但 commit 會改變 source fingerprint；因此主動中止並保留為 launch audit，正式 baseline/candidate 改用 `meeti-paired-full9922-v157-postpublish-v1`，兩臂完成前不再修改 scoped source。 |
+| 2026-08-27 | Luna 實機驗收採顯式 override，不改 release default | v0.4.7 實機以 `openai-codex` model override 選 `openai/gpt-5.6-luna`，但產品、Gateway seed 與 paired runner 預設仍是 `openai/gpt-5.4-mini`；OAuth 只作 transport credential，OpenClaw 保持 agent ownership。 |
+| 2026-08-27 | Transport/座標成功不得遮蔽判讀 miss | 2560×1600 / 150% DPI、ROI `(19,30,1522,1136)`、capture exclusion、≤0.368 px drift 與完整 Luna receipt 只證明工程路徑；錯判 AF/slow response、QT、R progression 與 inferior ST-T 必須明列 accuracy miss，fresh canary 前不作醫療準確率宣稱。 |
+| 2026-08-27 | Gateway recovery 必須 acceptance-aware 且 charge-safe | 只重用通過公開 `connect` 的 Gateway，不終止未知 PID；只有尚未收到 acceptance 才可 bounded replay，避免 subscription 重複請求與不明程序破壞。 |
+| 2026-08-27 | 10,001 scale gate 與臨床 cohort 分開 | 10,001 identities 僅驗證 completed/pending partition、fingerprint fail-closed 與 resume plumbing；canonical MEETI 仍是 9,922，禁止把規模測試寫成超過一萬張真實判讀成果。 |
+| 2026-08-27 | OpenClaw 瘦身只修剪 runtime 周圍 | v0.4.7 保留並雜湊七個必要 upstream templates，禁止刪 `dist` chunks、`quickjs-wasi` 或 `playwright-core`；只移除 PDB、tree-sitter C/H 與 foreign native payload，已驗證 stage 165.162 MiB、減少 19.804 MiB，完整 bundle 待重建。 |
+| 2026-08-27 | 產品 v0.4.7 與 harness/plugin 1.5.8 分版 | Python/product metadata 與 release tag 使用 v0.4.7；native harness manifest 使用 1.5.8；OpenClaw runtime pin 保持 2026.7.1-2，避免把產品、plugin 與上游 runtime 版本混為一談。 |
+| 2026-08-28 | Refinement bbox receipt 需容忍 native append 可見性競態但仍 fail closed | Gateway final event 與 Windows JSONL 可見順序不保證；讀取器不得越過半行，boxed turn 最多等 0.5 秒再做 exact nonce/source/coordinate digest 驗證。`confirm` 也能更新/保留 bbox，因此不能再略過 receipt。等待只處理本機證據，不新增模型 turn。 |
+| 2026-08-28 | 所有可信 precordial crop 都做平衡複核 | hypothesis id 不能決定是否檢查 R/S transition 與 ST-T。只改 prompt routing、不增加 turn；V1/V2 深 S 不足以判 PRWP，V3/V4 R dominance 需撤回，V2-V4 T/ST-T 需跨相鄰 beat/lead 重現並排除 noise。 |
+| 2026-08-28 | 非急性 ST-T 與 acute ischemic pattern 分開裁決 | 缺少 ST elevation／reciprocal change 只能降低 acute pattern，不能自動抹去 nonspecific repolarization。只有跨 adjacent beats 且至少兩個 mapped related leads 重現才保留 low-confidence nonspecific finding；單導變化、benign variant 或 non-reproducible noise 仍不建 finding，避免用漏診修正製造正常例誤報。 |
+| 2026-08-28 | 可定位的結構化 critical finding 啟動 critical-first triage | 只有具唯一 ID、非泛稱臨床標籤、具體 detail，且有有效 bbox 或可由宣告 lead layout 有界定位的 critical finding 才能改變規劃；top-level severity 或泛稱不得觸發。有限 crop 回合先逐一驗證所有 critical candidates，剩餘額度最多一個同機轉 support crop，warning/info 與無關 systematic probes 延後。被延後的 EKG axes 明列 not_assessed_due_to_critical_triage/info，且即使 final turn 撤回危急候選仍保留 incomplete/review provenance。 |
 
 ---
 

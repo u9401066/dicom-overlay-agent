@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import structlog
@@ -70,11 +74,17 @@ from dicom_overlay.infrastructure.hooks.clinical_consistency import (
 from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
-from dicom_overlay.infrastructure.logging_config import setup_logging
+from dicom_overlay.infrastructure.logging_config import (
+    setup_bootstrap_logging,
+    setup_logging,
+)
 from dicom_overlay.infrastructure.mcp_adapter import McpAdapter
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.overlay_highlight_builder import (
     build_ai_bbox_highlights,
+)
+from dicom_overlay.infrastructure.package_runtime_smoke import (
+    run_package_runtime_smoke,
 )
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor, ScreenMonitor
@@ -90,6 +100,48 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger("dicom_overlay")
 
+_OPENCLAW_RUNTIME_TEMPLATE_PATHS = {
+    "HEARTBEAT.md": Path(
+        "openclaw/node_modules/openclaw/src/agents/templates/HEARTBEAT.md"
+    ),
+    "AGENTS.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/AGENTS.md"
+    ),
+    "SOUL.md": Path("openclaw/node_modules/openclaw/docs/reference/templates/SOUL.md"),
+    "TOOLS.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/TOOLS.md"
+    ),
+    "IDENTITY.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/IDENTITY.md"
+    ),
+    "USER.md": Path("openclaw/node_modules/openclaw/docs/reference/templates/USER.md"),
+    "BOOTSTRAP.md": Path(
+        "openclaw/node_modules/openclaw/docs/reference/templates/BOOTSTRAP.md"
+    ),
+}
+_PACKAGING_SMOKE_MODE_ENV = "DICOM_OVERLAY_PACKAGING_SMOKE_MODE"
+_PACKAGING_SMOKE_MODE = "loopback-provider-auth-failure-v1"
+_PACKAGING_SMOKE_API_KEY_ENV = "DICOM_OVERLAY_PACKAGING_SMOKE_API_KEY"
+_PACKAGING_SMOKE_API_KEY = "invalid-packaging-smoke-key"
+_PACKAGING_SMOKE_PROVIDER = "packaging-smoke"
+_PACKAGING_SMOKE_ERROR_MARKER = "PACKAGED_SMOKE_EXPECTED_AUTH_FAILURE"
+_PACKAGING_SMOKE_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A"
+    "AQUBAScY42YAAAAASUVORK5CYII="
+)
+
+
+def _print_cli(*values: object) -> None:
+    """Print only when the process owns a console stream.
+
+    PyInstaller deliberately sets ``sys.stdout`` to ``None`` for the shipped
+    windowed executable. Diagnostic CLI modes still need deterministic exit
+    codes when invoked by the package verifier.
+    """
+
+    if sys.stdout is not None:
+        print(*values)
+
 
 class _SignalBridge(QObject):
     """Thread-safe bridge: agent callbacks (background) → Qt slots (main)."""
@@ -98,6 +150,7 @@ class _SignalBridge(QObject):
     analysis_result = pyqtSignal(object)
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
+    prepare_capture = pyqtSignal()
     chat_done = pyqtSignal(str, str, int, int)
     review_chat_done = pyqtSignal(str, object, int, object, object, int)
     review_apply_done = pyqtSignal(object, object)
@@ -111,7 +164,7 @@ class _SignalBridge(QObject):
 
 
 def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
-    """Verify the portable bundle can start; print a report and return exit code.
+    """Verify the portable bundle can start and return a stable exit code.
 
     0 = all components OK (bundle is ready to run on this machine),
     1 = at least one component missing (prints which).
@@ -166,15 +219,56 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
             str(clinical_rules),
         )
     )
+    clinical_knowledge_root = base_dir / "clinical_knowledge"
+    clinical_knowledge_files = (
+        clinical_knowledge_root / "rules" / "core.rule.yaml",
+        clinical_knowledge_root / "schema" / "rule.schema.json",
+        clinical_knowledge_root / "generated" / "human-catalogue.md",
+        clinical_knowledge_root / "generated" / "agent-steps.md",
+        clinical_knowledge_root / "clinical-knowledge.sqlite",
+    )
+    missing_clinical_knowledge = [
+        path.relative_to(base_dir).as_posix()
+        for path in clinical_knowledge_files
+        if not path.is_file() or path.stat().st_size <= 0
+    ]
+    rows.append(
+        (
+            "clinical_knowledge",
+            not missing_clinical_knowledge,
+            (
+                str(clinical_knowledge_root)
+                if not missing_clinical_knowledge
+                else "missing or empty: " + ", ".join(missing_clinical_knowledge)
+            ),
+        )
+    )
     gateway = GatewayManager(repo_root=base_dir)
     rows.extend(gateway.verify_runtime())
+    missing_templates = [
+        name
+        for name, relative in _OPENCLAW_RUNTIME_TEMPLATE_PATHS.items()
+        if not (base_dir / relative).is_file()
+        or (base_dir / relative).stat().st_size <= 0
+    ]
+    rows.append(
+        (
+            "openclaw_workspace_templates",
+            not missing_templates,
+            (
+                "7 pinned upstream templates"
+                if not missing_templates
+                else f"missing or empty: {', '.join(missing_templates)}"
+            ),
+        )
+    )
 
     all_ok = all(ok for _, ok, _ in rows)
-    print("DICOM Overlay Agent — self-check")
+    _print_cli("DICOM Overlay Agent — self-check")
     for component, ok, detail in rows:
         mark = "OK " if ok else "FAIL"
-        print(f"  [{mark}] {component}: {detail}")
-    print("RESULT:", "OK" if all_ok else "FAILED")
+        _print_cli(f"  [{mark}] {component}: {detail}")
+    _print_cli("RESULT:", "OK" if all_ok else "FAILED")
     return 0 if all_ok else 1
 
 
@@ -186,9 +280,107 @@ def _run_explain_rules(base_dir: Path) -> int:
     contacting an LLM, so a clinician can review the safety net's logic.
     """
     engine = build_clinical_engine(base_dir / "clinical_rules")
-    print("DICOM Overlay Agent — 臨床一致性規則對照表（供人工審核）")
-    print(engine.catalogue())
+    _print_cli("DICOM Overlay Agent — 臨床一致性規則對照表（供人工審核）")
+    _print_cli(engine.catalogue())
     return 0
+
+
+def _packaging_smoke_configuration_error(base_dir: Path) -> str:
+    """Return why the opt-in image-turn smoke is not safely isolated.
+
+    This diagnostic is deliberately unusable with a production provider.  Its
+    config must target a loopback-only fake OpenAI-compatible endpoint and the
+    process must not expose real provider credentials or pre-existing state.
+    """
+
+    if os.environ.get(_PACKAGING_SMOKE_MODE_ENV) != _PACKAGING_SMOKE_MODE:
+        return f"{_PACKAGING_SMOKE_MODE_ENV} must equal {_PACKAGING_SMOKE_MODE}"
+    if os.environ.get(_PACKAGING_SMOKE_API_KEY_ENV) != _PACKAGING_SMOKE_API_KEY:
+        return f"{_PACKAGING_SMOKE_API_KEY_ENV} must contain the fixed invalid key"
+    forbidden_credentials = (
+        "OPENAI_API_KEY",
+        "CODEX_HOME",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENROUTER_API_KEY",
+    )
+    exposed = [name for name in forbidden_credentials if os.environ.get(name)]
+    if exposed:
+        return "real provider credentials are exposed: " + ", ".join(exposed)
+    if (base_dir / "openclaw-home").exists():
+        return "openclaw-home must not exist before the isolated smoke"
+    if (base_dir / ".env").exists():
+        return ".env must not exist before the isolated smoke"
+
+    config_path = base_dir / "openclaw" / "openclaw.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"isolated OpenClaw config is unreadable: {type(exc).__name__}"
+    agents = payload.get("agents")
+    defaults = agents.get("defaults") if isinstance(agents, dict) else None
+    model = defaults.get("model") if isinstance(defaults, dict) else None
+    primary = model.get("primary") if isinstance(model, dict) else model
+    fallbacks = model.get("fallbacks") if isinstance(model, dict) else None
+    if primary != f"{_PACKAGING_SMOKE_PROVIDER}/image-auth-failure":
+        return "primary model is not the fixed packaging-smoke model"
+    if fallbacks not in (None, []):
+        return "packaging smoke must not configure model fallbacks"
+    models = payload.get("models")
+    providers = models.get("providers") if isinstance(models, dict) else None
+    provider = (
+        providers.get(_PACKAGING_SMOKE_PROVIDER)
+        if isinstance(providers, dict)
+        else None
+    )
+    if not isinstance(provider, dict):
+        return "packaging-smoke provider is missing"
+    if provider.get("api") != "openai-responses":
+        return "packaging-smoke provider must use openai-responses"
+    api_key = provider.get("apiKey")
+    if not (
+        isinstance(api_key, dict)
+        and api_key.get("source") == "env"
+        and api_key.get("id") == _PACKAGING_SMOKE_API_KEY_ENV
+    ):
+        return "packaging-smoke API key must be the dedicated env SecretRef"
+    base_url = provider.get("baseUrl")
+    parsed = urlsplit(base_url) if isinstance(base_url, str) else None
+    try:
+        parsed_port = parsed.port if parsed is not None else None
+    except ValueError:
+        parsed_port = None
+    if not (
+        parsed is not None
+        and parsed.scheme == "http"
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and parsed_port is not None
+        and parsed.username is None
+        and parsed.password is None
+    ):
+        return "packaging-smoke baseUrl must be an explicit loopback HTTP port"
+    configured_models = provider.get("models")
+    configured_inputs = (
+        configured_models[0].get("input")
+        if isinstance(configured_models, list)
+        and len(configured_models) == 1
+        and isinstance(configured_models[0], dict)
+        else None
+    )
+    if not (
+        isinstance(configured_models, list)
+        and len(configured_models) == 1
+        and isinstance(configured_models[0], dict)
+        and configured_models[0].get("id") == "image-auth-failure"
+        and isinstance(configured_inputs, list)
+        and "image" in configured_inputs
+    ):
+        return "packaging-smoke provider must expose only the fixed image model"
+    auth = payload.get("auth")
+    profiles = auth.get("profiles") if isinstance(auth, dict) else None
+    if profiles:
+        return "packaging-smoke config must not contain auth profiles"
+    return ""
 
 
 def _run_gateway_smoke(
@@ -196,7 +388,19 @@ def _run_gateway_smoke(
     config_path: Path,
     config: AppConfig,
 ) -> int:
-    """Start, authenticate to, and stop the bundled Gateway without inference."""
+    """Exercise a packaged image ``chat.send`` without any external provider.
+
+    The opt-in release test replaces ``openclaw.json`` with a loopback-only
+    provider that always returns a marked HTTP 401.  Success means Gateway
+    accepted the image turn, initialized all seven workspace templates, and
+    reached that explicit local auth failure.  A real API/OAuth configuration
+    is rejected before the Gateway starts.
+    """
+
+    safety_error = _packaging_smoke_configuration_error(base_dir)
+    if safety_error:
+        logger.error("Unsafe packaged Gateway smoke configuration: %s", safety_error)
+        return 1
 
     settings = DesktopSettingsStore(repo_root=base_dir, config_path=config_path)
     gateway_token = settings.ensure_gateway_token()
@@ -210,6 +414,7 @@ def _run_gateway_smoke(
         reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
         connect_timeout_sec=config.openclaw.connect_timeout_sec,
         inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        fast_mode=config.openclaw.fast_mode,
         gateway_token=gateway_token,
         base_dir=base_dir,
     )
@@ -220,8 +425,65 @@ def _run_gateway_smoke(
             if not await gateway.wait_ready():
                 logger.error("Gateway runtime smoke did not become ready")
                 return 1
-            await client.connect()
+            connect_deadline = (
+                asyncio.get_running_loop().time()
+                + config.openclaw.gateway_start_timeout_sec
+            )
+            while True:
+                try:
+                    await client.connect()
+                    break
+                except ConnectionError as exc:
+                    if (
+                        "gateway starting" not in str(exc).casefold()
+                        or asyncio.get_running_loop().time() >= connect_deadline
+                    ):
+                        raise
+                    with contextlib.suppress(Exception):
+                        await client.disconnect()
+                    await asyncio.sleep(1)
             logger.info("Gateway runtime smoke authenticated successfully")
+            try:
+                await client.chat_about_image(
+                    "Packaging-only image attachment probe; no clinical inference.",
+                    image_base64=_PACKAGING_SMOKE_PNG_BASE64,
+                )
+            except RuntimeError as exc:
+                error_text = str(exc)
+                if _PACKAGING_SMOKE_ERROR_MARKER not in error_text:
+                    logger.error(
+                        "Image turn failed before the marked loopback auth gate: %s",
+                        error_text,
+                    )
+                    return 1
+            else:
+                logger.error("Loopback provider unexpectedly completed image inference")
+                return 1
+
+            trace = client.last_run_trace()
+            run_id = str(trace.get("run_id") or "")
+            workspace = base_dir / "openclaw-home" / ".openclaw" / "workspace"
+            missing_workspace_files = [
+                name
+                for name in _OPENCLAW_RUNTIME_TEMPLATE_PATHS
+                if not (workspace / name).is_file()
+            ]
+            if not run_id:
+                logger.error("Image chat.send was not accepted with a runId")
+                return 1
+            if missing_workspace_files:
+                logger.error(
+                    "Fresh Gateway workspace is missing templates: %s",
+                    ", ".join(missing_workspace_files),
+                )
+                return 1
+            logger.info(
+                "packaged_gateway_image_turn_smoke",
+                run_id=run_id,
+                template_count=len(_OPENCLAW_RUNTIME_TEMPLATE_PATHS),
+                image_attachment=True,
+                provider_outcome="expected_loopback_auth_failure",
+            )
             return 0
         except Exception:
             logger.exception("Gateway runtime smoke failed")
@@ -265,6 +527,8 @@ async def _start_desktop_runtime(
 
 
 def main() -> None:
+    setup_bootstrap_logging()
+
     # --- Resolve portable base dir (USB plug-and-play) ---
     # When frozen, anchor all runtime paths to the executable's folder, not the
     # launch cwd (which may be System32). See infrastructure/app_paths.py.
@@ -279,6 +543,15 @@ def main() -> None:
             config_path = Path(sys.argv[sys.argv.index(arg) + 1])
 
     config = load_config(config_path)
+
+    # Exercise the exact frozen Pillow/logging/review surface without opening
+    # the GUI or contacting OpenClaw. The package verifier invokes this gate in
+    # a disposable directory after every clean build.
+    if "--package-runtime-smoke" in sys.argv:
+        with tempfile.TemporaryDirectory(prefix="dicom-overlay-package-smoke-") as raw:
+            report = run_package_runtime_smoke(Path(raw))
+        _print_cli(json.dumps(report, sort_keys=True))
+        sys.exit(0 if report["status"] == "ok" else 1)
 
     # --- Portable self-check (USB plug-and-play verification) ---
     # `--selfcheck` verifies the bundle can start (node + openclaw + writable
@@ -296,11 +569,22 @@ def main() -> None:
 
     # --- Setup logging ---
     # Diagnostic commands above must not leave runtime logs in a fresh bundle.
-    setup_logging(log_level=config.log_level, log_file=config.log_file)
+    setup_logging(
+        log_level=config.log_level,
+        log_file=config.log_file,
+        base_dir=base_dir,
+    )
     logger.info("DICOM Overlay Agent starting...")
 
     if "--gateway-smoke" in sys.argv:
         sys.exit(_run_gateway_smoke(base_dir, config_path, config))
+
+    # --- Real desktop acceptance mode ---
+    # ``--auto-export`` routes every completed analysis through the exact same
+    # export code path as the control-bar Export button.  The authorized
+    # batch driver (scripts/run-desktop-acceptance.py) relies on this to keep
+    # evidence generation App-owned instead of script-side.
+    auto_export_on_result = "--auto-export" in sys.argv
 
     settings_store = DesktopSettingsStore(
         repo_root=base_dir,
@@ -322,6 +606,7 @@ def main() -> None:
         reconnect_interval_sec=config.openclaw.reconnect_interval_sec,
         connect_timeout_sec=config.openclaw.connect_timeout_sec,
         inference_timeout_sec=config.openclaw.inference_timeout_sec,
+        fast_mode=config.openclaw.fast_mode,
         gateway_token=gateway_token,
         registry=registry,
         base_dir=base_dir,
@@ -444,6 +729,7 @@ def main() -> None:
     )
     agent.on_error = signals.error_msg.emit
     agent.on_roi_setup_required = signals.roi_setup_requested.emit
+    agent.on_before_capture = signals.prepare_capture.emit
 
     # ─── Qt slots (run on main thread) ───
     modality_index = [0]
@@ -623,6 +909,10 @@ def main() -> None:
         control_bar.set_pending_analysis(False)
         if announce and config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
+        if auto_export_on_result:
+            # Same export path as the control-bar Export button; keeps batch
+            # acceptance evidence identical to a manual clinician export.
+            on_export_review()
 
     def on_error(msg: str):
         if msg.startswith("New image ready"):
@@ -639,6 +929,7 @@ def main() -> None:
     signals.analysis_result.connect(on_analysis_result)
     signals.pending_analysis.connect(on_pending_analysis)
     signals.error_msg.connect(on_error)
+    signals.prepare_capture.connect(overlay.hide_for_recapture)
 
     # ─── Display timeout — single source of truth (overlay timer) ───
     def _on_display_expired() -> None:
@@ -694,18 +985,28 @@ def main() -> None:
         control_bar.set_trigger_mode(mode)
         control_bar.set_status(f"Mode: {mode.value}")
 
-    def on_analysis_settings_changed(enabled: bool, max_targets: int) -> None:
+    def on_analysis_settings_changed(
+        enabled: bool,
+        max_targets: int,
+        fast_mode_enabled: bool,
+    ) -> None:
         nonlocal multi_pass_analyzer
         multi_pass_analyzer = build_multi_pass_analyzer(max_targets)
         agent.set_vision_analyzer(multi_pass_analyzer if enabled else hooked_analyzer)
         config.analysis.multi_pass_enabled = enabled
         config.analysis.multi_pass_max_zoom_targets = max_targets
+        config.openclaw.fast_mode = fast_mode_enabled
+        openclaw_client.set_fast_mode(fast_mode_enabled)
         settings_store.save_analysis_settings(
             multi_pass_enabled=enabled,
             max_zoom_targets=max_targets,
+            fast_mode_enabled=fast_mode_enabled,
         )
         state = "on" if enabled else "off"
-        control_bar.set_status(f"Multi-pass: {state} ({max_targets} targets)")
+        speed = "priority" if fast_mode_enabled else "standard"
+        control_bar.set_status(
+            f"Multi-pass: {state} ({max_targets} targets), {speed} inference"
+        )
 
     def on_modality_cycle():
         modality_index[0] = (modality_index[0] + 1) % len(modality_cycle)
@@ -757,6 +1058,7 @@ def main() -> None:
             current_mode=agent.trigger_mode,
             multi_pass_enabled=config.analysis.multi_pass_enabled,
             multi_pass_max_zoom_targets=(config.analysis.multi_pass_max_zoom_targets),
+            fast_mode_enabled=config.openclaw.fast_mode,
             config_path=config_path,
             parent=control_bar,
         )
@@ -1357,7 +1659,9 @@ def main() -> None:
         control_bar.set_gateway_status(status)
         if agent.state == AgentState.SETUP:
             control_bar.set_status("請開啟 DICOM viewer 以設定安全影像區域")
-        logger.info("Desktop runtime started — gateway=%s state=%s", status, agent.state.name)
+        logger.info(
+            "Desktop runtime started — gateway=%s state=%s", status, agent.state.name
+        )
 
     signals.runtime_started.connect(on_runtime_started)
 

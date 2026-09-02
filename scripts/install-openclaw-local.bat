@@ -37,6 +37,11 @@ if not "%FORCE_OPENCLAW_INSTALL%"=="1" (
                 popd
                 exit /b 1
             )
+            call :stage_codex_auth_provider
+            if errorlevel 1 (
+                popd
+                exit /b 1
+            )
             echo [OK] Existing OpenClaw version !OPENCLAW_VERSION! matches the lock target.
             popd
             exit /b 0
@@ -76,6 +81,11 @@ if errorlevel 1 (
     popd
     exit /b 1
 )
+call :stage_codex_auth_provider
+if errorlevel 1 (
+    popd
+    exit /b 1
+)
 
 echo [OK] Local OpenClaw install complete.
 echo [NEXT] Run start.bat to launch the local gateway + overlay agent.
@@ -97,4 +107,8 @@ if exist "node\node.exe" (
     exit /b !errorlevel!
 )
 node scripts\check-openclaw-version.cjs "%~1" "%MIN_SAFE_OPENCLAW_VERSION%"
+exit /b !errorlevel!
+
+:stage_codex_auth_provider
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stage-codex-auth-migration-provider.ps1
 exit /b !errorlevel!

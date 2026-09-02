@@ -1,0 +1,81 @@
+schema_version: 1
+entries:
+  - legacy_id: ekg-st-elevation-not-flagged
+    layer: runtime
+    status: mapped
+    canonical_rule: ekg.st_elevation_not_flagged.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: ekg-explicit-stemi-undercall
+    layer: runtime
+    status: mapped
+    canonical_rule: ekg.explicit_stemi_undercall.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: ekg-peaked-t-hyperkalemia
+    layer: runtime
+    status: mapped
+    canonical_rule: ekg.peaked_t_hyperkalemia.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: ekg-possible-hyperacute-ischemia-triage
+    layer: runtime
+    status: mapped
+    canonical_rule: ekg.possible_hyperacute_ischemia_triage.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: ekg-uncertain-acute-injury-with-st-elevation-triage
+    layer: runtime
+    status: mapped
+    canonical_rule: ekg.uncertain_acute_injury_with_st_elevation_triage.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: cxr-pneumothorax-undercall
+    layer: runtime
+    status: mapped
+    canonical_rule: cxr.pneumothorax_undercall.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: cxr-widened-mediastinum
+    layer: runtime
+    status: mapped
+    canonical_rule: cxr.widened_mediastinum.v1
+    source: src/dicom_overlay/domain/clinical_rules.py
+    locator: _BUILTIN_RULES
+    parity_test: tests/unit/test_clinical_rules.py::TestBuiltinRules
+  - legacy_id: critical-triage-guard
+    layer: application_guard
+    status: intentional_local
+    source: src/dicom_overlay/application/multi_pass.py
+    locator: select_critical_triage_candidates
+    parity_test: tests/unit/test_multi_pass.py::TestCriticalTriagePlanning
+    note: >-
+      Cross-finding execution policy remains Python because it allocates crop
+      budget and preserves final-report invariants; its clinical intent and
+      deferred-axis behavior are catalogued separately and regression tested.
+  - legacy_id: professional-co-reader-prompt
+    layer: prompt_contract
+    status: intentional_local
+    source: src/dicom_overlay/application/interpretation_harness.py
+    locator: PROFESSIONAL_CO_READER_GUIDANCE
+    parity_test: tests/unit/test_interpretation_harness.py::test_initial_analysis_prompt_contains_structured_interpretation_protocol
+    note: >-
+      The prompt requires a professional specialist co-reading response and
+      replaces generic refusal/disclaimer text with case-specific limitations,
+      uncertainty, missing inputs, and focused review actions.
+  - legacy_id: generic-refusal-output-guard
+    layer: output_validator
+    status: intentional_local
+    source: src/dicom_overlay/infrastructure/hooks/output_validator.py
+    locator: _PROFESSIONAL_REFUSAL_PATTERNS
+    parity_test: tests/unit/test_hooks_and_mcp.py::TestOutputValidator::test_generic_medical_refusal_or_disclaimer_is_rejected
+    note: >-
+      Valid JSON is still rejected when clinical text contains generic AI or
+      medical-advice refusal boilerplate. Specific capture limitations such as
+      missing leads remain valid and are covered by a separate regression.

@@ -253,6 +253,31 @@ def test_verify_eval_artifacts_rejects_missed_urgent_concern(tmp_path: Path) -> 
     assert any("urgent_concern_gate" in item for item in verification.failures)
 
 
+def test_verify_eval_artifacts_can_record_safety_misses_as_outcomes(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 5)
+    _write_scorecard(
+        eval_dir,
+        5,
+        cant_miss_missed=["public_cxr_0000: ventricular tachycardia"],
+        urgent_concern_missed=["public_cxr_0001: STEMI"],
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        min_cases=5,
+        require_zero_safety_misses=False,
+    )
+
+    assert verification.ok
+    assert "cant_miss_metrics_recorded" in verification.passed_checks
+    assert "urgent_concern_metrics_recorded" in verification.passed_checks
+
+
 def test_verify_eval_artifacts_rejects_missing_review_audit(tmp_path: Path) -> None:
     manifest = tmp_path / "manifest.json"
     eval_dir = tmp_path / "eval"

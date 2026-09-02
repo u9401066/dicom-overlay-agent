@@ -11,12 +11,18 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
+from uuid import uuid4
 
 import structlog
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+from dicom_overlay.infrastructure.codex_subscription_auth import (
+    ensure_openclaw_subscription_auth,
+    resolve_native_codex_home,
+    uses_codex_subscription_transport,
+)
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_runtime import (
     ensure_openclaw_runtime_supported,
@@ -41,6 +47,7 @@ _DST_SKILLS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "skills"
 _SRC_PLUGINS = Path("openclaw/workspace/plugins")
 _DST_PLUGINS = _OPENCLAW_HOME / ".openclaw" / "workspace" / "plugins"
 _HARNESS_PLUGIN = "dicom-overlay-agent-harness"
+_OPENAI_PROVIDER_PLUGIN = "openai"
 _ECG_FOUNDER_TOOL = "ecg_founder_analyze_waveform"
 _GATEWAY_LAUNCH_LOCK = Path("data/tmp/openclaw-gateway.lock")
 DEFAULT_GATEWAY_READY_TIMEOUT_SEC = 180.0
@@ -51,6 +58,18 @@ def ecg_founder_tool_enabled(environment: Mapping[str, str]) -> bool:
     return bool(
         environment.get("DICOM_ECGFOUNDER_ENDPOINT", "").strip()
         and environment.get("DICOM_ECGFOUNDER_TOKEN", "").strip()
+    )
+
+
+def _uses_openai_subscription_provider(config: Mapping[str, object]) -> bool:
+    models = config.get("models")
+    providers = models.get("providers") if isinstance(models, dict) else None
+    openai = providers.get("openai") if isinstance(providers, dict) else None
+    return bool(
+        isinstance(openai, dict)
+        and openai.get("api") == "openai-chatgpt-responses"
+        and "apiKey" not in openai
+        and "baseUrl" not in openai
     )
 
 
@@ -121,10 +140,17 @@ class GatewayManager:
         self._process: subprocess.Popen | None = None
         self._gateway_log: TextIO | None = None
         self._launch_lock_dir: Path | None = None
+        self._launch_lock_token: str | None = None
+        self._reused_gateway = False
+        self._reused_pid: int | None = None
 
     @property
     def is_running(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        if self._process is not None:
+            return self._process.poll() is None
+        if not self._reused_gateway:
+            return False
+        return self._reused_pid is not None and self._pid_is_running(self._reused_pid)
 
     def _find_node(self) -> str:
         """Find the node executable, preferring a repo-local / bundled binary.
@@ -226,6 +252,34 @@ class GatewayManager:
                     if not missing_surfaces
                     else f"missing: {', '.join(missing_surfaces)}"
                 ),
+            )
+        )
+        codex_migration = package_root / "dist" / "extensions" / "codex"
+        try:
+            codex_package = json.loads(
+                (codex_migration / "package.json").read_text(encoding="utf-8")
+            )
+            codex_bundle = json.loads(
+                (codex_migration / "migration-bundle.json").read_text(
+                    encoding="utf-8-sig"
+                )
+            )
+        except (OSError, json.JSONDecodeError):
+            codex_package = {}
+            codex_bundle = {}
+        codex_migration_ready = bool(
+            codex_package.get("name") == "@openclaw/codex"
+            and codex_package.get("version") == "2026.7.1-1"
+            and codex_bundle.get("purpose") == "oauth_migration_only"
+            and codex_bundle.get("codex_agent_runtime_dependencies_bundled") is False
+            and (codex_migration / "dist" / "index.js").is_file()
+            and not (codex_migration / "node_modules" / "@openai" / "codex").exists()
+        )
+        rows.append(
+            (
+                "codex_oauth_migration_provider",
+                codex_migration_ready,
+                str(codex_migration),
             )
         )
         harness_root = self._resource_root() / _SRC_PLUGINS / _HARNESS_PLUGIN
@@ -451,6 +505,9 @@ class GatewayManager:
             plugins["allow"] = allow
         if _HARNESS_PLUGIN not in allow:
             allow.append(_HARNESS_PLUGIN)
+        subscription_transport = _uses_openai_subscription_provider(payload)
+        if subscription_transport and _OPENAI_PROVIDER_PLUGIN not in allow:
+            allow.append(_OPENAI_PROVIDER_PLUGIN)
         load = plugins.setdefault("load", {})
         if not isinstance(load, dict):
             load = {}
@@ -471,6 +528,12 @@ class GatewayManager:
             entry = {}
             entries[_HARNESS_PLUGIN] = entry
         entry["enabled"] = True
+        if subscription_transport:
+            provider_entry = entries.setdefault(_OPENAI_PROVIDER_PLUGIN, {})
+            if not isinstance(provider_entry, dict):
+                provider_entry = {}
+                entries[_OPENAI_PROVIDER_PLUGIN] = provider_entry
+            provider_entry["enabled"] = True
 
         # Keep the model tool surface bounded. ECGFounder is exposed only when
         # an authenticated loopback sidecar is explicitly configured; normal
@@ -504,14 +567,41 @@ class GatewayManager:
             shutil.rmtree(lock_dir, ignore_errors=True)
             lock_dir.mkdir()
         self._launch_lock_dir = lock_dir
+        self._launch_lock_token = uuid4().hex
+        try:
+            (lock_dir / "owner").write_text(
+                self._launch_lock_token,
+                encoding="utf-8",
+            )
+        except OSError:
+            shutil.rmtree(lock_dir, ignore_errors=True)
+            self._launch_lock_dir = None
+            self._launch_lock_token = None
+            raise
         return lock_dir
 
     def _release_launch_lock(self) -> None:
         """Release the launch lock held by this manager, if any."""
         if self._launch_lock_dir is None:
             return
+        if self._launch_lock_token is not None:
+            try:
+                current_token = (self._launch_lock_dir / "owner").read_text(
+                    encoding="utf-8"
+                )
+            except OSError:
+                current_token = ""
+            if current_token != self._launch_lock_token:
+                logger.warning(
+                    "OpenClaw launch lock ownership changed; refusing to remove it",
+                    lock_dir=str(self._launch_lock_dir),
+                )
+                self._launch_lock_dir = None
+                self._launch_lock_token = None
+                return
         shutil.rmtree(self._launch_lock_dir, ignore_errors=True)
         self._launch_lock_dir = None
+        self._launch_lock_token = None
 
     def _read_lock_pid(self, lock_dir: Path) -> int | None:
         try:
@@ -522,14 +612,24 @@ class GatewayManager:
     def _pid_is_running(self, pid: int) -> bool:
         return pid_is_running(pid)
 
-    def _kill_port_occupant(self) -> None:
-        """Kill any process occupying the Gateway port.
+    def _probe_existing_gateway(self) -> bool:
+        """Authenticate through public ``connect`` before reusing a listener."""
 
-        This handles the case where a previous Gateway process is still alive
-        (e.g., from a previous app run that wasn't shut down cleanly).
-        """
+        from dicom_overlay.infrastructure.openclaw_client import (
+            probe_openclaw_gateway,
+            resolve_openclaw_gateway_token,
+        )
+
+        return probe_openclaw_gateway(
+            f"ws://127.0.0.1:{self._port}",
+            gateway_token=resolve_openclaw_gateway_token(self._repo_root),
+            timeout_sec=1.5,
+        )
+
+    def _port_occupant_pids(self) -> set[int]:
+        """Return listeners on the configured port without mutating processes."""
+
         if sys.platform != "win32":
-            # On Linux/macOS, use lsof
             try:
                 result = subprocess.run(
                     ["lsof", "-ti", f"tcp:{self._port}"],
@@ -537,18 +637,16 @@ class GatewayManager:
                     text=True,
                     check=False,
                 )
-                pids = result.stdout.strip().split()
-                for pid_str in pids:
-                    pid = int(pid_str)
-                    logger.warning(
-                        "Killing process %d occupying port %d", pid, self._port
-                    )
-                    os.kill(pid, 15)  # SIGTERM
-            except (FileNotFoundError, ValueError):
-                pass
-            return
+            except (FileNotFoundError, TypeError):
+                return set()
+            pids: set[int] = set()
+            for value in result.stdout.split():
+                try:
+                    pids.add(int(value))
+                except ValueError:
+                    continue
+            return pids
 
-        # Windows: use netstat to find PID on the port
         try:
             result = subprocess.run(
                 ["netstat", "-ano"],
@@ -556,30 +654,64 @@ class GatewayManager:
                 text=True,
                 check=False,
             )
-            for line in result.stdout.splitlines():
-                if f":{self._port}" in line and "LISTENING" in line:
-                    parts = line.split()
-                    pid = int(parts[-1])
-                    # Don't kill our own process
-                    if self._process is not None and pid == self._process.pid:
-                        continue
-                    logger.warning(
-                        "Killing stale process (pid=%d) occupying port %d",
-                        pid,
-                        self._port,
-                    )
-                    subprocess.run(
-                        ["taskkill", "/F", "/PID", str(pid)],
-                        capture_output=True,
-                        check=False,
-                    )
-        except (FileNotFoundError, ValueError, IndexError):
-            pass
+        except (FileNotFoundError, TypeError):
+            return set()
+        pids = set()
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 5 or parts[0].upper() != "TCP":
+                continue
+            if parts[3].upper() != "LISTENING":
+                continue
+            _host, separator, port_text = parts[1].rpartition(":")
+            if not separator or port_text != str(self._port):
+                continue
+            try:
+                pids.add(int(parts[-1]))
+            except ValueError:
+                continue
+        return pids
+
+    def _mark_gateway_reused(self) -> None:
+        lock_dir = self._repo_root / _GATEWAY_LAUNCH_LOCK
+        lock_pid = self._read_lock_pid(lock_dir)
+        if lock_pid is not None and not self._pid_is_running(lock_pid):
+            logger.warning("Removing stale OpenClaw Gateway launch lock: %s", lock_dir)
+            shutil.rmtree(lock_dir, ignore_errors=True)
+            lock_pid = None
+        occupant_pids = self._port_occupant_pids()
+        self._reused_pid = (
+            lock_pid
+            if lock_pid is not None and lock_pid in occupant_pids
+            else next(iter(occupant_pids), None)
+        )
+        self._reused_gateway = True
+        logger.info(
+            "Reusing healthy OpenClaw Gateway on port %d (pid=%s)",
+            self._port,
+            self._reused_pid,
+        )
+
+    def _kill_port_occupant(self) -> None:
+        """Terminate only a port listener proven to be owned by this manager.
+
+        Kept as a narrow compatibility hook for callers/tests.  Startup no
+        longer uses it to kill arbitrary listeners.
+        """
+
+        if self._process is None or self._process.poll() is not None:
+            return
+        if self._process.pid not in self._port_occupant_pids():
+            return
+        self._process.terminate()
 
     def start(self) -> None:
         """Start the Gateway subprocess (non-blocking)."""
         if self.is_running:
-            logger.info("Gateway already running (pid=%d)", self._process.pid)  # type: ignore[union-attr]
+            logger.info(
+                "Gateway already running (pid=%s)",
+                self._process.pid if self._process is not None else self._reused_pid,
+            )
             return
 
         if (
@@ -592,10 +724,29 @@ class GatewayManager:
                 "explicit real Gateway integration run."
             )
 
+        # Validate the public protocol before touching a process or lock.  This
+        # allows multiple desktop instances to share one healthy local Gateway
+        # and, critically, never treats an arbitrary live listener as killable.
+        if self._probe_existing_gateway():
+            self._mark_gateway_reused()
+            return
+
         lock_dir = self._acquire_launch_lock()
-        # Kill any stale process occupying the port before starting
         try:
-            self._kill_port_occupant()
+            # Close the acquire/probe race: a peer may have completed startup
+            # immediately before this manager took the lock.
+            if self._probe_existing_gateway():
+                self._release_launch_lock()
+                self._mark_gateway_reused()
+                return
+            occupant_pids = self._port_occupant_pids()
+            if occupant_pids:
+                raise RuntimeError(
+                    "Port "
+                    f"{self._port} is occupied by an unhealthy or non-OpenClaw "
+                    "listener; refusing to terminate an unowned process "
+                    f"(pid={','.join(str(pid) for pid in sorted(occupant_pids))})"
+                )
 
             node = self._find_node()
             script = self._gateway_script()
@@ -604,6 +755,28 @@ class GatewayManager:
 
             home = self._repo_root / _OPENCLAW_HOME
             config = self._ensure_openclaw_config()
+            subscription_transport = uses_codex_subscription_transport(config)
+            if subscription_transport:
+                ensure_openclaw_subscription_auth(
+                    node_executable=node,
+                    openclaw_cli=script,
+                    config_path=config,
+                    state_home=home,
+                    source_codex_home=resolve_native_codex_home(os.environ),
+                    plugin_path=(
+                        self._resource_root()
+                        / "openclaw"
+                        / "node_modules"
+                        / "openclaw"
+                        / "dist"
+                        / "extensions"
+                        / "codex"
+                    ),
+                    working_directory=self._repo_root,
+                    audit_path=(
+                        self._repo_root / "data" / "tmp" / "codex-auth-import.json"
+                    ),
+                )
             env = {
                 **os.environ,
                 **read_env_file(self._repo_root / ".env"),
@@ -615,6 +788,9 @@ class GatewayManager:
                     self._repo_root / "data" / "tmp" / "bbox-tool-audit.jsonl"
                 ),
             }
+            if subscription_transport:
+                env.pop("OPENAI_API_KEY", None)
+                env.pop("CODEX_HOME", None)
             env.setdefault(
                 "DICOM_ECGFOUNDER_AUDIT_PATH",
                 str(self._repo_root / "data" / "tmp" / "ecgfounder-tool-audit.jsonl"),
@@ -653,17 +829,22 @@ class GatewayManager:
                     subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 ),
             )
+            self._reused_gateway = False
+            self._reused_pid = None
             (lock_dir / "pid").write_text(str(self._process.pid), encoding="utf-8")
             logger.info("Gateway started (pid=%d)", self._process.pid)
         except Exception:
-            self._release_launch_lock()
-            if self._gateway_log is not None:
-                self._gateway_log.close()
-                self._gateway_log = None
+            if self._process is not None:
+                self.stop()
+            else:
+                self._release_launch_lock()
+                if self._gateway_log is not None:
+                    self._gateway_log.close()
+                    self._gateway_log = None
             raise
 
     async def wait_ready(self, timeout_sec: float | None = None) -> bool:
-        """Wait until the Gateway WebSocket port is accepting connections."""
+        """Wait until the public Gateway ``connect`` handshake succeeds."""
         timeout_sec = (
             self._ready_timeout_sec if timeout_sec is None else float(timeout_sec)
         )
@@ -675,33 +856,31 @@ class GatewayManager:
                     "Gateway process exited with code %d", self._process.returncode
                 )
                 return False
-            try:
-                _, writer = await asyncio.wait_for(
-                    asyncio.open_connection("127.0.0.1", self._port),
-                    timeout=1.0,
-                )
-                writer.close()
-                await writer.wait_closed()
-                # Double-check our process is still alive after TCP succeeds.
-                # If our process died but port is reachable, another process
-                # (e.g., stale Gateway) is on the port — that's a false positive.
+            ready = await asyncio.to_thread(self._probe_existing_gateway)
+            if ready:
                 if self._process is not None and self._process.poll() is not None:
                     logger.error(
-                        "Gateway died (code=%d) but port %d reachable by another process",
+                        "Gateway died (code=%d) but port %d belongs to another Gateway",
                         self._process.returncode,
                         self._port,
                     )
                     return False
                 logger.info("Gateway is ready on port %d", self._port)
                 return True
-            except (ConnectionRefusedError, OSError, TimeoutError):
-                await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)
         logger.error("Gateway did not become ready within %.0fs", timeout_sec)
         return False
 
     def stop(self) -> None:
         """Stop the Gateway subprocess."""
         if self._process is None:
+            if self._reused_gateway:
+                logger.info(
+                    "Detaching from reused Gateway without terminating it (pid=%s)",
+                    self._reused_pid,
+                )
+            self._reused_gateway = False
+            self._reused_pid = None
             return
         if self._process.poll() is not None:
             logger.info("Gateway already stopped (code=%d)", self._process.returncode)
@@ -711,19 +890,30 @@ class GatewayManager:
                 self._gateway_log.close()
                 self._gateway_log = None
             return
-        logger.info("Stopping Gateway (pid=%d)...", self._process.pid)
-        self._process.terminate()
+        process = self._process
+        logger.info("Stopping owned Gateway (pid=%d)...", process.pid)
         try:
-            self._process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            logger.warning("Gateway did not stop gracefully, killing")
-            self._process.kill()
-            self._process.wait(timeout=3)
-        self._process = None
-        if self._gateway_log is not None:
-            self._gateway_log.close()
-            self._gateway_log = None
-        self._release_launch_lock()
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning("Gateway did not stop gracefully, killing owned process")
+                process.kill()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    logger.error(
+                        "Owned Gateway did not report exit after kill; detaching",
+                        pid=process.pid,
+                    )
+        finally:
+            self._process = None
+            self._reused_gateway = False
+            self._reused_pid = None
+            if self._gateway_log is not None:
+                self._gateway_log.close()
+                self._gateway_log = None
+            self._release_launch_lock()
         logger.info("Gateway stopped")
 
     async def ensure_running(self) -> bool:
@@ -731,8 +921,14 @@ class GatewayManager:
 
         Returns True if the Gateway is up and ready after this call.
         """
-        if self.is_running:
+        if self._process is not None and self._process.poll() is None:
             return True
+        if self._reused_gateway:
+            if await self.wait_ready(timeout_sec=min(5.0, self._ready_timeout_sec)):
+                return True
+            logger.warning("Previously reused Gateway is no longer healthy")
+            self._reused_gateway = False
+            self._reused_pid = None
 
         exit_code = self._process.returncode if self._process else None
         logger.warning(

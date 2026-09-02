@@ -91,9 +91,9 @@
 - [x] Leakage-aware five-fold MEETI research evaluation completed: 23 supported
   concepts, macro BA 0.865, top-20 concept recall 0.837, and 3-5 diagnosis
   complete recall 0.479. Thresholds remain research-only.
-- [ ] Run the current-protocol 1,000-case single-pass, MultiPass, and
-  MultiPass+ECGFounder GPT-5.4 Mini arms after provider credits are available; the
-  latest real canary is correctly blocked by `credit_balance_exhausted`.
+- [x] Superseded the Platform API credit blocker with a verified
+  ChatGPT/Codex-subscription transport owned by the OpenClaw embedded agent;
+  historical blocked canaries remain unchanged as dated evidence.
 - [ ] Perform clean-machine Windows 10 verification. The modern runtime remains
   unsupported on Windows 7; any Win7 target needs a separately maintained
   legacy bundle and security policy.
@@ -143,10 +143,63 @@
   isolated authenticated Gateway start/connect/clean-stop smoke: 363.94 MiB,
   15,226 files, EXE SHA-256
   `444b99d4614f1f5f4616118f1c0ac35f35f9a79c15b24bc8366f60a13170a24d`.
-- [ ] Restore OpenAI provider credits, then finish all four
-  `openai/gpt-5.4-mini` MEETI arms and clinician-review the paired annotated
-  images. The current first-image canary is correctly `blocked` by
-  `provider_credit_exhausted` and is not scored as a clinical miss.
+- [x] Replaced the provider-credit dependency with the OpenClaw-owned
+  subscription route and completed frozen paired/unseen canaries. Full-cohort
+  completion and clinician review remain tracked below.
+
+### v0.4.6 OpenClaw MultiPass paired evidence (2026-08-09)
+
+- [x] Pin OpenClaw `2026.7.1-2`, Node `v24.18.0` and harness/plugin `1.5.7`;
+  stage the official Codex package as OAuth-migration-only and verify no Codex
+  agent runtime or Platform API route is used for inference.
+- [x] Complete a frozen 32-case baseline/MultiPass pair: weak-label partial
+  credit 0.253 to 0.480 with paired bootstrap CI and random-sign test, while
+  retaining normal regressions and urgent misses in the report.
+- [x] Complete an 8-case unseen engineering gate with raw JSON, tool/crop
+  trajectories, review PNGs, coordinate audit and 60/100/180-second SLA proof.
+- [x] Expose subscription route, Priority inference, MultiPass controls,
+  ECGFounder ranked labels/rhythm measurement and auditable Process events in
+  the desktop UI; export self-contained expert-review packages.
+- [x] Build and verify the 368.01 MiB portable bundle; source suite is
+  `915 passed, 3 skipped`, packaged opt-ins are 4/4, and native capture smoke
+  passes.
+- [ ] Complete the authoritative 9,922-case post-publication baseline/candidate
+  pair from one frozen commit, then perform clinician review of marked images,
+  normal false positives, urgent misses and coordinate alignment.
+- [ ] Decide whether a separate single-pass and MultiPass-without-ECGFounder
+  ablation is required after the primary two-arm full cohort finishes.
+
+### v0.4.7 Live Luna acceptance and release hardening (2026-08-27)
+
+- [x] Run the packaged Windows GUI on a 2560×1600 / 150%-DPI desktop against a
+  visible credentialed local MEETI evaluation ECG, using only ROI
+  `(19, 30, 1522, 1136)` and preserving
+  capture exclusion. Export four diagnostic boxes, two crop outlines, and a
+  physical/logical coordinate audit with no clamps and ≤0.368 px edge drift.
+- [x] Exercise the OpenClaw-owned subscription path with an explicit
+  `openai-codex` override for `openai/gpt-5.6-luna`: five image turns,
+  146.915 seconds, 111,833 total tokens, zero subscription API charge, and about
+  US$0.017135 API-equivalent token cost. Keep the release default at
+  `openai/gpt-5.4-mini`.
+- [x] Record the result as an accuracy miss: the agent reported sinus rhythm /
+  possible LVH instead of the reference AF with slow ventricular response,
+  prolonged QT, poor R-wave progression, and inferior ST-T changes. Do not make
+  a clinical-accuracy claim from the successful transport/geometry path.
+- [x] Harden Core 2 image/schema/event contracts, invalid-bbox rejection,
+  charge-safe Gateway recovery, and a 10,001-identity resumability scale gate.
+- [x] Publish product metadata `v0.4.7` and harness/plugin `1.5.8` while keeping
+  OpenClaw pinned at `2026.7.1-2`; rebuild the synthetic-only GitHub Pages and
+  public setup documentation.
+- [x] Reduce the verified staged OpenClaw runtime to 165.162 MiB, a conservative
+  19.804 MiB reduction, while retaining required templates and internal `dist`
+  chunks.
+- [x] Run a two-case answer-free pre-release canary with a 1,222-ID denylist:
+  schema/bbox/SLA passed with zero JSON repair, but strict was 1/2 and mean
+  partial credit 0.522 because the warning case missed weak-label LVH and sinus
+  rhythm. Its dirty source fingerprint prevents use as the frozen release gate.
+- [ ] Run and record a fresh unseen canary from the final frozen release source.
+- [ ] Perform the clean full v0.4.7 bundle rebuild, packaged verification, size
+  measurement and hash capture; do not estimate these values in advance.
 
 ## 進行中 🚧
 

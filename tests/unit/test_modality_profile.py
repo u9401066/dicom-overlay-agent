@@ -222,6 +222,8 @@ def _make_cxr_result(checklist: dict[str, ChecklistItem]) -> AnalysisResult:
         checklist=checklist,
         analysis_time_ms=100,
         model_used="test",
+        image_quality="Synthetic chest radiograph is fully readable.",
+        next_steps=["Review the original synthetic chest radiograph."],
     )
 
 

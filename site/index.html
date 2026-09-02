@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="DICOM Overlay Agent is a Windows desktop co-reading tool that uses OpenClaw for multi-pass screenshot analysis and coordinate-audited overlays."
+      content="DICOM Overlay Agent is a Windows desktop co-reading tool that routes bounded viewer screenshots through OpenClaw and returns coordinate-audited overlays for physician review."
     >
     <meta name="theme-color" content="#087f83">
     <meta property="og:title" content="DICOM Overlay Agent">
     <meta
       property="og:description"
-      content="Screen-based medical image co-reading with OpenClaw."
+      content="Image-grounded medical co-reading with an auditable OpenClaw review loop."
     >
     <meta property="og:image" content="assets/synthetic-ecg.png">
-    <title>DICOM Overlay Agent</title>
+    <title>DICOM Overlay Agent · Accountable image co-reading</title>
     <link rel="icon" type="image/png" href="assets/synthetic-ecg.png">
     <link rel="stylesheet" href="styles.css">
     <script src="app.js" defer></script>
@@ -35,30 +35,29 @@
       <nav id="site-navigation" class="site-navigation" aria-label="Primary">
         <a href="#overview">Overview</a>
         <a href="#workflow">Workflow</a>
-        <a href="#evidence">Evidence</a>
+        <a href="#evidence">Live evidence</a>
         <a href="#safety">Safety</a>
-        <a href="https://github.com/u9401066/dicom-overlay-agent/tree/main/docs">Docs</a>
-        <a href="https://github.com/u9401066/dicom-overlay-agent">GitHub</a>
+        <a href="#install">Install</a>
+        <a href="docs.html">Docs</a>
       </nav>
     </header>
 
     <main id="main">
       <section id="overview" class="hero section-band">
         <div class="hero-copy">
-          <h1>DICOM Overlay Agent</h1>
-          <p class="hero-lede">Screen-based medical image co-reading with OpenClaw.</p>
-          <p class="hero-detail">
-            A Windows desktop MVP that captures a configured ROI, revisits image
-            details through crop/refine passes, and projects reviewable findings
-            back onto the source display.
+          <h1>Co-reading that stays accountable to the image.</h1>
+          <p class="hero-detail hero-detail-large">
+            A Windows desktop agent that captures a configured viewer ROI, asks
+            OpenClaw to inspect bounded screenshots, and returns coordinate-audited
+            overlays for physician review.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/u9401066/dicom-overlay-agent">View on GitHub</a>
-            <a class="button button-secondary" href="#evidence">Read the evidence</a>
+            <a class="button button-primary" href="#workflow">Explore the workflow</a>
+            <a class="button button-secondary" href="#evidence">Read live evidence</a>
           </div>
           <dl class="hero-meta" aria-label="Project facts">
             <div><dt>Platform</dt><dd>Windows desktop</dd></div>
-            <div><dt>License</dt><dd>Apache 2.0</dd></div>
+            <div><dt>License</dt><dd>Apache-2.0</dd></div>
           </dl>
         </div>
 
@@ -75,34 +74,33 @@
                 width="900"
                 height="600"
               >
-              <span class="overlay-box overlay-box-amber box-a" aria-hidden="true"></span>
-              <span class="overlay-box overlay-box-gray box-b" aria-hidden="true"></span>
-              <span class="overlay-label label-a">review detail</span>
-              <span class="overlay-label label-b">uncertain area</span>
+              <span class="overlay-box overlay-box-blue live-box-a" aria-hidden="true"></span>
+              <span class="overlay-box overlay-box-blue live-box-b" aria-hidden="true"></span>
+              <span class="overlay-box overlay-box-blue live-box-c" aria-hidden="true"></span>
+              <span class="overlay-box overlay-box-blue live-box-d" aria-hidden="true"></span>
+              <span class="analysis-crop crop-a" aria-hidden="true"></span>
+              <span class="analysis-crop crop-b" aria-hidden="true"></span>
             </div>
-            <aside class="report-panel" aria-label="Example co-reading report">
+            <aside class="report-panel systematic-panel" aria-label="Illustrative systematic review panel">
               <div class="report-heading">
-                <strong>Report</strong>
-                <span>co-reading</span>
+                <strong>Systematic review</strong>
+                <span>16 keys</span>
               </div>
-              <div class="report-section">
-                <span class="report-kicker">Finding</span>
-                <p><span class="status-dot status-warning"></span>Harness target marker</p>
-                <small>Synthetic Lead I region</small>
-              </div>
-              <div class="report-section">
-                <span class="report-kicker">Interpretation</span>
-                <p>Review the marked waveform against the full image context.</p>
-              </div>
-              <div class="report-facts">
-                <span>Confidence</span><strong>Needs review</strong>
-                <span>Frame</span><strong>Original ROI</strong>
-              </div>
-              <div class="qa-box">
-                <strong>Overlay QA</strong>
-                <p><span class="check">✓</span> Same capture frame</p>
-                <p><span class="check">✓</span> Round-trip audited</p>
-                <p><span class="check">✓</span> Local signal checked</p>
+              <dl class="checklist-preview">
+                <div><dt>Rate</dt><dd>—</dd></div>
+                <div><dt>Rhythm</dt><dd>—</dd></div>
+                <div><dt>P waves</dt><dd>—</dd></div>
+                <div><dt>PR interval</dt><dd>—</dd></div>
+                <div><dt>QRS</dt><dd>—</dd></div>
+                <div><dt>Axis</dt><dd>—</dd></div>
+                <div><dt>QT / QTc</dt><dd>—</dd></div>
+                <div><dt>ST–T</dt><dd>—</dd></div>
+              </dl>
+              <div class="qa-box coordinate-qa">
+                <strong>Coordinate QA</strong>
+                <p><span>Frame</span><b>Original ROI</b></p>
+                <p><span>Space</span><b>Normalized</b></p>
+                <p><span>Max drift</span><b>≤ 0.37 px</b></p>
               </div>
             </aside>
           </div>
@@ -114,161 +112,157 @@
       </section>
 
       <section id="workflow" class="workflow section-band">
-        <div class="section-heading">
+        <div class="section-heading compact-heading">
           <span class="section-number">01</span>
           <div>
-            <h2>One image, several accountable passes</h2>
-            <p>The product loop is more than one model call against one screenshot.</p>
+            <h2>Four cores, one review loop.</h2>
+            <p>Every stage preserves the physician-facing image and an inspectable contract.</p>
           </div>
         </div>
-        <ol class="workflow-steps">
+        <ol class="workflow-steps four-core-flow">
           <li>
-            <div class="workflow-visual capture-visual" aria-hidden="true">
-              <span></span>
-            </div>
-            <h3>Capture ROI</h3>
-            <p>The configured screen region is captured in physical pixels after PHI margins are applied.</p>
+            <span class="flow-number" aria-hidden="true">1</span>
+            <div class="workflow-visual capture-visual" aria-hidden="true"><span></span></div>
+            <h3>ROI capture</h3>
+            <p>User-defined PHI margins are applied before any image leaves the viewer.</p>
+            <code>physical ROI</code>
           </li>
           <li>
-            <div class="workflow-visual inspect-visual" aria-hidden="true">
-              <span></span><span></span>
-            </div>
-            <h3>Multi-pass inspect</h3>
-            <p>Coarse findings nominate bounded crop/refine targets, then a final pass reconciles the evidence.</p>
+            <span class="flow-number" aria-hidden="true">2</span>
+            <div class="workflow-visual gateway-visual" aria-hidden="true">connect<br>chat.send</div>
+            <h3>OpenClaw image turns</h3>
+            <p>Bounded screenshots travel through the stable public Gateway protocol.</p>
+            <code>public Gateway</code>
           </li>
           <li>
-            <div class="workflow-visual review-visual" aria-hidden="true">
-              <span></span><span></span><span></span>
-            </div>
-            <h3>Human review</h3>
-            <p>The reviewer can inspect or draw a region, ask crop-scoped QA, and explicitly apply or dismiss a structured report update.</p>
+            <span class="flow-number" aria-hidden="true">3</span>
+            <div class="workflow-visual reconcile-visual" aria-hidden="true"><span></span><span></span><span></span></div>
+            <h3>Crop + reconcile</h3>
+            <p>Candidate regions receive bounded detail passes, then exact geometry is reconciled.</p>
+            <code>normalized_original_roi</code>
+          </li>
+          <li>
+            <span class="flow-number" aria-hidden="true">4</span>
+            <div class="workflow-visual review-visual" aria-hidden="true"><span></span><span></span><span></span></div>
+            <h3>Overlay + review</h3>
+            <p>Findings project back to the source display; the physician keeps the final call.</p>
+            <code>human review</code>
           </li>
         </ol>
       </section>
 
-      <section class="trace section-band" aria-labelledby="trace-heading">
-        <div class="section-heading">
+      <section id="evidence" class="evidence section-band live-evidence">
+        <div class="section-heading compact-heading">
           <span class="section-number">02</span>
           <div>
-            <h2 id="trace-heading">Crop / refine analysis trace</h2>
-            <p>Every view remains tied to normalized coordinates in the original ROI.</p>
+            <h2>What the real desktop run proved.</h2>
+            <p>Engineering evidence from the packaged GUI—not a synthetic or headless substitute.</p>
           </div>
         </div>
-        <div class="trace-flow">
-          <article class="trace-stage">
-            <header><span>Original</span><code>full ROI</code></header>
-            <img
-              src="assets/synthetic-ecg.png"
-              alt="Full synthetic ECG used as the original analysis frame"
-              width="900"
-              height="600"
-            >
-            <p>Lead inventory and coarse candidates.</p>
-          </article>
-          <span class="trace-arrow" aria-hidden="true">→</span>
-          <article class="trace-stage">
-            <header><span>Crop 1</span><code>x=.00 y=.00</code></header>
-            <div class="crop-view crop-one" role="img" aria-label="Refined crop of Lead I"></div>
-            <p>Targeted high-resolution reread.</p>
-          </article>
-          <span class="trace-arrow" aria-hidden="true">→</span>
-          <article class="trace-stage">
-            <header><span>Crop 2</span><code>x=.50 y=.00</code></header>
-            <div class="crop-view crop-two" role="img" aria-label="Refined crop of right-side leads"></div>
-            <p>Independent uncertainty check.</p>
-          </article>
-          <span class="trace-arrow" aria-hidden="true">→</span>
-          <article class="trace-stage trace-report">
-            <header><span>Final</span><code>reconciled</code></header>
-            <div class="final-lines">
-              <strong>Report conclusion</strong>
-              <p>Finding locations are grounded in the original ROI, with refinement decisions retained in the trace.</p>
-              <hr>
-              <small>Reviewer confirmation remains required.</small>
-            </div>
-          </article>
-        </div>
-        <dl class="trace-metadata">
-          <div><dt>Coordinate space</dt><dd>normalized_original_roi</dd></div>
-          <div><dt>Projection</dt><dd>physical → target-screen logical</dd></div>
-          <div><dt>Multi-monitor</dt><dd>Win32 monitor-bound frame</dd></div>
-          <div><dt>Audit</dt><dd>edge round-trip before draw</dd></div>
-        </dl>
-      </section>
-
-      <section id="evidence" class="evidence section-band">
-        <div class="section-heading compact-heading">
-          <span class="section-number">03</span>
+        <div class="evidence-layout">
           <div>
-            <h2>Evidence on disk</h2>
-            <p>Current verified artifacts, without substituting test coverage for clinical accuracy.</p>
+            <dl class="evidence-rail evidence-five">
+              <div><dt>GPT-5.6 Luna</dt><dd>model used</dd></div>
+              <div><dt>146.9 s</dt><dd>total wall time</dd></div>
+              <div><dt>5</dt><dd>image turns</dd></div>
+              <div><dt>111,833</dt><dd>total tokens</dd></div>
+              <div><dt>0.10–0.37 px</dt><dd>max overlay drift</dd></div>
+            </dl>
+            <div class="cohort-row">
+              <strong>9,922 canonical MEETI images</strong>
+              <span>Frozen evaluation cohort · not a completed accuracy result</span>
+            </div>
           </div>
+          <aside class="accuracy-warning" aria-labelledby="accuracy-warning-title">
+            <h3 id="accuracy-warning-title">Accuracy miss recorded</h3>
+            <p>
+              This single case missed the reference rhythm, QT, and ST–T findings.
+              The output is retained as a failure baseline, not rewritten as success.
+            </p>
+            <p>Engineering evidence only. No clinical-accuracy or performance claim.</p>
+          </aside>
         </div>
-        <dl class="evidence-rail">
-          <div><dt>999 / 1,000</dt><dd>waveforms eligible after full traversal</dd></div>
-          <div><dt>791</dt><dd>unit + smoke tests passed</dd></div>
-          <div><dt>55</dt><dd>OpenClaw integration tests passed</dd></div>
-          <div><dt>Audited</dt><dd>coordinate edge round-trip</dd></div>
-        </dl>
-        <p class="evidence-note">
-          OpenAI GPT-5.4 Mini is the release default and was verified as image-capable. Its canary reached
-          the Responses API but provider credits were exhausted, so no MLLM answer was scored and the full
-          comparison remains blocked.
-          ECGFounder five-fold waveform research reached 0.865 macro balanced accuracy, while
-          3-5 diagnosis complete recall was 0.479; one all-zero V5 waveform was excluded and its outputs
-          remain supporting evidence, not final labels.
+        <p class="evidence-footnote">
+          The run used subscription-backed <code>openai-chatgpt-responses</code> through
+          an OpenClaw-owned agent loop. App capture exclusion remained enabled; public
+          media on this page uses only the repository's synthetic ECG fixture.
         </p>
       </section>
 
       <section id="safety" class="safety section-band">
         <div class="section-heading compact-heading">
-          <span class="section-number">04</span>
+          <span class="section-number">03</span>
           <div>
-            <h2>Safety and scope</h2>
-            <p>Useful assistance depends on visible limits, not hidden certainty.</p>
+            <h2>Safety by design.</h2>
+            <p>Visible limitations are part of the product, not hidden in a disclaimer.</p>
           </div>
         </div>
         <div class="safety-list">
           <article>
             <span class="safety-index">A</span>
-            <div><h3>Physician final call</h3><p>The agent supports review. It does not diagnose autonomously or replace clinical judgment.</p></div>
+            <div><h3>Physician final call</h3><p>The agent supports review. It does not replace clinical judgment.</p></div>
           </article>
           <article>
             <span class="safety-index">B</span>
-            <div><h3>Screenshot incompleteness</h3><p>Lead inventory and image quality gates limit claims when the captured view lacks context.</p></div>
+            <div><h3>Configured ROI only</h3><p>Capture stays inside user-defined viewer margins before remote analysis.</p></div>
           </article>
           <article>
             <span class="safety-index">C</span>
-            <div><h3>External waveform evidence</h3><p>ECGFounder scores are provenance-bound and remain supporting evidence until calibrated.</p></div>
+            <div><h3>Fail closed</h3><p>Invalid schema, receipts, coordinates, or image evidence remain visibly incomplete.</p></div>
           </article>
           <article>
             <span class="safety-index">D</span>
-            <div><h3>Configured ROI only</h3><p>The capture is constrained to user-defined physical screen margins before remote analysis.</p></div>
+            <div><h3>No clinical accuracy claim</h3><p>Current reports separate harness integrity from medical performance.</p></div>
           </article>
         </div>
       </section>
 
-      <section class="build section-band" aria-labelledby="build-heading">
-        <div>
-          <span class="section-number">05</span>
-          <h2 id="build-heading">Build and inspect the MVP</h2>
+      <section id="install" class="install section-band" aria-labelledby="install-heading">
+        <div class="section-heading compact-heading">
+          <span class="section-number">04</span>
+          <div>
+            <h2 id="install-heading">Install and inspect.</h2>
+            <p>The subscription path never requires a Platform API key in project files.</p>
+          </div>
         </div>
-        <p>
-          The portable Windows bundle includes the Python/Qt app, pinned OpenClaw runtime,
-          plugin, and modality skills. Torch, checkpoints, MEETI data, secrets, and ECGFounder
-          sidecar assets stay outside the bundle.
-        </p>
-        <div class="build-actions">
-          <a class="button button-primary" href="https://github.com/u9401066/dicom-overlay-agent">Source repository</a>
-          <a class="button button-secondary" href="https://github.com/u9401066/dicom-overlay-agent/blob/main/README.md">Build guide</a>
+        <ol class="install-steps">
+          <li>
+            <span>1</span>
+            <h3>Build or download</h3>
+            <p>Use a tagged portable bundle, or build the frozen Windows directory.</p>
+            <code>scripts\build-exe.bat</code>
+          </li>
+          <li>
+            <span>2</span>
+            <h3>Configure viewer ROI</h3>
+            <p>Launch once, select the viewer, and draw the PHI-safe capture bounds.</p>
+            <code>start.bat</code>
+          </li>
+          <li>
+            <span>3</span>
+            <h3>Connect subscription</h3>
+            <p>Sign in locally, then choose OpenAI Subscription via OpenClaw.</p>
+            <code>codex login</code>
+          </li>
+          <li>
+            <span>4</span>
+            <h3>Verify before use</h3>
+            <p>Check the portable runtime without opening the GUI or calling a model.</p>
+            <code>DICOMOverlayAgent.exe --selfcheck</code>
+          </li>
+        </ol>
+        <div class="install-actions">
+          <a class="button button-primary" href="docs.html">Read the setup guide</a>
+          <p>Release downloads require repository access while the source repository is private.</p>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <span>DICOM Overlay Agent</span>
-      <span>Apache License 2.0</span>
-      <a href="https://github.com/u9401066/dicom-overlay-agent/issues">Issues</a>
+      <strong>DICOM Overlay Agent</strong>
+      <span>Research co-reading software</span>
+      <span>Apache-2.0</span>
+      <span>Not a medical device</span>
     </footer>
   </body>
 </html>

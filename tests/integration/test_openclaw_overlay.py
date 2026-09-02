@@ -38,6 +38,7 @@ from dicom_overlay.domain.entities import (
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.services import VisionAnalyzerService
 from dicom_overlay.infrastructure.openclaw_client import (
+    ModelResponseParseError,
     OpenClawClient,
     _coerce_result_payload,
     _extract_text_from_event,
@@ -419,7 +420,7 @@ class TestPayloadFromChatEvent:
         assert result["summary"] == "Fenced"
 
     def test_empty_message_raises(self):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ModelResponseParseError, match="empty final chat"):
             _payload_from_chat_event({"message": {"content": []}})
 
     def test_non_json_text_raises(self):
@@ -428,7 +429,7 @@ class TestPayloadFromChatEvent:
                 "content": [{"type": "text", "text": "I cannot analyze this image."}]
             }
         }
-        with pytest.raises((RuntimeError, json.JSONDecodeError)):
+        with pytest.raises(ModelResponseParseError):
             _payload_from_chat_event(payload)
 
     def test_multi_block_content(self):
