@@ -787,7 +787,7 @@ def _draw_panel(
     cursor = _draw_wrapped(
         draw,
         (x + _MARGIN, cursor),
-        f"{case_label}  [{severity}]",
+        f"{case_label}  [{_result_status_label(result)}]",
         title_font,
         _TEXT,
         42,
@@ -1001,6 +1001,17 @@ def _line_height(font: PillowFont) -> int:
 
 def _color_for(severity: str) -> tuple[int, int, int]:
     return _COLORS.get(severity.lower(), _COLORS["info"])
+
+
+def _result_status_label(result: dict[str, Any]) -> str:
+    """Keep review exports from presenting an incomplete result as simply normal."""
+
+    labels = [str(result.get("severity") or "unknown")]
+    if result.get("incomplete") is True:
+        labels.append("INCOMPLETE")
+    if result.get("review_required") is True:
+        labels.append("REVIEW")
+    return " | ".join(labels)
 
 
 def _clamp(value: float) -> float:

@@ -6,7 +6,17 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from dicom_overlay.infrastructure.annotation_exporter import export_eval_annotations
+from dicom_overlay.infrastructure.annotation_exporter import (
+    _result_status_label,
+    export_eval_annotations,
+)
+
+
+def test_result_status_label_surfaces_incomplete_review_state() -> None:
+    assert _result_status_label(
+        {"severity": "normal", "incomplete": True, "review_required": True}
+    ) == "normal | INCOMPLETE | REVIEW"
+    assert _result_status_label({"severity": "warning"}) == "warning"
 
 
 def test_export_eval_annotations_draws_boxes_and_description_panel(
