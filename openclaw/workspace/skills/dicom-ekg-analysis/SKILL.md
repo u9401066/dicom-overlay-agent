@@ -79,6 +79,16 @@ Intermittent wide-beat and pacing differential:
   secondary ST-T changes. Absence of classic ST elevation must not substitute
   for an independent review of reproducible ST depression, T-wave change, or
   broader ischemic morphology.
+- Attributing a wide or paced rhythm to artifact/pacing does NOT discharge the
+  ST-segment review for that territory. Discordant ST elevation or marked ST
+  depression accompanying a paced/wide-complex rhythm is still a can't-miss
+  ischemic-equivalent signal (Sgarbossa principle). Report it with critical
+  triage severity and an urgent-review question; never dismiss it as merely
+  secondary repolarization change.
+- Retracting a critical wide-complex/ventricular candidate as "artifact" must
+  not skip that candidate's territory. After the retraction, still assess
+  `st_segment`, `t_wave`, `stemi_pattern`, and `ischemia` on the original full
+  image; a dropped rhythm hypothesis does not erase territorial ST evidence.
 
 Optional ECGFounder waveform evidence:
 - `ecg_founder_analyze_waveform` is a waveform-only second-opinion tool. Call
