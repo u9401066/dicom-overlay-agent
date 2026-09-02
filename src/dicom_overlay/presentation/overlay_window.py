@@ -1210,6 +1210,25 @@ class OverlayWindow(QWidget):
         self.clear_chat()
         self.update()
 
+    def hide_for_recapture(self) -> None:
+        """Hide every app-owned surface before the next image capture.
+
+        Capture exclusion turns app windows into black blocks in screen
+        captures, so a previously displayed overlay would leak boxes and prior
+        report text into the next analysis image.  Unlike ``dismiss`` this is
+        silent: the agent state machine is already advancing to a new capture
+        and must not receive another ``display_expired`` transition.
+        """
+
+        self._chat_timer.stop()
+        self.setWindowOpacity(0.0)
+        self.summary_panel.setVisible(False)
+        self.chat_panel.setVisible(False)
+        self._highlights.clear()
+        self._draft_rect = None
+        self._content_rect = None
+        self.hide()
+
     def show_chat_waiting(self, question: str) -> None:
         """Show chat panel with 'thinking' placeholder."""
         self._chat_timer.stop()

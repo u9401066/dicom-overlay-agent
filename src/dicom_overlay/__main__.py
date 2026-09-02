@@ -150,6 +150,7 @@ class _SignalBridge(QObject):
     analysis_result = pyqtSignal(object)
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
+    prepare_capture = pyqtSignal()
     chat_done = pyqtSignal(str, str, int, int)
     review_chat_done = pyqtSignal(str, object, int, object, object, int)
     review_apply_done = pyqtSignal(object, object)
@@ -578,6 +579,13 @@ def main() -> None:
     if "--gateway-smoke" in sys.argv:
         sys.exit(_run_gateway_smoke(base_dir, config_path, config))
 
+    # --- Real desktop acceptance mode ---
+    # ``--auto-export`` routes every completed analysis through the exact same
+    # export code path as the control-bar Export button.  The authorized
+    # batch driver (scripts/run-desktop-acceptance.py) relies on this to keep
+    # evidence generation App-owned instead of script-side.
+    auto_export_on_result = "--auto-export" in sys.argv
+
     settings_store = DesktopSettingsStore(
         repo_root=base_dir,
         config_path=config_path,
@@ -721,6 +729,7 @@ def main() -> None:
     )
     agent.on_error = signals.error_msg.emit
     agent.on_roi_setup_required = signals.roi_setup_requested.emit
+    agent.on_before_capture = signals.prepare_capture.emit
 
     # ─── Qt slots (run on main thread) ───
     modality_index = [0]
@@ -900,6 +909,10 @@ def main() -> None:
         control_bar.set_pending_analysis(False)
         if announce and config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
+        if auto_export_on_result:
+            # Same export path as the control-bar Export button; keeps batch
+            # acceptance evidence identical to a manual clinician export.
+            on_export_review()
 
     def on_error(msg: str):
         if msg.startswith("New image ready"):
@@ -916,6 +929,7 @@ def main() -> None:
     signals.analysis_result.connect(on_analysis_result)
     signals.pending_analysis.connect(on_pending_analysis)
     signals.error_msg.connect(on_error)
+    signals.prepare_capture.connect(overlay.hide_for_recapture)
 
     # ─── Display timeout — single source of truth (overlay timer) ───
     def _on_display_expired() -> None:
