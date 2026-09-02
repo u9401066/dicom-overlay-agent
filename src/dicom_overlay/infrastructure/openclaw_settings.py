@@ -106,8 +106,29 @@ def default_provider_profiles() -> list[ProviderProfile]:
             ),
         ),
         ProviderProfile(
+            key="openai-codex-luna",
+            label="OpenAI GPT-5.6 Luna via Codex Subscription",
+            provider_id="openai",
+            provider_type=ProviderType.OPENAI,
+            model="gpt-5.6-luna",
+            api_key_env="",
+            auth_mode=ProviderAuthMode.CODEX_SUBSCRIPTION,
+            api="openai-chatgpt-responses",
+            input_modalities=("text", "image"),
+            context_window=1_050_000,
+            max_tokens=128_000,
+            reasoning=True,
+            agent_runtime="openclaw",
+            notes=(
+                "OpenClaw owns the multimodal agent loop while GPT-5.6 Luna "
+                "uses the local ChatGPT/Codex OAuth allowance. Run `codex "
+                "login` first; no Platform API key or Codex agent runtime is "
+                "used."
+            ),
+        ),
+        ProviderProfile(
             key="openai-luna",
-            label="OpenAI GPT-5.6 Luna Vision",
+            label="OpenAI GPT-5.6 Luna Vision (API key)",
             provider_id="openai",
             provider_type=ProviderType.OPENAI,
             model="gpt-5.6-luna",
