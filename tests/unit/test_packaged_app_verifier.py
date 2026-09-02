@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
+import sqlite3
 from pathlib import Path
+
+import pytest
 
 
 def _load_module():
@@ -15,11 +19,86 @@ def _load_module():
     return module
 
 
-def _write_required_bundle(root: Path, module) -> None:
+def _load_build_receipt_module():
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "write-package-build-receipt.py"
+    )
+    spec = importlib.util.spec_from_file_location("write_package_build_receipt", script)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_required_bundle(root: Path, module) -> str:
     for relative in module.REQUIRED_FILES:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"placeholder")
+    clinical_root = root / "clinical_knowledge"
+    source_clinical = Path(__file__).resolve().parents[2] / "clinical_knowledge"
+    for source in source_clinical.rglob("*"):
+        if not source.is_file():
+            continue
+        target = clinical_root / source.relative_to(source_clinical)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+    validator = module._load_tooling_script(
+        "validate-clinical-knowledge.py", "fixture_clinical_validator"
+    )
+    sqlite_builder = module._load_tooling_script(
+        "build-clinical-knowledge-sqlite.py", "fixture_clinical_sqlite"
+    )
+    registry = validator.load_registry(clinical_root)
+    assert validator.validate_registry(registry, verify_repository_links=False) == []
+    clinical_digest = validator.registry_digest(registry)
+    human, agent = validator.render_views(registry)
+    (clinical_root / "generated" / "human-catalogue.md").write_text(
+        human, encoding="utf-8"
+    )
+    (clinical_root / "generated" / "agent-steps.md").write_text(
+        agent, encoding="utf-8"
+    )
+    clinical_db = clinical_root / "clinical-knowledge.sqlite"
+    clinical_db.unlink(missing_ok=True)
+    sqlite_builder.build_quick_lookup_db(
+        registry,
+        clinical_db,
+        registry_digest=clinical_digest,
+    )
+    (root / "package-build-receipt.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "release_python_pin": module.RELEASE_PYTHON,
+                "platform": {
+                    "system": "Windows",
+                    "machine": "AMD64",
+                    "architecture_bits": 64,
+                },
+                "toolchain": {
+                    "python": module.RELEASE_PYTHON,
+                    "python_implementation": "CPython",
+                    "pyinstaller": "6.19.0",
+                    "pillow": "12.1.1",
+                    "pyqt6": "6.10.2",
+                    "pyqt6_qt6": "6.10.2",
+                    "pyqt6_sip": "13.10.0",
+                },
+                "compression": {
+                    "mode": "no_upx_baseline",
+                    "upx_available": False,
+                    "upx_enabled": False,
+                    "upx_version": "",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     package = root / "openclaw/node_modules/openclaw/package.json"
     package.write_text(json.dumps({"version": "2026.7.1-2"}), encoding="utf-8")
     manifest = (
@@ -29,6 +108,13 @@ def _write_required_bundle(root: Path, module) -> None:
         json.dumps(
             {
                 "name": "dicom-overlay-agent-harness",
+                "compatibility": {
+                    "gatewayProtocol": {
+                        "minProtocol": 3,
+                        "maxProtocol": 4,
+                        "methods": ["connect", "chat.send"],
+                    }
+                },
                 "capabilities": {
                     "medicalImageInterpretation": True,
                     "multiTurnImageFollowup": True,
@@ -37,6 +123,7 @@ def _write_required_bundle(root: Path, module) -> None:
                     "imageTurnBoundBboxReceipts": True,
                     "ecgFounderWaveformAssist": True,
                     "noScreenshotToWaveformInference": True,
+                    "gatewayHelloProtocolReceipt": True,
                 },
             }
         ),
@@ -99,13 +186,14 @@ def _write_required_bundle(root: Path, module) -> None:
         path = package_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("placeholder", encoding="utf-8")
+    return clinical_digest
 
 
 def test_inspect_bundle_reports_required_runtime_and_versions(
     tmp_path: Path, monkeypatch
 ) -> None:
     module = _load_module()
-    _write_required_bundle(tmp_path, module)
+    clinical_digest = _write_required_bundle(tmp_path, module)
     monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
 
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
@@ -120,6 +208,23 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert report["codex_migration_bundle_check"]["ok"] is True
     assert report["workspace_templates"]["ok"] is True
     assert report["workspace_templates"]["ready_count"] == 7
+    clinical = report["clinical_knowledge"]
+    assert clinical["ok"] is True
+    assert clinical["registry_sha256"] == clinical_digest
+    assert clinical["computed_registry_sha256"] == clinical_digest
+    assert clinical["registry_digest_scope"] == "canonical-input-documents-v1"
+    assert clinical["rule_count"] == 7
+    assert clinical["db_schema_version"] == "1"
+    assert clinical["canonical_schema_version"] == 1
+    assert clinical["sqlite_quick_check"] == "ok"
+    assert clinical["generated_view_digests"] == {
+        "human": clinical_digest,
+        "agent": clinical_digest,
+    }
+    assert clinical["error"] == ""
+    assert report["package_build"]["ok"] is True
+    assert report["package_build"]["toolchain"]["python"] == "3.13.12"
+    assert report["package_build"]["compression"]["mode"] == "no_upx_baseline"
     assert report["component_counts"]["workspace_templates"] == 7
     assert (
         report["codex_migration_bundle_check"][
@@ -142,6 +247,208 @@ def test_inspect_bundle_rejects_missing_and_banned_components(tmp_path: Path) ->
     assert report["status"] == "failed"
     assert "config.yaml" in report["missing_files"]
     assert report["banned_components"] == ["numpy/core.pyd"]
+
+
+def test_inspect_bundle_rejects_clinical_sqlite_view_digest_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
+    human = tmp_path / "clinical_knowledge/generated/human-catalogue.md"
+    human.write_text(
+        f"# Generated\n\nRegistry SHA-256: `{'d' * 64}`\n",
+        encoding="utf-8",
+    )
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert report["clinical_knowledge"]["ok"] is False
+    assert any("clinical knowledge" in failure for failure in report["failures"])
+
+
+def test_inspect_bundle_recomputes_packaged_yaml_and_checks_every_sqlite_table(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    rules = tmp_path / "clinical_knowledge/rules/core.rule.yaml"
+    rules.write_text(
+        rules.read_text(encoding="utf-8").replace(
+            "ST 段抬高所見與整體分流不一致",
+            "ST 段抬高所見與整體分流需再次核對",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert "does not match packaged canonical inputs" in report[
+        "clinical_knowledge"
+    ]["error"]
+
+    _write_required_bundle(tmp_path, module)
+    database = tmp_path / "clinical_knowledge/clinical-knowledge.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE agent_steps SET instruction='tampered' "
+            "WHERE rowid=(SELECT min(rowid) FROM agent_steps)"
+        )
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+    assert report["status"] == "failed"
+    assert "quick-lookup table diverged: agent_steps" in report[
+        "clinical_knowledge"
+    ]["error"]
+
+
+def test_inspect_bundle_rejects_empty_or_wrong_version_clinical_schema(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    schema_path = tmp_path / "clinical_knowledge/schema/rule.schema.json"
+    schema_path.write_text(
+        json.dumps({"type": "object", "additionalProperties": False}),
+        encoding="utf-8",
+    )
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert "schema id/version mismatch" in report["clinical_knowledge"]["error"]
+
+    _write_required_bundle(tmp_path, module)
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema["properties"]["schema_version"]["const"] = 2
+    schema_path.write_text(json.dumps(schema), encoding="utf-8")
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+    assert report["status"] == "failed"
+    assert "clinical rule schema version must be 1" in report[
+        "clinical_knowledge"
+    ]["error"]
+
+
+def test_inspect_bundle_rejects_false_upx_or_wrong_architecture_receipt(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    receipt_path = tmp_path / "package-build-receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["platform"]["architecture_bits"] = 32
+    receipt["compression"] = {
+        "mode": "upx_requested",
+        "upx_available": True,
+        "upx_enabled": True,
+        "upx_version": "upx 4.2.4",
+    }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    error = report["package_build"]["error"]
+    assert "64-bit Windows Python" in error
+    assert "no compressed PE payload was observed" in error
+
+
+def test_inspect_bundle_accepts_upx_only_with_observed_app_pe_marker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
+    exe = tmp_path / "DICOMOverlayAgent.exe"
+    exe.write_bytes(b"MZ" + b"\0" * 126 + b"UPX0" + b"\0" * 32 + b"UPX1")
+    receipt_path = tmp_path / "package-build-receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["compression"] = {
+        "mode": "upx_requested",
+        "upx_available": True,
+        "upx_enabled": True,
+        "upx_version": "upx 4.2.4",
+    }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "ok"
+    assert report["package_build"]["compression"][
+        "observed_upx_payloads"
+    ] == ["DICOMOverlayAgent.exe"]
+
+
+def test_build_receipt_records_explicit_no_upx_baseline(monkeypatch) -> None:
+    module = _load_build_receipt_module()
+    monkeypatch.setattr(module.platform, "python_version", lambda: "3.13.12")
+    monkeypatch.setattr(module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(module.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(module.struct, "calcsize", lambda _value: 8)
+    monkeypatch.setattr(module.shutil, "which", lambda _value: None)
+    monkeypatch.setattr(
+        module,
+        "_package_versions",
+        lambda: {
+            "pyinstaller": "6.19.0",
+            "pillow": "12.1.1",
+            "pyqt6": "6.10.2",
+            "pyqt6_qt6": "6.10.2",
+            "pyqt6_sip": "13.10.0",
+        },
+    )
+
+    receipt = module.build_receipt(upx_enabled=False)
+
+    assert receipt["platform"]["architecture_bits"] == 64
+    assert receipt["toolchain"]["python"] == "3.13.12"
+    assert receipt["compression"] == {
+        "mode": "no_upx_baseline",
+        "upx_available": False,
+        "upx_enabled": False,
+        "upx_version": "",
+    }
+
+    with pytest.raises(RuntimeError, match="no upx executable"):
+        module.build_receipt(upx_enabled=True)
+
+
+def test_inspect_bundle_rejects_dev_leaks_and_only_pillow_avif(
+    tmp_path: Path,
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    banned_paths = (
+        tmp_path / "rich/console.py",
+        tmp_path / "pygments-2.19.2.dist-info/METADATA",
+        tmp_path / "markdown_it/__init__.py",
+        tmp_path / "mdurl/_decode.py",
+        tmp_path / "PIL/AvifImagePlugin.py",
+        tmp_path / "PIL/_avif.cp313-win_amd64.pyd",
+    )
+    allowed_paths = (
+        tmp_path / "PIL/PngImagePlugin.py",
+        tmp_path / "PIL/JpegImagePlugin.py",
+        tmp_path / "PIL/_imagingft.cp313-win_amd64.pyd",
+        tmp_path / "openclaw/node_modules/example/rich/index.js",
+    )
+    for path in (*banned_paths, *allowed_paths):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fixture")
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+
+    assert report["status"] == "failed"
+    assert set(report["banned_components"]) == {
+        path.relative_to(tmp_path).as_posix() for path in banned_paths
+    }
+    assert all(
+        path.relative_to(tmp_path).as_posix() not in report["banned_components"]
+        for path in allowed_paths
+    )
 
 
 def test_inspect_bundle_rejects_missing_or_empty_openclaw_templates(
@@ -373,6 +680,41 @@ def test_packaged_plugin_runtime_inspection_has_bounded_cold_start_timeout() -> 
     module = _load_module()
 
     assert module.PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC == 180
+
+
+def test_inspect_bundle_fails_closed_on_packaged_runtime_smoke(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
+    monkeypatch.setattr(
+        module,
+        "_run_selfcheck",
+        lambda _exe: {"exit_code": 0, "stdout": "", "stderr": ""},
+    )
+    monkeypatch.setattr(
+        module,
+        "_run_package_runtime_smoke",
+        lambda _exe: {"exit_code": 7, "stdout": "", "stderr": "codec missing"},
+    )
+    monkeypatch.setattr(
+        module,
+        "_run_process",
+        lambda *_args, **_kwargs: {"exit_code": 0, "stdout": "", "stderr": ""},
+    )
+    monkeypatch.setattr(module, "_inspect_native_plugin", lambda *_args: {"ok": True})
+    monkeypatch.setattr(
+        module,
+        "_inspect_codex_migration_runtime",
+        lambda *_args: {"ok": True},
+    )
+
+    report = module.inspect_bundle(tmp_path, run_selfcheck=True)
+
+    assert report["status"] == "failed"
+    assert report["package_runtime_smoke"]["exit_code"] == 7
+    assert "packaged codec/logging/review smoke exited 7" in report["failures"]
 
 
 def test_inspect_bundle_rejects_codex_agent_runtime_dependency(tmp_path: Path) -> None:

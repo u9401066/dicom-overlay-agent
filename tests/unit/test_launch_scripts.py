@@ -1011,7 +1011,24 @@ def test_build_script_forces_locked_openclaw_and_verifies_bundle() -> None:
     script = Path("scripts/build-exe.bat").read_text(encoding="utf-8")
 
     assert 'set "FORCE_OPENCLAW_INSTALL=1"' in script
-    assert ".venv\\Scripts\\python.exe -m PyInstaller" in script
+    assert "uv lock --check" in script
+    assert 'set "DICOM_OVERLAY_BUILD_ENV=%REPO_ROOT%.venv-build"' in script
+    assert 'set "UV_PROJECT_ENVIRONMENT=%DICOM_OVERLAY_BUILD_ENV%"' in script
+    assert 'set "DICOM_OVERLAY_RELEASE_PYTHON=3.13.12"' in script
+    assert (
+        'uv sync --python "%DICOM_OVERLAY_RELEASE_PYTHON%" '
+        "--frozen --no-dev --extra build"
+    ) in script
+    assert (
+        '"%DICOM_OVERLAY_BUILD_ENV%\\Scripts\\python.exe" -m PyInstaller'
+        in script
+    )
+    assert "uv sync --extra build" not in script
+    assert "scripts\\validate-clinical-knowledge.py --check-generated" in script
+    assert "scripts\\build-clinical-knowledge-sqlite.py" in script
+    assert "build\\clinical-knowledge.sqlite --check" in script
+    assert "scripts\\write-package-build-receipt.py" in script
+    assert "no-UPX size baseline" in script
     assert "pyinstaller.exe" not in script.lower()
     assert "scripts\\verify-packaged-app.py" in script
     assert "bundle-manifest.json" in script
@@ -1032,6 +1049,26 @@ def test_build_script_forces_locked_openclaw_and_verifies_bundle() -> None:
     spec = Path("dicom-overlay-agent.spec").read_text(encoding="utf-8")
     assert spec.count('contents_directory="."') == 1
     assert spec.index('contents_directory="."') < spec.index("coll = COLLECT(")
+    for excluded in (
+        "rich",
+        "pygments",
+        "markdown_it",
+        "mdurl",
+        "PIL.AvifImagePlugin",
+        "PIL._avif",
+    ):
+        assert f'"{excluded}"' in spec
+    assert 'optional_tree("clinical_knowledge", "clinical_knowledge")' in spec
+    assert (
+        'optional_file("build/clinical-knowledge.sqlite", "clinical_knowledge")'
+        in spec
+    )
+    assert 'optional_file("build/package-build-receipt.json", ".")' in spec
+    assert (
+        'UPX_ENABLED = os.environ.get("DICOM_OVERLAY_UPX_ENABLED", "1") == "1"'
+        in spec
+    )
+    assert spec.count("upx=UPX_ENABLED") == 2
 
 
 def test_openclaw_calendar_version_checker_accepts_packaging_revision() -> None:

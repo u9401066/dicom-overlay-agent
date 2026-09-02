@@ -170,6 +170,7 @@ def test_selfcheck_reports_all_components():
         "skills",
         "harness_plugin",
         "clinical_rules",
+        "clinical_knowledge",
         "node",
         "openclaw",
         "openclaw_bundled_skills",
@@ -185,6 +186,69 @@ def test_selfcheck_reports_all_components():
     assert "RESULT:" in out
     assert config_path.exists()
     assert code in (0, 1)
+
+
+def test_windowed_selfcheck_and_rule_audit_do_not_require_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dicom_overlay.__main__ import _run_explain_rules, _run_selfcheck
+
+    monkeypatch.setattr(sys, "stdout", None)
+
+    assert _run_selfcheck(_REPO_ROOT, _REPO_ROOT / "config.yaml") in (0, 1)
+    assert _run_explain_rules(_REPO_ROOT) == 0
+
+
+def test_package_runtime_smoke_handles_windowed_logging_and_image_surfaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dicom_overlay.infrastructure.package_runtime_smoke import (
+        run_package_runtime_smoke,
+    )
+
+    # PyInstaller's windowed bootloader exposes no stderr. Logging must still
+    # initialize, while the actual PNG/JPEG/font/review surfaces remain usable.
+    monkeypatch.setattr(sys, "stderr", None)
+    report = run_package_runtime_smoke(tmp_path)
+
+    assert report == {
+        "status": "ok",
+        "checks": {
+            "logging_init": True,
+            "png_encode_decode": True,
+            "jpeg_decode": True,
+            "font_render": True,
+            "review_export": True,
+        },
+        "failures": [],
+    }
+
+
+def test_bootstrap_config_load_handles_windowed_process_streams(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("log_level: INFO\n", encoding="utf-8")
+    code = """
+import sys
+from pathlib import Path
+from dicom_overlay.infrastructure.config_loader import load_config
+from dicom_overlay.infrastructure.logging_config import setup_bootstrap_logging
+sys.stdout = None
+sys.stderr = None
+setup_bootstrap_logging()
+config = load_config(Path(sys.argv[1]))
+raise SystemExit(0 if config.log_level == "INFO" else 2)
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(config_path)],
+        cwd=_REPO_ROOT,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0
 
 
 def test_gateway_image_smoke_rejects_real_credentials_and_non_loopback_config(
@@ -256,6 +320,35 @@ def test_built_bundle_selfcheck_exits_zero():
     )
     assert not (bundle / "overlay_agent.log").exists()
     assert not (bundle / "openclaw-home").exists()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_BUNDLE_SMOKE") != "1" or _built_exe() is None,
+    reason=(
+        "Opt-in: set RUN_BUNDLE_SMOKE=1 after scripts/build-exe.bat to validate "
+        "the freshly built frozen codecs, logging, fonts, and review export"
+    ),
+)
+def test_built_bundle_package_runtime_smoke_exits_zero():
+    exe = _built_exe()
+    assert exe is not None
+    bundle = exe.parent
+    result = subprocess.run(
+        [str(exe), "--package-runtime-smoke"],
+        cwd=str(bundle),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+
+    assert result.returncode == 0, (
+        f"bundle package-runtime smoke failed (exit {result.returncode}):\n"
+        f"{result.stdout}\n{result.stderr}"
+    )
+    assert not (bundle / "runtime-smoke.log").exists()
+    assert not (bundle / "review").exists()
 
 
 @pytest.mark.skipif(

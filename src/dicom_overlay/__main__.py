@@ -16,6 +16,7 @@ import contextlib
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
@@ -73,11 +74,17 @@ from dicom_overlay.infrastructure.hooks.clinical_consistency import (
 from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
-from dicom_overlay.infrastructure.logging_config import setup_logging
+from dicom_overlay.infrastructure.logging_config import (
+    setup_bootstrap_logging,
+    setup_logging,
+)
 from dicom_overlay.infrastructure.mcp_adapter import McpAdapter
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.overlay_highlight_builder import (
     build_ai_bbox_highlights,
+)
+from dicom_overlay.infrastructure.package_runtime_smoke import (
+    run_package_runtime_smoke,
 )
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor, ScreenMonitor
@@ -124,6 +131,18 @@ _PACKAGING_SMOKE_PNG_BASE64 = (
 )
 
 
+def _print_cli(*values: object) -> None:
+    """Print only when the process owns a console stream.
+
+    PyInstaller deliberately sets ``sys.stdout`` to ``None`` for the shipped
+    windowed executable. Diagnostic CLI modes still need deterministic exit
+    codes when invoked by the package verifier.
+    """
+
+    if sys.stdout is not None:
+        print(*values)
+
+
 class _SignalBridge(QObject):
     """Thread-safe bridge: agent callbacks (background) → Qt slots (main)."""
 
@@ -144,7 +163,7 @@ class _SignalBridge(QObject):
 
 
 def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
-    """Verify the portable bundle can start; print a report and return exit code.
+    """Verify the portable bundle can start and return a stable exit code.
 
     0 = all components OK (bundle is ready to run on this machine),
     1 = at least one component missing (prints which).
@@ -199,6 +218,30 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
             str(clinical_rules),
         )
     )
+    clinical_knowledge_root = base_dir / "clinical_knowledge"
+    clinical_knowledge_files = (
+        clinical_knowledge_root / "rules" / "core.rule.yaml",
+        clinical_knowledge_root / "schema" / "rule.schema.json",
+        clinical_knowledge_root / "generated" / "human-catalogue.md",
+        clinical_knowledge_root / "generated" / "agent-steps.md",
+        clinical_knowledge_root / "clinical-knowledge.sqlite",
+    )
+    missing_clinical_knowledge = [
+        path.relative_to(base_dir).as_posix()
+        for path in clinical_knowledge_files
+        if not path.is_file() or path.stat().st_size <= 0
+    ]
+    rows.append(
+        (
+            "clinical_knowledge",
+            not missing_clinical_knowledge,
+            (
+                str(clinical_knowledge_root)
+                if not missing_clinical_knowledge
+                else "missing or empty: " + ", ".join(missing_clinical_knowledge)
+            ),
+        )
+    )
     gateway = GatewayManager(repo_root=base_dir)
     rows.extend(gateway.verify_runtime())
     missing_templates = [
@@ -220,11 +263,11 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
     )
 
     all_ok = all(ok for _, ok, _ in rows)
-    print("DICOM Overlay Agent — self-check")
+    _print_cli("DICOM Overlay Agent — self-check")
     for component, ok, detail in rows:
         mark = "OK " if ok else "FAIL"
-        print(f"  [{mark}] {component}: {detail}")
-    print("RESULT:", "OK" if all_ok else "FAILED")
+        _print_cli(f"  [{mark}] {component}: {detail}")
+    _print_cli("RESULT:", "OK" if all_ok else "FAILED")
     return 0 if all_ok else 1
 
 
@@ -236,8 +279,8 @@ def _run_explain_rules(base_dir: Path) -> int:
     contacting an LLM, so a clinician can review the safety net's logic.
     """
     engine = build_clinical_engine(base_dir / "clinical_rules")
-    print("DICOM Overlay Agent — 臨床一致性規則對照表（供人工審核）")
-    print(engine.catalogue())
+    _print_cli("DICOM Overlay Agent — 臨床一致性規則對照表（供人工審核）")
+    _print_cli(engine.catalogue())
     return 0
 
 
@@ -483,6 +526,8 @@ async def _start_desktop_runtime(
 
 
 def main() -> None:
+    setup_bootstrap_logging()
+
     # --- Resolve portable base dir (USB plug-and-play) ---
     # When frozen, anchor all runtime paths to the executable's folder, not the
     # launch cwd (which may be System32). See infrastructure/app_paths.py.
@@ -497,6 +542,15 @@ def main() -> None:
             config_path = Path(sys.argv[sys.argv.index(arg) + 1])
 
     config = load_config(config_path)
+
+    # Exercise the exact frozen Pillow/logging/review surface without opening
+    # the GUI or contacting OpenClaw. The package verifier invokes this gate in
+    # a disposable directory after every clean build.
+    if "--package-runtime-smoke" in sys.argv:
+        with tempfile.TemporaryDirectory(prefix="dicom-overlay-package-smoke-") as raw:
+            report = run_package_runtime_smoke(Path(raw))
+        _print_cli(json.dumps(report, sort_keys=True))
+        sys.exit(0 if report["status"] == "ok" else 1)
 
     # --- Portable self-check (USB plug-and-play verification) ---
     # `--selfcheck` verifies the bundle can start (node + openclaw + writable
@@ -514,7 +568,11 @@ def main() -> None:
 
     # --- Setup logging ---
     # Diagnostic commands above must not leave runtime logs in a fresh bundle.
-    setup_logging(log_level=config.log_level, log_file=config.log_file)
+    setup_logging(
+        log_level=config.log_level,
+        log_file=config.log_file,
+        base_dir=base_dir,
+    )
     logger.info("DICOM Overlay Agent starting...")
 
     if "--gateway-smoke" in sys.argv:
