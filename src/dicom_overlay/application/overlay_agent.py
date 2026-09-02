@@ -78,6 +78,13 @@ _REGIONAL_TRACE_KEYS = frozenset(
 _REGIONAL_REVIEW_OUTCOMES = frozenset(
     {"no_change", "blocked", "dismissed", "superseded"}
 )
+_GATEWAY_PROTOCOL_RECEIPT_KEYS = (
+    "verified",
+    "advertised_min_protocol",
+    "advertised_max_protocol",
+    "negotiated_protocol",
+    "server_version",
+)
 
 _REVIEW_RECONCILIATION_REASON = (
     "A reviewer-confirmed regional update changed the overlay findings. The "
@@ -87,6 +94,68 @@ _REVIEW_RECONCILIATION_STEP = (
     "Reconcile the reviewer-confirmed regional update with the retained checklist "
     "and management plan in the source viewer."
 )
+
+
+def _gateway_protocol_receipt(analyzer: object) -> dict[str, object] | None:
+    """Read a verified non-secret receipt through bounded analyzer wrappers."""
+
+    current: object | None = analyzer
+    visited: set[int] = set()
+    for _ in range(8):
+        if current is None or id(current) in visited:
+            break
+        visited.add(id(current))
+        receipt_method = getattr(current, "gateway_protocol_receipt", None)
+        if callable(receipt_method):
+            raw = receipt_method()
+            if not isinstance(raw, dict) or raw.get("verified") is not True:
+                raise ConnectionError(
+                    "Analysis backend has no verified Gateway hello receipt"
+                )
+            receipt = {key: raw.get(key) for key in _GATEWAY_PROTOCOL_RECEIPT_KEYS}
+            minimum = receipt["advertised_min_protocol"]
+            maximum = receipt["advertised_max_protocol"]
+            negotiated = receipt["negotiated_protocol"]
+            server_version = receipt["server_version"]
+            if (
+                not isinstance(minimum, int)
+                or isinstance(minimum, bool)
+                or not isinstance(maximum, int)
+                or isinstance(maximum, bool)
+                or not isinstance(negotiated, int)
+                or isinstance(negotiated, bool)
+            ):
+                raise ConnectionError("Analysis backend Gateway receipt is malformed")
+            if minimum > maximum or not minimum <= negotiated <= maximum:
+                raise ConnectionError("Analysis backend Gateway receipt is malformed")
+            if not isinstance(server_version, str) or not server_version.strip():
+                raise ConnectionError("Analysis backend Gateway receipt is malformed")
+            receipt["server_version"] = server_version.strip()
+            return receipt
+        current = getattr(current, "_inner", None)
+    return None
+
+
+def _with_gateway_protocol_receipt(
+    result: AnalysisResult,
+    analyzer: object,
+) -> AnalysisResult:
+    """Attach transport proof to the auditable trace exported by the desktop."""
+
+    receipt = _gateway_protocol_receipt(analyzer)
+    if receipt is None:
+        return result
+    trace_entry: dict[str, object] = {
+        "stage": "gateway_connect",
+        "status": "verified",
+        "gateway_protocol_receipt": receipt,
+    }
+    if trace_entry in result.analysis_trace:
+        return result
+    return dataclasses.replace(
+        result,
+        analysis_trace=[*result.analysis_trace, trace_entry],
+    )
 
 
 def _structured_severity(
@@ -238,6 +307,11 @@ class OverlayAgent:
         self._last_image_base64 = ""
         self._running = False
         self._roi_setup_notified = False
+        # Bounded AUTO attempts for the initially visible study.  The first
+        # capture can race a cold Gateway start; each reconnect re-arms the
+        # baseline, but the cap keeps a flapping backend from re-sending
+        # billable analysis requests forever.
+        self._initial_auto_attempts = 0
 
         # Callbacks for presentation layer
         self.on_state_change: Any = None
@@ -245,6 +319,10 @@ class OverlayAgent:
         self.on_pending_analysis: Any = None
         self.on_error: Any = None
         self.on_roi_setup_required: Any = None
+        # Fired synchronously before every ROI capture so the presentation
+        # layer can hide app-owned panels first; otherwise capture exclusion
+        # would burn black panel/box blocks into the next analysis image.
+        self.on_before_capture: Any = None
 
     @property
     def state(self) -> AgentState:
@@ -782,6 +860,21 @@ class OverlayAgent:
 
         if not self._last_hash:
             self._last_hash = current_hash
+            if (
+                self._trigger_mode == TriggerMode.AUTO
+                and self._last_result is None
+                and self._initial_auto_attempts < 3
+            ):
+                # AUTO mode contract: a study already visible when monitoring
+                # starts is itself a stable new image.  Analyze it instead of
+                # waiting for an artificial change or a manual click.  The
+                # one-shot ``_last_result is None`` guard keeps later
+                # baseline resets (for example after DISPLAYING) from
+                # re-analyzing an unchanged study, and the attempt cap keeps
+                # a flapping connection from re-sending billable requests.
+                self._initial_auto_attempts += 1
+                logger.info("Initial stable image in AUTO mode, triggering capture")
+                await self._handle_stable_image_change(current_hash)
             return
 
         # Check if image changed
@@ -847,6 +940,12 @@ class OverlayAgent:
     async def _do_capture_and_analyze(self) -> None:
         self._pending_analysis = False
         self._transition(AgentState.CAPTURING)
+
+        # Give the presentation layer one beat to hide app-owned overlay
+        # panels so the capture contains only the viewer's own pixels.
+        if self.on_before_capture is not None:
+            self.on_before_capture()
+            await asyncio.sleep(0.4)
 
         # Capture the screen area defined by ROI (screen-relative margins).
         # ROI margins and screen dimensions are both in physical pixels.
@@ -922,6 +1021,7 @@ class OverlayAgent:
                     "Analysis result discarded (state changed to %s)", self._state.name
                 )
                 return
+            result = _with_gateway_protocol_receipt(result, self._analyzer)
             self._annotation_accumulator.reset(result.findings)
             with self._review_lock:
                 self._last_capture_rect = capture_rect
@@ -1078,6 +1178,13 @@ class OverlayAgent:
         )
         if window:
             self._set_target_window(window)
+            # An analysis that died before producing any result (cold Gateway
+            # race, first-turn SLA timeout) must not silence the visible study
+            # forever in AUTO mode.  Re-arm the hash baseline so the next
+            # monitoring tick re-attempts it; the shared _initial_auto_attempts
+            # cap keeps the total number of billable attempts bounded.
+            if self._last_result is None:
+                self._last_hash = ""
             logger.info("Error recovery: viewer found, resuming monitoring")
             self._transition(AgentState.MONITORING)
         else:
@@ -1103,6 +1210,13 @@ class OverlayAgent:
 
         try:
             await self._analyzer.connect()
+            # A recovered connection must re-evaluate the visible study: the
+            # first AUTO capture can race a cold Gateway start and get dropped
+            # before the analysis ran.  Resetting the hash baseline lets the
+            # monitoring tick treat the still-visible image as fresh; the
+            # shared attempt cap in _tick_monitoring keeps re-sends bounded.
+            if self._last_result is None:
+                self._last_hash = ""
             self._transition(AgentState.MONITORING)
         except Exception:
             logger.debug("Reconnect attempt failed, will retry")
