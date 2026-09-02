@@ -25,10 +25,11 @@ escalated. The original evidence always remains visible to the reviewer.
 
 **Why this is not just a hard-coded rule.** Every rule is *data*: it carries a
 guideline citation, version, and effective date, and is expressed declaratively
-over the structured result (no embedded Python logic per rule). Built-in rules
-ship here as data, and an external rule pack (``*.rules.yaml``) can override or
-extend them — so when a diagnostic guideline changes, you edit the rule pack, not
-the code. This mirrors the modality-profile registry pattern used elsewhere.
+over the structured result (no embedded Python logic per rule). Built-ins are
+generated from the audited ``clinical_knowledge`` YAML registry; an optional
+site rule pack (``*.rules.yaml``) can still apply a deployment-specific overlay.
+The generated Python is pure data so this domain module performs no YAML or file
+I/O and cannot drift silently from the checked registry digest.
 
 Domain layer — pure, no I/O, no GUI, no YAML. Loading lives in infrastructure.
 """
@@ -40,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from dicom_overlay.domain.entities import AnalysisResult, Severity
+from dicom_overlay.domain.generated_clinical_rules import BUILTIN_RULE_SPECS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -511,219 +513,50 @@ class ClinicalConsistencyEngine:
         return violations
 
 
-# ── Built-in rules (data, fully cited) ───────────────────────────────
-#
-# These ship as the default safety net. Each is medically grounded and carries
-# its guideline provenance. An external rule pack (``*.rules.yaml``) can override
-# any of these by ``id`` or add new ones, so a guideline revision is a data edit,
-# not a code change. Conditions deliberately match the AI's *own* wording, so the
-# engine flags self-contradiction rather than imposing an external diagnosis.
+# ── Built-in rules (generated pure data) ─────────────────────────────
 
-_BUILTIN_RULES: tuple[ClinicalRule, ...] = (
-    ClinicalRule(
-        id="ekg-st-elevation-not-flagged",
-        modality="EKG",
-        description=(
-            "A non-normal ST-segment axis describes elevation while the overall "
-            "study remains normal/benign. This is review-only because benign or "
-            "uncertain ST elevation is not itself a STEMI diagnosis."
+
+def _generated_condition(raw: object) -> RuleCondition:
+    if not isinstance(raw, dict):
+        raise ConditionError("generated clinical condition must be an object")
+    values = raw.get("values") or ()
+    if not isinstance(values, (list, tuple)):
+        raise ConditionError("generated clinical condition values must be a list")
+    return RuleCondition(
+        field=str(raw["field"]),
+        op=str(raw["op"]),
+        values=tuple(str(value) for value in values),
+        value=str(raw.get("value") or ""),
+    )
+
+
+def _generated_rule(raw: object) -> ClinicalRule:
+    if not isinstance(raw, dict):
+        raise ConditionError("generated clinical rule must be an object")
+    conditions = raw.get("conditions")
+    if not isinstance(conditions, (list, tuple)) or not conditions:
+        raise ConditionError("generated clinical rule must contain conditions")
+    escalation = raw.get("escalate_to")
+    return ClinicalRule(
+        id=str(raw["id"]),
+        modality=str(raw["modality"]),
+        description=str(raw["description"]),
+        conditions=tuple(_generated_condition(item) for item in conditions),
+        message=str(raw["message"]),
+        guideline=str(raw["guideline"]),
+        guideline_version=str(raw["guideline_version"]),
+        effective_date=str(raw["effective_date"]),
+        source_url=str(raw["source_url"]),
+        escalate_to=(
+            None if escalation is None else _parse_severity(str(escalation))
         ),
-        conditions=(
-            RuleCondition(
-                field="checklist.st_segment",
-                op="contains_any",
-                values=("elevat", "ste ", "st elevation", "抬高", "上升"),
-            ),
-            RuleCondition(
-                field="checklist.st_segment.status",
-                op="severity_at_least",
-                value="info",
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="info"),
-        ),
-        message="ST 段有抬高描述但整體嚴重度偏低，請人工確認是否為良性變異或急性缺血",
-        guideline="Fourth Universal Definition of MI; ACC/AHA STEMI",
-        guideline_version="2018",
-        effective_date="2018-08-25",
-        escalate_to=None,
-    ),
-    ClinicalRule(
-        id="ekg-explicit-stemi-undercall",
-        modality="EKG",
-        description=(
-            "An explicit, affirmative STEMI or acute myocardial-injury claim is "
-            "present, but the overall study is rated normal/benign. Negated and "
-            "uncertain mentions do not trigger escalation."
-        ),
-        conditions=(
-            RuleCondition(
-                field="all_text",
-                op="contains_any_asserted",
-                values=(
-                    "stemi",
-                    "st elevation myocardial infarction",
-                    "acute myocardial infarction",
-                    "acute mi",
-                    "acute myocardial injury",
-                    "acute injury pattern",
-                    "急性心肌梗塞",
-                    "急性心肌損傷",
-                ),
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="info"),
-        ),
-        message="判讀明確宣稱急性心肌梗塞/損傷卻評為非異常，需立即人工複核",
-        guideline="Fourth Universal Definition of MI; ACC/AHA STEMI",
-        guideline_version="2018",
-        effective_date="2018-08-25",
-        escalate_to=Severity.CRITICAL,
-    ),
-    ClinicalRule(
-        id="ekg-peaked-t-hyperkalemia",
-        modality="EKG",
-        description=(
-            "Peaked/tented T waves described but study rated normal — possible "
-            "hyperkalemia under-call."
-        ),
-        conditions=(
-            RuleCondition(
-                field="checklist.t_wave",
-                op="contains_any_asserted",
-                values=("peaked", "tented", "tall t", "高尖", "帳篷"),
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="info"),
-        ),
-        message="T 波高尖卻評為正常 — 需人工排除高血鉀",
-        guideline="AHA ACLS; ECG criteria for hyperkalemia",
-        guideline_version="2020",
-        effective_date="2020-10-21",
-        escalate_to=Severity.WARNING,
-    ),
-    ClinicalRule(
-        id="ekg-possible-hyperacute-ischemia-triage",
-        modality="EKG",
-        description=(
-            "A hyperacute ischemic T-wave differential is present but triage "
-            "remains below critical. The rule preserves diagnostic uncertainty "
-            "while escalating urgent expert review."
-        ),
-        conditions=(
-            RuleCondition(
-                field="all_text",
-                op="contains_any_non_negated",
-                values=("hyperacute ischemia", "hyperacute ischemic t wave"),
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="warning"),
-        ),
-        message=(
-            "判讀未排除超急性缺血性 T 波，維持不確定診斷但升級為急症人工複核"
-        ),
-        guideline="2023 ESC ACS; 2022 ACC Expert Consensus Acute Chest Pain",
-        guideline_version="2023/2022",
-        effective_date="2023-08-25",
-        source_url=(
-            "https://www.escardio.org/guidelines/clinical-practice-guidelines/"
-            "all-esc-practice-guidelines/acute-coronary-syndromes/"
-        ),
-        escalate_to=Severity.CRITICAL,
-    ),
-    ClinicalRule(
-        id="ekg-uncertain-acute-injury-with-st-elevation-triage",
-        modality="EKG",
-        description=(
-            "A non-normal ST-elevation axis and an unresolved acute ischemic or "
-            "myocardial-injury differential are both present while triage remains "
-            "below critical. Diagnostic uncertainty is preserved while urgent "
-            "expert review is required."
-        ),
-        conditions=(
-            RuleCondition(
-                field="checklist.st_segment",
-                op="contains_any",
-                values=("elevat", "ste ", "st elevation", "抬高", "上升"),
-            ),
-            RuleCondition(
-                field="checklist.st_segment.status",
-                op="severity_at_least",
-                value="warning",
-            ),
-            RuleCondition(
-                field="all_text",
-                op="contains_any_non_negated",
-                values=(
-                    "acute anterior injury",
-                    "acute myocardial injury",
-                    "acute injury pattern",
-                    "acute ischemia",
-                    "acute coronary occlusion",
-                    "急性心肌損傷",
-                    "急性缺血",
-                ),
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="warning"),
-        ),
-        message=(
-            "異常 ST 段抬高且未排除急性缺血/心肌損傷，保留不確定診斷並升級為急症人工複核"
-        ),
-        guideline="2025 ACC/AHA ACS; 2023 ESC ACS",
-        guideline_version="2025/2023",
-        effective_date="2025-02-27",
-        source_url=(
-            "https://professional.heart.org/en/science-news/"
-            "2025-guideline-for-the-management-of-patients-with-"
-            "acute-coronary-syndromes"
-        ),
-        escalate_to=Severity.CRITICAL,
-    ),
-    ClinicalRule(
-        id="cxr-pneumothorax-undercall",
-        modality="CXR",
-        description=(
-            "Pneumothorax mentioned anywhere in the read but the study is rated "
-            "normal/benign."
-        ),
-        conditions=(
-            RuleCondition(
-                field="all_text",
-                op="contains_any_asserted",
-                values=("pneumothorax", "氣胸"),
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="info"),
-        ),
-        message="判讀提及氣胸卻評為非異常 — 需人工排除（張力性）氣胸",
-        guideline="BTS Pleural Disease Guideline",
-        guideline_version="2010",
-        effective_date="2010-08-01",
-        escalate_to=Severity.CRITICAL,
-    ),
-    ClinicalRule(
-        id="cxr-widened-mediastinum",
-        modality="CXR",
-        description=(
-            "Widened mediastinum described but study rated normal — possible "
-            "aortic injury/dissection under-call."
-        ),
-        conditions=(
-            RuleCondition(
-                field="all_text",
-                op="contains_any_asserted",
-                values=(
-                    "widened mediastinum",
-                    "mediastinal widening",
-                    "縱膈腔變寬",
-                    "縱隔變寬",
-                ),
-            ),
-            RuleCondition(field="severity", op="severity_at_most", value="info"),
-        ),
-        message="縱膈腔變寬卻評為非異常 — 需人工排除主動脈病變",
-        guideline="ACR Appropriateness Criteria — Acute Chest Pain/Aortic",
-        guideline_version="2021",
-        effective_date="2021-01-01",
-        escalate_to=Severity.WARNING,
-    ),
+        require_review=bool(raw["require_review"]),
+    )
+
+
+_BUILTIN_RULES: tuple[ClinicalRule, ...] = tuple(
+    _generated_rule(spec) for spec in BUILTIN_RULE_SPECS
 )
-
 
 def builtin_rules() -> tuple[ClinicalRule, ...]:
     """Return the default, fully-cited rule set (a fresh tuple each call)."""
