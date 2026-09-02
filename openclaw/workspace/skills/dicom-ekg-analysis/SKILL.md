@@ -431,6 +431,13 @@ Reading depth (specialist expectations):
   abnormal without diagnostic ST elevation. Compare hyperkalemia, hyperacute
   ischemia, and benign variants; do not downgrade pathologic-looking morphology
   solely because reciprocal ST change is absent.
+- A negated conclusion ("No definite acute ST-elevation", "no reciprocal
+  change") is a statement about ONE pattern, not evidence that the territory is
+  benign. When any unresolved time-critical, wide-complex, paced, or artifact
+  candidate is still on the table, do NOT also write `st_segment`,
+  `stemi_pattern`, or `ischemia` as normal/absent; keep them
+  `possible`/`indeterminate` with an explicit question so the reviewer
+  reconciles them against the native tracing.
 - Always reconcile the checklist axes with each other (e.g. an "absent"
   ``stemi_pattern`` is inconsistent with an "elevation" ``st_segment`` of
   critical status — resolve the contradiction before returning).
