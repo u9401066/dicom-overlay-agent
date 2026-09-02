@@ -39,15 +39,26 @@ from dicom_overlay.application.multi_pass import (
     DEFAULT_INITIAL_RESPONSE_SLA_SEC,
     DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
 )
+from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
 from dicom_overlay.domain.entities import AnalysisResult, Modality, Severity
 from dicom_overlay.domain.hooks import AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import get_active_registry
+from dicom_overlay.infrastructure.ecg_variant_corpus import (
+    partial_ecg_axis_value_is_safe,
+    partial_ecg_limitation_class_supported,
+    partial_ecg_text_claim_failures,
+    partial_ecg_text_leaves,
+)
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
+from dicom_overlay.infrastructure.openclaw_client import _bbox_coordinates_digest
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from dicom_overlay.domain.modality_profile import ModalityRegistry
+    from dicom_overlay.infrastructure.ecg_variant_corpus import (
+        PartialEcgInputContract,
+    )
 
 # Severity grouping for the clinically meaningful binary "abnormal vs normal".
 _ABNORMAL = frozenset({Severity.WARNING, Severity.CRITICAL})
@@ -410,6 +421,19 @@ class EvalCase:
     # ECGFounder experiment arm.
     waveform_artifact_id: str = ""
     waveform_lead_mode: str = ""
+    # Deliberately degraded ECG input contract. It carries no diagnostic gold;
+    # it only defines visibility/provenance and safety behavior for the result.
+    partial_input: PartialEcgInputContract | None = None
+
+    @property
+    def analysis_valid_regions(self) -> tuple[str, ...]:
+        """Regions sent to the analyzer without inventing named ECG leads."""
+
+        if self.valid_regions:
+            return self.valid_regions
+        if self.partial_input is not None:
+            return self.partial_input.analysis_regions
+        return ()
 
 
 @dataclass
@@ -488,6 +512,13 @@ class CaseScore:
     candidate_concept_misses: list[str] = field(default_factory=list)
     candidate_concept_recall: float = 0.0
     weighted_concept_recall: float = 1.0
+    partial_input_expected: bool = False
+    partial_input_contract_ok: bool = True
+    partial_input_failures: list[str] = field(default_factory=list)
+    partial_variant_sha256: str = ""
+    bbox_receipt_matches_variant: bool | None = None
+    partial_limitation_class: str = ""
+    partial_limitation_class_verified: bool | None = None
 
 
 @dataclass
@@ -563,6 +594,9 @@ class EvalReport:
     json_repair_case_count: int = 0
     json_repair_total_count: int = 0
     raw_json_clean_rate: float = 1.0
+    partial_input_case_count: int = 0
+    partial_input_contract_pass_count: int = 0
+    partial_input_contract_pass_rate: float = 1.0
 
     @property
     def cant_miss_passed(self) -> bool:
@@ -613,6 +647,8 @@ class EvalReport:
                 failures.append(f"{prefix}: missed can't-miss {missed}")
             for missed in score.urgent_concern_missed:
                 failures.append(f"{prefix}: missed urgent concern {missed}")
+            for failure in score.partial_input_failures:
+                failures.append(f"{prefix}: partial-input contract {failure}")
         return failures
 
     def to_json(self) -> str:
@@ -1144,15 +1180,15 @@ def _concept_metrics(
         candidate_text = _candidate_haystack(result)
         for canonical in misses:
             keywords = expected_groups[canonical]
-            if any(_candidate_keyword_hit(keyword, candidate_text) for keyword in keywords):
+            if any(
+                _candidate_keyword_hit(keyword, candidate_text) for keyword in keywords
+            ):
                 candidate_hits.append(canonical)
             else:
                 candidate_misses.append(canonical)
     candidate_recall = len(candidate_hits) / len(expected) if expected else 0.0
     weighted_recall = (
-        (len(hits) + (0.5 * len(candidate_hits))) / len(expected)
-        if expected
-        else 1.0
+        (len(hits) + (0.5 * len(candidate_hits))) / len(expected) if expected else 1.0
     )
 
     precision_predictions = predicted if score_false_positives else predicted & expected
@@ -1234,7 +1270,7 @@ def _schema_check(case: EvalCase, result: AnalysisResult) -> tuple[bool, str]:
     request = AnalyzeRequest(
         image_base64="",
         modality=case.modality,
-        valid_regions=list(case.valid_regions),
+        valid_regions=list(case.analysis_valid_regions),
     )
     try:
         # OutputValidator intentionally removes unsafe overlay boxes and repairs
@@ -1243,9 +1279,152 @@ def _schema_check(case: EvalCase, result: AnalysisResult) -> tuple[bool, str]:
         validated = validator.post_analyze(request, copy.deepcopy(result))
     except HookError as exc:
         return False, str(exc)
-    if validated.validation_warnings:
-        return False, "; ".join(validated.validation_warnings)
+    warnings = list(validated.validation_warnings)
+    if case.partial_input is not None:
+        # A declared partial layout is intentionally not a complete 12-lead
+        # inventory. Keep all unrelated warnings as schema failures; only the
+        # two exact inventory limitations are expected by this input contract.
+        warnings = [
+            warning
+            for warning in warnings
+            if not (
+                warning == "EKG layout is missing a lead inventory"
+                or warning.startswith("EKG layout is missing visible leads: ")
+            )
+        ]
+    if warnings:
+        return False, "; ".join(warnings)
     return True, ""
+
+
+_FULL_EKG_LAYOUT_FORMATS = frozenset({"12lead_3x4", "12lead_3x4_rhythm", "12lead_12x1"})
+
+
+def _partial_axis_is_safe(value: str, status: Severity) -> bool:
+    return partial_ecg_axis_value_is_safe(value, status.value)
+
+
+def _partial_result_texts(result: AnalysisResult) -> tuple[str, ...]:
+    finding_text = [
+        [
+            finding.label,
+            finding.detail,
+            finding.notes,
+            finding.confidence,
+            finding.question,
+        ]
+        for finding in result.findings
+    ]
+    checklist_text = [item.value for item in result.checklist.values()]
+    return partial_ecg_text_leaves(
+        result.summary,
+        finding_text,
+        checklist_text,
+        result.image_quality,
+        result.next_steps,
+        result.incomplete_reasons,
+        result.review_reasons,
+        result.zoom_hints,
+    )
+
+
+def _partial_bbox_receipt_matches_variant(
+    contract: PartialEcgInputContract,
+    result: AnalysisResult,
+) -> bool | None:
+    boxes = [box for finding in result.findings for box in finding.bboxes]
+    if not boxes:
+        return None
+    expected_digest = _bbox_coordinates_digest(boxes)
+    for event in result.analysis_trace:
+        if (
+            not isinstance(event, dict)
+            or event.get("stage") != "finalize"
+            or event.get("status") != "completed"
+            or event.get("source") != "original_roi"
+        ):
+            continue
+        binding = event.get("bbox_evidence")
+        records = event.get("tool_audit")
+        if not isinstance(binding, dict) or not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            if (
+                record.get("schema_version") == 2
+                and record.get("tool") == "dicom_bbox_validate"
+                and record.get("accepted_count") == len(boxes)
+                and record.get("source_image_sha256") == contract.variant_sha256
+                and record.get("accepted_boxes_sha256") == expected_digest
+                and binding.get("source_image_sha256") == contract.variant_sha256
+                and binding.get("evidence_nonce") == record.get("evidence_nonce")
+            ):
+                return True
+    return False
+
+
+def _partial_input_contract_failures(
+    case: EvalCase,
+    result: AnalysisResult,
+) -> tuple[list[str], bool | None, bool | None]:
+    contract = case.partial_input
+    if contract is None:
+        return [], None, None
+    failures: list[str] = []
+    if not result.incomplete or not result.incomplete_reasons:
+        failures.append("partial ECG result must declare incomplete with reasons")
+    if not result.review_required or not result.review_reasons:
+        failures.append("partial ECG result must require human review with reasons")
+
+    claimable = set(contract.claimable_regions)
+    claimed = {region for finding in result.findings for region in finding.regions}
+    invalid_claims = sorted(claimed - claimable)
+    if invalid_claims:
+        failures.append(
+            "partial ECG result claims invisible/unverified regions: "
+            + ", ".join(invalid_claims)
+        )
+
+    layout_format = str(result.layout.get("format") or "").strip()
+    inventory = parse_ekg_lead_inventory(result.layout)
+    layout_claims = set(inventory.by_name())
+    if result.layout.get("rhythm_strip_bbox") is not None:
+        layout_claims.add("rhythm_strip")
+    disallowed_layout = sorted(layout_claims - claimable)
+    if layout_format in _FULL_EKG_LAYOUT_FORMATS or disallowed_layout:
+        detail = ", ".join(disallowed_layout) or layout_format
+        failures.append(
+            "partial ECG result reconstructed a non-claimable full/named layout: "
+            + detail
+        )
+
+    result_texts = _partial_result_texts(result)
+    failures.extend(partial_ecg_text_claim_failures(result_texts))
+    limitation_verified = partial_ecg_limitation_class_supported(
+        contract.limitation_class,
+        result_texts,
+    )
+    if not limitation_verified:
+        failures.append(
+            "partial ECG output does not identify transform-specific limitation "
+            f"class: {contract.limitation_class}"
+        )
+
+    for axis in contract.context_dependent_axes:
+        item = result.checklist.get(axis)
+        if item is None:
+            failures.append(f"partial ECG checklist axis is missing: {axis}")
+        elif not _partial_axis_is_safe(item.value, item.status):
+            failures.append(
+                "partial ECG context-dependent axis must be not-assessable or "
+                f"abnormal: {axis}={item.value!r}/{item.status.value}"
+            )
+
+    bbox_receipt_matches = _partial_bbox_receipt_matches_variant(contract, result)
+    if bbox_receipt_matches is False:
+        failures.append("partial ECG final bbox receipt is not bound to variant_sha256")
+    return failures, bbox_receipt_matches, limitation_verified
 
 
 def _cant_miss_check(
@@ -1459,10 +1638,9 @@ def _urgent_concern_check(
                     result,
                 )
             )
-        if (
-            _normalize_lexical(label) == "acute mi"
-            and _acute_mi_structured_stemi_differential_hit(result)
-        ):
+        if _normalize_lexical(
+            label
+        ) == "acute mi" and _acute_mi_structured_stemi_differential_hit(result):
             concern_hit = True
             uncertainty_contract = uncertainty_contract or (
                 _uncertainty_contract_for_forms(
@@ -1549,8 +1727,7 @@ def _extract_sla_case_metrics(
                 initial_ms <= int(DEFAULT_INITIAL_RESPONSE_SLA_SEC * 1000)
             ),
             "first_crop_sla_met": None,
-            "total_sla_met": latency_ms
-            <= int(DEFAULT_TOTAL_ANALYSIS_SLA_SEC * 1000),
+            "total_sla_met": latency_ms <= int(DEFAULT_TOTAL_ANALYSIS_SLA_SEC * 1000),
         }
 
     timings = event.get("timings_ms")
@@ -1566,9 +1743,7 @@ def _extract_sla_case_metrics(
             int(first_crop_created) if first_crop_created is not None else None
         ),
         "first_crop_refinement_ms": (
-            int(first_crop_refinement)
-            if first_crop_refinement is not None
-            else None
+            int(first_crop_refinement) if first_crop_refinement is not None else None
         ),
         "initial_response_sla_met": bool(met.get("initial_response")),
         "first_crop_sla_met": (
@@ -1620,6 +1795,11 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
     )
 
     schema_ok, schema_issue = _schema_check(case, result)
+    (
+        partial_failures,
+        bbox_receipt_matches_variant,
+        partial_limitation_class_verified,
+    ) = _partial_input_contract_failures(case, result)
 
     severity_scorable = (
         positive_reference_scorable and case.expected_severity is not Severity.INFO
@@ -1675,6 +1855,7 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
             and bbox_in_bounds
             and not cant_miss_missed
             and not urgent_missed
+            and not partial_failures
         )
     )
     sla = _extract_sla_case_metrics(result, latency_ms=latency_ms)
@@ -1756,6 +1937,19 @@ def score_case(case: EvalCase, result: AnalysisResult, latency_ms: int) -> CaseS
         candidate_concept_misses=concept.candidate_misses,
         candidate_concept_recall=concept.candidate_recall,
         weighted_concept_recall=concept.weighted_recall,
+        partial_input_expected=case.partial_input is not None,
+        partial_input_contract_ok=not partial_failures,
+        partial_input_failures=partial_failures,
+        partial_variant_sha256=(
+            case.partial_input.variant_sha256 if case.partial_input is not None else ""
+        ),
+        bbox_receipt_matches_variant=bbox_receipt_matches_variant,
+        partial_limitation_class=(
+            case.partial_input.limitation_class
+            if case.partial_input is not None
+            else ""
+        ),
+        partial_limitation_class_verified=partial_limitation_class_verified,
     )
 
 
@@ -1837,6 +2031,27 @@ def _error_score(case: EvalCase, message: str, *, latency_ms: int = 0) -> CaseSc
         else [],
         candidate_concept_recall=0.0,
         weighted_concept_recall=0.0,
+        partial_input_expected=case.partial_input is not None,
+        partial_input_contract_ok=case.partial_input is None,
+        partial_input_failures=(
+            ["partial ECG analysis failed before contract verification"]
+            if case.partial_input is not None
+            else []
+        ),
+        partial_variant_sha256=(
+            case.partial_input.variant_sha256 if case.partial_input is not None else ""
+        ),
+        bbox_receipt_matches_variant=(
+            False if case.partial_input is not None else None
+        ),
+        partial_limitation_class=(
+            case.partial_input.limitation_class
+            if case.partial_input is not None
+            else ""
+        ),
+        partial_limitation_class_verified=(
+            False if case.partial_input is not None else None
+        ),
     )
 
 
@@ -2021,6 +2236,10 @@ def _aggregate(
 
     clinical_scored = [s for s in scored if s.clinical_scorable]
     clinical_all = [s for s in scores if s.clinical_scorable]
+    partial_input_scores = [s for s in scores if s.partial_input_expected]
+    partial_input_passes = sum(
+        1 for score in partial_input_scores if score.partial_input_contract_ok
+    )
     weak_label_scored = [s for s in scored if not s.reference_complete]
     severity_scored = [s for s in scored if s.severity_scorable]
     keyword_scored = [s for s in scored if s.keyword_hits or s.keyword_misses]
@@ -2180,9 +2399,7 @@ def _aggregate(
     # timed-out/error cases would make the aggregate look faster precisely when
     # the SLA is failing.
     mean_latency = (
-        round(sum(s.latency_ms for s in scores) / len(scores), 1)
-        if scores
-        else 0.0
+        round(sum(s.latency_ms for s in scores) / len(scores), 1) if scores else 0.0
     )
     mean_candidate_concept_recall = (
         round(
@@ -2314,6 +2531,13 @@ def _aggregate(
         json_repair_case_count=json_repair_cases,
         json_repair_total_count=json_repair_total,
         raw_json_clean_rate=raw_json_clean_rate,
+        partial_input_case_count=len(partial_input_scores),
+        partial_input_contract_pass_count=partial_input_passes,
+        partial_input_contract_pass_rate=(
+            round(partial_input_passes / len(partial_input_scores), 3)
+            if partial_input_scores
+            else 1.0
+        ),
     )
 
 

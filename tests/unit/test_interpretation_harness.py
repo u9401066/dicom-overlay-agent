@@ -35,6 +35,9 @@ def test_initial_analysis_prompt_contains_structured_interpretation_protocol():
     assert "lead_I, rhythm_strip" in prompt
     assert "Return a single JSON object only" in prompt
     assert "exactly match the accepted boxes" in prompt
+    assert "professional image-interpretation software" in prompt
+    assert "do not refuse solely because the task is medical" in prompt
+    assert "Do not add generic medical-advice disclaimers" in prompt
 
 
 def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
@@ -78,7 +81,9 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
 
     assert "TRIAGE" in prompt
     assert "checklist={}" in prompt
-    assert "at most three" in prompt
+    assert "at most six distinct" in prompt
+    assert "later crop budget does not delete a distinct candidate" in prompt
+    assert "rhythm/pacing, conduction, voltage/chamber" in prompt
     assert "ecg_founder_analyze_waveform exactly once" in prompt
     assert "max_predictions=5" in prompt
     assert "top-k omission is not negative evidence" in prompt
@@ -121,9 +126,18 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "Normal/WNL is valid" in prompt
     assert "never emit urgent/emergent" in prompt
     assert "full modality checklist" in prompt
-    assert "three consecutive broad QRS complexes" in prompt
-    assert "NSVT/VT versus artifact" in prompt
+    assert "Count unique horizontal timestamps" in prompt
+    assert "same beat repeated across lead rows" in prompt
+    assert "Three or more consecutive broad beats" in prompt
+    assert "one or two abnormal broad beats" in prompt
+    assert "pacing versus PVC, aberrancy, fusion, and artifact" in prompt
+    assert "Normal intrinsic beats do not exclude demand/intermittent pacing" in prompt
+    assert "pacing-spike candidate" in prompt
+    assert "w<=0.35, h<=0.30, and w*h<=0.08" in prompt
+    assert "one to three small representative lead/beat boxes" in prompt
+    assert "never use a full-height time band" in prompt
     assert "16 keys" not in prompt
+    assert "professional image-interpretation software" in prompt
 
 
 def test_non_ekg_coarse_prompt_omits_lvh_balance_contract() -> None:
@@ -148,6 +162,7 @@ def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> No
     assert "lead_I, lead_II" in prompt
     assert "systematic image interpretation protocol" not in prompt
     assert "dicom_bbox_validate" not in prompt
+    assert "do not refuse solely because the task is medical" in prompt
 
 
 def test_followup_prompt_carries_image_context_and_prior_result():
@@ -174,6 +189,8 @@ def test_followup_prompt_carries_image_context_and_prior_result():
         user_question="Which area should I look at first?",
         context=context,
     )
+
+    assert "Do not add generic medical-advice disclaimers" in prompt
 
     assert "same attached medical image" in prompt
     assert "ST elevation in anterior leads" in prompt

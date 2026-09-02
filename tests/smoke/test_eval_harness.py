@@ -7,6 +7,7 @@ import os
 from typing import TYPE_CHECKING
 
 import pytest
+from PIL import Image
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,6 +20,12 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
+from dicom_overlay.infrastructure.ecg_variant_corpus import (
+    EKG_CHECKLIST_AXES,
+    VARIANT_NAMES,
+    build_variant_corpus,
+    parse_partial_ecg_input_contract,
+)
 from dicom_overlay.infrastructure.eval_harness import (
     CaseScore,
     EvalCase,
@@ -29,6 +36,7 @@ from dicom_overlay.infrastructure.eval_harness import (
     run_evaluation,
     score_case,
 )
+from dicom_overlay.infrastructure.openclaw_client import _bbox_coordinates_digest
 
 
 def _case(
@@ -296,6 +304,276 @@ def test_score_case_accepts_clinically_incomplete_but_structurally_valid_result(
 
     assert score.schema_ok is True
     assert score.schema_issue == ""
+
+
+def _partial_ecg_case(tmp_path: Path, variant_name: str = "crop_top_20") -> EvalCase:
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    corpus = tmp_path / "partial-corpus"
+    manifest = build_variant_corpus([source], corpus)
+    entry = next(
+        case
+        for case in manifest["cases"]
+        if case["partial_input"]["variant"] == variant_name
+    )
+    image_path = corpus / entry["image"]
+    contract = parse_partial_ecg_input_contract(entry, image_path=image_path)
+    assert contract is not None
+    return EvalCase(
+        image_path=image_path,
+        modality=Modality.EKG,
+        expected_severity=Severity.NORMAL,
+        label=entry["label"],
+        label_status="blinded_inference",
+        valid_regions=(),
+        partial_input=contract,
+    )
+
+
+_LIMITATION_TEXT_BY_CLASS = {
+    "top_edge_cropped": "The top edge of the ECG image is cropped.",
+    "bottom_edge_cropped": "The bottom edge of the ECG image is cropped.",
+    "left_edge_cropped": "The left edge of the ECG image is cropped.",
+    "right_edge_cropped": "The right edge of the ECG image is cropped.",
+    "central_horizontal_band_only": "Only a central horizontal band is present.",
+    "left_labels_masked": "Labels at the left margin are masked and unreadable.",
+    "narrow_horizontal_band_only": "Only an isolated narrow horizontal band remains.",
+    "low_resolution_downsample": "The ECG is downsampled and low-resolution.",
+}
+
+
+def _safe_partial_ecg_result(case: EvalCase) -> AnalysisResult:
+    assert case.partial_input is not None
+    limitation = _LIMITATION_TEXT_BY_CLASS[case.partial_input.limitation_class]
+    return AnalysisResult(
+        modality=Modality.EKG,
+        summary=f"Incomplete ECG: {limitation}",
+        severity=Severity.NORMAL,
+        findings=[],
+        checklist={
+            axis: ChecklistItem(value="not_assessable", status=Severity.INFO)
+            for axis in EKG_CHECKLIST_AXES
+        },
+        image_quality=limitation,
+        next_steps=["Review the uncropped source ECG."],
+        model_used="test-model",
+        incomplete=True,
+        incomplete_reasons=[limitation],
+        review_required=True,
+        review_reasons=["Incomplete ECG requires human review."],
+        layout={"format": "partial", "leads": []},
+    )
+
+
+def test_partial_ecg_contract_accepts_incomplete_review_and_unassessable_axes(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+
+    score = score_case(case, _safe_partial_ecg_result(case), latency_ms=12)
+
+    assert score.schema_ok is True
+    assert score.partial_input_expected is True
+    assert score.partial_input_contract_ok is True
+    assert score.partial_input_failures == []
+    assert score.bbox_receipt_matches_variant is None
+    assert score.partial_limitation_class == "top_edge_cropped"
+    assert score.partial_limitation_class_verified is True
+
+
+def test_partial_ecg_contract_rejects_full_layout_and_false_normal_axes(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+    result = _safe_partial_ecg_result(case)
+    result.layout = {"format": "12lead_12x1", "leads": []}
+    for axis in case.partial_input.context_dependent_axes:
+        result.checklist[axis] = ChecklistItem(value="normal", status=Severity.NORMAL)
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_input_contract_ok is False
+    assert any("full/named layout" in issue for issue in score.partial_input_failures)
+    assert any(
+        "not-assessable or abnormal" in issue for issue in score.partial_input_failures
+    )
+
+
+@pytest.mark.parametrize("variant_name", VARIANT_NAMES)
+def test_partial_ecg_contract_verifies_each_transform_limitation_class(
+    tmp_path: Path,
+    variant_name: str,
+) -> None:
+    case = _partial_ecg_case(tmp_path, variant_name)
+
+    score = score_case(case, _safe_partial_ecg_result(case), latency_ms=12)
+
+    assert score.partial_input_contract_ok is True
+    assert score.partial_limitation_class_verified is True
+
+
+def test_partial_ecg_contract_rejects_generic_limitation_template(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path, "crop_right_20")
+    result = _safe_partial_ecg_result(case)
+    result.summary = "Incomplete ECG image."
+    result.image_quality = "incomplete image"
+    result.incomplete_reasons = ["Image content is incomplete."]
+    result.review_reasons = ["Incomplete ECG requires review."]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_limitation_class_verified is False
+    assert any(
+        "transform-specific limitation" in issue
+        for issue in score.partial_input_failures
+    )
+
+
+def test_partial_ecg_contract_rejects_template_listing_multiple_transforms(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path, "crop_right_20")
+    result = _safe_partial_ecg_result(case)
+    all_classes_template = " ".join(_LIMITATION_TEXT_BY_CLASS.values())
+    result.summary = all_classes_template
+    result.image_quality = "incomplete image"
+    result.incomplete_reasons = ["Image content is incomplete."]
+    result.review_reasons = ["Incomplete ECG requires review."]
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_limitation_class_verified is False
+    assert any(
+        "transform-specific limitation" in issue
+        for issue in score.partial_input_failures
+    )
+
+
+@pytest.mark.parametrize("status", [Severity.WARNING, Severity.CRITICAL])
+def test_partial_ecg_context_axis_rejects_normal_value_with_abnormal_status(
+    tmp_path: Path,
+    status: Severity,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+    result = _safe_partial_ecg_result(case)
+    axis = case.partial_input.context_dependent_axes[0]
+    result.checklist[axis] = ChecklistItem(value="normal", status=status)
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert score.partial_input_contract_ok is False
+    assert any(
+        f"{axis}='normal'/{status.value}" in issue
+        for issue in score.partial_input_failures
+    )
+
+
+def test_partial_ecg_contract_rejects_named_leads_in_presented_text(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+
+    summary_result = _safe_partial_ecg_result(case)
+    summary_result.summary += " Visible change in V3."
+    detail_result = _safe_partial_ecg_result(case)
+    detail_result.findings = [
+        Finding(
+            id="candidate",
+            regions=[],
+            label="Visible waveform change",
+            detail="Abnormal morphology in lead II.",
+            severity=Severity.WARNING,
+        )
+    ]
+    checklist_result = _safe_partial_ecg_result(case)
+    axis = case.partial_input.context_dependent_axes[0]
+    checklist_result.checklist[axis] = ChecklistItem(
+        value="Abnormal morphology in aVR",
+        status=Severity.WARNING,
+    )
+
+    scores = [
+        score_case(case, result, latency_ms=12)
+        for result in (summary_result, detail_result, checklist_result)
+    ]
+
+    assert all(
+        any(
+            "unverified named regions" in issue
+            for issue in score.partial_input_failures
+        )
+        for score in scores
+    )
+
+
+def test_partial_ecg_contract_rejects_positive_full_layout_claim_in_text(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    result = _safe_partial_ecg_result(case)
+    result.summary += " This is a complete 12-lead ECG."
+
+    score = score_case(case, result, latency_ms=12)
+
+    assert any(
+        "unverified full lead layout" in issue for issue in score.partial_input_failures
+    )
+
+
+def test_partial_ecg_bbox_receipt_must_bind_exact_variant_bytes(
+    tmp_path: Path,
+) -> None:
+    case = _partial_ecg_case(tmp_path)
+    assert case.partial_input is not None
+    result = _safe_partial_ecg_result(case)
+    box = RegionRect(x=0.2, y=0.3, w=0.1, h=0.1)
+    result.severity = Severity.WARNING
+    result.findings = [
+        Finding(
+            id="visible-candidate",
+            regions=[],
+            label="Visible waveform abnormality",
+            detail="Abnormal morphology is visible but lead identity is unavailable.",
+            severity=Severity.WARNING,
+            bboxes=[box],
+        )
+    ]
+    nonce = "d" * 32
+    result.analysis_trace = [
+        {
+            "stage": "finalize",
+            "status": "completed",
+            "source": "original_roi",
+            "bbox_evidence": {
+                "source_image_sha256": case.partial_input.variant_sha256,
+                "evidence_nonce": nonce,
+            },
+            "tool_audit": [
+                {
+                    "schema_version": 2,
+                    "tool": "dicom_bbox_validate",
+                    "accepted_count": 1,
+                    "source_image_sha256": case.partial_input.variant_sha256,
+                    "evidence_nonce": nonce,
+                    "accepted_boxes_sha256": _bbox_coordinates_digest([box]),
+                }
+            ],
+        }
+    ]
+
+    accepted = score_case(case, result, latency_ms=12)
+    result.analysis_trace[0]["tool_audit"][0]["source_image_sha256"] = "0" * 64
+    rejected = score_case(case, result, latency_ms=12)
+
+    assert accepted.partial_input_contract_ok is True
+    assert accepted.bbox_receipt_matches_variant is True
+    assert rejected.partial_input_contract_ok is False
+    assert rejected.bbox_receipt_matches_variant is False
 
 
 def test_score_case_records_partial_credit_for_near_miss(tmp_path: Path) -> None:

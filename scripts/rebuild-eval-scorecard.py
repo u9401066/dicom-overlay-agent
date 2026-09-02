@@ -32,6 +32,11 @@ from dicom_overlay.domain.modality_profile import get_active_registry  # noqa: E
 from dicom_overlay.infrastructure.clinical_rule_loader import (  # noqa: E402
     build_clinical_engine,
 )
+from dicom_overlay.infrastructure.ecg_variant_corpus import (  # noqa: E402
+    is_partial_ecg_corpus_manifest,
+    parse_partial_ecg_input_contract,
+    verify_variant_corpus,
+)
 from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
     EvalCase,
     _aggregate,
@@ -258,7 +263,7 @@ def _apply_current_guardrails(
     request = AnalyzeRequest(
         image_base64="",
         modality=case.modality,
-        valid_regions=list(case.valid_regions),
+        valid_regions=list(case.analysis_valid_regions),
     )
     validation_error = ""
     try:
@@ -504,28 +509,50 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _load_cases(manifest_path: Path) -> list[EvalCase]:
     spec = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    if is_partial_ecg_corpus_manifest(spec):
+        spec = verify_variant_corpus(manifest_path.parent)
     root = Path(manifest_path).parent
     cases: list[EvalCase] = []
     for entry in spec["cases"]:
         modality = Modality(entry["modality"])
+        image_path = root / entry["image"]
+        partial_input = parse_partial_ecg_input_contract(
+            entry,
+            image_path=image_path,
+        )
+        if "valid_regions" in entry:
+            explicit_regions = entry["valid_regions"]
+            if not isinstance(explicit_regions, list) or any(
+                not isinstance(item, str) or not item.strip()
+                for item in explicit_regions
+            ):
+                raise ValueError("valid_regions must be an explicit list of names")
+            valid_regions = tuple(item.strip() for item in explicit_regions)
+        else:
+            valid_regions = tuple(_DEFAULT_VALID_REGIONS.get(modality, ()))
         cases.append(
             EvalCase(
-                image_path=root / entry["image"],
+                image_path=image_path,
                 modality=modality,
-                expected_severity=Severity(entry["expected_severity"]),
+                expected_severity=Severity(entry.get("expected_severity", "normal")),
                 expected_keywords=tuple(entry.get("keywords", [])),
                 expected_negatives=tuple(entry.get("negatives", [])),
                 target_axes=tuple(entry.get("target_axes", [])),
                 cant_miss=tuple(entry.get("cant_miss", [])),
                 urgent_concerns=tuple(entry.get("urgent_concerns", [])),
-                label_status=str(entry.get("label_status") or "asserted"),
+                label_status=str(
+                    entry.get("label_status")
+                    or (
+                        "asserted"
+                        if "expected_severity" in entry
+                        else "blinded_inference"
+                    )
+                ),
                 uncertain_concepts=tuple(entry.get("uncertain_concepts", [])),
                 ungradable_reasons=tuple(entry.get("ungradable_reasons", [])),
                 label=entry.get("label", ""),
-                valid_regions=tuple(
-                    entry.get("valid_regions")
-                    or _DEFAULT_VALID_REGIONS.get(modality, ())
-                ),
+                valid_regions=valid_regions,
+                partial_input=partial_input,
             )
         )
     return cases

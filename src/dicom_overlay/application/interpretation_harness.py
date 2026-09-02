@@ -9,6 +9,46 @@ if TYPE_CHECKING:
     from dicom_overlay.domain.entities import AnalysisResult, Modality, Severity
 
 
+# Eval-only region scope used when a deliberately cropped ECG has no lead name
+# that can be guaranteed from geometry alone.  It is intentionally not a
+# clinical region name: prompts must keep ``finding.regions`` empty while still
+# giving InputGuard a non-empty, fail-closed scope.
+PARTIAL_ECG_VISIBLE_PIXELS_SCOPE = "partial_ecg_visible_pixels_no_named_leads"
+
+PROFESSIONAL_CO_READER_GUIDANCE = (
+    "Act as professional image-interpretation software assisting a specialist "
+    "physician. Complete the medically relevant review of the visible image; do "
+    "not refuse solely because the task is medical or because you are an AI. "
+    "Do not add generic medical-advice disclaimers or tell the specialist to "
+    "consult another professional. State only concrete image limitations, "
+    "uncertainty, missing clinical inputs, and focused review actions that affect "
+    "this case."
+)
+
+
+def _partial_ecg_input_guidance(
+    modality: Modality,
+    valid_regions: list[str],
+) -> str:
+    if modality.value != "EKG" or valid_regions != [PARTIAL_ECG_VISIBLE_PIXELS_SCOPE]:
+        return ""
+    return (
+        "This is a deliberately incomplete/cropped ECG robustness case. "
+        "The scope token describes visible pixels, not a verified lead name. "
+        "Do not copy that token into finding.regions; use regions=[] and ground "
+        "any visible abnormality only with tight bboxes. Do not infer or locally "
+        "reconstruct a complete 12-lead inventory. Use layout format partial or "
+        "non_standard with leads=[] unless a separate trusted lead map is supplied. "
+        "Set incomplete=true and review_required=true with concrete reasons. For "
+        "a checklist axis that depends on unavailable leads or resolution, use "
+        "not_assessable/indeterminate with info status; a visibly supported "
+        "abnormal axis may remain warning or critical, never a fabricated normal. "
+        "Describe the concrete visible degradation (which edge is cropped, a "
+        "masked label margin, an isolated horizontal band, or low resolution); a "
+        "generic incomplete-image template is insufficient.\n"
+    )
+
+
 EKG_LVH_BALANCE_GUIDANCE = (
     "High voltage alone cannot establish definite LVH, and a missing calibration "
     "pulse prevents a definite LVH claim. When a standard ECG grid and appropriate "
@@ -85,6 +125,7 @@ def build_initial_analysis_prompt(
 ) -> str:
     """Build the initial structured analysis prompt for an attached image."""
     allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
+    partial_input_guidance = _partial_ecg_input_guidance(modality, valid_regions)
     waveform_protocol = ""
     if waveform_artifact_id:
         waveform_protocol = (
@@ -130,7 +171,9 @@ def build_initial_analysis_prompt(
     return (
         f"Use the {skill_name} instructions below to analyze the attached image.\n\n"
         f"{skill_prompt}\n\n"
+        f"{PROFESSIONAL_CO_READER_GUIDANCE}\n\n"
         "Run this systematic image interpretation protocol:\n"
+        f"{partial_input_guidance}"
         "This is the bounded initial whole-image turn. Return the complete coarse "
         "JSON promptly; the app will schedule separate crop/refine turns. Do not "
         "simulate crop work or delay for optional analysis beyond the tools "
@@ -194,6 +237,7 @@ def build_coarse_analysis_prompt(
     """Build the bounded first-look prompt used by the multi-pass analyzer."""
 
     allowed_regions = ", ".join(valid_regions) if valid_regions else "(none provided)"
+    partial_input_guidance = _partial_ecg_input_guidance(modality, valid_regions)
     waveform_protocol = ""
     if waveform_artifact_id:
         waveform_protocol = (
@@ -235,12 +279,17 @@ def build_coarse_analysis_prompt(
             "it 'Possible acute ST-elevation ischemic pattern (STEMI cannot be "
             "excluded)' with critical triage severity and low confidence. "
             "Irregular R-R timing or poorly seen P waves alone cannot diagnose AF. "
-            "At any abrupt abnormal interval, explicitly test whether at least "
-            "three consecutive broad QRS complexes recur at the same horizontal "
-            "positions across multiple leads. If so, evaluate NSVT/VT versus "
-            "artifact or conduction before attributing secondary ST-T distortion "
-            "to ischemia; a plausible ventricular run remains a critical, cautious "
-            "differential for crop review. "
+            "At any abrupt abnormal interval, first separate the dominant intrinsic "
+            "beat class from intermittent abnormal beats. Count unique horizontal "
+            "timestamps, not the same beat repeated across lead rows. Three or more "
+            "consecutive broad beats are required before proposing a ventricular "
+            "run; one or two abnormal broad beats still require an intermittent "
+            "pacing versus PVC, aberrancy, fusion, and artifact comparison. Normal "
+            "intrinsic beats do not exclude demand/intermittent pacing. Treat a "
+            "sharp narrow deflection immediately before an abnormal QRS as a pacing-"
+            "spike candidate, not automatically as a P wave. Evaluate NSVT/VT "
+            "versus artifact or conduction before attributing secondary ST-T "
+            "distortion to ischemia. "
             "Do not call sinus from regular timing alone: require repeatable P "
             "waves before QRS complexes with a stable P-QRS relationship in at "
             "least one clear lead. If neither sinus nor AF/flutter has positive "
@@ -265,15 +314,25 @@ def build_coarse_analysis_prompt(
         "Bounded multi-pass TRIAGE turn for the attached medical image. Return a "
         "compact preliminary JSON promptly; separate crop/refine and final-report "
         "turns will perform the detailed read. Do not write the full modality "
-        "checklist now. Inspect the whole image, localize at most three highest-value "
-        "visible abnormalities or unresolved candidates, and use findings=[] with "
+        "checklist now. Inspect the whole image. For EKG, preserve a compact "
+        "mechanism inventory of at most six distinct visible abnormalities or "
+        "unresolved candidates across rhythm/pacing, conduction, voltage/chamber, "
+        "axis, ST elevation, and ST-depression/T-wave families; the later crop "
+        "budget does not delete a distinct candidate. For other modalities, "
+        "localize at most three highest-value candidates. Use findings=[] with "
         "severity=normal for a supported normal/WNL image. Never invent a finding.\n"
+        f"{PROFESSIONAL_CO_READER_GUIDANCE}\n"
         f"modality must be '{modality.value}'. Allowed regions: {allowed_regions}.\n"
+        f"{partial_input_guidance}"
         f"{ekg_contract}"
         f"{waveform_protocol}"
         "For every preliminary finding include id, label, one-sentence detail, "
         "severity, confidence, question, regions, and tight full-image normalized "
-        "bboxes. Non-urgent uncertainty is info/low confidence with a concrete "
+        "bboxes. Every EKG bbox must satisfy w<=0.35, h<=0.30, and w*h<=0.08. "
+        "For a synchronized EKG event, use one to three small representative "
+        "lead/beat boxes at the same timestamp; never use a full-height time band "
+        "or a full-width lead row as a diagnostic bbox. Non-urgent uncertainty is "
+        "info/low confidence with a concrete "
         "review question. Every boxed info finding must declare confidence; low "
         "confidence requires that concrete question. Time-critical uncertainty "
         "keeps critical triage wording. "
@@ -309,6 +368,7 @@ def build_minimal_control_prompt(
         "only, without markdown. Do not invent an abnormality when the image is "
         "within normal limits. Use concise clinical English for every JSON "
         "string value.\n"
+        f"{PROFESSIONAL_CO_READER_GUIDANCE}\n"
         f"modality must be '{modality.value}'.\n"
         f"Allowed region names: {allowed_regions}.\n"
         "Required top-level keys: modality, summary, severity, findings, "
@@ -330,6 +390,7 @@ def build_followup_prompt(
         "Answer the user's follow-up question about the same attached medical image.\n"
         "Use the prior structured interpretation as context, but re-check the image "
         "before answering. Do not invent findings that are not visible.\n\n"
+        f"{PROFESSIONAL_CO_READER_GUIDANCE}\n\n"
         f"Prior modality: {context.modality.value}\n"
         f"Prior severity: {context.severity.value}\n"
         f"Prior summary: {context.summary}\n"
