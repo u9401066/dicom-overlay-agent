@@ -14,7 +14,8 @@ def test_settings_dialog_lists_desktop_provider_profiles(qtbot, tmp_path):
 
     assert "OpenAI Subscription via OpenClaw" in labels
     assert "OpenAI GPT-5.4 Mini Vision" in labels
-    assert "OpenAI GPT-5.6 Luna Vision" in labels
+    assert "OpenAI GPT-5.6 Luna via Codex Subscription" in labels
+    assert "OpenAI GPT-5.6 Luna Vision (API key)" in labels
     assert "OpenRouter" in labels
     assert "GitHub Copilot CLI BYOK-compatible" in labels
     assert dialog.selected_profile().key == "openai-vision"

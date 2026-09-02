@@ -434,7 +434,7 @@ def test_meeti_experiment_auto_selects_exact_vision_profile() -> None:
         module.assert_subscription_experiment_profile("openai-vision")
     assert (
         module.effective_provider_profile("openai/gpt-5.6-luna", "", {})
-        == "openai-luna"
+        == "openai-codex-luna"
     )
 
 

@@ -6,6 +6,9 @@ from typing import Any
 
 import pytest
 
+from dicom_overlay.application.interpretation_harness import (
+    PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     ChecklistItem,
@@ -173,6 +176,84 @@ class TestOutputValidator:
         result = _make_result(summary="")
         with pytest.raises(HookError, match="summary"):
             validator.post_analyze(req, result)
+
+    def test_partial_ecg_scope_does_not_invent_missing_named_leads(self) -> None:
+        result = _make_result(summary="Incomplete ECG: the top edge is cropped.")
+        result.findings = []
+        result.layout = {"format": "partial", "leads": []}
+        result.incomplete = True
+        result.incomplete_reasons = ["The top edge is cropped."]
+        result.review_required = True
+        result.review_reasons = ["Human review of the uncropped source is required."]
+        request = _make_request(regions=[PARTIAL_ECG_VISIBLE_PIXELS_SCOPE])
+
+        validated = OutputValidator(strict=False).post_analyze(request, result)
+
+        assert not any(
+            "missing visible leads" in warning
+            for warning in validated.validation_warnings
+        )
+        assert validated.incomplete_reasons == ["The top edge is cropped."]
+
+    @pytest.mark.parametrize(
+        "summary",
+        [
+            "As an AI language model, I cannot provide a diagnosis.",
+            "I am not a medical professional and cannot analyze this ECG.",
+            "This is for informational purposes only.",
+            "作為人工智慧助理，我無法提供醫療診斷。",
+            "本結果僅供參考，不能取代醫師判斷。",
+        ],
+    )
+    def test_generic_medical_refusal_or_disclaimer_is_rejected(
+        self, summary: str
+    ) -> None:
+        validator = OutputValidator(strict=False)
+
+        with pytest.raises(HookError, match="professional co-reading"):
+            validator.post_analyze(_make_request(), _make_result(summary=summary))
+
+    def test_case_specific_capture_limitation_is_not_a_refusal(self) -> None:
+        validator = OutputValidator(strict=False)
+        result = _make_result(
+            summary=(
+                "Anterior territory cannot be localized because V1-V4 are "
+                "cropped; visible rhythm was reviewed."
+            )
+        )
+
+        validated = validator.post_analyze(_make_request(), result)
+
+        assert validated.summary.startswith("Anterior territory cannot be localized")
+
+    @pytest.mark.parametrize(
+        "summary",
+        [
+            (
+                "The ECG cannot provide a definitive diagnosis without serial "
+                "tracings and troponin correlation; visible ST-T changes are described."
+            ),
+            "此張心電圖無法單獨提供確定診斷；可見的 ST-T 變化已逐項描述。",
+        ],
+    )
+    def test_case_specific_diagnostic_limitation_is_not_a_generic_refusal(
+        self, summary: str
+    ) -> None:
+        validated = OutputValidator(strict=False).post_analyze(
+            _make_request(), _make_result(summary=summary)
+        )
+
+        assert validated.summary == summary
+
+    @pytest.mark.parametrize("field", ["review_reasons", "zoom_hints"])
+    def test_generic_refusal_hidden_in_review_fields_is_rejected(
+        self, field: str
+    ) -> None:
+        result = _make_result()
+        setattr(result, field, ["As an AI assistant, I cannot provide a diagnosis."])
+
+        with pytest.raises(HookError, match="professional co-reading"):
+            OutputValidator(strict=False).post_analyze(_make_request(), result)
 
     def test_duplicate_finding_ids_are_rejected(self):
         validator = OutputValidator()

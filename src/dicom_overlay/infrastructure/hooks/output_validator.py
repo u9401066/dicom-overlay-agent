@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 
 import structlog
 
+from dicom_overlay.application.interpretation_harness import (
+    PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
+)
 from dicom_overlay.domain.ekg_layout import (
     normalize_ekg_row_strip_layout,
     parse_ekg_lead_inventory,
@@ -25,6 +29,25 @@ _VALID_SEVERITIES = frozenset(s.value for s in Severity)
 _EKG_MAX_BOX_WIDTH = 0.35
 _EKG_MAX_BOX_HEIGHT = 0.30
 _EKG_MAX_BOX_AREA = 0.08
+_PROFESSIONAL_REFUSAL_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bas an ai(?: language model| assistant)?\b",
+        r"\bi(?: am|'m|’m) not (?:a )?(?:doctor|physician|medical professional|radiologist|cardiologist)\b",
+        r"\bi (?:cannot|can't|can’t|am unable to) (?:analy[sz]e|interpret|review) (?:this|the|an? )?(?:medical )?(?:image|x[- ]?ray|radiograph|ecg|ekg)\b",
+        r"\b(?:i|we|this (?:ai|assistant|system)|the (?:ai|assistant|system)) "
+        r"(?:cannot|can't|can’t|am unable to|are unable to) provide (?:a )?"
+        r"(?:diagnosis|medical advice|clinical interpretation)\b",
+        r"\bnot (?:a )?substitute for (?:professional )?medical (?:advice|judg(?:e)?ment)\b",
+        r"\bfor (?:informational|educational) purposes only\b",
+        r"\bi (?:cannot|can't|can’t) assist with (?:that|this) request\b",
+        r"(?:身為|作為)(?:一個)?\s*(?:ai|人工智慧)(?:語言模型|助理)?",
+        r"(?:僅供|只供)(?:一般)?(?:參考|資訊|教育)(?:用途)?",
+        r"(?:不能|無法|不可)取代(?:專業)?(?:醫療|醫師|醫生)(?:建議|判斷|診斷)?",
+        r"(?:我|本系統|本助理|人工智慧(?:系統|助理)?)(?:無法|不能)提供"
+        r"(?:醫療)?(?:診斷|醫療建議)",
+    )
+)
 EKG_RESULT_LAYOUT_FORMATS = frozenset(
     {
         "12lead_3x4",
@@ -63,6 +86,11 @@ class OutputValidator(AnalyzeHook):
         # 1. Summary must not be empty
         if not result.summary or not result.summary.strip():
             errors.append("AI returned empty summary")
+        if _contains_generic_refusal_or_disclaimer(result):
+            errors.append(
+                "AI returned generic refusal or disclaimer instead of "
+                "professional co-reading output"
+            )
 
         # 2. Modality must match request
         if result.modality != request.modality:
@@ -261,7 +289,16 @@ class OutputValidator(AnalyzeHook):
         # be represented as complete without a valid visible 12-lead inventory.
         if request.modality.value == "EKG":
             assert ekg_inventory is not None
-            warnings.extend(ekg_inventory.validation_warnings())
+            # Deliberately degraded ECG eval inputs expose only an opaque
+            # visible-pixels scope.  Their empty/partial layout is required by
+            # the v2 contract, so manufacturing a list of absent named leads
+            # here would both leak unverified anatomy into the result and make
+            # the recursive text safety gate reject an otherwise honest read.
+            partial_pixels_only = set(request.valid_regions) == {
+                PARTIAL_ECG_VISIBLE_PIXELS_SCOPE
+            }
+            if not partial_pixels_only:
+                warnings.extend(ekg_inventory.validation_warnings())
 
         # 6. Checklist value validation
         for key, item in result.checklist.items():
@@ -322,6 +359,40 @@ class OutputValidator(AnalyzeHook):
 def _append_review_reason(result: AnalysisResult, reason: str) -> None:
     if reason and reason not in result.review_reasons:
         result.review_reasons.append(reason)
+
+
+def _contains_generic_refusal_or_disclaimer(result: AnalysisResult) -> bool:
+    """Reject boilerplate while preserving case-specific image limitations."""
+
+    text_values: list[str] = [result.summary]
+    text_values.extend(step for step in result.next_steps if isinstance(step, str))
+    text_values.extend(
+        reason for reason in result.incomplete_reasons if isinstance(reason, str)
+    )
+    text_values.extend(
+        reason for reason in result.review_reasons if isinstance(reason, str)
+    )
+    text_values.extend(hint for hint in result.zoom_hints if isinstance(hint, str))
+    if isinstance(result.image_quality, str):
+        text_values.append(result.image_quality)
+    elif isinstance(result.image_quality, dict):
+        text_values.extend(
+            value for value in result.image_quality.values() if isinstance(value, str)
+        )
+    for finding in result.findings:
+        text_values.extend(
+            (finding.label, finding.detail, finding.confidence, finding.question)
+        )
+        text_values.extend(note for note in finding.notes if isinstance(note, str))
+    text_values.extend(
+        item.value for item in result.checklist.values() if isinstance(item.value, str)
+    )
+    return any(
+        pattern.search(value)
+        for value in text_values
+        if isinstance(value, str)
+        for pattern in _PROFESSIONAL_REFUSAL_PATTERNS
+    )
 
 
 def _has_normalized_bbox(value: object) -> bool:
