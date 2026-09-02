@@ -45,7 +45,12 @@ def compute_roi_crop_from_safe_rect(
 
 
 def scaled_roi_crop(roi: ROICrop, width: int, height: int) -> ROICrop:
-    """Scale a configured viewer-relative ROI to current viewer dimensions."""
+    """Scale a configured viewer-relative ROI to current viewer dimensions.
+
+    Exclusion margins use ceiling division so a resize can only make the safe
+    capture area smaller; it must never reveal pixels outside the reviewer-
+    selected ROI.
+    """
 
     if not roi.configured or roi.coordinate_space != "viewer":
         raise ValueError("ROI is not configured in viewer coordinates")
@@ -56,13 +61,11 @@ def scaled_roi_crop(roi: ROICrop, width: int, height: int) -> ROICrop:
     if min(roi.top, roi.bottom, roi.left, roi.right) < 0:
         raise ValueError("ROI crop margins cannot be negative")
 
-    scale_x = width / roi.reference_width
-    scale_y = height / roi.reference_height
     scaled = ROICrop(
-        top=round(roi.top * scale_y),
-        bottom=round(roi.bottom * scale_y),
-        left=round(roi.left * scale_x),
-        right=round(roi.right * scale_x),
+        top=_scale_exclusion_margin(roi.top, height, roi.reference_height),
+        bottom=_scale_exclusion_margin(roi.bottom, height, roi.reference_height),
+        left=_scale_exclusion_margin(roi.left, width, roi.reference_width),
+        right=_scale_exclusion_margin(roi.right, width, roi.reference_width),
         configured=True,
         coordinate_space="viewer",
         reference_width=width,
@@ -71,6 +74,12 @@ def scaled_roi_crop(roi: ROICrop, width: int, height: int) -> ROICrop:
     if scaled.left + scaled.right >= width or scaled.top + scaled.bottom >= height:
         raise ValueError("ROI crop margins exceed the viewer dimensions")
     return scaled
+
+
+def _scale_exclusion_margin(value: int, extent: int, reference_extent: int) -> int:
+    """Scale a privacy exclusion margin inward using exact ceiling division."""
+
+    return (value * extent + reference_extent - 1) // reference_extent
 
 
 def compute_viewer_roi_rect(target: WindowRect, roi: ROICrop) -> WindowRect:

@@ -81,6 +81,12 @@ DEFAULT_MAX_FINALIZATION_TURN_SEC = 80.0
 DEFAULT_FINALIZATION_RESERVE_SEC = 80.0
 DEFAULT_MIN_FOLLOWUP_BUDGET_SEC = 8.0
 _SLA_RETURN_BUFFER_SEC = 1.0
+# ``asyncio.wait_for`` and the Gateway reader can race by a few milliseconds
+# when a response and the timer become ready in the same event-loop tick.  A
+# bounded grace is allowed only for already-running optional follow-up turns;
+# the required initial response keeps its hard deadline.  The effective grace
+# is additionally capped at 1% of the budget remaining when the turn starts.
+_FOLLOWUP_COMPLETION_GRACE_SEC = 0.250
 _MAX_HYPOTHESIS_COVERING_AREA = 0.12
 _MAX_HYPOTHESIS_COVERING_HEIGHT = 0.45
 _MAX_EKG_CONTEXT_CROP_AREA = 0.65
@@ -127,6 +133,17 @@ class _AnalysisDeadline:
 
     def remaining_sec(self, absolute_deadline_sec: float) -> float:
         return max(0.0, absolute_deadline_sec - self.elapsed_sec())
+
+
+def _bounded_operation_timeout_sec(
+    remaining_sec: float,
+    completion_grace_sec: float = 0.0,
+) -> float:
+    """Add at most 1% scheduler grace without turning tiny budgets into retries."""
+
+    remaining = max(0.0, remaining_sec)
+    effective_grace = min(max(0.0, completion_grace_sec), remaining * 0.01)
+    return remaining + effective_grace
 
 _EKG_SYSTEMATIC_LEAD_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
     (
@@ -243,6 +260,22 @@ _EKG_MULTI_LEAD_CONTEXT_TERMS: tuple[str, ...] = (
     "rvh",
     "strain",
 )
+_EKG_SYNCHRONIZED_EVENT_TERMS: tuple[str, ...] = (
+    "paced",
+    "pacing",
+    "pacemaker",
+    "wide qrs",
+    "wide-qrs",
+    "wide complex",
+    "wide-complex",
+    "ventricular ectop",
+    "synchronous",
+    "synchronized",
+    "artifact",
+    "discordant",
+)
+_EKG_ROW_EVENT_MIN_WIDTH = 0.18
+_EKG_ROW_EVENT_MAX_WIDTH = 0.35
 _GENERIC_CRITICAL_LABELS: frozenset[str] = frozenset(
     {
         "abnormal finding",
@@ -695,6 +728,37 @@ def _ekg_contextual_crop_strategy(
     """Choose a full temporal segment or bounded multi-lead context when needed."""
     text = f"{finding.label} {finding.detail}".casefold()
     lead_regions = parse_ekg_lead_inventory(layout).by_name()
+
+    # A full-width 12-row strip shows every lead at the same horizontal time.
+    # For intermittent pacing, wide-complex beats, or a suspected synchronous
+    # artifact, a narrow full-height time slice preserves the cross-lead event
+    # that a single-lead temporal crop destroys.  Restrict this strategy to the
+    # locally verified row-strip geometry; columns in a 3x4 printout do not
+    # share the same time axis.
+    layout_format = str(layout.get("format") or "") if isinstance(layout, dict) else ""
+    if (
+        layout_format == "12lead_12x1"
+        and len(lead_regions) >= 12
+        and any(term in text for term in _EKG_SYNCHRONIZED_EVENT_TERMS)
+        and finding.bboxes
+    ):
+        valid_boxes = [
+            region
+            for item in finding.bboxes
+            if (region := _clamp_region(item)) is not None
+        ]
+        if valid_boxes:
+            focus = max(valid_boxes, key=lambda region: (region.w * region.h, region.w))
+            width = min(
+                _EKG_ROW_EVENT_MAX_WIDTH,
+                max(_EKG_ROW_EVENT_MIN_WIDTH, focus.w * 2.0),
+            )
+            center_x = focus.x + focus.w / 2.0
+            x = min(max(0.0, center_x - width / 2.0), 1.0 - width)
+            return (
+                RegionRect(x=x, y=0.0, w=width, h=1.0),
+                "row_strip_cross_lead_temporal_context",
+            )
 
     if any(term in text for term in _EKG_TEMPORAL_CONTEXT_TERMS):
         rhythm_strip = _layout_region(layout, "rhythm_strip_bbox")
@@ -2999,6 +3063,8 @@ class MultiPassInterpreter:
                 first_refinement_completed_ms = deadline.elapsed_ms()
             if refinement is not None and refinement.deltas:
                 refinements.append((target, crop_region, refinement))
+            refinement_completed_ms = deadline.elapsed_ms()
+            absolute_deadline_ms = int(turn_limit * 1000)
             trace.append(
                 {
                     "stage": "refine",
@@ -3015,10 +3081,13 @@ class MultiPassInterpreter:
                         "original_roi" if source_image_base64 else "coarse_image"
                     ),
                     "crop_created_ms": crop_created_ms,
-                    "completed_ms": deadline.elapsed_ms(),
+                    "completed_ms": refinement_completed_ms,
                     "turn_started_ms": turn_started_ms,
                     "turn_budget_ms": turn_budget_ms,
-                    "absolute_deadline_ms": int(turn_limit * 1000),
+                    "absolute_deadline_ms": absolute_deadline_ms,
+                    "scheduler_grace_used_ms": max(
+                        0, refinement_completed_ms - absolute_deadline_ms
+                    ),
                     "crop_lead_regions": {
                         name: _region_payload(region)
                         for name, region in (crop_lead_regions or {}).items()
@@ -3148,6 +3217,7 @@ class MultiPassInterpreter:
                 ),
                 deadline=deadline,
                 absolute_deadline_sec=absolute_deadline_sec,
+                completion_grace_sec=_FOLLOWUP_COMPLETION_GRACE_SEC,
             )
             reconciled = reconcile_final_report(draft, final)
         except Exception as exc:
@@ -3179,6 +3249,8 @@ class MultiPassInterpreter:
             return complete_unassessed_checklist_fallback(fallback, reason=reason)
 
         trace = list(reconciled.analysis_trace)
+        completed_ms = deadline.elapsed_ms()
+        absolute_deadline_ms = int(absolute_deadline_sec * 1000)
         dispositions = [
             event for event in trace if event.get("stage") == "final_disposition"
         ]
@@ -3198,10 +3270,13 @@ class MultiPassInterpreter:
                 "retracted_count": sum(
                     event.get("status") == "retracted" for event in dispositions
                 ),
-                "completed_ms": deadline.elapsed_ms(),
+                "completed_ms": completed_ms,
                 "turn_started_ms": turn_started_ms,
                 "turn_budget_ms": turn_budget_ms,
-                "absolute_deadline_ms": int(absolute_deadline_sec * 1000),
+                "absolute_deadline_ms": absolute_deadline_ms,
+                "scheduler_grace_used_ms": max(
+                    0, completed_ms - absolute_deadline_ms
+                ),
                 **self._read_runtime_trace(),
             }
         )
@@ -3224,11 +3299,13 @@ class MultiPassInterpreter:
         *,
         deadline: _AnalysisDeadline,
         absolute_deadline_sec: float,
+        completion_grace_sec: float = 0.0,
     ) -> _T:
         remaining = deadline.remaining_sec(absolute_deadline_sec)
         if remaining <= 0.0:
             raise TimeoutError("analysis stage deadline exhausted")
-        return await asyncio.wait_for(operation(), timeout=remaining)
+        timeout = _bounded_operation_timeout_sec(remaining, completion_grace_sec)
+        return await asyncio.wait_for(operation(), timeout=timeout)
 
     def _finish_with_sla(
         self,
@@ -3360,6 +3437,7 @@ class MultiPassInterpreter:
                         ),
                         deadline=deadline,
                         absolute_deadline_sec=absolute_deadline_sec,
+                        completion_grace_sec=_FOLLOWUP_COMPLETION_GRACE_SEC,
                     )
                     if not isinstance(result, RefinementResult):
                         raise TypeError("refine() must return RefinementResult")
@@ -3372,6 +3450,7 @@ class MultiPassInterpreter:
                     ),
                     deadline=deadline,
                     absolute_deadline_sec=absolute_deadline_sec,
+                    completion_grace_sec=_FOLLOWUP_COMPLETION_GRACE_SEC,
                 )
                 return _legacy_refinement_result(zoom, target)
             except TimeoutError:

@@ -121,36 +121,129 @@ class OverlayCoordinateFrame:
         )
 
     def physical_roi_to_logical(self, roi: ROICrop) -> ROICrop:
+        """Map physical crop margins to their stable logical representation.
+
+        Crop margins describe pixels that must stay *outside* the captured
+        image.  The inverse therefore chooses the smallest logical margin whose
+        fail-closed conversion back to physical pixels is at least the original
+        margin.  This prevents an unchanged ROI from drifting on every
+        settings round-trip while never shrinking its PHI exclusion boundary.
+        """
+
         return ROICrop(
-            top=round(roi.top * self.logical_per_physical_y),
-            bottom=round(roi.bottom * self.logical_per_physical_y),
-            left=round(roi.left * self.logical_per_physical_x),
-            right=round(roi.right * self.logical_per_physical_x),
+            top=_inverse_ceil_scaled_margin(
+                roi.top,
+                source_extent=self.logical_screen.height,
+                target_extent=self.physical_screen.height,
+            ),
+            bottom=_inverse_ceil_scaled_margin(
+                roi.bottom,
+                source_extent=self.logical_screen.height,
+                target_extent=self.physical_screen.height,
+            ),
+            left=_inverse_ceil_scaled_margin(
+                roi.left,
+                source_extent=self.logical_screen.width,
+                target_extent=self.physical_screen.width,
+            ),
+            right=_inverse_ceil_scaled_margin(
+                roi.right,
+                source_extent=self.logical_screen.width,
+                target_extent=self.physical_screen.width,
+            ),
             configured=roi.configured,
             coordinate_space=roi.coordinate_space,
-            reference_width=round(
-                roi.reference_width * self.logical_per_physical_x
+            reference_width=_scale_extent_nearest(
+                roi.reference_width,
+                numerator=self.logical_screen.width,
+                denominator=self.physical_screen.width,
             ),
-            reference_height=round(
-                roi.reference_height * self.logical_per_physical_y
+            reference_height=_scale_extent_nearest(
+                roi.reference_height,
+                numerator=self.logical_screen.height,
+                denominator=self.physical_screen.height,
             ),
         )
 
     def logical_roi_to_physical(self, roi: ROICrop) -> ROICrop:
+        """Map logical crop margins inward to PHI-safe physical boundaries.
+
+        Each margin is rounded up independently.  Consequently the returned
+        capture rectangle can be one physical pixel smaller than the selected
+        logical rectangle, but can never include a pixel outside it.
+        """
+
         return ROICrop(
-            top=round(roi.top / self.logical_per_physical_y),
-            bottom=round(roi.bottom / self.logical_per_physical_y),
-            left=round(roi.left / self.logical_per_physical_x),
-            right=round(roi.right / self.logical_per_physical_x),
+            top=_ceil_scaled_margin(
+                roi.top,
+                numerator=self.physical_screen.height,
+                denominator=self.logical_screen.height,
+            ),
+            bottom=_ceil_scaled_margin(
+                roi.bottom,
+                numerator=self.physical_screen.height,
+                denominator=self.logical_screen.height,
+            ),
+            left=_ceil_scaled_margin(
+                roi.left,
+                numerator=self.physical_screen.width,
+                denominator=self.logical_screen.width,
+            ),
+            right=_ceil_scaled_margin(
+                roi.right,
+                numerator=self.physical_screen.width,
+                denominator=self.logical_screen.width,
+            ),
             configured=roi.configured,
             coordinate_space=roi.coordinate_space,
-            reference_width=round(
-                roi.reference_width / self.logical_per_physical_x
+            reference_width=_scale_extent_nearest(
+                roi.reference_width,
+                numerator=self.physical_screen.width,
+                denominator=self.logical_screen.width,
             ),
-            reference_height=round(
-                roi.reference_height / self.logical_per_physical_y
+            reference_height=_scale_extent_nearest(
+                roi.reference_height,
+                numerator=self.physical_screen.height,
+                denominator=self.logical_screen.height,
             ),
         )
+
+
+def _ceil_scaled_margin(value: int, *, numerator: int, denominator: int) -> int:
+    """Scale one exclusion margin with exact, fail-closed ceiling division."""
+
+    if value < 0:
+        raise ValueError("ROI crop margins cannot be negative")
+    return (value * numerator + denominator - 1) // denominator
+
+
+def _inverse_ceil_scaled_margin(
+    value: int,
+    *,
+    source_extent: int,
+    target_extent: int,
+) -> int:
+    """Return the smallest source margin whose ceiling maps to ``value`` or more."""
+
+    if value < 0:
+        raise ValueError("ROI crop margins cannot be negative")
+    if value == 0:
+        return 0
+    return ((value - 1) * source_extent) // target_extent + 1
+
+
+def _scale_extent_nearest(
+    value: int,
+    *,
+    numerator: int,
+    denominator: int,
+) -> int:
+    """Scale a reference extent to the nearest integer without float error."""
+
+    if value < 0:
+        raise ValueError("ROI reference dimensions cannot be negative")
+    quotient, remainder = divmod(value * numerator, denominator)
+    return quotient + int(remainder * 2 >= denominator)
 
 
 @dataclass(frozen=True)

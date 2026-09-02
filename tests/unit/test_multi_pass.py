@@ -19,6 +19,7 @@ from dicom_overlay.application.multi_pass import (
     RefinementAction,
     RefinementDelta,
     RefinementResult,
+    _bounded_operation_timeout_sec,
     apply_critical_triage_guard,
     apply_ekg_overlay_bbox_guard,
     apply_ekg_waveform_rhythm_conflict_guard,
@@ -120,6 +121,12 @@ def _ekg_row_layout_result(findings: list[Finding]) -> AnalysisResult:
 
 
 # ── clamp_unit ───────────────────────────────────────────────────────
+
+
+def test_followup_completion_grace_is_bounded_and_opt_in() -> None:
+    assert _bounded_operation_timeout_sec(48.5) == pytest.approx(48.5)
+    assert _bounded_operation_timeout_sec(48.5, 0.250) == pytest.approx(48.75)
+    assert _bounded_operation_timeout_sec(0.020, 0.250) == pytest.approx(0.0202)
 
 
 class TestClampUnit:
@@ -276,6 +283,49 @@ class TestCoveringRegion:
         )
 
         assert selected == RegionRect(0.0, 1 / 12, 1.0, 1 / 12)
+
+    def test_row_strip_wide_complex_uses_cross_lead_time_slice(self):
+        finding = Finding(
+            id="intermittent_wide_qrs",
+            regions=["lead_I", "lead_II", "lead_V1", "lead_V6"],
+            label="Intermittent wide QRS with possible pacing",
+            detail="Synchronized discordant complexes recur across stacked leads",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.38, 0.08, 0.06, 0.05)],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert (selected.x, selected.y, selected.w, selected.h) == pytest.approx(
+            (0.32, 0.0, 0.18, 1.0)
+        )
+
+    def test_standard_grid_wide_complex_does_not_assume_shared_time_axis(self):
+        finding = Finding(
+            id="wide_qrs",
+            regions=["lead_V1", "lead_V6"],
+            label="Wide QRS complexes",
+            detail="Possible bundle branch conduction pattern",
+            severity=Severity.WARNING,
+            bboxes=[RegionRect(0.52, 0.12, 0.08, 0.06)],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_3x4"
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert selected != RegionRect(x=0.47, y=0.0, w=0.18, h=1.0)
+        assert selected.h < 1.0
 
     def test_multi_lead_conduction_hypothesis_uses_declared_lead_context(self):
         finding = Finding(
@@ -1060,7 +1110,7 @@ class _RecordingCropper:
 class _RowEvidenceCropper(_RecordingCropper):
     def ekg_row_strip_evidence(self, _image_base64: str) -> dict[str, object]:
         return {
-            "method": "local_black_ink_row_periodicity_v1",
+            "method": "local_black_ink_row_periodicity_v2",
             "status": "ok",
             "is_12_row_strip": True,
             "detected_row_count": 12,

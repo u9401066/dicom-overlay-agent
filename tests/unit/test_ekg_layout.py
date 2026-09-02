@@ -175,7 +175,7 @@ def test_row_strip_normalizer_recovers_eight_leads_only_with_image_evidence() ->
     layout = _layout(list(STANDARD_EKG_LEADS[:8]))
     layout["format"] = "12lead_3x4"
     evidence = {
-        "method": "local_black_ink_row_periodicity_v1",
+        "method": "local_black_ink_row_periodicity_v2",
         "status": "ok",
         "is_12_row_strip": True,
         "detected_row_count": 12,
@@ -204,7 +204,7 @@ def test_row_strip_normalizer_accepts_format_separators_and_hidden_tail() -> Non
         lead["label_visible"] = False
         lead["bbox"] = [0.0, 0.0, 0.0, 0.0]
     evidence = {
-        "method": "local_black_ink_row_periodicity_v1",
+        "method": "local_black_ink_row_periodicity_v2",
         "status": "ok",
         "is_12_row_strip": True,
         "detected_row_count": 12,
@@ -234,7 +234,7 @@ def test_row_strip_normalizer_repairs_degenerate_full_frame_geometry_with_eviden
         ],
     }
     evidence = {
-        "method": "local_black_ink_row_periodicity_v1",
+        "method": "local_black_ink_row_periodicity_v2",
         "status": "ok",
         "is_12_row_strip": True,
         "detected_row_count": 12,
@@ -260,7 +260,7 @@ def test_row_strip_normalizer_builds_geometry_from_compact_order_and_evidence() 
         "rhythm_strip_bbox": None,
     }
     evidence = {
-        "method": "local_black_ink_row_periodicity_v1",
+        "method": "local_black_ink_row_periodicity_v2",
         "status": "ok",
         "is_12_row_strip": True,
         "detected_row_count": 12,
@@ -293,7 +293,7 @@ def test_compact_row_layout_tolerates_bounded_detector_peak_error(
         "rhythm_strip_bbox": None,
     }
     evidence = {
-        "method": "local_black_ink_row_periodicity_v1",
+        "method": "local_black_ink_row_periodicity_v2",
         "status": "ok",
         "is_12_row_strip": False,
         "detected_row_count": detected_row_count,
@@ -317,7 +317,7 @@ def test_compact_row_layout_rejects_nonperiodic_near_miss_evidence() -> None:
         "lead_order": list(STANDARD_EKG_LEADS),
     }
     evidence = {
-        "method": "local_black_ink_row_periodicity_v1",
+        "method": "local_black_ink_row_periodicity_v2",
         "status": "ok",
         "is_12_row_strip": False,
         "detected_row_count": 11,

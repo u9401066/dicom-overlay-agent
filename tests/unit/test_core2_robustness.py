@@ -1831,7 +1831,86 @@ class TestImageDownscale:
 
         assert evidence["is_12_row_strip"] is expected
         assert evidence["detected_row_count"] == row_count
-        assert evidence["method"] == "local_black_ink_row_periodicity_v1"
+        assert evidence["method"] == "local_black_ink_row_periodicity_v2"
+
+    def test_high_resolution_sparse_rows_survive_smoothing_and_sync_event(self):
+        width, height = 900, 960
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        for y in range(0, height, 10):
+            draw.line((0, y, width - 1, y), fill=(255, 80, 80), width=1)
+        draw.rectangle((0, 0, width - 1, height - 1), outline="black", width=2)
+        for index in range(12):
+            baseline = round((index + 0.5) * height / 12)
+            # Only about 40% of each trace is perfectly horizontal.  This is
+            # enough lead-row evidence, but deliberately below the old fixed
+            # threshold after a seven-row smoothing mean.
+            draw.line((50, baseline, 210, baseline), fill="black", width=1)
+            draw.line((650, baseline, 860, baseline), fill="black", width=1)
+            draw.line(
+                (
+                    210,
+                    baseline,
+                    260,
+                    baseline - 6,
+                    300,
+                    baseline + 10,
+                    350,
+                    baseline,
+                ),
+                fill="black",
+                width=1,
+            )
+        # A synchronized high-amplitude event crosses row boundaries.  It must
+        # not erase the weaker full-width row-periodicity evidence.
+        draw.line((410, 15, 410, height - 16), fill="black", width=4)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        evidence = ImageProcessor().ekg_row_strip_evidence(encoded)
+
+        assert evidence["is_12_row_strip"] is True
+        assert evidence["detected_row_count"] == 12
+        assert evidence["consistent_gap_count"] == 11
+        assert evidence["vertical_span_ratio"] > 0.90
+        assert evidence["minimum_peak_ink_ratio"] < 0.08
+
+    def test_high_resolution_three_by_four_layout_is_not_a_row_strip(self):
+        width, height = 900, 960
+        image = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(image)
+        for y in range(0, height, 10):
+            draw.line((0, y, width - 1, y), fill=(255, 80, 80), width=1)
+        for baseline in (160, 480, 800):
+            for column in range(4):
+                x_start = 25 + column * 220
+                x_end = x_start + 190
+                draw.line(
+                    (x_start, baseline, x_end, baseline),
+                    fill="black",
+                    width=2,
+                )
+                draw.line(
+                    (
+                        x_start + 70,
+                        baseline,
+                        x_start + 78,
+                        baseline - 35,
+                        x_start + 86,
+                        baseline + 45,
+                    ),
+                    fill="black",
+                    width=2,
+                )
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+
+        evidence = ImageProcessor().ekg_row_strip_evidence(encoded)
+
+        assert evidence["is_12_row_strip"] is False
+        assert evidence["detected_row_count"] == 3
 
 
 # ── Multi-pass cropper (ImageCropper protocol) ───────────────────────

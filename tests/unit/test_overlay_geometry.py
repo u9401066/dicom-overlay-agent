@@ -177,6 +177,148 @@ def test_fractional_dpi_roi_roundtrip_is_bounded_to_one_physical_pixel() -> None
         assert abs(getattr(roundtrip, field) - getattr(physical, field)) <= 1
 
 
+def test_live_150_percent_roi_conversion_never_expands_selected_safe_area() -> None:
+    """Freeze the ROI edges selected in the live 150%-DPI desktop run."""
+
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=2560, height=1600),
+        logical_screen=WindowRect(left=0, top=0, width=1707, height=1067),
+    )
+    logical = ROICrop(
+        top=30,
+        bottom=8,
+        left=7,
+        right=8,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1015,
+        reference_height=758,
+    )
+
+    physical = frame.logical_roi_to_physical(logical)
+
+    assert physical == ROICrop(
+        top=45,
+        bottom=12,
+        left=11,
+        right=12,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1522,
+        reference_height=1137,
+    )
+    # Every excluded physical margin is at least the exact scaled logical
+    # margin. Thus no captured edge can cross outside the selected safe area.
+    assert physical.left * 1707 >= logical.left * 2560
+    assert physical.right * 1707 >= logical.right * 2560
+    assert physical.top * 1067 >= logical.top * 1600
+    assert physical.bottom * 1067 >= logical.bottom * 1600
+
+    viewer = WindowRect(left=19, top=30, width=1522, height=1137)
+    capture = WindowRect(
+        left=viewer.left + physical.left,
+        top=viewer.top + physical.top,
+        width=viewer.width - physical.left - physical.right,
+        height=viewer.height - physical.top - physical.bottom,
+    )
+    assert capture == WindowRect(left=30, top=75, width=1499, height=1080)
+    assert capture.left >= 30
+    assert capture.top >= 75
+    assert capture.right <= 1530
+    assert capture.bottom <= 1155
+
+
+@pytest.mark.parametrize(
+    ("physical_size", "expected_reference_size"),
+    [
+        ((2559, 1599), (1522, 1136)),
+        ((2560, 1600), (1522, 1137)),
+        ((2561, 1601), (1523, 1137)),
+    ],
+)
+def test_fractional_dpi_roi_stays_fail_closed_when_display_size_varies(
+    physical_size: tuple[int, int],
+    expected_reference_size: tuple[int, int],
+) -> None:
+    """A one-pixel display geometry change must not round any margin outward."""
+
+    physical_width, physical_height = physical_size
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(
+            left=0,
+            top=0,
+            width=physical_width,
+            height=physical_height,
+        ),
+        logical_screen=WindowRect(left=0, top=0, width=1707, height=1067),
+    )
+    logical = ROICrop(
+        top=30,
+        bottom=8,
+        left=7,
+        right=8,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1015,
+        reference_height=758,
+    )
+
+    physical = frame.logical_roi_to_physical(logical)
+
+    assert (physical.reference_width, physical.reference_height) == (
+        expected_reference_size
+    )
+    assert physical.left * 1707 >= logical.left * physical_width
+    assert physical.right * 1707 >= logical.right * physical_width
+    assert physical.top * 1067 >= logical.top * physical_height
+    assert physical.bottom * 1067 >= logical.bottom * physical_height
+    assert frame.physical_roi_to_logical(physical) == logical
+
+
+def test_fractional_dpi_roi_repeated_roundtrips_are_stable_and_fail_closed() -> None:
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=2560, height=1600),
+        logical_screen=WindowRect(left=0, top=0, width=1707, height=1067),
+    )
+    original = ROICrop(
+        top=37,
+        bottom=83,
+        left=10,
+        right=47,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1522,
+        reference_height=1137,
+    )
+
+    logical = frame.physical_roi_to_logical(original)
+    stabilized = frame.logical_roi_to_physical(logical)
+
+    for field in ("top", "bottom", "left", "right"):
+        assert getattr(stabilized, field) >= getattr(original, field)
+        assert getattr(stabilized, field) - getattr(original, field) <= 1
+    for _ in range(10):
+        logical = frame.physical_roi_to_logical(stabilized)
+        assert frame.logical_roi_to_physical(logical) == stabilized
+
+
+def test_roi_coordinate_conversion_rejects_negative_privacy_margins() -> None:
+    frame = OverlayCoordinateFrame(
+        physical_screen=WindowRect(left=0, top=0, width=2560, height=1600),
+        logical_screen=WindowRect(left=0, top=0, width=1707, height=1067),
+    )
+    invalid = ROICrop(
+        left=-1,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1015,
+        reference_height=758,
+    )
+
+    with pytest.raises(ValueError, match="cannot be negative"):
+        frame.logical_roi_to_physical(invalid)
+
+
 def test_secondary_display_frame_maps_absolute_physical_to_overlay_local() -> None:
     frame = OverlayCoordinateFrame(
         physical_screen=WindowRect(left=-1920, top=0, width=1920, height=1080),

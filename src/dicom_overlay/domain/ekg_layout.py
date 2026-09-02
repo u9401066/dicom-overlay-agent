@@ -23,7 +23,7 @@ STANDARD_EKG_LEADS: tuple[str, ...] = (
 )
 
 _CANONICAL_BY_FOLDED = {name.casefold(): name for name in STANDARD_EKG_LEADS}
-_ROW_STRIP_EVIDENCE_METHOD = "local_black_ink_row_periodicity_v1"
+_ROW_STRIP_EVIDENCE_METHOD = "local_black_ink_row_periodicity_v2"
 
 
 def canonical_ekg_lead_name(value: object) -> str | None:
