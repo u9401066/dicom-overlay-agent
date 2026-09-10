@@ -2,6 +2,24 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Capture client guard pushed as draft stacked PR #16 (`69ac5c9`); CI
+  34488167020 and Secret scans 34488169068 / 34488160587 pass. No main runtime
+  change or binary release. The original 9.3 packaged f184258 artifact is not
+  evidence for these later crop/client changes.
+- Main cohort case 85 completed actual GUI inference/export but its diagnostic
+  usage collector failed: Gateway log masking shortened one UUID to a prefix
+  plus `***`. Public session metadata and the exact session id still bound the
+  four actual Astra-low turns. Helper now requires matching public session id,
+  provider/model, >=16-character masked-run prefix and one unique log match;
+  14 synthetic positive/negative binding checks pass. Original failed receipt
+  and export remain unchanged; separate `usage-receipt.recovered.json` plus an
+  append-only recovery row record the repair, with no new model request.
+  Batch resumed at index 86. At 14:27 UTC, primary 79 distinct successes plus
+  six early pilots = 85; four primary technical-failure rows remain retained.
+  Primary seal preflight verifies 1301 artifact hashes, excludes pilots, and
+  will refuse sealing before planned indices 7..127 are complete. Gold scoring
+  has not run. Diagnostic helper changes do not alter the frozen main runtime.
+
 - Separate stacked `agent/capture-client-boundary-20260910` branch adds
   fail-closed native client-area containment before/after screenshot capture.
   Proportional window-margin scaling can enter a fixed-height titlebar after
