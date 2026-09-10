@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dicom_overlay.application.interpretation_harness import (
     InterpretationContext,
+    build_coarse_analysis_prompt,
     build_followup_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
@@ -33,6 +34,10 @@ def test_initial_analysis_prompt_contains_structured_interpretation_protocol():
     assert "next_steps" in prompt
     assert "lead_I, rhythm_strip" in prompt
     assert "Return a single JSON object only" in prompt
+    assert "exactly match the accepted boxes" in prompt
+    assert "professional image-interpretation software" in prompt
+    assert "do not refuse solely because the task is medical" in prompt
+    assert "Do not add generic medical-advice disclaimers" in prompt
 
 
 def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
@@ -47,10 +52,102 @@ def test_initial_prompt_binds_matched_waveform_tool_without_granting_bboxes():
     )
 
     assert "ecg_founder_analyze_waveform exactly once" in prompt
+    assert "never call it again for this nonce" in prompt
+    assert "duplicate attempts are suppressed" in prompt
     assert "artifact_id='wf-opaque-123'" in prompt
     assert f"evidence_nonce='{'a' * 32}'" in prompt
     assert "uncalibrated_score is neither a positive nor a negative" in prompt
+    assert "normal/otherwise-normal label" in prompt
+    assert "omission of a condition from top-k" in prompt
+    assert "visually supported, visually unsupported, or not assessable" in prompt
+    assert "ranked labels to route visual checks" in prompt
+    assert "high versus low voltage" in prompt
+    assert "Irregular R-R timing alone cannot diagnose atrial fibrillation" in prompt
+    assert "top-three candidate is PVC/PAC/ectopy" in prompt
+    assert "unrounded heart_rate_bpm_from_median_rr" in prompt
     assert "has no image localization" in prompt
+
+
+def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
+    prompt = build_coarse_analysis_prompt(
+        modality=Modality.EKG,
+        valid_regions=["lead_I", "lead_II"],
+        waveform_artifact_id="wf-opaque-123",
+        waveform_lead_mode="12_lead",
+        waveform_evidence_nonce="a" * 32,
+        bbox_source_image_sha256="b" * 64,
+        bbox_evidence_nonce="c" * 32,
+    )
+
+    assert "TRIAGE" in prompt
+    assert "checklist={}" in prompt
+    assert "at most six distinct" in prompt
+    assert "later crop budget does not delete a distinct candidate" in prompt
+    assert "rhythm/pacing, conduction, voltage/chamber" in prompt
+    assert "ecg_founder_analyze_waveform exactly once" in prompt
+    assert "max_predictions=5" in prompt
+    assert "top-k omission is not negative evidence" in prompt
+    assert "dicom_bbox_validate exactly once" in prompt
+    assert "accepted=[]" in prompt
+    assert "never return a rejected coordinate" in prompt
+    assert "lead_order" in prompt
+    assert '"leads":[]' in prompt
+    assert "do not output per-lead bboxes" in prompt
+    assert "Do not call sinus from regular timing alone" in prompt
+    assert "High voltage alone cannot establish definite LVH" in prompt
+    assert "missing calibration pulse prevents a definite LVH claim" in prompt
+    assert "standard ECG grid and appropriate labeled leads" in prompt
+    assert "more than one qualifying lead group" in prompt
+    assert "secondary discordant ST-T/strain, axis deviation" in prompt
+    assert "do not suppress the candidate solely because" in prompt
+    assert "'Possible LVH-compatible pattern'" in prompt
+    assert "do not automatically force warning" in prompt
+    assert "report R-wave progression independently" in prompt
+    assert "For every crop containing mapped precordial leads" in prompt
+    assert "deep s waves or small r waves in v1/v2 alone are insufficient" in (
+        prompt.casefold()
+    )
+    assert "R becomes dominant by V3/V4, retract poor R-wave progression" in prompt
+    assert "persistent T-wave inversion or flattening" in prompt
+    assert "baseline wander, grid interference, and isolated noise" in prompt
+    assert (
+        "Absence of acute ST elevation or reciprocal change can exclude an acute "
+        "pattern"
+    ) in prompt
+    assert "cannot exclude a reproducible nonspecific ST-T/T-wave" in prompt
+    assert "at least two mapped contiguous or anatomically related leads" in prompt
+    assert "report a low-confidence nonspecific ST-T/T-wave change" in prompt
+    assert "One lead or non-reproducible noise alone is not a finding" in prompt
+    assert "classify PR qualitatively" in prompt
+    assert "premature P-QRS complexes" in prompt
+    assert "tall or broad T waves" in prompt
+    assert "never rhythm_strip" in prompt
+    assert "under 2200 characters" in prompt
+    assert "Normal/WNL is valid" in prompt
+    assert "never emit urgent/emergent" in prompt
+    assert "full modality checklist" in prompt
+    assert "Count unique horizontal timestamps" in prompt
+    assert "same beat repeated across lead rows" in prompt
+    assert "Three or more consecutive broad beats" in prompt
+    assert "one or two abnormal broad beats" in prompt
+    assert "pacing versus PVC, aberrancy, fusion, and artifact" in prompt
+    assert "Normal intrinsic beats do not exclude demand/intermittent pacing" in prompt
+    assert "pacing-spike candidate" in prompt
+    assert "w<=0.35, h<=0.30, and w*h<=0.08" in prompt
+    assert "one to three small representative lead/beat boxes" in prompt
+    assert "never use a full-height time band" in prompt
+    assert "16 keys" not in prompt
+    assert "professional image-interpretation software" in prompt
+
+
+def test_non_ekg_coarse_prompt_omits_lvh_balance_contract() -> None:
+    prompt = build_coarse_analysis_prompt(
+        modality=Modality.CXR,
+        valid_regions=["left_lung", "right_lung"],
+    )
+
+    assert "Possible LVH-compatible pattern" not in prompt
+    assert "calibration pulse prevents a definite LVH claim" not in prompt
 
 
 def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> None:
@@ -65,6 +162,7 @@ def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> No
     assert "lead_I, lead_II" in prompt
     assert "systematic image interpretation protocol" not in prompt
     assert "dicom_bbox_validate" not in prompt
+    assert "do not refuse solely because the task is medical" in prompt
 
 
 def test_followup_prompt_carries_image_context_and_prior_result():
@@ -91,6 +189,8 @@ def test_followup_prompt_carries_image_context_and_prior_result():
         user_question="Which area should I look at first?",
         context=context,
     )
+
+    assert "Do not add generic medical-advice disclaimers" in prompt
 
     assert "same attached medical image" in prompt
     assert "ST elevation in anterior leads" in prompt

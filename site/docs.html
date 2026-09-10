@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Setup, privacy, OpenClaw, image harness, and packaging guide for DICOM Overlay Agent."
+    >
+    <meta name="theme-color" content="#087f83">
+    <title>DICOM Overlay Agent · Setup guide</title>
+    <link rel="icon" type="image/png" href="assets/synthetic-ecg.png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="DICOM Overlay Agent home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>DICOM Overlay Agent</span>
+      </a>
+      <button
+        class="menu-button"
+        type="button"
+        aria-expanded="false"
+        aria-controls="site-navigation"
+      >Menu</button>
+      <nav id="site-navigation" class="site-navigation" aria-label="Documentation">
+        <a href="index.html">Overview</a>
+        <a href="#source">Source setup</a>
+        <a href="#subscription">Subscription</a>
+        <a href="#clinical-rules">Clinical rules</a>
+        <a href="#harness">Harness</a>
+        <a href="#bundle">Bundle</a>
+      </nav>
+    </header>
+
+    <main id="main" class="docs-shell">
+      <header class="docs-hero">
+        <div>
+          <h1>Setup and verification guide.</h1>
+          <p>
+            Run the Windows co-reading loop from source or as a portable bundle,
+            keep capture inside the configured ROI, and verify the public OpenClaw
+            Gateway contract before a model sees an image.
+          </p>
+        </div>
+        <aside>
+          <strong>Research software</strong>
+          <p>Not a medical device. The physician retains the final diagnostic call.</p>
+        </aside>
+      </header>
+
+      <div class="docs-layout">
+        <nav class="docs-toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <a href="#requirements">Requirements</a>
+          <a href="#source">Run from source</a>
+          <a href="#subscription">Subscription route</a>
+          <a href="#roi">ROI and privacy</a>
+          <a href="#clinical-rules">Clinical-rule audit</a>
+          <a href="#harness">Image harness</a>
+          <a href="#bundle">Portable bundle</a>
+          <a href="#evidence">Evidence limits</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+        </nav>
+
+        <article class="docs-content">
+          <section id="requirements">
+            <h2>Requirements</h2>
+            <ul>
+              <li>Windows 10 or 11.</li>
+              <li><code>uv</code> for the repository-local Python environment.</li>
+              <li>Node.js 22+ for source runs; the portable bundle carries pinned Node.js.</li>
+              <li>A viewer window whose image area can be selected without PHI.</li>
+              <li>A local ChatGPT/Codex subscription sign-in only when using the subscription route.</li>
+            </ul>
+          </section>
+
+          <section id="source">
+            <h2>Run from source</h2>
+            <p>
+              The <a href="https://github.com/u9401066/dicom-overlay-agent">source repository</a>
+              is public. No GitHub Release exists as of 2026-09-10, so repository
+              archives must not be treated as verified portable bundles.
+            </p>
+            <p>All dependencies stay inside the project environment and repo-local runtime.</p>
+            <pre><code>uv sync --all-extras
+scripts\install-openclaw-local.bat
+start.bat</code></pre>
+            <p>
+              The app starts and stops its local Gateway automatically. On first launch,
+              choose the viewer and save a capture ROI before enabling analysis.
+            </p>
+          </section>
+
+          <section id="subscription">
+            <h2>Subscription-backed GPT-6 Astra low</h2>
+            <pre><code>codex login</code></pre>
+            <p>
+              After signing in, start the app, open Settings, and select
+              <strong>OpenAI GPT-6 Astra via Codex Subscription</strong>. This explicit
+              profile selects <code>openai/gpt-6-astra</code> with low reasoning and the native
+              <code>openai-chatgpt-responses</code> transport and no Platform API key.
+              The release-default profile remains <code>openai/gpt-5.4-mini</code>.
+            </p>
+            <ol>
+              <li>Run <code>codex login</code> locally and finish the browser sign-in.</li>
+              <li>Launch DICOM Overlay Agent and open Settings.</li>
+              <li>Select <strong>OpenAI GPT-6 Astra via Codex Subscription</strong>, confirm Reasoning effort is low, save, and restart the app when prompted.</li>
+              <li>Confirm actual Gateway run observations record <code>gpt-6-astra</code> and <code>thinking=low</code>; a selected profile alone is not runtime proof.</li>
+            </ol>
+            <p>Native OAuth rotation triggers a fresh public-provider import on startup.
+              No credential values enter the import audit receipt. Public session usage
+              fields are snapshots, not verified lifetime billing; missing aborted-turn
+              usage is unknown, never zero. Luna high comparison is no longer the active target.</p>
+            <div class="docs-callout">
+              <strong>Ownership boundary</strong>
+              <p>
+                OpenClaw owns every image-analysis turn through public
+                <code>connect</code> + <code>chat.send</code>. The bundle does not ship or
+                enable a Codex agent runtime, and subscription setup does not retain a
+                Platform API key.
+              </p>
+            </div>
+            <div class="docs-callout docs-callout-neutral">
+              <strong>OpenClaw 2.x upgrade status: deferred.</strong>
+              <p>
+                The app remains pinned to <code>2026.7.1-2</code>. The
+                <code>2026.8.2</code> candidate passed an isolated public-Gateway
+                contract check, but route migration, OAuth-state staging, rollback,
+                state-schema, and clean bundle-size gates are not yet closed. It is not
+                the shipped runtime.
+              </p>
+            </div>
+          </section>
+
+          <section id="roi">
+            <h2>ROI and privacy</h2>
+            <ol>
+              <li>Open Settings or complete the first-run ROI setup.</li>
+              <li>Select the target viewer and draw only the diagnostic image area.</li>
+              <li>Exclude names, identifiers, timestamps, accession numbers, and surrounding desktop UI.</li>
+              <li>Use manual re-trigger once to verify the captured frame before continuous monitoring.</li>
+            </ol>
+            <p>
+              Every refinement crop is a subset of the original ROI. Neither crop/refine
+              nor overlay calibration is permitted to widen capture beyond that boundary.
+            </p>
+            <p>The analysis screenshot is checked before and after capture for viewer
+              identity, geometry, ROI containment, and visible window intersections.
+              Move obstructing windows away and press Analyze again when blocked.
+              App-owned and transparent overlays are not exempt; the App hides its
+              report layers before recapture. These checks are not an atomic compositor lock.</p>
+          </section>
+
+          <section id="clinical-rules">
+            <h2>Audit and maintain the clinical-rule registry</h2>
+            <p>
+              Seven deterministic consistency rules currently live in human-editable
+              canonical YAML under <code>clinical_knowledge/</code>. Seven rules are a
+              safety-net inventory, not a complete ECG or chest-radiograph guideline.
+              Generated Markdown, Python runtime data, and SQLite are views of that
+              source and must not be edited by hand.
+            </p>
+            <div class="rule-flow" aria-label="Clinical knowledge generation flow">
+              <code>rules/*.rule.yaml + axes/*.axes.yaml + schema</code>
+              <span aria-hidden="true">→</span>
+              <code>human-catalogue.md + agent-steps.md</code>
+              <span aria-hidden="true">→</span>
+              <code>clinical-knowledge.sqlite</code>
+            </div>
+            <p>Every rule pairs two views with stable step IDs:</p>
+            <ul>
+              <li><strong>Human catalogue:</strong> rationale, image checks, mimics, exclusions, external evidence, source locator, and review dates.</li>
+              <li><strong>Agent steps:</strong> the shorter executable sequence, in the same order, without evaluation answers or generic refusal text.</li>
+            </ul>
+            <p>
+              The application-owned SQLite file is a deterministic quick-lookup
+              projection. Its metadata is bound to the canonical digest, and the
+              verifier compares tables, columns, and rows back to YAML. OpenClaw's
+              private memory database is neither read nor written as a clinical-rule source.
+            </p>
+            <pre><code>uv run python scripts\validate-clinical-knowledge.py --render
+uv run python scripts\validate-clinical-knowledge.py --check-generated
+uv run python scripts\build-clinical-knowledge-sqlite.py ^
+  --output build\clinical-knowledge.sqlite
+uv run python scripts\build-clinical-knowledge-sqlite.py ^
+  --output build\clinical-knowledge.sqlite --check</code></pre>
+            <ol>
+              <li>Edit canonical YAML and its sources, review dates, positive, negative, uncertain, and partial cases.</li>
+              <li>Regenerate both human and agent views; inspect the diff rather than hand-editing generated files.</li>
+              <li>Run schema, semantic, runtime, and SQLite parity checks.</li>
+              <li>Record a qualified specialty review and registry digest in release evidence before clinical deployment.</li>
+            </ol>
+            <div class="docs-callout">
+              <strong>Professional-output contract</strong>
+              <p>
+                The agent must interpret visible image evidence instead of refusing a
+                medical task or emitting boilerplate disclaimers. Case-specific limits
+                such as a cropped lead remain required and must be paired with a concrete
+                reviewer question.
+              </p>
+            </div>
+          </section>
+
+          <section id="harness">
+            <h2>Verify the image harness</h2>
+            <p>
+              The smoke produces a synthetic ECG, takes a non-zero ROI crop, sends one
+              PNG attachment through the Gateway frame, and writes redacted evidence.
+            </p>
+            <pre><code>uv run python scripts\run-image-harness-smoke.py ^
+  --output data\harness-smoke\local
+
+uv run python scripts\verify-image-harness.py ^
+  --artifact-dir data\harness-smoke\local</code></pre>
+            <p>The validator requires all of the following in the same evidence set:</p>
+            <ul>
+              <li>public Gateway <code>connect</code> and <code>chat.send</code> frames;</li>
+              <li>one non-empty <code>image/png</code> attachment with hash and redacted content;</li>
+              <li>the production strict output hook and exact modality checklist;</li>
+              <li>meaningful image quality and next steps;</li>
+              <li>a bounded, non-full-viewer ROI capture;</li>
+              <li>positive normalized bbox geometry and overlay audit.</li>
+            </ul>
+          </section>
+
+          <section id="bundle">
+            <h2>Build and verify the portable bundle</h2>
+            <pre><code>scripts\build-exe.bat
+dist\DICOMOverlayAgent\DICOMOverlayAgent.exe --selfcheck
+uv run python scripts\verify-packaged-app.py ^
+  dist\DICOMOverlayAgent</code></pre>
+            <p>
+              The bundle includes the windowed Python/Qt app, pinned Node.js, the slim
+              OpenClaw runtime, modality skills, and required workspace templates. It
+              excludes Torch, model checkpoints, evaluation datasets, secrets, unused
+              heavy Python libraries, Qt WebEngine/QML/Multimedia/PDF payloads, debug
+              symbols, and foreign native binaries.
+            </p>
+            <div class="docs-callout docs-callout-neutral">
+              <strong>Do not prune OpenClaw internal <code>dist</code> chunks.</strong>
+              <p>
+                Those chunks are private implementation details of the pinned package.
+                Size work is limited to build inputs, debug symbols, disabled surfaces,
+                and non-Windows native payloads around the runtime.
+              </p>
+            </div>
+            <dl class="docs-facts">
+              <div><dt>Historical actual · 2026-08-09</dt><dd>7.05 MiB launcher; 94.74 MiB app + Python/Qt; 368.01 MiB full zero-install bundle.</dd></div>
+              <div><dt>Current source status</dt><dd>Size budgets, slim staging, dependency exclusions, and package self-checks are enforced; these numbers have not been relabeled as a September rebuild.</dd></div>
+              <div><dt>Pending release gate</dt><dd>Produce a clean build from the current revision, remeasure every layer, run the packaged verifier, and publish hashes before calling it a current bundle.</dd></div>
+            </dl>
+          </section>
+
+          <section id="evidence">
+            <h2>What current evidence means</h2>
+            <dl class="docs-facts">
+              <div><dt>Historical · 2026-08-27</dt><dd>The real desktop route took 146.915 seconds over five image turns and 111,833 tokens. Its coordinate export passed, but rhythm, QT, and ST–T accuracy did not.</dd></div>
+              <div><dt>Historical · 2026-09-02</dt><dd>Three real viewer/App/OpenClaw/Luna exports were retained. All were incomplete or incorrect; the latest missed critical reference findings.</dd></div>
+              <div><dt>Historical batch · 2026-09-02–03</dt><dd>103 attempts produced 60 source-matched exports and 43 timeouts. Reasoning effort was unverified; these are not Astra results.</dd></div>
+              <div><dt>Astra low · 2026-09-10 10:22 UTC</dt><dd>Two calibration attempts on one case took 179.252 and 165.043 seconds. A second distinct case completed four turns in 140.481 seconds with source/model/effort receipts; clinical scoring is pending. A terminal-obstructed capture is excluded.</dd></div>
+              <div><dt>Important multi-128 v1</dt><dd>128 unique multi-diagnosis cases are frozen from the canonical pool; the complete Astra real-App cohort is still pending.</dd></div>
+              <div><dt>Incomplete ECG partial-v2</dt><dd>Eight transformed inputs passed mock schema/bbox plumbing only. That is not a clinical accuracy result.</dd></div>
+            </dl>
+            <p>
+              Protocol tests and mock-perfect results demonstrate plumbing only. They
+              are never reported as clinical accuracy, and a credentialed dataset image
+              is not republished on this public site.
+            </p>
+            <p>
+              The exact artifact IDs, wall times, and token totals are listed in the
+              <a href="index.html#evidence">dated public evidence ledger</a>.
+            </p>
+          </section>
+
+          <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <dl class="troubleshooting-list">
+              <div>
+                <dt>Gateway port is occupied</dt>
+                <dd>The app requires a matching app-owned process receipt plus authenticated public <code>connect</code>. A healthy unknown listener is not ownership proof and will not be reused or terminated.</dd>
+              </div>
+              <div>
+                <dt>App reports missing workspace templates</dt>
+                <dd>Rebuild with the current staging script. A package missing any pinned OpenClaw bootstrap template now fails verification.</dd>
+              </div>
+              <div>
+                <dt>Overlay is visibly offset</dt>
+                <dd>Re-run ROI setup on the target monitor and inspect the coordinate audit. DPI conversion drift above the calibrated threshold is a failure.</dd>
+              </div>
+              <div>
+                <dt>A model turn disconnects</dt>
+                <dd>Before acceptance the identical idempotent frame may replay once. After acceptance the client observes the same run and never creates a second charged turn.</dd>
+              </div>
+            </dl>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <strong>DICOM Overlay Agent</strong>
+      <span>Research co-reading software</span>
+      <span>Apache-2.0</span>
+      <span>Not a medical device</span>
+      <a href="https://github.com/u9401066/dicom-overlay-agent">Public source · no Release yet</a>
+    </footer>
+  </body>
+</html>

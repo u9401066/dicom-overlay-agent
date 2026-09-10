@@ -13,8 +13,8 @@ and asserts that each one is either:
 
 A new orchestrator that is neither wired nor registered fails this test,
 forcing an honest decision instead of a silent orphan. Pure value objects
-(``@dataclass``) and structural interfaces (``Protocol``) are not orchestrators
-and are excluded.
+(``@dataclass``), exception types, and structural interfaces (``Protocol``) are
+not orchestrators and are excluded.
 """
 
 from __future__ import annotations
@@ -43,6 +43,8 @@ def _is_orchestrator(obj: type) -> bool:
     if obj.__name__.startswith("_"):
         return False
     if dataclasses.is_dataclass(obj):
+        return False
+    if issubclass(obj, BaseException):
         return False
     return not getattr(obj, "_is_protocol", False)
 

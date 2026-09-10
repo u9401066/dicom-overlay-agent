@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import dataclasses
+import math
+import re
 
 import structlog
 
-from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
-from dicom_overlay.domain.entities import AnalysisResult, Severity
+from dicom_overlay.application.interpretation_harness import (
+    PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
+)
+from dicom_overlay.domain.ekg_layout import (
+    normalize_ekg_row_strip_layout,
+    parse_ekg_lead_inventory,
+    parse_normalized_region,
+)
+from dicom_overlay.domain.entities import AnalysisResult, RegionRect, Severity
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
@@ -20,6 +29,40 @@ _VALID_SEVERITIES = frozenset(s.value for s in Severity)
 _EKG_MAX_BOX_WIDTH = 0.35
 _EKG_MAX_BOX_HEIGHT = 0.30
 _EKG_MAX_BOX_AREA = 0.08
+_PROFESSIONAL_REFUSAL_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bas an ai(?: language model| assistant)?\b",
+        r"\bi(?: am|'m|’m) not (?:a )?(?:doctor|physician|medical professional|radiologist|cardiologist)\b",
+        r"\bi (?:cannot|can't|can’t|am unable to) (?:analy[sz]e|interpret|review) (?:this|the|an? )?(?:medical )?(?:image|x[- ]?ray|radiograph|ecg|ekg)\b",
+        r"\b(?:i|we|this (?:ai|assistant|system)|the (?:ai|assistant|system)) "
+        r"(?:cannot|can't|can’t|am unable to|are unable to) provide (?:a )?"
+        r"(?:diagnosis|medical advice|clinical interpretation)\b",
+        r"\bnot (?:a )?substitute for (?:professional )?medical (?:advice|judg(?:e)?ment)\b",
+        r"\bfor (?:informational|educational) purposes only\b",
+        r"\bi (?:cannot|can't|can’t) assist with (?:that|this) request\b",
+        r"(?:身為|作為)(?:一個)?\s*(?:ai|人工智慧)(?:語言模型|助理)?",
+        r"(?:僅供|只供)(?:一般)?(?:參考|資訊|教育)(?:用途)?",
+        r"(?:不能|無法|不可)取代(?:專業)?(?:醫療|醫師|醫生)(?:建議|判斷|診斷)?",
+        r"(?:我|本系統|本助理|人工智慧(?:系統|助理)?)(?:無法|不能)提供"
+        r"(?:醫療)?(?:診斷|醫療建議)",
+    )
+)
+EKG_RESULT_LAYOUT_FORMATS = frozenset(
+    {
+        "12lead_3x4",
+        "12lead_3x4_rhythm",
+        "6lead",
+        "3lead",
+        "single_rhythm_strip",
+        "partial",
+        "non_standard",
+        "unknown",
+        # Compact public model form and internal canonical form used for a
+        # full-width 12-row strip. The local normalizer supplies row geometry.
+        "12lead_12x1",
+    }
+)
 
 
 class OutputValidator(AnalyzeHook):
@@ -43,6 +86,11 @@ class OutputValidator(AnalyzeHook):
         # 1. Summary must not be empty
         if not result.summary or not result.summary.strip():
             errors.append("AI returned empty summary")
+        if _contains_generic_refusal_or_disclaimer(result):
+            errors.append(
+                "AI returned generic refusal or disclaimer instead of "
+                "professional co-reading output"
+            )
 
         # 2. Modality must match request
         if result.modality != request.modality:
@@ -55,8 +103,27 @@ class OutputValidator(AnalyzeHook):
         ekg_inventory = None
         ekg_visible_regions: set[str] = set()
         if request.modality.value == "EKG":
+            normalized_layout, layout_repaired = normalize_ekg_row_strip_layout(
+                result.layout
+            )
+            if layout_repaired:
+                result.layout = normalized_layout
+                result.analysis_trace.append(
+                    {
+                        "stage": "layout_normalization",
+                        "status": "repaired",
+                        "tool": "local_ekg_row_strip_normalizer",
+                        "format": "12lead_12x1",
+                        "lead_count": 12,
+                    }
+                )
             ekg_inventory = parse_ekg_lead_inventory(result.layout)
             ekg_visible_regions = set(ekg_inventory.by_name())
+            layout_format = str(result.layout.get("format") or "").strip()
+            if layout_format not in EKG_RESULT_LAYOUT_FORMATS:
+                warnings.append(
+                    f"EKG layout has unsupported format: {layout_format or '(missing)'}"
+                )
             if _has_normalized_bbox(
                 result.layout.get("rhythm_strip_bbox")
                 if isinstance(result.layout, dict)
@@ -110,6 +177,16 @@ class OutputValidator(AnalyzeHook):
                     f"Finding[{i}] normal/negative observation had overlay boxes; "
                     "boxes removed"
                 )
+            if finding.bboxes:
+                accepted_boxes = [
+                    box for box in finding.bboxes if _is_positive_normalized_bbox(box)
+                ]
+                if len(accepted_boxes) != len(finding.bboxes):
+                    finding = dataclasses.replace(finding, bboxes=accepted_boxes)
+                    result.findings[i] = finding
+                    warnings.append(
+                        f"Finding[{i}] zero-area or invalid overlay boxes were removed"
+                    )
             if request.modality.value == "EKG" and finding.bboxes:
                 accepted_boxes = [
                     box
@@ -196,22 +273,49 @@ class OutputValidator(AnalyzeHook):
         # 4. Checklist completeness (modality-specific)
         required = self._registry.resolve(request.modality.value).checklist_keys
         if required:
-            missing = required - set(result.checklist.keys())
+            actual = set(result.checklist)
+            missing = required - actual
+            unexpected = actual - required
             if missing:
                 warnings.append(
                     f"Checklist missing keys: {', '.join(sorted(missing))}"
+                )
+            if unexpected:
+                warnings.append(
+                    f"Checklist has unexpected keys: {', '.join(sorted(unexpected))}"
                 )
 
         # 5. The layout drives systematic crop/refine passes, so an EKG cannot
         # be represented as complete without a valid visible 12-lead inventory.
         if request.modality.value == "EKG":
             assert ekg_inventory is not None
-            warnings.extend(ekg_inventory.validation_warnings())
+            # Deliberately degraded ECG eval inputs expose only an opaque
+            # visible-pixels scope.  Their empty/partial layout is required by
+            # the v2 contract, so manufacturing a list of absent named leads
+            # here would both leak unverified anatomy into the result and make
+            # the recursive text safety gate reject an otherwise honest read.
+            partial_pixels_only = set(request.valid_regions) == {
+                PARTIAL_ECG_VISIBLE_PIXELS_SCOPE
+            }
+            if not partial_pixels_only:
+                warnings.extend(ekg_inventory.validation_warnings())
 
         # 6. Checklist value validation
         for key, item in result.checklist.items():
-            if not item.value or not item.value.strip():
+            if not isinstance(item.value, str) or not item.value.strip():
                 warnings.append(f"Checklist[{key}] has empty value")
+
+        # 7. Report-level fields are part of the production result contract.
+        # Keep non-strict desktop operation fail-soft (the UI visibly marks the
+        # result incomplete), while strict smoke/eval gates reject omissions.
+        if not _has_meaningful_image_quality(result.image_quality):
+            warnings.append("image_quality is missing or empty")
+        if not isinstance(result.next_steps, list) or not result.next_steps:
+            warnings.append("next_steps is missing or empty")
+        elif any(
+            not isinstance(step, str) or not step.strip() for step in result.next_steps
+        ):
+            warnings.append("next_steps contains an empty or invalid item")
 
         # Log warnings
         for w in warnings:
@@ -257,18 +361,74 @@ def _append_review_reason(result: AnalysisResult, reason: str) -> None:
         result.review_reasons.append(reason)
 
 
+def _contains_generic_refusal_or_disclaimer(result: AnalysisResult) -> bool:
+    """Reject boilerplate while preserving case-specific image limitations."""
+
+    text_values: list[str] = [result.summary]
+    text_values.extend(step for step in result.next_steps if isinstance(step, str))
+    text_values.extend(
+        reason for reason in result.incomplete_reasons if isinstance(reason, str)
+    )
+    text_values.extend(
+        reason for reason in result.review_reasons if isinstance(reason, str)
+    )
+    text_values.extend(hint for hint in result.zoom_hints if isinstance(hint, str))
+    if isinstance(result.image_quality, str):
+        text_values.append(result.image_quality)
+    elif isinstance(result.image_quality, dict):
+        text_values.extend(
+            value for value in result.image_quality.values() if isinstance(value, str)
+        )
+    for finding in result.findings:
+        text_values.extend(
+            (finding.label, finding.detail, finding.confidence, finding.question)
+        )
+        text_values.extend(note for note in finding.notes if isinstance(note, str))
+    text_values.extend(
+        item.value for item in result.checklist.values() if isinstance(item.value, str)
+    )
+    return any(
+        pattern.search(value)
+        for value in text_values
+        if isinstance(value, str)
+        for pattern in _PROFESSIONAL_REFUSAL_PATTERNS
+    )
+
+
 def _has_normalized_bbox(value: object) -> bool:
-    if not isinstance(value, list | tuple) or len(value) < 4:
+    return parse_normalized_region(value) is not None
+
+
+def _is_positive_normalized_bbox(value: RegionRect) -> bool:
+    """Defensively validate boxes from analyzers that bypass JSON parsing."""
+
+    try:
+        raw_values = (value.x, value.y, value.w, value.h)
+    except AttributeError:
+        return False
+    if any(isinstance(item, bool) for item in raw_values):
         return False
     try:
-        x, y, width, height = (float(item) for item in value[:4])
-    except (TypeError, ValueError):
+        x, y, width, height = (float(item) for item in raw_values)
+    except (AttributeError, TypeError, ValueError):
         return False
-    return (
-        x >= 0.0
+    return bool(
+        all(math.isfinite(item) for item in (x, y, width, height))
+        and x >= 0.0
         and y >= 0.0
         and width > 0.0
         and height > 0.0
         and x + width <= 1.0 + 1e-9
         and y + height <= 1.0 + 1e-9
     )
+
+
+def _has_meaningful_image_quality(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return bool(value) and any(
+            bool(item.strip()) if isinstance(item, str) else item is not None
+            for item in value.values()
+        )
+    return False

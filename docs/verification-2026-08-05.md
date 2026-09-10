@@ -1,6 +1,10 @@
 # Verification Record - 2026-08-05
 
-This is the current evidence ledger for the MultiPass ECG harness and portable
+> Historical ledger. Its dated Platform API blocker and bundle sizes are
+> superseded by [the 2026-08-09 subscription/OpenClaw record](meeti-openclaw-experiments-2026-08-09.md);
+> the original evidence below is intentionally preserved.
+
+This is the dated evidence ledger for the 2026-08-05 MultiPass ECG harness and portable
 desktop build. It deliberately separates protocol execution from real-model
 accuracy: a perfect mock run proves the pipeline and gates, not that an LLM
 answered the clinical cases correctly.

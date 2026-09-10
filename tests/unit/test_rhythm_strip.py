@@ -47,6 +47,11 @@ def test_resolve_rhythm_strip_region_from_layout() -> None:
     assert region.y == 0.8
     assert region.h == 0.18
 
+    object_region = resolve_rhythm_strip_region(
+        _result(layout={"rhythm_strip_bbox": {"x": 0, "y": 0.82, "w": 1, "h": 0.1}})
+    )
+    assert object_region == RegionRect(0.0, 0.82, 1.0, 0.1)
+
 
 def test_resolve_rhythm_strip_region_none_when_absent_or_malformed() -> None:
     assert resolve_rhythm_strip_region(_result(layout={})) is None
@@ -73,6 +78,12 @@ def test_resolve_clamps_and_drops_degenerate() -> None:
     assert region is not None
     assert region.x == 0.0
     assert region.w == 1.0
+    assert (
+        resolve_rhythm_strip_region(
+            _result(layout={"rhythm_strip_bbox": [0.0, 0.0, 1.0, 1.0]})
+        )
+        is None
+    )
 
 
 def test_merge_escalates_rhythm_axis_and_appends_finding() -> None:

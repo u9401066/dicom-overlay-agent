@@ -79,6 +79,67 @@ def test_viewer_roi_scales_and_never_leaves_current_viewer() -> None:
     assert viewer.top <= rect.top < rect.bottom <= viewer.bottom
 
 
+@pytest.mark.parametrize(
+    ("viewer_size", "expected_margins"),
+    [
+        ((1521, 1136), (45, 12, 11, 12)),
+        ((1522, 1137), (45, 12, 11, 12)),
+        ((1524, 1139), (46, 13, 12, 13)),
+    ],
+)
+def test_viewer_roi_resize_scales_every_privacy_margin_fail_closed(
+    viewer_size: tuple[int, int],
+    expected_margins: tuple[int, int, int, int],
+) -> None:
+    roi = ROICrop(
+        top=45,
+        bottom=12,
+        left=11,
+        right=12,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1522,
+        reference_height=1137,
+    )
+    width, height = viewer_size
+
+    scaled = scaled_roi_crop(roi, width, height)
+
+    assert (scaled.top, scaled.bottom, scaled.left, scaled.right) == (
+        expected_margins
+    )
+    # Cross multiplication proves ceiling scaling did not shrink any of the
+    # four exclusion bands, without relying on floating-point comparisons.
+    assert scaled.left * roi.reference_width >= roi.left * width
+    assert scaled.right * roi.reference_width >= roi.right * width
+    assert scaled.top * roi.reference_height >= roi.top * height
+    assert scaled.bottom * roi.reference_height >= roi.bottom * height
+
+
+def test_viewer_roi_one_pixel_height_change_keeps_capture_inside_live_selection() -> None:
+    """Freeze the 1137 -> 1136 target-height change seen in the live GUI run."""
+
+    roi = ROICrop(
+        top=45,
+        bottom=12,
+        left=11,
+        right=12,
+        configured=True,
+        coordinate_space="viewer",
+        reference_width=1522,
+        reference_height=1137,
+    )
+    viewer = WindowRect(left=19, top=30, width=1522, height=1136)
+
+    capture = compute_viewer_roi_rect(viewer, roi)
+
+    assert capture == WindowRect(left=30, top=75, width=1499, height=1079)
+    assert capture.left >= 30
+    assert capture.top >= 75
+    assert capture.right <= 1530
+    assert capture.bottom <= 1155
+
+
 def test_viewer_roi_rejects_unconfigured_or_legacy_screen_values() -> None:
     viewer = WindowRect(left=0, top=0, width=1200, height=800)
     with pytest.raises(ValueError, match="not configured"):

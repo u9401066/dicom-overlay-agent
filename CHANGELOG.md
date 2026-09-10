@@ -7,8 +7,68 @@
 
 ## [Unreleased]
 
+> Working-tree metadata is `0.4.7`, but no `v0.4.7` tag or GitHub Release exists.
+> This section becomes a released version only after the clean bundle, live
+> cohort gates, CI, tag, and release artifacts are complete.
+
 ### Added
 
+- **Astra low native subscription preset**：`openai-codex-astra` 選擇
+  `openai/gpt-6-astra` / low，保持 OpenClaw-owned image agent；native OAuth
+  fingerprint 變動時重新以公開 migration provider 匯入，不保留 Platform API key。
+- **Real GUI capture safety**：Viewer 支援 Ctrl+O；正式截圖前後驗證視窗身分、
+  位置、ROI 與遮擋，無法驗證就不傳送。`start.bat` 改用無主控台 `pythonw`。
+- **Evidence-preserving refinements**：VT guard 不再從否定或鑑別文字推導診斷；
+  crop 啟動预算參考前一階段實測耗時，並保留 final report 的預留時間。
+- **2026-09-10 evidence**：Astra low 兩個不同案例已有三份有效 ROI 匯出；
+  含重跑與 incomplete，另有遮擋失敗與首階段逾時，不宣稱百例或臨床通過。
+
+- **Luna auth routes are explicit**：新增 `openai-codex-luna`（ChatGPT/Codex
+  subscription OAuth、`openai-chatgpt-responses`、無 Platform API key）並保留
+  `openai-luna`（`OPENAI_API_KEY`、`openai-responses`）；兩者都由 OpenClaw
+  embedded agent 執行 `openai/gpt-5.6-luna`，不得混用 billing evidence。
+- **128-case important multi-diagnosis frozen pair**：以 seed `1946247532`
+  固定 128 張唯一 ECG（24 critical/104 warning、48 asserted/80 partially
+  uncertain、每例至少 3 個 canonical diagnoses），inference/gold 分離並綁定
+  pair id `7bdc87f6d184b321938a09e4f02335692fbda75a378127305742b6f41e8a46e0`；
+  real App 批次尚未完成，不能宣稱 aggregate accuracy。
+- **Partial-ECG v2 corpus**：建立 8 種 deterministic crop/mask/downsample
+  變體與 answer-free manifest；8/8 只通過 mock schema/bbox/partial-input
+  plumbing，真實 App/Luna 驗證仍待完成。
+- **Canonical clinical knowledge registry**：七條 rules 以 YAML/schema 為單一
+  維護來源，生成 human catalogue、agent steps、domain runtime 與 SQLite 速查投影；
+  registry SHA-256 為
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
+
+- **真實 Luna 桌面驗收證據**：在 2560×1600、Windows 150% DPI 的實機上，
+  以 ROI `(19, 30, 1522, 1136)` 顯示本機受控 MEETI 評估 ECG，透過 OpenClaw
+  subscription
+  route 顯式覆寫為 `openai/gpt-5.6-luna`，完成五個影像回合並匯出四個診斷框、
+  兩個 analysis-crop outline 與座標 audit；外部截圖維持 capture exclusion。
+- **10,001-case resume scale gate**：以 10,001 個 case identity 驗證 completed／
+  pending 集合完備且互斥、fingerprint 變動 fail closed，並保留小型 atomic disk
+  checkpoint 測試；這是續跑與規模 plumbing 證據，不是 10,001 張臨床影像成果。
+- **GitHub Pages 原始碼與操作文件**：重新建立 synthetic-only 產品網站、live evidence、
+  安全邊界、安裝與 subscription/harness 操作頁，不公開 credentialed MEETI 影像。
+  截至 2026-09-02，公開 Pages 尚未部署目前 branch 內容，因此不記為已發布網站。
+- **Plugin 1.5.8**：同步 native harness metadata 與 runtime manifest，保留 OpenClaw
+  `2026.7.1-2`、Gateway protocol 3–4 及 `connect`／`chat.send` 公開邊界。
+- **OpenClaw-owned subscription route**：新增 `OpenAI Subscription via OpenClaw`
+  profile；以固定版官方 `@openclaw/codex` 只做 OAuth migration，live inference
+  使用 `openai-chatgpt-responses`，並驗證/記錄 OpenClaw ownership、停用 Platform
+  API key、排除 Codex agent runtime 與平台執行檔
+- **9,922 例 blinded paired supervisor**：答案分離的 inference/gold manifests、
+  baseline→candidate 原子狀態、來源/manifest/scorer/protocol fingerprint、resume、
+  ownership gate、paired bootstrap/random-sign 統計及完整 raw/tool/crop/review
+  artifact；發布前 289 筆 run 明確中止，正式 run 只接受發布後 frozen commit
+- **MultiPass 影像判讀時間軸**：compact coarse read、原圖 crop/refine、deterministic
+  EKG row/lead probes、rhythm pass、ECGFounder reconciliation、final disposition，
+  每個 OpenClaw turn 可要求 `fastMode` 並記錄 60/100/180 秒 SLA
+- **專家 review package**：桌面與 eval 匯出 source/result/marked PNG/exact crops/
+  coordinate audit；diagnostic finding 與 dashed-cyan analysis crop 分開呈現
+- **ECGFounder deterministic rhythm evidence**：sidecar 輸出 lead-II R-R interval、
+  median-RR heart rate、CV/RMSSD/range 與 regularity，明確限制為 supporting-only
+  rhythm measurement，不推論 P wave/AF、不提供影像定位
 - **四臂 MEETI 實驗協定**：明確分離 minimal control、clinical single-pass、
   MultiPass、MultiPass+ECGFounder，保存 manifest/case/scorer/protocol digest、
   tool/crop/probe trace、bbox audit、review PNG 與 provider blocker；真實完成門檻
@@ -45,6 +105,38 @@
 
 ### Fixed
 
+- **Gateway ownership 與 bbox audit 同路徑**：App-managed Gateway 原子寫入
+  secret-free `ownership.json`，綁定 PID、port、token/launch-owner digest 與
+  canonical absolute bbox audit path；只有完整匹配才 reuse，未知 listener 不接管、
+  不終止，避免 Gateway/client 相對路徑不同而遺失有效 bbox receipt。
+
+- **Refinement receipt 競態與 `confirm` 漏驗**：JSONL reader 不再消耗尚未完成的
+  native audit 行；boxed turn 在 Gateway final 後最多等待 0.5 秒讓 Windows append
+  可見，並把 `confirm` finding 的 bbox 納入 exact nonce／source／coordinate digest
+  比對，避免成功 tool call 因 trace 競態觸發不必要重試或 artifact failure。
+- **Precordial hypothesis anchoring**：任何可信 crop lead map 含 V1-V6 時，原本的
+  hypothesis probe 也會進入平衡 precordial review，不增加模型 turn；PRWP 必須以
+  V1-V4 缺乏預期 R/S transition 支持，V3/V4 R dominance 時撤回，且獨立檢查
+  V2-V4 可重現的 T-wave／nonspecific ST-T morphology 與 noise confounders。沒有
+  acute ST elevation／reciprocal change 只排除 acute pattern；nonspecific change
+  必須跨 adjacent beats 與至少兩個 mapped related leads 重現，單導/noise 不報。
+- **Core 2 contract 與邊界測試**：影像 smoke 現在要求同一 `chat.send` frame 內的
+  non-empty PNG attachment、exact 16-key schema、ROI provenance、event correlation
+  與 structured result；非有限、零面積、完全離圖 bbox 一律 fail closed。
+- **Gateway 恢復與計費安全**：只重用通過公開 `connect` 驗證的既有 Gateway，
+  不終止未知 PID；中斷後只在 acceptance 尚未發生時 bounded replay，避免重複
+  subscription 請求，並修正 stale lock 與關閉時殘留程序。
+- **OpenClaw staging 完整性**：保留七個 upstream first-run templates 並以 size／
+  SHA-256 驗證；只裁除 PDB、tree-sitter C/H 與 foreign native payload，不刪除
+  OpenClaw `dist` chunks、`quickjs-wasi` 或 `playwright-core`。
+- **Crop/bbox 對位與 evidence binding**：crop-local bbox 先做 epsilon-safe 正規化
+  再投影回 source frame；validator receipt 綁定最終 bbox multiset，低訊號、錯誤
+  lead、越界、round-trip drift 或 rejected coarse box 均 fail closed
+- **EKG 重複 finding**：study-level dedupe 只合併 exact-normalized rate/rhythm
+  重複，優先保留真 rhythm strip/lead II grounded bbox；局部 ST morphology 永不
+  因幾何重疊被折疊，並留下 retraction trace
+- **真實模型 JSON 邊界**：新增有限、可稽核的 delimiter repair 與 parse retry，
+  不完整 schema、無法復原 payload 與 timeout 仍保存為錯誤而非偽造判讀
 - **MultiPass 報告一致性與 lead inventory**：no-delta refine 仍進行 final
   reconciliation；人工寫回同步 summary/triage/checklist；共用 typed parser
   正確辨認 `I`／`II`／`V1` 等 12-lead 名稱，避免 parser/UI/bbox 規則漂移
@@ -62,6 +154,49 @@
 
 ### Changed
 
+- **2026-09-02 真實 App 負面證據**：frozen critical 首例的三次 Luna subscription
+  桌面嘗試分別耗時 139.4/61.673/153.398 秒，記錄 74,786/37,811/87,694 total
+  tokens；輸出依序為 0 findings、僅 possible LVH/5 列 checklist、以及一個
+  `info` finding 且 `incomplete/review`。三次都漏掉 critical reference；對應
+  US$0.0167878/0.00789884/0.0195664 僅是 API 等值估算，不是 subscription 扣款。
+- **OpenClaw 2.x 暫緩**：`2026.8.2` 隔離副本通過 public Gateway
+  `connect`/`chat.send` probe，但 core unpacked size 83.43→196.68 MiB，且 OAuth/
+  config migration 與 state rollback gate 尚未閉合；維持 `2026.7.1-2` pin。
+- **封裝數字維持可稽核**：最近 clean full bundle 仍是 2026-08-09 的
+  385,883,674 B（368.01 MiB）。目前 `dist/` 含 10.156 MiB runtime residue，不作
+  release evidence；安全減量與後續候選必須以 clean rebuild 實測，不能用約
+  340.3 MiB 的算術推估當成果。
+
+- **2026-08-27 實機結果邊界**：Luna run 耗時 146.915 秒，記錄 111,833 total
+  tokens；subscription receipt 為零 API 計費，同量 token 依公開 Luna 價格換算
+  約 US$0.017135。所有 bbox 無 clamp，最大 physical-edge drift ≤0.368 px。
+  這次判讀錯把 gold 的 atrial fibrillation with slow ventricular response、
+  prolonged QT、poor R-wave progression 與 inferior ST-T change 報成 sinus rhythm／
+  possible LVH，因此是已記錄的 accuracy miss，不是臨床正確率成功案例；fresh
+  unseen canary 結果仍待最終 release source 凍結後補入。
+- **Pre-release bounded canary**：seed `20260828` 的 answer-free normal/warning
+  兩例以 1,222-ID denylist 選樣，schema、bbox、SLA 全數通過且零 JSON repair；
+  strict 1/2、mean partial 0.522、normal specificity 1.0。Warning 例看見異常
+  R-wave progression 與 prominent anterior T waves，仍漏掉弱標籤 LVH／sinus
+  rhythm。因 source fingerprint 為 `dirty=true`，只列 bounded evidence，不能
+  取代 final frozen-source canary。
+- **模型角色保持明確**：產品、Gateway seed 與 paired runner 的 release default
+  仍為 `openai/gpt-5.4-mini`；本次 GPT-5.6 Luna 證據來自 OpenClaw-owned
+  subscription 路徑上的顯式 `openai-codex` model override，未更改全域預設，
+  Codex agent runtime 亦未取得影像判讀 ownership。
+- **保守封裝瘦身**：已驗證 staged OpenClaw runtime 為 165.162 MiB，較先前
+  stage 減少 19.804 MiB。v0.4.7 最終 full bundle 尚未乾淨重建，因此不預估
+  總尺寸、launcher hash 或最終檔案數。
+- **弱標籤計分**：asserted concepts 才可進 strict/cannot-miss/urgent；未否定的
+  uncertain candidate 只在 incomplete weak report 取得半權重並獨立呈現，explicit
+  normal/WNL 可輸出零異常 finding
+- **2026-08-09 歷史真實證據**：32-case paired weak-label partial credit 0.253→0.480
+  （bootstrap 95% CI `[+0.085,+0.368]`，random-sign `p=0.00449955`）；8-case
+  unseen 通過 schema/bbox/crop/projection/artifact/SLA，但保留 2 個 urgent miss，
+  因此不宣稱醫療準確率或臨床安全
+- **2026-08-09 歷史 portable release**：harness/plugin `1.5.7`、OpenClaw `2026.7.1-2`、Node
+  `v24.18.0`；完整 bundle 368.01 MiB、launcher 7.05 MiB，source suite
+  `915 passed, 3 skipped`，另通過 4/4 packaged smoke 與 native capture smoke
 - mock perfect gate 現在明確只驗證 label-derived protocol self-test；真實 provider
   quota/auth/parser 失敗保留為 infrastructure blocker，不轉成病例答錯或部分分數
 - 正式臨床分數只使用 asserted references；weak/partial references 另列探索性

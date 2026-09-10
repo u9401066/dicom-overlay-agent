@@ -149,11 +149,16 @@ class HookedVisionAnalyzer(VisionAnalyzerService):
         *,
         hypothesis: Finding | None,
         crop_region: RegionRect,
+        probe_id: str = "",
+        crop_lead_regions: dict[str, RegionRect] | None = None,
     ) -> RefinementResult:
         """Delegate the optional hypothesis-aware crop refinement capability."""
         refine_method = getattr(self._inner, "refine", None)
         if not callable(refine_method):
             raise NotImplementedError("inner analyzer does not support refine()")
+        refinement_context: dict[str, object] = {}
+        if crop_lead_regions:
+            refinement_context["crop_lead_regions"] = crop_lead_regions
         return cast(
             "RefinementResult",
             await refine_method(
@@ -162,6 +167,8 @@ class HookedVisionAnalyzer(VisionAnalyzerService):
                 valid_regions,
                 hypothesis=hypothesis,
                 crop_region=crop_region,
+                probe_id=probe_id,
+                **refinement_context,
             ),
         )
 

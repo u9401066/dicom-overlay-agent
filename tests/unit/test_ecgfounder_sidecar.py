@@ -82,6 +82,30 @@ def test_registry_rejects_tampered_index(tmp_path: Path) -> None:
         server.load_registry(registry_path)
 
 
+def test_rr_summary_separates_regular_from_irregular_without_diagnosis() -> None:
+    irregular = server.summarize_rr_intervals_ms(
+        [862, 826, 716, 678, 760, 630, 608, 798, 746, 720, 700, 758, 618]
+    )
+    regular = server.summarize_rr_intervals_ms(
+        [776, 762, 754, 754, 708, 670, 672, 680, 698, 718, 762, 676, 662]
+    )
+
+    assert irregular["status"] == "ok"
+    assert irregular["regularity_signal"] == "irregular"
+    assert irregular["rr_cv"] >= 0.1
+    assert irregular["successive_rr_diff_over_80ms_fraction"] >= 0.25
+    assert regular["regularity_signal"] == "regular"
+    assert "atrial fibrillation" in irregular["limitations"][0].lower()
+    assert "diagnosis" not in irregular
+
+
+def test_rr_summary_fails_closed_when_too_few_beats() -> None:
+    result = server.summarize_rr_intervals_ms([700, 710, 705])
+
+    assert result["status"] == "insufficient"
+    assert result["reason"] == "insufficient_valid_rr_intervals"
+
+
 class _FakeRuntime:
     ready = False
     preprocessing_revision = "preprocess-test-revision"

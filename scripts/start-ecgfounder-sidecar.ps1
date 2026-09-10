@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$RuntimeDir = "data\external\ecgfounder-runtime",
-    [string]$Registry = "data\eval-datasets\meeti-1000-all\waveform-registry.json",
+    [string]$Registry = "data\eval-datasets\meeti-full-all\waveform-registry.json",
     [int]$Port = 18790,
     [string]$SelfTestArtifact = ""
 )

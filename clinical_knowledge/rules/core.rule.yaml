@@ -1,0 +1,658 @@
+schema_version: 1
+registry_version: 0.1.0
+rules:
+  - rule_id: ekg.st_elevation_not_flagged.v1
+    version: 1.0.0
+    modality: EKG
+    status: active
+    human:
+      title: ST 段抬高所見與整體分流不一致
+      rationale: >-
+        當可見 ST segment 軸已描述抬高且狀態不正常，整體結果仍標為
+        normal/info 時，至少需要專科醫師複核。這是輸出一致性安全網；ST
+        抬高本身不等同 STEMI，也不可只憑截圖宣告心肌梗塞。
+      workflow:
+        - id: verify_capture_support
+          detail: >-
+            先確認 ROI、校正標記、導程標籤與基線是否可見；缺導程、裁切或
+            artifact 必須逐項記錄為限制，不得把未見區域當作陰性證據。
+        - id: verify_st_observation
+          detail: >-
+            在實際可見導程確認 ST 偏移是否可重複、是否出現在相鄰導程，並將
+            觀察到的導程與定位寫清楚；不以單一模糊片段外推全導程。
+        - id: compare_st_mimics
+          detail: >-
+            比較急性缺血與早期再極化、LVH/strain、束支傳導阻滯、心室節律、
+            心包炎及基線漂移等替代解釋，保留仍無法由影像排除的鑑別。
+        - id: seek_supporting_context
+          detail: >-
+            檢查 reciprocal change、動態變化與症狀、serial ECG、心肌標記等
+            可取得資訊；截圖沒有的臨床資料要列為待補資料而非自行臆測。
+        - id: reconcile_triage
+          detail: >-
+            對齊 st_segment、stemi_pattern、ischemia、summary 與 severity；若
+            目前僅能確認 ST 抬高所見，維持鑑別語句並要求人工複核。
+      sources:
+        - authority: ESC/ACC/AHA/WHF
+          title: Fourth Universal Definition of Myocardial Infarction
+          version: "2018"
+          effective_date: 2018-08-25
+          url: https://academic.oup.com/eurheartj/article/40/3/237/5079081
+          locator: Sections 2 and 4, myocardial injury and clinical criteria for MI
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - visible ST-segment axis describes elevation
+      - ST-segment status is info or higher
+      - overall severity is normal or info
+    evidence:
+      - repeatable ST deviation in identified visible leads
+      - agreement between checklist wording and visible morphology
+    exclusions:
+      - no visible or localizable ST segment
+      - ST elevation appears only in negated text
+    priority:
+      tier: review
+      basis: clinical_consistency_review
+      conflicts_with: []
+    agent:
+      steps:
+        - id: verify_capture_support
+          instruction: Inventory only visible leads and record every crop, label, calibration, or artifact limitation.
+        - id: verify_st_observation
+          instruction: Confirm repeatable ST deviation in named visible leads; do not infer unseen leads.
+        - id: compare_st_mimics
+          instruction: Compare acute ischemia with repolarization, LVH, conduction, pacing, pericardial, and artifact alternatives.
+        - id: reconcile_triage
+          instruction: Make ST, ischemia, summary, severity, and review state internally consistent without converting observation into MI.
+    output:
+      axes: [st_segment, stemi_pattern, ischemia]
+      severity_floor_if_confirmed: null
+    runtime:
+      conditions:
+        - field: checklist.st_segment
+          op: contains_any
+          values: [elevat, "ste ", st elevation, 抬高, 上升]
+        - field: checklist.st_segment.status
+          op: severity_at_least
+          value: info
+        - field: severity
+          op: severity_at_most
+          value: info
+      message: ST 段有抬高描述但整體嚴重度偏低，請人工確認是否為良性變異或急性缺血
+      escalate_to: null
+      require_review: true
+    tests:
+      positive: [builtin_st_elevation_review]
+      negative: [normal_st_axis]
+      uncertain: [equivocal_st_elevation]
+      partial: [cropped_st_leads]
+    legacy:
+      runtime_id: ekg-st-elevation-not-flagged
+      source: src/dicom_overlay/domain/clinical_rules.py
+
+  - rule_id: ekg.explicit_stemi_undercall.v1
+    version: 1.0.0
+    modality: EKG
+    status: active
+    human:
+      title: 明確 STEMI／急性心肌損傷宣稱卻低估嚴重度
+      rationale: >-
+        若輸出已肯定宣稱 STEMI、急性心肌梗塞或急性心肌損傷，整體結果不可仍
+        為 normal/info。規則只修正模型自身的語意矛盾；心肌梗塞的臨床確診仍
+        需要心肌損傷證據與缺血脈絡，不能由截圖單獨完成。
+      workflow:
+        - id: classify_assertion
+          detail: >-
+            將關鍵文字分成肯定、否定與不確定；「possible」「cannot exclude」
+            或鑑別列表不可誤算成肯定診斷，否定敘述也不得觸發。
+        - id: verify_visible_pattern
+          detail: >-
+            回到原圖確認已宣稱的 ST/T/Q-wave 或 reciprocal morphology 是否在
+            已識別的相鄰導程可見，並檢查框選位置是否對準該證據。
+        - id: assess_capture_completeness
+          detail: >-
+            判斷導程、校正、時間軸與影像品質是否足以支持範圍；若不完整，維持
+            緊急分流但把無法判斷的 territory/axis 標成 not assessable。
+        - id: separate_injury_from_infarction
+          detail: >-
+            將「影像上的急性損傷/缺血型態」與「需 biomarkers、症狀或影像學
+            證據整合的 MI 診斷」分開，避免過度確診同時保留時間敏感性。
+        - id: reconcile_all_outputs
+          detail: >-
+            對齊 findings、checklist、summary、severity、review_required 與理由；
+            肯定急性宣稱必須升至 critical 並呈現可追溯證據。
+      sources:
+        - authority: ESC/ACC/AHA/WHF
+          title: Fourth Universal Definition of Myocardial Infarction
+          version: "2018"
+          effective_date: 2018-08-25
+          url: https://academic.oup.com/eurheartj/article/40/3/237/5079081
+          locator: Sections 2 and 4, myocardial injury and clinical criteria for MI
+        - authority: ACC/AHA/ACEP/NAEMSP/SCAI
+          title: Guideline for the Management of Patients With Acute Coronary Syndromes
+          version: "2025"
+          effective_date: 2025-02-27
+          url: https://professional.heart.org/en/science-news/2025-guideline-for-the-management-of-patients-with-acute-coronary-syndromes
+          locator: Scope covering acute management of unstable angina, NSTEMI, and STEMI
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - affirmative acute myocardial infarction or injury wording
+      - overall severity is normal or info
+    evidence:
+      - asserted STEMI or acute myocardial injury in the model output
+      - visible acute morphology when available
+    exclusions:
+      - negated acute injury mention
+      - uncertain or differential-only acute injury mention
+    priority:
+      tier: critical
+      basis: product_safety_policy
+      conflicts_with: []
+    agent:
+      steps:
+        - id: classify_assertion
+          instruction: Separate affirmed acute injury from negated, uncertain, and differential wording.
+        - id: verify_visible_pattern
+          instruction: Verify the claimed morphology in named visible contiguous leads and keep boxes on source evidence.
+        - id: assess_capture_completeness
+          instruction: Preserve urgent triage while marking unsupported territory or axes not assessable on partial captures.
+        - id: separate_injury_from_infarction
+          instruction: Distinguish an image pattern of acute injury from a clinical MI diagnosis requiring additional evidence.
+        - id: reconcile_all_outputs
+          instruction: Align findings, checklist, summary, critical severity, review state, and traceable evidence.
+    output:
+      axes: [st_segment, t_wave, stemi_pattern, ischemia]
+      severity_floor_if_confirmed: critical
+    runtime:
+      conditions:
+        - field: all_text
+          op: contains_any_asserted
+          values:
+            - stemi
+            - st elevation myocardial infarction
+            - acute myocardial infarction
+            - acute mi
+            - acute myocardial injury
+            - acute injury pattern
+            - 急性心肌梗塞
+            - 急性心肌損傷
+        - field: severity
+          op: severity_at_most
+          value: info
+      message: 判讀明確宣稱急性心肌梗塞/損傷卻評為非異常，需立即人工複核
+      escalate_to: critical
+      require_review: true
+    tests:
+      positive: [builtin_explicit_stemi]
+      negative: [negated_stemi]
+      uncertain: [possible_stemi]
+      partial: [missing_leads_stemi]
+    legacy:
+      runtime_id: ekg-explicit-stemi-undercall
+      source: src/dicom_overlay/domain/clinical_rules.py
+
+  - rule_id: ekg.peaked_t_hyperkalemia.v1
+    version: 1.0.0
+    modality: EKG
+    status: active
+    human:
+      title: 高尖 T 波所見卻維持正常分流
+      rationale: >-
+        輸出若肯定描述 peaked/tented T waves，整體結果不可仍為 normal/info；
+        應提示高血鉀與其他急性再極化異常的鑑別。ECG 所見的敏感度與特異度
+        都有限，規則不得把高尖 T 波單獨轉成確定高血鉀診斷。
+      workflow:
+        - id: verify_t_morphology
+          detail: >-
+            確認 T 波是否在多個可見導程可重複、是否相對狹窄對稱且超出相鄰
+            baseline，而不是增益、裁切、重疊或單一雜訊造成的假象。
+        - id: inventory_associated_changes
+          detail: >-
+            同步檢查 P 波可見度、PR、QRS 寬度、ST-T 融合、節律與心率；將缺失
+            導程或不可測 interval 明確標示，不自行補值。
+        - id: compare_repolarization_differentials
+          detail: >-
+            比較高血鉀、超急性缺血、早期再極化、LVH/strain 與技術因素；若有
+            regional contiguous change 或 reciprocal change，優先處理急性缺血。
+        - id: request_clinical_correlation
+          detail: >-
+            建議專科醫師結合血鉀、腎功能、藥物、症狀與 serial ECG；這些資料若
+            未提供，只列為具體待核對項目，不輸出泛用免責文字。
+        - id: reconcile_warning_floor
+          detail: >-
+            對齊 t_wave、conduction、interval findings 與 summary；肯定高尖 T 波
+            且原分流偏低時至少升為 warning 並要求人工複核。
+      sources:
+        - authority: AHA
+          title: Adult and Pediatric Special Circumstances of Resuscitation
+          version: "2025"
+          effective_date: 2025-10-22
+          url: https://cpr.heart.org/en/resuscitation-science/cpr-and-ecc-guidelines/adult-and-pediatric-special-circumstances-of-resuscitation
+          locator: Section 15 Hyperkalemia, ECG abnormalities and diagnostic limitations
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - affirmative peaked or tented T-wave wording
+      - overall severity is normal or info
+    evidence:
+      - repeatable peaked or tented T-wave morphology in visible leads
+      - associated P-wave, PR, QRS, or ST-T change when visible
+    exclusions:
+      - negated peaked T-wave mention
+      - isolated unreadable or cropped T-wave fragment
+    priority:
+      tier: warning
+      basis: product_safety_policy
+      conflicts_with: []
+    agent:
+      steps:
+        - id: verify_t_morphology
+          instruction: Confirm repeatable T-wave morphology in named visible leads and reject gain, crop, overlap, or noise artifacts.
+        - id: inventory_associated_changes
+          instruction: Check visible P waves, PR, QRS, ST-T merging, rhythm, and rate; mark unavailable measurements not assessable.
+        - id: compare_repolarization_differentials
+          instruction: Compare potassium, ischemic, repolarization, hypertrophy, and technical explanations without diagnosing potassium from ECG alone.
+        - id: reconcile_warning_floor
+          instruction: Align checklist and summary, set at least warning severity, and require focused clinician review.
+    output:
+      axes: [p_wave, pr_interval, qrs_duration, st_segment, t_wave, conduction]
+      severity_floor_if_confirmed: warning
+    runtime:
+      conditions:
+        - field: checklist.t_wave
+          op: contains_any_asserted
+          values: [peaked, tented, tall t, 高尖, 帳篷]
+        - field: severity
+          op: severity_at_most
+          value: info
+      message: T 波高尖卻評為正常 — 需人工排除高血鉀
+      escalate_to: warning
+      require_review: true
+    tests:
+      positive: [builtin_peaked_t]
+      negative: [normal_t_wave]
+      uncertain: [possible_peaked_t]
+      partial: [cropped_precordial_t_wave]
+    legacy:
+      runtime_id: ekg-peaked-t-hyperkalemia
+      source: src/dicom_overlay/domain/clinical_rules.py
+
+  - rule_id: ekg.possible_hyperacute_ischemia_triage.v1
+    version: 1.0.0
+    modality: EKG
+    status: active
+    human:
+      title: 未排除超急性缺血性 T 波卻未進入急症分流
+      rationale: >-
+        當輸出保留 hyperacute ischemia／hyperacute ischemic T-wave 的非否定
+        鑑別，應保留不確定性但升級為 critical 專科複核。規則不把「possible」
+        改寫成肯定診斷，而是避免時間敏感的鑑別被低嚴重度掩蓋。
+      workflow:
+        - id: verify_regional_morphology
+          detail: >-
+            確認寬大、對稱或相對突出的 T 波是否在相鄰可見導程形成區域性型態，
+            並檢查對應 ST、reciprocal change 與 bbox 是否正確。
+        - id: assess_temporal_and_capture_limits
+          detail: >-
+            檢查是否只有單張、缺導程、裁切或低解析度；缺少 serial change 時不
+            假定穩定，未涵蓋的 territory 標示 not assessable。
+        - id: compare_urgent_mimics
+          detail: >-
+            比較急性冠狀動脈阻塞、高血鉀、早期再極化、LVH/strain、傳導異常與
+            技術因素；具區域性或 reciprocal 證據時優先處理缺血風險。
+        - id: integrate_available_context
+          detail: >-
+            整合症狀、既往 ECG、心肌標記與時間軸；未提供的資料列為具體待確認
+            項目，不因資料缺乏拒絕完成可見影像判讀。
+        - id: preserve_uncertainty_with_urgency
+          detail: >-
+            summary 使用明確的 cautious differential，severity 設 critical、
+            review_required=true，並指出哪些可見證據與缺失資料決定此分流。
+      sources:
+        - authority: ACC/AHA/ACEP/NAEMSP/SCAI
+          title: Guideline for the Management of Patients With Acute Coronary Syndromes
+          version: "2025"
+          effective_date: 2025-02-27
+          url: https://professional.heart.org/en/science-news/2025-guideline-for-the-management-of-patients-with-acute-coronary-syndromes
+          locator: Scope covering acute management and risk stratification across ACS
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - non-negated hyperacute ischemia or hyperacute ischemic T-wave differential
+      - overall severity is warning or lower
+    evidence:
+      - repeatable regional T-wave morphology in visible leads
+      - supporting ST or reciprocal change when visible
+    exclusions:
+      - explicitly negated hyperacute ischemia
+      - no visible waveform supporting the stated differential
+    priority:
+      tier: critical
+      basis: product_safety_policy
+      conflicts_with: []
+    agent:
+      steps:
+        - id: verify_regional_morphology
+          instruction: Confirm repeatable regional T-wave morphology and supporting ST or reciprocal evidence in visible leads.
+        - id: assess_temporal_and_capture_limits
+          instruction: Mark missing leads, territories, serial change, and unreadable measurements not assessable.
+        - id: compare_urgent_mimics
+          instruction: Compare acute coronary occlusion with potassium, repolarization, hypertrophy, conduction, and technical alternatives.
+        - id: preserve_uncertainty_with_urgency
+          instruction: Keep the differential uncertain, set critical review, and state the visible evidence and missing data that drive it.
+    output:
+      axes: [st_segment, t_wave, stemi_pattern, ischemia]
+      severity_floor_if_confirmed: critical
+    runtime:
+      conditions:
+        - field: all_text
+          op: contains_any_non_negated
+          values: [hyperacute ischemia, hyperacute ischemic t wave]
+        - field: severity
+          op: severity_at_most
+          value: warning
+      message: 判讀未排除超急性缺血性 T 波，維持不確定診斷但升級為急症人工複核
+      escalate_to: critical
+      require_review: true
+    tests:
+      positive: [possible_hyperacute]
+      negative: [negated_hyperacute]
+      uncertain: [hyperacute_differential]
+      partial: [partial_precordial]
+    legacy:
+      runtime_id: ekg-possible-hyperacute-ischemia-triage
+      source: src/dicom_overlay/domain/clinical_rules.py
+
+  - rule_id: ekg.uncertain_acute_injury_with_st_elevation_triage.v1
+    version: 1.0.0
+    modality: EKG
+    status: active
+    human:
+      title: 異常 ST 抬高伴未解急性損傷鑑別卻未進入急症分流
+      rationale: >-
+        非正常 ST-elevation 軸若同時保留急性缺血、急性心肌損傷或急性冠狀動脈
+        阻塞的非否定鑑別，不可停留在 warning 以下。規則維持 diagnostic
+        uncertainty，只把時間敏感的人工複核提升至 critical。
+      workflow:
+        - id: establish_st_evidence
+          detail: >-
+            在具標籤的可見導程確認 ST 抬高與狀態，檢查相鄰導程、一致的 J-point
+            基線與 reciprocal change，並排除 bbox 對錯導程或框到文字區。
+        - id: classify_acute_differential
+          detail: >-
+            區分肯定、否定及仍未解的 acute injury/ischemia/occlusion 敘述；只有
+            非否定鑑別配合異常 ST 軸才啟動此規則。
+        - id: compare_st_elevation_differentials
+          detail: >-
+            系統比較早期再極化、心包炎、LVH/strain、束支傳導阻滯、心室節律、
+            aneurysm pattern、電解質與 artifact，不把單一特徵當成排除證據。
+        - id: check_territory_completeness
+          detail: >-
+            對照已見導程與缺失導程；裁切影像只允許描述已見區域，不得聲稱未見
+            reciprocal change 或其他 territory 正常。
+        - id: reconcile_critical_triage
+          detail: >-
+            維持「未排除」層級，將 findings/checklist/summary 協調為 critical
+            review，並列出 serial ECG、症狀與 biomarkers 等具體待整合資訊。
+      sources:
+        - authority: ACC/AHA/ACEP/NAEMSP/SCAI
+          title: Guideline for the Management of Patients With Acute Coronary Syndromes
+          version: "2025"
+          effective_date: 2025-02-27
+          url: https://professional.heart.org/en/science-news/2025-guideline-for-the-management-of-patients-with-acute-coronary-syndromes
+          locator: Acute management and risk stratification across STEMI and NSTE-ACS
+        - authority: ESC/ACC/AHA/WHF
+          title: Fourth Universal Definition of Myocardial Infarction
+          version: "2018"
+          effective_date: 2018-08-25
+          url: https://academic.oup.com/eurheartj/article/40/3/237/5079081
+          locator: Sections 2 and 4, myocardial injury and clinical criteria for MI
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - ST-segment axis describes elevation at warning or higher
+      - non-negated acute injury, ischemia, or occlusion differential
+      - overall severity is warning or lower
+    evidence:
+      - visible abnormal ST elevation in identified leads
+      - unresolved acute ischemic or myocardial-injury wording
+    exclusions:
+      - normal or not-assessable ST axis
+      - acute differential is explicitly negated
+    priority:
+      tier: critical
+      basis: product_safety_policy
+      conflicts_with: []
+    agent:
+      steps:
+        - id: establish_st_evidence
+          instruction: Confirm abnormal ST elevation in named visible leads and verify every evidence box.
+        - id: classify_acute_differential
+          instruction: Separate asserted, negated, and unresolved acute injury, ischemia, or occlusion wording.
+        - id: compare_st_elevation_differentials
+          instruction: Compare ischemic, repolarization, pericardial, hypertrophy, conduction, ventricular, aneurysm, electrolyte, and artifact explanations.
+        - id: check_territory_completeness
+          instruction: Restrict localization and negative claims to visible leads; mark cropped territories not assessable.
+        - id: reconcile_critical_triage
+          instruction: Preserve uncertainty, set critical review, and name the serial ECG, symptom, and biomarker context still needed.
+    output:
+      axes: [st_segment, qrs_morphology, conduction, stemi_pattern, ischemia]
+      severity_floor_if_confirmed: critical
+    runtime:
+      conditions:
+        - field: checklist.st_segment
+          op: contains_any
+          values: [elevat, "ste ", st elevation, 抬高, 上升]
+        - field: checklist.st_segment.status
+          op: severity_at_least
+          value: warning
+        - field: all_text
+          op: contains_any_non_negated
+          values:
+            - acute anterior injury
+            - acute myocardial injury
+            - acute injury pattern
+            - acute ischemia
+            - acute coronary occlusion
+            - 急性心肌損傷
+            - 急性缺血
+        - field: severity
+          op: severity_at_most
+          value: warning
+      message: 異常 ST 段抬高且未排除急性缺血/心肌損傷，保留不確定診斷並升級為急症人工複核
+      escalate_to: critical
+      require_review: true
+    tests:
+      positive: [uncertain_acute_injury_with_st_elevation]
+      negative: [negated_acute_injury]
+      uncertain: [early_repolarization_vs_acute_injury]
+      partial: [cropped_reciprocal_leads]
+    legacy:
+      runtime_id: ekg-uncertain-acute-injury-with-st-elevation-triage
+      source: src/dicom_overlay/domain/clinical_rules.py
+
+  - rule_id: cxr.pneumothorax_undercall.v1
+    version: 1.0.0
+    modality: CXR
+    status: active
+    human:
+      title: 明確氣胸宣稱卻低估嚴重度
+      rationale: >-
+        若輸出肯定提及 pneumothorax，整體結果不可仍為 normal/info。規則修正
+        模型自身的分流矛盾並要求 critical 人工複核；它不從關鍵字推斷大小、
+        張力生理或治療方式，這些必須由可見影像與臨床狀態分別判斷。
+      workflow:
+        - id: verify_assertion
+          detail: >-
+            區分肯定、否定與不確定的氣胸敘述；只有肯定宣稱觸發 undercall
+            規則，possible 氣胸仍應保留鑑別與適當 review，而非冒充確診。
+        - id: inspect_pleural_evidence
+          detail: >-
+            在原圖檢查 visceral pleural line、線外肺紋理消失、肺尖及肋膈角，
+            同時排除皮膚皺褶、衣物、床單、scapular edge 與過度曝光假象。
+        - id: assess_extent_and_tension_signs
+          detail: >-
+            記錄可見側別與範圍，檢查縱膈偏移、橫膈壓低及血流動力學資訊；
+            未提供臨床狀態時不得單憑影像把一般氣胸改稱張力性氣胸。
+        - id: check_capture_completeness
+          detail: >-
+            若肺尖或外側胸壁被 ROI 裁切，將該區域標成 not assessable；不以
+            被裁掉區域「未見 pleural line」作陰性結論。
+        - id: reconcile_critical_review
+          detail: >-
+            對齊 pleura checklist、finding、summary、critical severity、bbox 與
+            review reason，確保框選的是實際胸膜證據而非整張胸片或文字標籤。
+      sources:
+        - authority: BTS
+          title: Guideline for Pleural Disease
+          version: "2023"
+          effective_date: 2023-07-01
+          url: https://www.brit-thoracic.org.uk/clinical-resources/guidelines/pleural-disease/
+          locator: Spontaneous pneumothorax guideline and clinical pathways
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - affirmative pneumothorax wording
+      - overall severity is normal or info
+    evidence:
+      - pleural line or other visible pleural evidence when available
+      - asserted pneumothorax in the model output
+    exclusions:
+      - negated pneumothorax mention
+      - differential-only or explicitly uncertain mention
+    priority:
+      tier: critical
+      basis: product_safety_policy
+      conflicts_with: []
+    agent:
+      steps:
+        - id: verify_assertion
+          instruction: Separate affirmed pneumothorax from negated and uncertain wording.
+        - id: inspect_pleural_evidence
+          instruction: Verify pleural evidence and exclude folds, clothing, scapular edges, and exposure artifacts.
+        - id: assess_extent_and_tension_signs
+          instruction: State visible side and extent; do not infer tension physiology without supporting image and clinical evidence.
+        - id: check_capture_completeness
+          instruction: Mark cropped apices or chest wall not assessable and do not create negative claims for unseen regions.
+        - id: reconcile_critical_review
+          instruction: Align pleura, finding, summary, critical review, and tight evidence boxes.
+    output:
+      axes: [pleura, lungs, mediastinum, diaphragm]
+      severity_floor_if_confirmed: critical
+    runtime:
+      conditions:
+        - field: all_text
+          op: contains_any_asserted
+          values: [pneumothorax, 氣胸]
+        - field: severity
+          op: severity_at_most
+          value: info
+      message: 判讀提及氣胸卻評為非異常 — 需人工排除（張力性）氣胸
+      escalate_to: critical
+      require_review: true
+    tests:
+      positive: [pneumothorax_undercall]
+      negative: [no_pneumothorax]
+      uncertain: [possible_pneumothorax]
+      partial: [cropped_apex]
+    legacy:
+      runtime_id: cxr-pneumothorax-undercall
+      source: src/dicom_overlay/domain/clinical_rules.py
+
+  - rule_id: cxr.widened_mediastinum.v1
+    version: 1.0.0
+    modality: CXR
+    status: active
+    human:
+      title: 明確縱膈變寬所見卻維持正常分流
+      rationale: >-
+        若輸出肯定描述 widened mediastinum，整體結果不可仍為 normal/info；至少
+        升為 warning 並由專科醫師核對急性主動脈疾病及其他原因。此徵象非特異，
+        胸片也不能單獨確認或排除 acute aortic syndrome。
+      workflow:
+        - id: verify_projection_quality
+          detail: >-
+            先確認 AP/PA、旋轉、吸氣程度、放大與 supine technique；portable AP
+            與旋轉可造成假性縱膈增寬，品質限制必須寫入判讀。
+        - id: verify_mediastinal_observation
+          detail: >-
+            在原圖確認縱膈輪廓是否確實增寬或異常，bbox 應涵蓋相關輪廓而非整張
+            胸片，並檢查與既往影像是否有可用的改變資訊。
+        - id: inspect_supporting_aortic_signs
+          detail: >-
+            檢查 aortic contour、左側 apical cap、氣管或胃管偏移、胸腔積液等
+            支持線索；缺少任何單一徵象不得用來排除主動脈疾病。
+        - id: compare_mediastinal_differentials
+          detail: >-
+            比較技術性放大、主動脈迂曲/擴張、腫塊、淋巴結、縱膈脂肪、出血及
+            其他結構性原因，避免把非特異胸片徵象直接等同主動脈剝離。
+        - id: integrate_clinical_risk
+          detail: >-
+            列出需由醫師整合的急性胸背痛、脈搏或血壓差、神經症狀與 definitive
+            imaging；只提供具體下一步資訊，不以泛用免責段落取代影像判讀。
+        - id: reconcile_warning_review
+          detail: >-
+            對齊 mediastinum、summary、warning severity 與 review reason；若有更
+            直接的危急可見證據，依該 finding 的較高嚴重度處理。
+      sources:
+        - authority: ACR
+          title: Appropriateness Criteria — Suspected Acute Aortic Syndrome
+          version: "2021"
+          effective_date: 2021-01-01
+          url: https://acsearch.acr.org/docs/69402/Narrative
+          locator: Variant 1, acute chest pain with suspected acute aortic syndrome
+      reviewed_on: 2026-08-28
+      review_due: 2027-08-28
+    preconditions:
+      - affirmative widened mediastinum wording
+      - overall severity is normal or info
+    evidence:
+      - visible abnormal mediastinal contour after projection-quality review
+      - asserted widened mediastinum in the model output
+    exclusions:
+      - negated widened mediastinum mention
+      - observation explicitly attributed only to inadequate projection and not confirmed
+    priority:
+      tier: warning
+      basis: product_safety_policy
+      conflicts_with: []
+    agent:
+      steps:
+        - id: verify_projection_quality
+          instruction: Check AP/PA projection, rotation, inspiration, magnification, and supine technique before judging width.
+        - id: verify_mediastinal_observation
+          instruction: Confirm the contour abnormality on the source image and place a tight box on relevant anatomy.
+        - id: inspect_supporting_aortic_signs
+          instruction: Inspect visible aortic contour, apical cap, tube or tracheal displacement, and pleural fluid without treating absence as exclusion.
+        - id: compare_mediastinal_differentials
+          instruction: Compare technical, aortic, mass, nodal, fat, hemorrhagic, and structural explanations.
+        - id: reconcile_warning_review
+          instruction: Set at least warning review, keep the finding nonspecific, and state concrete clinical or definitive-imaging context needed.
+    output:
+      axes: [mediastinum, pleura, lungs, lines_tubes]
+      severity_floor_if_confirmed: warning
+    runtime:
+      conditions:
+        - field: all_text
+          op: contains_any_asserted
+          values:
+            - widened mediastinum
+            - mediastinal widening
+            - 縱膈腔變寬
+            - 縱隔變寬
+        - field: severity
+          op: severity_at_most
+          value: info
+      message: 縱膈腔變寬卻評為非異常 — 需人工排除主動脈病變
+      escalate_to: warning
+      require_review: true
+    tests:
+      positive: [widened_mediastinum_undercall]
+      negative: [normal_mediastinum]
+      uncertain: [possible_projectional_widening]
+      partial: [cropped_mediastinal_contour]
+    legacy:
+      runtime_id: cxr-widened-mediastinum
+      source: src/dicom_overlay/domain/clinical_rules.py

@@ -6,6 +6,11 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
+from dicom_overlay.infrastructure.ecg_variant_corpus import (
+    EKG_CHECKLIST_AXES,
+    build_variant_corpus,
+    parse_partial_ecg_input_contract,
+)
 from dicom_overlay.infrastructure.eval_artifact_validator import (
     _bbox_payload_digest,
     _valid_ecg_founder_evidence,
@@ -14,6 +19,16 @@ from dicom_overlay.infrastructure.eval_artifact_validator import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _gateway_protocol_receipt() -> dict[str, object]:
+    return {
+        "verified": True,
+        "advertised_min_protocol": 3,
+        "advertised_max_protocol": 4,
+        "negotiated_protocol": 4,
+        "server_version": "2026.7.1-2",
+    }
 
 
 def _ecg_receipt() -> dict[str, object]:
@@ -69,6 +84,44 @@ def _ecg_receipt() -> dict[str, object]:
     }
 
 
+def _ineligible_ecg_receipt(
+    reason: str = "waveform_contains_flat_lead",
+) -> dict[str, object]:
+    response_evidence = {
+        "schema_version": 1,
+        "status": "ineligible",
+        "evidence_type": "ecg_waveform_classification",
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "artifact_id_sha256": "a" * 64,
+        "use_policy": "supporting_evidence_only",
+        "spatial_localization": "not_provided",
+        "limitations": ["No waveform classification evidence is available."],
+        "reason": reason,
+        "predictions": [],
+    }
+    return {
+        "schema_version": 1,
+        "tool": "ecg_founder_analyze_waveform",
+        "tool_call_id": "call-ineligible",
+        "status": "ineligible",
+        "evidence_nonce": "d" * 32,
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "response_evidence": response_evidence,
+        "response_sha256": hashlib.sha256(
+            json.dumps(
+                response_evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest(),
+        "prediction_count": 0,
+        "predictions": [],
+        "failure_reason": reason,
+    }
+
+
 def test_ecgfounder_evidence_requires_one_matching_pinned_receipt() -> None:
     receipt = _ecg_receipt()
     evidence = {
@@ -103,6 +156,32 @@ def test_ecgfounder_evidence_requires_one_matching_pinned_receipt() -> None:
     assert _valid_ecg_founder_evidence(evidence) is False
 
 
+def test_ecgfounder_evidence_accepts_bound_data_ineligibility_receipt() -> None:
+    receipt = _ineligible_ecg_receipt()
+    evidence = {
+        "requested": True,
+        "verified_exactly_once": True,
+        "evidence_status": "ineligible",
+        "usable": False,
+        "ineligible_reason": "waveform_contains_flat_lead",
+        "artifact_id_sha256": "a" * 64,
+        "lead_mode": "12_lead",
+        "evidence_nonce": "d" * 32,
+        "receipt_count": 1,
+        "receipts": [receipt],
+    }
+
+    assert _valid_ecg_founder_evidence(evidence) is True
+    receipt["failure_reason"] = "artifact_not_registered"
+    response = receipt["response_evidence"]
+    assert isinstance(response, dict)
+    response["reason"] = "artifact_not_registered"
+    receipt["response_sha256"] = hashlib.sha256(
+        json.dumps(response, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert _valid_ecg_founder_evidence(evidence) is False
+
+
 def test_ecgfounder_response_hash_cannot_mask_provenance_disagreement() -> None:
     receipt = _ecg_receipt()
     evidence = {
@@ -132,6 +211,7 @@ def _write_minimal_eval(
     count: int = 2,
     *,
     ecgfounder: bool = False,
+    defer_scoring: bool = False,
 ) -> None:
     manifest_path.write_text(
         json.dumps(
@@ -175,6 +255,7 @@ def _write_minimal_eval(
         "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
         "flags": {
             "multi_pass": False,
+            "defer_scoring": defer_scoring,
             "ecgfounder_waveform_evidence": ecgfounder,
             "ecgfounder_preprocessing_revision": (
                 "preprocess-v1" if ecgfounder else ""
@@ -258,6 +339,7 @@ def _write_minimal_eval(
                     "image": f"case_{index}.png",
                     "protocol_digest": protocol_digest,
                     "source_image_sha256": image_hashes[f"case_{index}"],
+                    "gateway_protocol_receipt": _gateway_protocol_receipt(),
                     "findings": [
                         {
                             "id": "f1",
@@ -296,6 +378,283 @@ def _write_minimal_eval(
     )
 
 
+def _write_partial_ecg_eval(tmp_path: Path) -> tuple[Path, Path, Path]:
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    corpus = tmp_path / "partial-corpus"
+    manifest = build_variant_corpus([source], corpus)
+    manifest_path = corpus / "manifest.json"
+    entry = manifest["cases"][0]
+    image_path = corpus / entry["image"]
+    contract = parse_partial_ecg_input_contract(entry, image_path=image_path)
+    assert contract is not None
+    label = entry["label"]
+    image_sha = contract.variant_sha256
+    protocol = {
+        "source": {
+            "commit": "abc123",
+            "dirty": False,
+            "tracked_diff_sha256": hashlib.sha256(b"").hexdigest(),
+        },
+        "model": {"id": "mock-eval-gateway", "openclaw": {"version": "test"}},
+        "prompts": [{"path": "prompt.py", "sha256": "0" * 64}],
+        "skills": [{"path": "skills/test/SKILL.md", "sha256": "1" * 64}],
+        "flags": {
+            "multi_pass": True,
+            "analysis_prompt_profile": "clinical",
+            "partial_ecg_case_count": 1,
+        },
+        "manifest": {
+            "sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "selected_case_count": 1,
+            "cases": [
+                {
+                    "case": label,
+                    "image": entry["image"],
+                    "image_name": image_path.name,
+                    "size_bytes": image_path.stat().st_size,
+                    "sha256": image_sha,
+                }
+            ],
+        },
+    }
+    protocol_digest = hashlib.sha256(
+        json.dumps(
+            protocol,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    (eval_dir / "protocol-fingerprint.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "protocol_scope": "entire_run",
+                "protocol_digest": protocol_digest,
+                "comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
+                "protocol": protocol,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (eval_dir / "scorecard.json").write_text(
+        json.dumps(
+            {
+                "gateway_mode": "mock",
+                "scorecard_kind": "full_rebuild",
+                "manifest_total": 1,
+                "result_count": 1,
+                "total": 1,
+                "scored": 1,
+                "error_count": 0,
+                "is_partial": False,
+                "schema_pass_rate": 1.0,
+                "bbox_in_bounds_rate": 1.0,
+                "cant_miss_missed": [],
+                "urgent_concern_missed": [],
+                "strict_pass_rate": 0.0,
+                "mean_partial_credit": 0.0,
+                "partial_input_case_count": 1,
+                "partial_input_contract_pass_count": 1,
+                "partial_input_contract_pass_rate": 1.0,
+                "missing_cases": [],
+                "protocol_digest": protocol_digest,
+                "protocol_comparability": {
+                    "status": "comparable",
+                    "comparable": True,
+                    "reasons": [],
+                },
+                "cases": [{"case_label": label}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    results = eval_dir / "results"
+    results.mkdir()
+    result_path = results / f"{label}.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "case": label,
+                "image": image_path.name,
+                "modality": "EKG",
+                "protocol_digest": protocol_digest,
+                "source_image_sha256": image_sha,
+                "gateway_protocol_receipt": _gateway_protocol_receipt(),
+                "declared_valid_regions": [],
+                "analysis_valid_regions": list(contract.analysis_regions),
+                "partial_input_provenance": contract.to_manifest_payload(),
+                "summary": "Incomplete ECG: the top edge is cropped.",
+                "severity": "normal",
+                "findings": [],
+                "checklist": {
+                    axis: {"value": "not_assessable", "status": "info"}
+                    for axis in EKG_CHECKLIST_AXES
+                },
+                "layout": {"format": "partial", "leads": []},
+                "incomplete": True,
+                "incomplete_reasons": ["The top edge is cropped."],
+                "review_required": True,
+                "review_reasons": ["Incomplete ECG requires human review."],
+                "analysis_trace": [],
+                "local_image_quality": {"low_signal": False},
+                "local_signal_candidates": {
+                    "candidate_count": 0,
+                    "candidates": [],
+                },
+                "score": {
+                    "image": image_path.name,
+                    "partial_input_expected": True,
+                    "partial_input_contract_ok": True,
+                    "partial_input_failures": [],
+                    "partial_variant_sha256": image_sha,
+                    "bbox_receipt_matches_variant": None,
+                    "partial_limitation_class": contract.limitation_class,
+                    "partial_limitation_class_verified": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return eval_dir, manifest_path, result_path
+
+
+def test_partial_ecg_artifacts_enforce_visibility_review_and_variant_receipt(
+    tmp_path: Path,
+) -> None:
+    eval_dir, manifest_path, result_path = _write_partial_ecg_eval(tmp_path)
+
+    accepted = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_review=False,
+        require_perfect_mock=False,
+    )
+
+    assert accepted.ok is True
+    assert "partial_ecg_manifest_contract" in accepted.passed_checks
+    assert "partial_ecg_contract" in accepted.passed_checks
+
+    raw = json.loads(result_path.read_text(encoding="utf-8"))
+    box = {"x": 0.2, "y": 0.3, "w": 0.1, "h": 0.1}
+    raw["findings"] = [{"id": "f1", "regions": ["lead_I"], "bboxes": [box]}]
+    raw["layout"] = {"format": "12lead_12x1", "leads": []}
+    raw["incomplete"] = False
+    raw["incomplete_reasons"] = []
+    raw["checklist"] = {
+        axis: {"value": "normal", "status": "warning"} for axis in EKG_CHECKLIST_AXES
+    }
+    raw["summary"] += " Claimed abnormality in V3."
+    boxes_digest, _count = _bbox_payload_digest(raw["findings"])
+    nonce = "d" * 32
+    raw["analysis_trace"] = [
+        {
+            "stage": "finalize",
+            "status": "completed",
+            "source": "original_roi",
+            "bbox_evidence": {
+                "source_image_sha256": "0" * 64,
+                "evidence_nonce": nonce,
+            },
+            "tool_audit": [
+                {
+                    "schema_version": 2,
+                    "tool": "dicom_bbox_validate",
+                    "accepted_count": 1,
+                    "source_image_sha256": "0" * 64,
+                    "evidence_nonce": nonce,
+                    "accepted_boxes_sha256": boxes_digest,
+                }
+            ],
+        }
+    ]
+    raw["score"]["bbox_receipt_matches_variant"] = False
+    result_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    rejected = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_review=False,
+        require_perfect_mock=False,
+    )
+
+    assert rejected.ok is False
+    assert any("explicitly incomplete" in item for item in rejected.failures)
+    assert any("invisible/unverified regions" in item for item in rejected.failures)
+    assert any("non-claimable leads" in item for item in rejected.failures)
+    assert any("unverified named regions" in item for item in rejected.failures)
+    assert any("falsely assessable/normal" in item for item in rejected.failures)
+    assert any("variant_sha256" in item for item in rejected.failures)
+
+
+def test_partial_ecg_artifacts_recompute_limitation_class_instead_of_trusting_score(
+    tmp_path: Path,
+) -> None:
+    eval_dir, manifest_path, result_path = _write_partial_ecg_eval(tmp_path)
+    raw = json.loads(result_path.read_text(encoding="utf-8"))
+    raw["summary"] = "Incomplete ECG image."
+    raw["incomplete_reasons"] = ["Image content is incomplete."]
+    raw["review_reasons"] = ["Incomplete ECG requires human review."]
+    raw["score"]["partial_limitation_class_verified"] = True
+    result_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    rejected = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_review=False,
+        require_perfect_mock=False,
+    )
+
+    assert rejected.ok is False
+    assert any(
+        "transform-specific limitation class" in item for item in rejected.failures
+    )
+    assert any("score receipt is inconsistent" in item for item in rejected.failures)
+
+
+def test_partial_ecg_artifacts_reject_manifest_allow_list_drift(
+    tmp_path: Path,
+) -> None:
+    eval_dir, manifest_path, _result_path = _write_partial_ecg_eval(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["metadata"] = "unexpected"
+    digest_payload = dict(manifest)
+    digest_payload.pop("manifest_sha256")
+    manifest["manifest_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    rejected = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_review=False,
+        require_perfect_mock=False,
+    )
+
+    assert rejected.ok is False
+    assert any(
+        failure.startswith("partial_ecg_manifest_contract: ")
+        and "closed allow-list" in failure
+        for failure in rejected.failures
+    )
+
+
 def test_accuracy_and_partial_credit_thresholds_gate_real_completion(
     tmp_path: Path,
 ) -> None:
@@ -319,12 +678,10 @@ def test_accuracy_and_partial_credit_thresholds_gate_real_completion(
 
     assert verification.ok is False
     assert any(
-        failure.startswith("strict_accuracy_gate:")
-        for failure in verification.failures
+        failure.startswith("strict_accuracy_gate:") for failure in verification.failures
     )
     assert any(
-        failure.startswith("partial_credit_gate:")
-        for failure in verification.failures
+        failure.startswith("partial_credit_gate:") for failure in verification.failures
     )
 
 
@@ -344,6 +701,54 @@ def test_accuracy_thresholds_accept_rates_at_target(tmp_path: Path) -> None:
     assert verification.ok is True
     assert "strict_accuracy_gate" in verification.passed_checks
     assert "partial_credit_gate" in verification.passed_checks
+
+
+def test_eval_artifacts_reject_unverified_gateway_protocol_receipt(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path, count=1)
+    result_path = eval_dir / "results" / "case_0.json"
+    raw = json.loads(result_path.read_text(encoding="utf-8"))
+    raw["gateway_protocol_receipt"]["negotiated_protocol"] = 5
+    result_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_review=False,
+    )
+
+    assert verification.ok is False
+    assert any(
+        failure.startswith("gateway_protocol_receipts:")
+        for failure in verification.failures
+    )
+
+
+def test_eval_artifacts_reject_fake_gateway_server_version(tmp_path: Path) -> None:
+    eval_dir = tmp_path / "eval"
+    manifest_path = tmp_path / "manifest.json"
+    _write_minimal_eval(eval_dir, manifest_path, count=1)
+    result_path = eval_dir / "results" / "case_0.json"
+    raw = json.loads(result_path.read_text(encoding="utf-8"))
+    raw["gateway_protocol_receipt"]["server_version"] = "mock-2026.7.1-2"
+    result_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest_path,
+        min_cases=1,
+        require_review=False,
+    )
+
+    assert verification.ok is False
+    assert any(
+        failure.startswith("gateway_protocol_receipts:")
+        for failure in verification.failures
+    )
 
 
 def test_multipass_trace_requires_local_candidate_audit_fields(tmp_path: Path) -> None:
@@ -935,3 +1340,47 @@ def test_mixed_or_missing_protocol_is_never_reported_comparable(tmp_path: Path) 
     )
     assert not missing.ok
     assert any("legacy runs are not comparable" in item for item in missing.failures)
+
+
+def test_deferred_run_accepts_only_identity_matched_gold_manifest(
+    tmp_path: Path,
+) -> None:
+    eval_dir = tmp_path / "eval"
+    inference_manifest = tmp_path / "manifest.inference.json"
+    _write_minimal_eval(
+        eval_dir,
+        inference_manifest,
+        count=1,
+        defer_scoring=True,
+    )
+    gold_manifest = tmp_path / "manifest.gold.json"
+    gold = json.loads(inference_manifest.read_text(encoding="utf-8"))
+    gold["cases"][0]["expected_severity"] = "normal"
+    gold_manifest.write_text(json.dumps(gold), encoding="utf-8")
+    scorecard_path = eval_dir / "scorecard.json"
+    scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
+    scorecard["scoring_manifest_provenance"] = {
+        "path": str(gold_manifest),
+        "sha256": hashlib.sha256(gold_manifest.read_bytes()).hexdigest(),
+        "paired_gold_manifest": True,
+    }
+    scorecard_path.write_text(json.dumps(scorecard), encoding="utf-8")
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=gold_manifest,
+        min_cases=1,
+    )
+
+    assert verification.ok
+    assert "paired_gold_manifest" in verification.passed_checks
+
+    gold["cases"][0]["image"] = "wrong.png"
+    gold_manifest.write_text(json.dumps(gold), encoding="utf-8")
+    mismatched = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=gold_manifest,
+        min_cases=1,
+    )
+    assert not mismatched.ok
+    assert any("image" in item for item in mismatched.failures)

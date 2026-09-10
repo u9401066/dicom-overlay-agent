@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -18,7 +19,10 @@ def optional_file(source: str, target: str):
 datas = [
     ("config.yaml", "."),
     ("THIRD_PARTY_NOTICES.md", "."),
+    *optional_file("build/package-build-receipt.json", "."),
     *optional_tree("clinical_rules", "clinical_rules"),
+    *optional_tree("clinical_knowledge", "clinical_knowledge"),
+    *optional_file("build/clinical-knowledge.sqlite", "clinical_knowledge"),
     *optional_tree("openclaw/workspace", "openclaw/workspace"),
     *optional_tree("build/openclaw-runtime/openclaw", "openclaw"),
     # Core 4: bundle the portable Node.js runtime when present so the portable
@@ -26,10 +30,20 @@ datas = [
     *optional_file("node/node.exe", "node"),
 ]
 
+# Keep UPX enabled for direct spec invocations. The release build sets this to
+# 0 only when it has recorded an explicit no-UPX baseline receipt.
+UPX_ENABLED = os.environ.get("DICOM_OVERLAY_UPX_ENABLED", "1") == "1"
+
+_PIL_AVIF_MODULES = {"PIL.AvifImagePlugin", "PIL._avif"}
+
 hiddenimports = [
     "pythoncom",
     "win32com.client",
-    *collect_submodules("PIL"),
+    *(
+        module
+        for module in collect_submodules("PIL")
+        if module not in _PIL_AVIF_MODULES
+    ),
 ]
 
 a = Analysis(
@@ -49,6 +63,17 @@ a = Analysis(
         "pandas",
         "pytest",
         "_pytest",
+        # Build/test-only presentation helpers must never leak into the
+        # windowed runtime. The build environment is no-dev too; these are a
+        # defense-in-depth boundary if a workstation environment is polluted.
+        "rich",
+        "pygments",
+        "markdown_it",
+        "mdurl",
+        # The product contract is PNG/JPEG. Pillow's optional AVIF codec adds
+        # ~7.5 MiB on Windows and is not used by capture, review, or exports.
+        "PIL.AvifImagePlugin",
+        "PIL._avif",
         # Core 4: Qt modules the overlay never uses. Dropping them prunes large
         # DLLs (Qt6Pdf, Qt6Qml/Quick, WebEngine) from the bundle.
         "PyQt6.QtPdf",
@@ -117,6 +142,14 @@ def _basename(dest: str) -> str:
 
 def _keep_binary(entry) -> bool:
     name = _basename(entry[0])
+    normalized = entry[0].replace("\\", "/").casefold()
+    folded_name = name.casefold()
+    if (
+        "/pil/" in f"/{normalized}/"
+        and folded_name.startswith("_avif.")
+        and folded_name.endswith(".pyd")
+    ):
+        return False
     if name in _BIN_DROP_NAMES:
         return False
     return not name.startswith(_BIN_DROP_PREFIXES)
@@ -141,7 +174,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=UPX_ENABLED,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -156,7 +189,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=UPX_ENABLED,
     upx_exclude=[],
     name="DICOMOverlayAgent",
 )

@@ -8,7 +8,10 @@ import io
 
 from PIL import Image
 
-from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
+from dicom_overlay.domain.ekg_layout import (
+    canonical_ekg_lead_name,
+    parse_ekg_lead_inventory,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     Modality,
@@ -63,10 +66,7 @@ def _region_payload(region: RegionRect) -> dict[str, float]:
 
 
 def _layout_leads(layout: object) -> list[tuple[str, RegionRect]]:
-    return [
-        (lead.name, lead.bbox)
-        for lead in parse_ekg_lead_inventory(layout).leads
-    ]
+    return [(lead.name, lead.bbox) for lead in parse_ekg_lead_inventory(layout).leads]
 
 
 def _lead_at_box_center(
@@ -84,6 +84,15 @@ def _lead_at_box_center(
     if not candidates:
         return None
     return min(candidates, key=lambda item: item[1].w * item[1].h)[0]
+
+
+def _constrain_box_to_lead(box: RegionRect, lead: RegionRect) -> RegionRect:
+    """Keep a local evidence box wholly inside its declared lead panel."""
+    width = min(box.w, lead.w)
+    height = min(box.h, lead.h)
+    x = min(max(box.x, lead.x), lead.x + lead.w - width)
+    target_y = lead.y + (lead.h - height) / 2.0
+    return RegionRect(x=x, y=target_y, w=width, h=height)
 
 
 def _context_size_px(label: str, detail: str) -> tuple[int, int]:
@@ -187,6 +196,7 @@ def calibrate_ekg_bboxes(
     findings = []
     trace = list(result.analysis_trace)
     layout_leads = _layout_leads(result.layout)
+    layout_by_name = dict(layout_leads)
     review_reasons = list(result.review_reasons)
     review_required = result.review_required
     for finding in result.findings:
@@ -301,6 +311,64 @@ def calibrate_ekg_bboxes(
         declared_regions = list(finding.regions)
         confidence = finding.confidence
         question = finding.question
+        declared_leads = [
+            lead
+            for region in declared_regions
+            if (lead := canonical_ekg_lead_name(region)) in layout_by_name
+        ]
+        if (
+            calibrated_boxes
+            and len(declared_leads) == len(declared_regions)
+            and len(declared_leads) == len(calibrated_boxes)
+            and len(set(declared_leads)) == len(declared_leads)
+        ):
+            aligned_boxes: list[RegionRect] = []
+            for box_index, (box, declared_lead) in enumerate(
+                zip(calibrated_boxes, declared_leads, strict=True),
+                start=1,
+            ):
+                bbox_lead = _lead_at_box_center(box, layout_leads)
+                if bbox_lead == declared_lead:
+                    aligned_boxes.append(box)
+                    continue
+                aligned = _constrain_box_to_lead(box, layout_by_name[declared_lead])
+                aligned_boxes.append(aligned)
+                notes.append(
+                    f"BBox {box_index} constrained from "
+                    f"{bbox_lead or '(no lead)'} to declared {declared_lead}."
+                )
+                reason = (
+                    f"BBox/lead mismatch for {finding.label or finding.id}; "
+                    f"box {box_index} was constrained to {declared_lead}."
+                )
+                if reason not in review_reasons:
+                    review_reasons.append(reason)
+                confidence = "low"
+                localization_question = (
+                    f"Localization correction: box {box_index} originally mapped to "
+                    f"{bbox_lead or '(no lead)'} and was constrained to declared "
+                    f"{declared_lead}. Is the declared lead correct?"
+                )
+                question = (
+                    f"{question.rstrip()} {localization_question}"
+                    if question.strip()
+                    else localization_question
+                )
+                trace.append(
+                    {
+                        "stage": "bbox_calibration",
+                        "status": "snapped_to_declared_lead",
+                        "tool": "local_ekg_signal_calibrator",
+                        "finding_id": finding.id,
+                        "bbox_index": box_index,
+                        "declared_lead": declared_lead,
+                        "bbox_lead": bbox_lead or "",
+                        "original": _region_payload(box),
+                        "calibrated": _region_payload(aligned),
+                    }
+                )
+                review_required = True
+            calibrated_boxes = aligned_boxes
         bbox_regions = list(
             dict.fromkeys(
                 lead
@@ -309,17 +377,33 @@ def calibrate_ekg_bboxes(
             )
         )
         reconciled_regions = declared_regions
-        if bbox_regions and not set(bbox_regions).issubset(declared_regions):
+        if not declared_regions and bbox_regions:
             reconciled_regions = bbox_regions
+            notes.append(
+                "Lead regions inferred from calibrated bbox centers: "
+                f"{', '.join(bbox_regions)}."
+            )
+            trace.append(
+                {
+                    "stage": "bbox_calibration",
+                    "status": "lead_regions_inferred",
+                    "tool": "local_ekg_signal_calibrator",
+                    "finding_id": finding.id,
+                    "bbox_regions": bbox_regions,
+                }
+            )
+        elif bbox_regions and not set(bbox_regions).issubset(declared_regions):
+            reconciled_regions = list(dict.fromkeys([*declared_regions, *bbox_regions]))
             reason = (
-                f"BBox/lead mismatch for {finding.label or finding.id}; regions were "
-                "reconciled to the declared EKG layout."
+                f"BBox/lead mismatch for {finding.label or finding.id}; geometric "
+                "lead assignments were recorded without moving the boxes."
             )
             if reason not in review_reasons:
                 review_reasons.append(reason)
             notes.append(
-                "BBox lead regions reconciled from "
-                f"{', '.join(declared_regions) or '(none)'} to {', '.join(bbox_regions)}."
+                "BBox centers map to "
+                f"{', '.join(bbox_regions)}; these geometry-derived leads were "
+                "added to the declared regions without relocating evidence."
             )
             confidence = "low"
             localization_question = (
@@ -336,11 +420,12 @@ def calibrate_ekg_bboxes(
             trace.append(
                 {
                     "stage": "bbox_calibration",
-                    "status": "lead_region_reconciled",
+                    "status": "lead_region_conflict",
                     "tool": "local_ekg_signal_calibrator",
                     "finding_id": finding.id,
                     "declared_regions": declared_regions,
                     "bbox_regions": bbox_regions,
+                    "reconciled_regions": reconciled_regions,
                 }
             )
         findings.append(

@@ -28,6 +28,9 @@ openclaw:
   gateway_start_timeout_sec: 180
   gateway_url: ws://127.0.0.1:18789
   inference_timeout_sec: 180
+  # Request OpenClaw fast service for the 60/100/180-second analysis SLA.
+  # This may consume priority capacity from the configured provider/subscription.
+  fast_mode: true
   reconnect_interval_sec: 5
   timeout_sec: 30
 overlay:

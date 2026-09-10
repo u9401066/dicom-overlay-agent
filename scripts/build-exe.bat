@@ -11,10 +11,59 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [INFO] Installing Python build dependencies...
-call uv sync --extra build
+echo [INFO] Verifying the frozen Python lockfile...
+call uv lock --check
 if errorlevel 1 (
-    echo [ERROR] uv sync failed.
+    echo [ERROR] uv.lock is stale; refusing a non-reproducible build.
+    popd
+    exit /b 1
+)
+
+set "DICOM_OVERLAY_BUILD_ENV=%REPO_ROOT%.venv-build"
+set "UV_PROJECT_ENVIRONMENT=%DICOM_OVERLAY_BUILD_ENV%"
+set "DICOM_OVERLAY_RELEASE_PYTHON=3.13.12"
+
+echo [INFO] Syncing an isolated frozen Python %DICOM_OVERLAY_RELEASE_PYTHON% runtime + build environment...
+call uv sync --python "%DICOM_OVERLAY_RELEASE_PYTHON%" --frozen --no-dev --extra build
+if errorlevel 1 (
+    echo [ERROR] Frozen no-dev build environment sync failed.
+    popd
+    exit /b 1
+)
+
+where upx >nul 2>nul
+if errorlevel 1 (
+    set "DICOM_OVERLAY_UPX_ENABLED=0"
+    echo [INFO] UPX unavailable; recording an explicit no-UPX size baseline.
+) else (
+    set "DICOM_OVERLAY_UPX_ENABLED=1"
+    echo [INFO] UPX detected; compression must be observed by package verification.
+)
+
+echo [INFO] Recording exact package toolchain and compression intent...
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" scripts\write-package-build-receipt.py --output build\package-build-receipt.json --upx-enabled %DICOM_OVERLAY_UPX_ENABLED%
+if errorlevel 1 (
+    echo [ERROR] Package build receipt failed.
+    popd
+    exit /b 1
+)
+
+echo [INFO] Validating and materializing the clinical knowledge registry...
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" scripts\validate-clinical-knowledge.py --check-generated
+if errorlevel 1 (
+    echo [ERROR] Clinical knowledge generated views are stale or invalid.
+    popd
+    exit /b 1
+)
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" scripts\build-clinical-knowledge-sqlite.py --output build\clinical-knowledge.sqlite
+if errorlevel 1 (
+    echo [ERROR] Clinical knowledge SQLite build failed.
+    popd
+    exit /b 1
+)
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" scripts\build-clinical-knowledge-sqlite.py --output build\clinical-knowledge.sqlite --check
+if errorlevel 1 (
+    echo [ERROR] Clinical knowledge SQLite parity verification failed.
     popd
     exit /b 1
 )
@@ -46,7 +95,7 @@ if errorlevel 1 (
 )
 
 echo [INFO] Building DICOMOverlayAgent.exe...
-call .venv\Scripts\python.exe -m PyInstaller --clean --noconfirm dicom-overlay-agent.spec
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" -m PyInstaller --clean --noconfirm dicom-overlay-agent.spec
 if errorlevel 1 (
     echo [ERROR] PyInstaller build failed.
     popd
@@ -56,7 +105,7 @@ if errorlevel 1 (
 echo [OK] Built dist\DICOMOverlayAgent\DICOMOverlayAgent.exe
 
 echo [INFO] Verifying packaged runtime, skills, rules, size, and self-check...
-call .venv\Scripts\python.exe scripts\verify-packaged-app.py --bundle dist\DICOMOverlayAgent
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" scripts\verify-packaged-app.py --bundle dist\DICOMOverlayAgent
 if errorlevel 1 (
     echo [ERROR] Packaged application verification failed.
     popd

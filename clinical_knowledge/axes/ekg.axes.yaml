@@ -1,0 +1,19 @@
+schema_version: 1
+modality: EKG
+axes:
+  - heart_rate
+  - rhythm
+  - regularity
+  - axis
+  - p_wave
+  - pr_interval
+  - qrs_duration
+  - qrs_morphology
+  - st_segment
+  - t_wave
+  - qtc_interval
+  - chamber_enlargement
+  - conduction
+  - av_block
+  - stemi_pattern
+  - ischemia

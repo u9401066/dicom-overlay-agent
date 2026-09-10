@@ -46,7 +46,10 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer  # noqa: E402
 from dicom_overlay.application.multi_pass import (  # noqa: E402
+    DEFAULT_FIRST_REFINEMENT_SLA_SEC,
+    DEFAULT_INITIAL_RESPONSE_SLA_SEC,
     DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
     MultiPassAnalyzer,
     MultiPassInterpreter,
 )
@@ -62,6 +65,12 @@ from dicom_overlay.infrastructure.bbox_signal_calibrator import (  # noqa: E402
 )
 from dicom_overlay.infrastructure.clinical_rule_loader import (  # noqa: E402
     build_clinical_engine,
+)
+from dicom_overlay.infrastructure.ecg_variant_corpus import (  # noqa: E402
+    PARTIAL_INPUT_SCHEMA_VERSION,
+    is_partial_ecg_corpus_manifest,
+    parse_partial_ecg_input_contract,
+    verify_variant_corpus,
 )
 from dicom_overlay.infrastructure.eval_artifact_validator import (  # noqa: E402
     _valid_ecg_founder_evidence,
@@ -96,7 +105,7 @@ logger = structlog.get_logger(__name__)
 _DATASET_DIR = _REPO_ROOT / "data" / "eval-datasets"
 # Match the production default (entities.OpenClawConfig.max_image_edge_px).
 _MAX_IMAGE_EDGE_PX = 1568
-_DEFAULT_TIMEOUT_SEC = 90
+_DEFAULT_TIMEOUT_SEC = int(DEFAULT_TOTAL_ANALYSIS_SLA_SEC)
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
 _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
 _ECG_FOUNDER_MODEL_ID = "PKUDigitalHealth/ECGFounder"
@@ -106,6 +115,9 @@ _PROTOCOL_SOURCE_PATHS = (
     "scripts/rebuild-eval-scorecard.py",
     "scripts/export-eval-annotations.py",
     "scripts/verify-eval-artifacts.py",
+    "scripts/run-meeti-openclaw-experiment.py",
+    "scripts/run-meeti-paired-experiment.py",
+    "scripts/compare-eval-runs.py",
     "openclaw/workspace/plugins/dicom-overlay-agent-harness",
     "openclaw/workspace/skills",
     "sidecars/ecgfounder",
@@ -207,12 +219,32 @@ _CXR_CHECKLIST_KEYS = [
     "soft_tissue",
     "lines_tubes",
 ]
+_PARTIAL_LIMITATION_TEXT = {
+    "top_edge_cropped": "The top edge of the available ECG image is cropped.",
+    "bottom_edge_cropped": "The bottom edge of the available ECG image is cropped.",
+    "left_edge_cropped": "The left edge of the available ECG image is cropped.",
+    "right_edge_cropped": "The right edge of the available ECG image is cropped.",
+    "central_horizontal_band_only": (
+        "Only a central horizontal band is present in the available image."
+    ),
+    "left_labels_masked": ("Labels at the left margin are masked and unreadable."),
+    "narrow_horizontal_band_only": (
+        "Only an isolated narrow horizontal band remains visible."
+    ),
+    "low_resolution_downsample": (
+        "The available ECG is heavily downsampled and low-resolution."
+    ),
+}
 
 
 def _valid_regions_for(entry: dict[str, Any], modality: Modality) -> tuple[str, ...]:
-    explicit = entry.get("valid_regions")
-    if explicit:
-        return tuple(str(item) for item in explicit)
+    if "valid_regions" in entry:
+        explicit = entry["valid_regions"]
+        if not isinstance(explicit, list) or any(
+            not isinstance(item, str) or not item.strip() for item in explicit
+        ):
+            raise ValueError("valid_regions must be an explicit list of names")
+        return tuple(item.strip() for item in explicit)
     return tuple(_DEFAULT_VALID_REGIONS.get(modality, ()))
 
 
@@ -290,6 +322,47 @@ def _protocol_digest(protocol: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _openclaw_config_identity(config_path: Path | None) -> dict[str, Any]:
+    """Hash semantic config while excluding OpenClaw's volatile touch timestamp."""
+
+    if config_path is None or not config_path.is_file():
+        return {
+            "configured": config_path is not None,
+            "path": config_path.name if config_path is not None else "",
+            "identity": "canonical_json_without_meta.lastTouchedAt",
+            "sha256": "",
+        }
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProtocolFingerprintError(
+            f"could not parse active OpenClaw config {config_path}: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ProtocolFingerprintError("active OpenClaw config must be a JSON object")
+    meta = payload.get("meta")
+    if isinstance(meta, dict) and "lastTouchedAt" in meta:
+        stable_meta = dict(meta)
+        stable_meta.pop("lastTouchedAt", None)
+        payload = dict(payload)
+        if stable_meta:
+            payload["meta"] = stable_meta
+        else:
+            payload.pop("meta", None)
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return {
+        "configured": True,
+        "path": config_path.name,
+        "identity": "canonical_json_without_meta.lastTouchedAt",
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+
+
 def _path_for_fingerprint(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
@@ -311,7 +384,7 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
     status_result = run(
         "status",
         "--porcelain",
-        "--untracked-files=normal",
+        "--untracked-files=all",
         "--",
         *_PROTOCOL_SOURCE_PATHS,
     )
@@ -323,8 +396,18 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         "--",
         *_PROTOCOL_SOURCE_PATHS,
     )
+    files_result = run(
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        *_PROTOCOL_SOURCE_PATHS,
+    )
     available = all(
-        result.returncode == 0 for result in (commit_result, status_result, diff_result)
+        result.returncode == 0
+        for result in (commit_result, status_result, diff_result, files_result)
     )
     if not available:
         return {
@@ -333,7 +416,26 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
             "dirty": None,
             "scope": list(_PROTOCOL_SOURCE_PATHS),
             "tracked_diff_sha256": "",
+            "worktree_content_sha256": "",
+            "worktree_file_count": 0,
         }
+    relative_files = sorted(
+        {os.fsdecode(raw) for raw in files_result.stdout.split(b"\0") if raw}
+    )
+    content_digest = hashlib.sha256()
+    for relative_text in relative_files:
+        normalized = Path(relative_text).as_posix()
+        content_digest.update(normalized.encode("utf-8", errors="surrogateescape"))
+        content_digest.update(b"\0")
+        path = repo_root / relative_text
+        if not path.is_file():
+            content_digest.update(b"missing\0")
+            continue
+        content_digest.update(b"file\0")
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                content_digest.update(chunk)
+        content_digest.update(b"\0")
     return {
         "available": True,
         "commit": commit_result.stdout.decode("ascii", errors="replace").strip(),
@@ -341,6 +443,8 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         "scope": list(_PROTOCOL_SOURCE_PATHS),
         "worktree_status_sha256": hashlib.sha256(status_result.stdout).hexdigest(),
         "tracked_diff_sha256": hashlib.sha256(diff_result.stdout).hexdigest(),
+        "worktree_content_sha256": content_digest.hexdigest(),
+        "worktree_file_count": len(relative_files),
     }
 
 
@@ -404,6 +508,11 @@ def _manifest_identity(
     labels: set[str] = set()
     result_filenames: set[str] = set()
     identities: list[dict[str, Any]] = []
+    # A manifest may intentionally assign several blinded case identities to
+    # one immutable source object (for example, an offline scale-plumbing
+    # fixture).  Cache content identity by resolved path so protocol freezing
+    # remains O(case count) without re-reading identical bytes per identity.
+    source_identity_cache: dict[Path, tuple[int, str]] = {}
     for case in cases:
         label = case.label or case.image_path.name
         result_filename = _result_filename(label)
@@ -421,13 +530,18 @@ def _manifest_identity(
             raise ProtocolFingerprintError(
                 f"manifest image does not exist for {label}: {image_path}"
             )
+        source_identity = source_identity_cache.get(image_path)
+        if source_identity is None:
+            source_identity = (image_path.stat().st_size, _sha256_file(image_path))
+            source_identity_cache[image_path] = source_identity
+        size_bytes, source_sha256 = source_identity
         identities.append(
             {
                 "case": label,
                 "image": _path_for_fingerprint(image_path, manifest_path.parent),
                 "image_name": image_path.name,
-                "size_bytes": image_path.stat().st_size,
-                "sha256": _sha256_file(image_path),
+                "size_bytes": size_bytes,
+                "sha256": source_sha256,
             }
         )
     return {
@@ -451,15 +565,7 @@ def _build_protocol_fingerprint(
     environment = env if env is not None else os.environ
     config_path_text = environment.get("OPENCLAW_CONFIG_PATH", "")
     config_path = Path(config_path_text) if config_path_text else None
-    config_identity = {
-        "configured": bool(config_path_text),
-        "path": config_path.name if config_path else "",
-        "sha256": (
-            _sha256_file(config_path)
-            if config_path is not None and config_path.is_file()
-            else ""
-        ),
-    }
+    config_identity = _openclaw_config_identity(config_path)
     protocol = {
         "source": _git_identity(repo_root),
         "model": {
@@ -636,26 +742,44 @@ def _fingerprint_image_hashes(fingerprint: dict[str, Any]) -> dict[str, str]:
 
 def _load_cases(manifest_path: Path) -> list[EvalCase]:
     spec = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if is_partial_ecg_corpus_manifest(spec):
+        spec = verify_variant_corpus(manifest_path.parent)
     cases: list[EvalCase] = []
     for entry in spec["cases"]:
         modality = Modality(entry["modality"])
+        image_path = manifest_path.parent / entry["image"]
+        partial_input = parse_partial_ecg_input_contract(
+            entry,
+            image_path=image_path,
+        )
         cases.append(
             EvalCase(
-                image_path=manifest_path.parent / entry["image"],
+                image_path=image_path,
                 modality=modality,
-                expected_severity=Severity(entry["expected_severity"]),
+                # Blinded inference manifests deliberately omit every answer
+                # field. Use a non-scorable placeholder until these persisted
+                # results are rebuilt against the separate gold manifest.
+                expected_severity=Severity(entry.get("expected_severity", "normal")),
                 expected_keywords=tuple(entry.get("keywords", [])),
                 expected_negatives=tuple(entry.get("negatives", [])),
                 target_axes=tuple(entry.get("target_axes", [])),
                 cant_miss=tuple(entry.get("cant_miss", [])),
                 urgent_concerns=tuple(entry.get("urgent_concerns", [])),
-                label_status=str(entry.get("label_status") or "asserted"),
+                label_status=str(
+                    entry.get("label_status")
+                    or (
+                        "asserted"
+                        if "expected_severity" in entry
+                        else "blinded_inference"
+                    )
+                ),
                 uncertain_concepts=tuple(entry.get("uncertain_concepts", [])),
                 ungradable_reasons=tuple(entry.get("ungradable_reasons", [])),
                 label=entry.get("label", ""),
                 valid_regions=_valid_regions_for(entry, modality),
                 waveform_artifact_id=str(entry.get("waveform_artifact_id") or ""),
                 waveform_lead_mode=str(entry.get("waveform_lead_mode") or ""),
+                partial_input=partial_input,
             )
         )
     return cases
@@ -725,7 +849,34 @@ def _mock_payload_for(case: EvalCase) -> dict[str, Any]:
         "findings": findings,
         "checklist": checklist,
     }
-    if case.modality is Modality.EKG:
+    if case.partial_input is not None:
+        limitation = _PARTIAL_LIMITATION_TEXT[case.partial_input.limitation_class]
+        payload.update(
+            {
+                "summary": f"Incomplete ECG: {limitation}",
+                "severity": "normal",
+                "findings": [],
+                "checklist": {
+                    key: {"value": "not_assessable", "status": "info"}
+                    for key in _EKG_CHECKLIST_KEYS
+                },
+                "layout": {
+                    "format": "partial",
+                    "rhythm_strip_leads": [],
+                    "rhythm_strip_bbox": None,
+                    "leads": [],
+                },
+                "next_steps": ["Review the uncropped source ECG."],
+                "image_quality": limitation,
+                "incomplete": True,
+                "incomplete_reasons": [limitation],
+                "review_required": True,
+                "review_reasons": [
+                    f"Incomplete ECG requires human review: {limitation}"
+                ],
+            }
+        )
+    elif case.modality is Modality.EKG:
         lead_names = [
             "lead_I",
             "lead_II",
@@ -790,7 +941,11 @@ class _MockGateway:
                     "type": "res",
                     "id": connect["id"],
                     "ok": True,
-                    "payload": {"status": "connected"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2", "fixture": True},
+                    },
                 }
             )
         )
@@ -893,6 +1048,20 @@ class _CountingAnalyzer(VisionAnalyzerService):
         self._set_synthetic_bbox_receipt(_bbox_regions(result))
         return result
 
+    async def analyze_coarse(
+        self,
+        image_base64: str,
+        modality: Modality,
+        valid_regions: list[str],
+    ) -> Any:
+        coarse_method = getattr(self._inner, "analyze_coarse", None)
+        if not callable(coarse_method):
+            return await self.analyze(image_base64, modality, valid_regions)
+        self.analyze_calls += 1
+        result = await coarse_method(image_base64, modality, valid_regions)
+        self._set_synthetic_bbox_receipt(_bbox_regions(result))
+        return result
+
     async def refine(
         self,
         image_base64: str,
@@ -901,17 +1070,24 @@ class _CountingAnalyzer(VisionAnalyzerService):
         *,
         hypothesis: Any,
         crop_region: RegionRect,
+        probe_id: str = "",
+        crop_lead_regions: dict[str, RegionRect] | None = None,
     ) -> Any:
         refine_method = getattr(self._inner, "refine", None)
         if not callable(refine_method):
             raise NotImplementedError("inner analyzer does not support refine()")
         self.analyze_calls += 1
+        refinement_context: dict[str, object] = {}
+        if crop_lead_regions:
+            refinement_context["crop_lead_regions"] = crop_lead_regions
         result = await refine_method(
             image_base64,
             modality,
             valid_regions,
             hypothesis=hypothesis,
             crop_region=crop_region,
+            probe_id=probe_id,
+            **refinement_context,
         )
         accepted_boxes = _bbox_regions(hypothesis)
         for delta in getattr(result, "deltas", ()):
@@ -983,9 +1159,7 @@ class _CountingAnalyzer(VisionAnalyzerService):
                 "source_image_sha256": str(
                     binding.get("source_image_sha256") or "0" * 64
                 ),
-                "evidence_nonce": str(
-                    binding.get("evidence_nonce") or "0" * 32
-                ),
+                "evidence_nonce": str(binding.get("evidence_nonce") or "0" * 32),
                 "accepted_boxes_sha256": _bbox_coordinates_digest(boxes),
                 "details_sha256": hashlib.sha256(
                     json.dumps(details, sort_keys=True).encode("utf-8")
@@ -1054,12 +1228,29 @@ def _wrap_with_app_hooks(
     )
 
 
+def _guardrail_hook_names(
+    *, analysis_prompt_profile: str, multi_pass: bool
+) -> list[str]:
+    if analysis_prompt_profile == "minimal_control":
+        return []
+    return [
+        "InputGuard",
+        "ClinicalConsistencyHook",
+        *([] if multi_pass else ["BboxCalibrationHook"]),
+        "OutputValidator",
+    ]
+
+
 def _build_multi_pass_analyzer(
     inner: VisionAnalyzerService,
     *,
     cropper: Any,
+    ekg_row_strip_detector: Any = None,
     max_zoom_targets: int,
     max_ekg_systematic_probes: int = DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
+    initial_response_sla_sec: float = DEFAULT_INITIAL_RESPONSE_SLA_SEC,
+    first_refinement_sla_sec: float = DEFAULT_FIRST_REFINEMENT_SLA_SEC,
+    total_analysis_sla_sec: float = DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
     synthetic_bbox_receipts: bool = False,
 ) -> tuple[MultiPassAnalyzer, _CountingAnalyzer]:
     counter = _CountingAnalyzer(
@@ -1070,8 +1261,12 @@ def _build_multi_pass_analyzer(
         analyzer=counter,
         cropper=cropper,
         bbox_calibrator=calibrate_ekg_bboxes,
+        ekg_row_strip_detector=ekg_row_strip_detector,
         max_zoom_targets=max_zoom_targets,
         max_ekg_systematic_probes=max_ekg_systematic_probes,
+        initial_response_sla_sec=initial_response_sla_sec,
+        first_refinement_sla_sec=first_refinement_sla_sec,
+        total_analysis_sla_sec=total_analysis_sla_sec,
     )
     return MultiPassAnalyzer(inner=counter, interpreter=interpreter), counter
 
@@ -1109,6 +1304,7 @@ def _build_waveform_evidence(
     lead_mode: str,
     evidence_nonce: str,
     receipts: list[dict[str, object]],
+    duplicate_attempts: list[dict[str, object]] | None = None,
     expected_preprocessing_revision: str = "",
 ) -> dict[str, object]:
     artifact_digest = (
@@ -1117,11 +1313,22 @@ def _build_waveform_evidence(
     evidence: dict[str, object] = {
         "requested": bool(artifact_id),
         "verified_exactly_once": bool(artifact_id and len(receipts) == 1),
+        "evidence_status": (
+            str(receipts[0].get("status") or "") if len(receipts) == 1 else ""
+        ),
+        "usable": bool(len(receipts) == 1 and receipts[0].get("status") == "ok"),
+        "ineligible_reason": (
+            str(receipts[0].get("failure_reason") or "")
+            if len(receipts) == 1 and receipts[0].get("status") == "ineligible"
+            else ""
+        ),
         "artifact_id_sha256": artifact_digest,
         "lead_mode": (lead_mode or "12_lead") if artifact_id else "",
         "evidence_nonce": evidence_nonce if artifact_id else "",
         "receipt_count": len(receipts),
         "receipts": receipts,
+        "duplicate_suppressed_count": len(duplicate_attempts or []),
+        "duplicate_attempts": list(duplicate_attempts or []),
     }
     evidence["verified_exactly_once"] = _valid_ecg_founder_evidence(
         evidence,
@@ -1197,6 +1404,15 @@ def _probe_ecg_founder_deep_health(
     }, "ready"
 
 
+def _rhythm_trace_has_activity(
+    rhythm_region: RegionRect | None,
+    *,
+    analyze_calls: int,
+    crop_calls: int,
+) -> bool:
+    return rhythm_region is not None or analyze_calls > 0 or crop_calls > 0
+
+
 async def _run(
     cases: list[EvalCase],
     gateway_url: str,
@@ -1207,7 +1423,11 @@ async def _run(
     multi_pass: bool,
     multi_pass_max_targets: int,
     multi_pass_max_ekg_systematic_probes: int,
+    initial_response_sla_sec: float,
+    first_refinement_sla_sec: float,
+    total_analysis_sla_sec: float,
     analysis_prompt_profile: str,
+    openclaw_fast_mode: bool,
     partial_scorecard_interval: int,
     rhythm_strip_pass: bool = True,
     ecg_founder_waveform_evidence: bool = False,
@@ -1215,14 +1435,24 @@ async def _run(
     protocol_digest: str = "",
     source_image_hashes: dict[str, str] | None = None,
 ) -> EvalReport:
+    if any(case.partial_input is not None for case in cases):
+        if not multi_pass:
+            raise ValueError("partial ECG eval cases require --multi-pass")
+        if analysis_prompt_profile != "clinical":
+            raise ValueError("partial ECG eval cases require the clinical harness")
     processor = ImageProcessor()
     image_hashes = source_image_hashes or {}
 
     async def analyze_with_client(client: OpenClawClient) -> EvalReport:
-        hooked_analyzer = _wrap_with_app_hooks(client)
-        analyzer: VisionAnalyzerService = hooked_analyzer
+        hooked_analyzer: HookedVisionAnalyzer | None = None
+        if analysis_prompt_profile == "minimal_control":
+            analyzer: VisionAnalyzerService = client
+        else:
+            hooked_analyzer = _wrap_with_app_hooks(client)
+            analyzer = hooked_analyzer
         counter: _CountingAnalyzer | None = None
         crop_calls = 0
+        partial_layout_case_active = False
         trace_path = output_dir / "multipass-trace.jsonl"
         local_quality_by_case: dict[str, dict[str, object]] = {}
         local_signal_by_case: dict[str, dict[str, object]] = {}
@@ -1235,11 +1465,25 @@ async def _run(
                 crop_calls += 1
                 return processor.crop_region_base64(image_base64, region)
 
+            def eval_row_strip_evidence(image_base64: str) -> dict[str, object]:
+                if partial_layout_case_active:
+                    return {
+                        "method": "partial_input_contract_v2",
+                        "is_12_row_strip": False,
+                        "normalization_allowed": False,
+                        "reason": "deliberately_incomplete_ecg",
+                    }
+                return processor.ekg_row_strip_evidence(image_base64)
+
             multi_pass_analyzer, counter = _build_multi_pass_analyzer(
                 client,
                 cropper=cropper,
+                ekg_row_strip_detector=eval_row_strip_evidence,
                 max_zoom_targets=multi_pass_max_targets,
                 max_ekg_systematic_probes=(multi_pass_max_ekg_systematic_probes),
+                initial_response_sla_sec=initial_response_sla_sec,
+                first_refinement_sla_sec=first_refinement_sla_sec,
+                total_analysis_sla_sec=total_analysis_sla_sec,
                 synthetic_bbox_receipts=mode == "mock",
             )
             analyzer = _wrap_with_app_hooks(
@@ -1251,7 +1495,8 @@ async def _run(
             await analyzer.connect()
 
         async def analyze(case: EvalCase) -> Any:
-            nonlocal crop_calls
+            nonlocal crop_calls, partial_layout_case_active
+            partial_layout_case_active = case.partial_input is not None
             case_key = case.label or case.image_path.name
             source_image_bytes = case.image_path.read_bytes()
             image_payload = _prepare_eval_image_payload(
@@ -1261,7 +1506,11 @@ async def _run(
             local_quality_by_case[case_key] = processor.image_quality_profile(
                 source_image_bytes
             )
-            local_signal = processor.local_signal_candidates(source_image_bytes)
+            local_signal = (
+                processor.local_signal_candidates(source_image_bytes)
+                if analysis_prompt_profile == "clinical"
+                else {}
+            )
             local_signal_by_case[case_key] = local_signal
             local_candidate_regions = _local_candidate_regions_from_signal(
                 local_signal,
@@ -1299,7 +1548,7 @@ async def _run(
                     coarse_image_base64=image_payload.coarse_image_base64,
                     source_image_base64=image_payload.source_image_base64,
                     modality=case.modality,
-                    valid_regions=list(case.valid_regions),
+                    valid_regions=list(case.analysis_valid_regions),
                     source_size_px=image_payload.source_size_px,
                     local_candidate_regions=local_candidate_regions,
                 )
@@ -1320,18 +1569,20 @@ async def _run(
                     result = await _invoke()
                 # Retry an empty image read without re-binding waveform evidence;
                 # an ECGFounder arm must prove exactly one tool call per case.
-                if is_empty_read(result):
+                if is_empty_read(result) and not multi_pass:
                     logger.warning("empty_read_retry", case=case_key)
                     retry = await _invoke()
                     if not is_empty_read(retry):
                         result = retry
             except Exception:
                 waveform_receipts = client.waveform_evidence_receipts(evidence_nonce)
+                duplicate_attempts = client.waveform_duplicate_attempts(evidence_nonce)
                 waveform_evidence_by_case[case_key] = _build_waveform_evidence(
                     artifact_id=artifact_id,
                     lead_mode=case.waveform_lead_mode,
                     evidence_nonce=evidence_nonce,
                     receipts=waveform_receipts,
+                    duplicate_attempts=duplicate_attempts,
                     expected_preprocessing_revision=(
                         ecg_founder_preprocessing_revision
                     ),
@@ -1366,6 +1617,15 @@ async def _run(
                             "ekg_systematic_"
                         )
                     ]
+                    sla_event = next(
+                        (
+                            event
+                            for event in reversed(result_trace)
+                            if isinstance(event, dict)
+                            and event.get("stage") == "analysis_sla"
+                        ),
+                        {},
+                    )
                     trace = {
                         "case": case.label or case.image_path.name,
                         "image": case.image_path.name,
@@ -1382,6 +1642,7 @@ async def _run(
                         "max_ekg_systematic_probes": (
                             multi_pass_max_ekg_systematic_probes
                         ),
+                        "openclaw_fast_mode_requested": openclaw_fast_mode,
                         "ekg_systematic_probe_count": len(systematic_targets),
                         "ekg_systematic_completed_count": len(systematic_completed),
                         "ekg_systematic_probe_targets": systematic_targets,
@@ -1396,6 +1657,7 @@ async def _run(
                             }
                             for region in local_candidate_regions
                         ],
+                        "sla": sla_event,
                     }
                     with trace_path.open("a", encoding="utf-8") as fh:
                         fh.write(json.dumps(trace, ensure_ascii=False) + "\n")
@@ -1408,6 +1670,7 @@ async def _run(
                     # layout-general. Keep this pass separately traceable even
                     # when the broader --multi-pass option is disabled.
                     rhythm_region = resolve_rhythm_strip_region(result)
+                    assert hooked_analyzer is not None
                     rhythm_counter = _CountingAnalyzer(hooked_analyzer)
                     rhythm_crop_calls = 0
 
@@ -1421,7 +1684,16 @@ async def _run(
                         image_payload.source_image_base64,
                         analyze_fn=rhythm_counter.analyze,
                         cropper=rhythm_cropper,
-                        valid_regions=list(case.valid_regions),
+                        valid_regions=list(case.analysis_valid_regions),
+                    )
+                    rhythm_sla = next(
+                        (
+                            event
+                            for event in reversed(result.analysis_trace)
+                            if isinstance(event, dict)
+                            and event.get("stage") == "analysis_sla"
+                        ),
+                        {},
                     )
                     rhythm_trace = {
                         "case": case.label or case.image_path.name,
@@ -1436,6 +1708,7 @@ async def _run(
                         "coarse_size_px": list(image_payload.coarse_size_px),
                         "max_zoom_targets": 1,
                         "retry_attempts": 1,
+                        "sla": rhythm_sla,
                         "rhythm_strip_region": (
                             {
                                 "x": rhythm_region.x,
@@ -1457,15 +1730,24 @@ async def _run(
                             for region in local_candidate_regions
                         ],
                     }
-                    with trace_path.open("a", encoding="utf-8") as fh:
-                        fh.write(json.dumps(rhythm_trace, ensure_ascii=False) + "\n")
+                    if _rhythm_trace_has_activity(
+                        rhythm_region,
+                        analyze_calls=rhythm_counter.analyze_calls,
+                        crop_calls=rhythm_crop_calls,
+                    ):
+                        with trace_path.open("a", encoding="utf-8") as fh:
+                            fh.write(
+                                json.dumps(rhythm_trace, ensure_ascii=False) + "\n"
+                            )
             finally:
                 waveform_receipts = client.waveform_evidence_receipts(evidence_nonce)
+                duplicate_attempts = client.waveform_duplicate_attempts(evidence_nonce)
                 waveform_evidence_by_case[case_key] = _build_waveform_evidence(
                     artifact_id=artifact_id,
                     lead_mode=case.waveform_lead_mode,
                     evidence_nonce=evidence_nonce,
                     receipts=waveform_receipts,
+                    duplicate_attempts=duplicate_attempts,
                     expected_preprocessing_revision=(
                         ecg_founder_preprocessing_revision
                     ),
@@ -1475,8 +1757,8 @@ async def _run(
                 and not waveform_evidence_by_case[case_key]["verified_exactly_once"]
             ):
                 raise RuntimeError(
-                    "ECGFounder evidence arm requires exactly one matching status=ok "
-                    "receipt from the pinned 12-lead model"
+                    "ECGFounder evidence arm requires exactly one valid bound "
+                    "ok/ineligible receipt"
                 )
             return result
 
@@ -1498,12 +1780,29 @@ async def _run(
                 "protocol_digest": protocol_digest,
                 "source_image_sha256": image_hashes.get(
                     case.label or case.image_path.name,
-                    "",
+                    (
+                        case.partial_input.variant_sha256
+                        if case.partial_input is not None
+                        else ""
+                    ),
                 ),
+                "declared_valid_regions": list(case.valid_regions),
+                "analysis_valid_regions": list(case.analysis_valid_regions),
+                "partial_input_provenance": (
+                    case.partial_input.to_manifest_payload()
+                    if case.partial_input is not None
+                    else None
+                ),
+                "gateway_protocol_receipt": client.gateway_protocol_receipt(),
                 "waveform_evidence": waveform_evidence_by_case.get(
                     case.label or case.image_path.name,
                     {"requested": False, "verified_exactly_once": False},
                 ),
+                "openclaw_request_policy": {
+                    "fast_mode_requested": openclaw_fast_mode,
+                    "priority_service_observed": None,
+                    "service_tier_evidence": "requires_gateway_transport_receipt",
+                },
             },
         )
 
@@ -1515,6 +1814,7 @@ async def _run(
                 timeout_sec=timeout_sec,
                 analysis_prompt_profile=analysis_prompt_profile,
                 require_bound_bbox_receipts=False,
+                fast_mode=openclaw_fast_mode,
             )
             try:
                 return await analyze_with_client(client)
@@ -1525,6 +1825,7 @@ async def _run(
         gateway_url,
         timeout_sec=timeout_sec,
         analysis_prompt_profile=analysis_prompt_profile,
+        fast_mode=openclaw_fast_mode,
     )
     try:
         return await analyze_with_client(client)
@@ -1538,6 +1839,7 @@ def _make_client(
     timeout_sec: int,
     analysis_prompt_profile: str = "clinical",
     require_bound_bbox_receipts: bool = True,
+    fast_mode: bool = True,
 ) -> OpenClawClient:
     return OpenClawClient(
         gateway_url=gateway_url,
@@ -1548,6 +1850,7 @@ def _make_client(
         base_dir=_REPO_ROOT,
         analysis_prompt_profile=analysis_prompt_profile,
         require_bound_bbox_receipts=require_bound_bbox_receipts,
+        fast_mode=fast_mode,
     )
 
 
@@ -1565,6 +1868,8 @@ def _limited_cases(cases: list[Any], limit: int) -> tuple[list[Any], int]:
 def _pending_cases(
     cases: list[EvalCase],
     output_dir: Path,
+    *,
+    retry_errors: bool = False,
 ) -> tuple[list[EvalCase], int]:
     """Return cases without a persisted raw-result artifact.
 
@@ -1574,15 +1879,64 @@ def _pending_cases(
     union of old and newly completed results.
     """
     results_dir = output_dir / "results"
+    result_paths = {
+        path.name: path for path in results_dir.glob("*.json") if path.is_file()
+    }
+    retry_result_filenames = (
+        {
+            name
+            for name, path in result_paths.items()
+            if _persisted_result_has_error(path)
+        }
+        if retry_errors
+        else set()
+    )
+    return _partition_resume_cases(
+        cases,
+        completed_result_filenames=set(result_paths),
+        retry_result_filenames=retry_result_filenames,
+    )
+
+
+def _partition_resume_cases(
+    cases: list[EvalCase],
+    *,
+    completed_result_filenames: set[str],
+    retry_result_filenames: set[str] | None = None,
+) -> tuple[list[EvalCase], int]:
+    """Partition a frozen case sequence using already-validated result names.
+
+    Keeping the set partition pure makes the 10k+ identity invariant cheap to
+    verify.  ``_pending_cases`` remains the filesystem boundary and delegates
+    here only after protocol/result validation has run.
+    """
+
+    retry_names = retry_result_filenames or set()
     pending: list[EvalCase] = []
     skipped = 0
     for case in cases:
         label = case.label or case.image_path.name
-        if (results_dir / _result_filename(label)).is_file():
-            skipped += 1
-        else:
+        result_filename = _result_filename(label)
+        if result_filename not in completed_result_filenames:
             pending.append(case)
+            continue
+        if result_filename in retry_names:
+            pending.append(case)
+            continue
+        skipped += 1
     return pending, skipped
+
+
+def _persisted_result_has_error(path: Path) -> bool:
+    """Return whether a validated resume artifact records an eval error."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw, dict):
+        return False
+    score = raw.get("score")
+    return bool(raw.get("error") or (isinstance(score, dict) and score.get("error")))
 
 
 def _result_filename(label: str) -> str:
@@ -1776,11 +2130,22 @@ def _print_summary(
         f"(n={report.normal_control_count})"
     )
     print(
+        f"  normal clean read ... {report.normal_control_clean_read_rate:.0%} "
+        f"(review burden {report.normal_control_review_burden_rate:.0%})"
+    )
+    print(
         f"  negative recall ..... {report.mean_negative_recall:.0%} "
         f"(n={report.negative_scorable_count})"
     )
     print(f"  schema pass rate .... {report.schema_pass_rate:.0%}")
     print(f"  bbox in-bounds ...... {report.bbox_in_bounds_rate:.0%}")
+    if report.partial_input_case_count:
+        print(
+            "  partial ECG contract  "
+            f"{report.partial_input_contract_pass_rate:.0%} "
+            f"({report.partial_input_contract_pass_count}/"
+            f"{report.partial_input_case_count})"
+        )
     print(f"  mean latency ........ {report.mean_latency_ms:.0f} ms")
     print("-" * 60)
     printable_cases, remaining_cases = _limited_cases(
@@ -1940,9 +2305,18 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--openclaw-thinking-level",
+        choices=("unspecified", "off", "minimal", "low", "medium", "high"),
+        default="unspecified",
+        help=(
+            "Effective OpenClaw embedded-agent thinking default, recorded as a "
+            "shared protocol invariant."
+        ),
+    )
+    parser.add_argument(
         "--multi-pass-max-targets",
         type=int,
-        default=3,
+        default=2,
         help="Maximum abnormal findings to crop/refine per image in --multi-pass mode.",
     )
     parser.add_argument(
@@ -1953,6 +2327,33 @@ def main() -> int:
             "Maximum layout-derived EKG discovery probes within the total "
             "--multi-pass-max-targets budget."
         ),
+    )
+    parser.add_argument(
+        "--fast-mode",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Request OpenClaw fast mode on every chat.send turn. Enabled by "
+            "default for the 60/100/180-second SLA; may use priority capacity."
+        ),
+    )
+    parser.add_argument(
+        "--initial-response-sla-sec",
+        type=float,
+        default=DEFAULT_INITIAL_RESPONSE_SLA_SEC,
+        help="Absolute deadline for the initial whole-image read (default: 60).",
+    )
+    parser.add_argument(
+        "--first-refinement-sla-sec",
+        type=float,
+        default=DEFAULT_FIRST_REFINEMENT_SLA_SEC,
+        help="Absolute deadline for the first crop detail read (default: 100).",
+    )
+    parser.add_argument(
+        "--total-analysis-sla-sec",
+        type=float,
+        default=DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+        help="Absolute deadline for the complete question (default: 180).",
     )
     parser.add_argument(
         "--rhythm-strip-pass",
@@ -1994,6 +2395,22 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--defer-scoring",
+        action="store_true",
+        help=(
+            "Persist blinded inference results without rebuilding against this "
+            "manifest; an external runner must score later with the gold manifest."
+        ),
+    )
+    parser.add_argument(
+        "--resume-retry-errors",
+        action="store_true",
+        help=(
+            "With --resume, retry persisted cases whose raw result records an "
+            "error; successful artifacts remain untouched."
+        ),
+    )
+    parser.add_argument(
         "--resume-legacy-policy",
         choices=("reject", "mark"),
         default="reject",
@@ -2018,6 +2435,17 @@ def main() -> int:
         parser.error("minimal_control requires --no-rhythm-strip-pass")
     if args.ecgfounder_waveform_evidence and not args.multi_pass:
         parser.error("--ecgfounder-waveform-evidence requires --multi-pass")
+    if not (
+        0.0
+        < args.initial_response_sla_sec
+        < args.first_refinement_sla_sec
+        < args.total_analysis_sla_sec
+    ):
+        parser.error(
+            "SLA values must satisfy 0 < initial response < first refinement < total"
+        )
+    if args.resume_retry_errors and not args.resume:
+        parser.error("--resume-retry-errors requires --resume")
     _configure_eval_logging(args.verbose)
 
     manifest_path = args.manifest or (
@@ -2039,6 +2467,21 @@ def main() -> int:
         cases = cases[: args.limit]
     if not cases:
         print("No cases in manifest.", file=sys.stderr)
+        return 2
+    partial_case_count = sum(case.partial_input is not None for case in cases)
+    if partial_case_count and not args.multi_pass:
+        print(
+            "ERROR: deliberately incomplete ECG manifests require --multi-pass "
+            "so final boxes can bind to the exact variant bytes.",
+            file=sys.stderr,
+        )
+        return 2
+    if partial_case_count and args.analysis_prompt_profile != "clinical":
+        print(
+            "ERROR: deliberately incomplete ECG manifests require the clinical "
+            "prompt/guardrail harness.",
+            file=sys.stderr,
+        )
         return 2
 
     mode = "mock" if args.mock else "real"
@@ -2120,23 +2563,36 @@ def main() -> int:
             mode=mode,
             flags={
                 "limit": args.limit,
-                "guardrail_hooks": [
-                    "InputGuard",
-                    "OutputValidator",
-                    *([] if args.multi_pass else ["BboxCalibrationHook"]),
-                    "ClinicalConsistencyHook",
-                ],
-                "single_pass_bbox_calibrator": "calibrate_ekg_bboxes",
+                "guardrail_hooks": _guardrail_hook_names(
+                    analysis_prompt_profile=args.analysis_prompt_profile,
+                    multi_pass=bool(args.multi_pass),
+                ),
+                "single_pass_bbox_calibrator": (
+                    "calibrate_ekg_bboxes"
+                    if args.analysis_prompt_profile == "clinical"
+                    else "disabled"
+                ),
                 "max_image_edge_px": _MAX_IMAGE_EDGE_PX,
                 "multi_pass": bool(args.multi_pass),
                 "analysis_prompt_profile": args.analysis_prompt_profile,
+                "openclaw_thinking_level": args.openclaw_thinking_level,
+                "openclaw_fast_mode": bool(args.fast_mode),
                 "multi_pass_max_targets": args.multi_pass_max_targets,
                 "multi_pass_max_ekg_systematic_probes": (
                     args.multi_pass_max_ekg_systematic_probes
                 ),
+                "initial_response_sla_sec": args.initial_response_sla_sec,
+                "first_refinement_sla_sec": args.first_refinement_sla_sec,
+                "total_analysis_sla_sec": args.total_analysis_sla_sec,
                 "multi_pass_bbox_calibrator": "calibrate_ekg_bboxes",
+                "local_signal_candidates": (
+                    "image_processor"
+                    if args.analysis_prompt_profile == "clinical"
+                    else "disabled"
+                ),
                 "refinement_crop_source": "original_roi",
                 "partial_scorecard_interval": args.partial_scorecard_interval,
+                "defer_scoring": bool(args.defer_scoring),
                 "require_perfect": bool(args.require_perfect),
                 "rhythm_strip_pass": bool(args.rhythm_strip_pass),
                 "ecgfounder_waveform_evidence": bool(args.ecgfounder_waveform_evidence),
@@ -2153,6 +2609,10 @@ def main() -> int:
                     ecgfounder_health.get("preprocessing_revision") or ""
                 ),
                 "timeout_sec": args.timeout_sec,
+                "partial_ecg_case_count": partial_case_count,
+                "partial_ecg_contract_schema_version": (
+                    PARTIAL_INPUT_SCHEMA_VERSION if partial_case_count else 0
+                ),
             },
         )
         fingerprint = _prepare_protocol_fingerprint(
@@ -2174,12 +2634,20 @@ def main() -> int:
         f"({'comparable' if comparable else 'mixed/non-comparable'})"
     )
     if args.resume:
-        cases, skipped = _pending_cases(cases, output_dir)
+        cases, skipped = _pending_cases(
+            cases,
+            output_dir,
+            retry_errors=bool(args.resume_retry_errors),
+        )
         print(
             f"Resume: skipped {skipped} existing result(s); "
-            f"{len(cases)} case(s) remain."
+            f"{len(cases)} case(s) remain"
+            f"{' (including persisted errors)' if args.resume_retry_errors else ''}."
         )
         if not cases:
+            if args.defer_scoring:
+                print("Resume complete: no pending blinded inference cases.")
+                return 0 if comparable else 6
             rebuild_exit, rebuild_output = _rebuild_canonical_scorecard(
                 output_dir=output_dir,
                 manifest_path=manifest_path,
@@ -2205,7 +2673,11 @@ def main() -> int:
                 multi_pass_max_ekg_systematic_probes=(
                     args.multi_pass_max_ekg_systematic_probes
                 ),
+                initial_response_sla_sec=args.initial_response_sla_sec,
+                first_refinement_sla_sec=args.first_refinement_sla_sec,
+                total_analysis_sla_sec=args.total_analysis_sla_sec,
                 analysis_prompt_profile=args.analysis_prompt_profile,
+                openclaw_fast_mode=bool(args.fast_mode),
                 partial_scorecard_interval=args.partial_scorecard_interval,
                 rhythm_strip_pass=args.rhythm_strip_pass,
                 ecg_founder_waveform_evidence=(args.ecgfounder_waveform_evidence),
@@ -2224,24 +2696,29 @@ def main() -> int:
         )
         return 1
     elapsed = time.monotonic() - start
-    rebuild_exit, rebuild_output = _rebuild_canonical_scorecard(
-        output_dir=output_dir,
-        manifest_path=manifest_path,
-        gateway_mode=mode,
-    )
-    if rebuild_exit != 0:
-        print(
-            "\nERROR: could not atomically rebuild the full canonical scorecard:\n"
-            + rebuild_output,
-            file=sys.stderr,
+    if not args.defer_scoring:
+        rebuild_exit, rebuild_output = _rebuild_canonical_scorecard(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            gateway_mode=mode,
         )
-        return 5
+        if rebuild_exit != 0:
+            print(
+                "\nERROR: could not atomically rebuild the full canonical scorecard:\n"
+                + rebuild_output,
+                file=sys.stderr,
+            )
+            return 5
+    else:
+        print("Blinded inference complete; formal scoring is deferred to the runner.")
     _print_summary(report, output_dir, case_print_limit=args.case_print_limit)
     print(f"  total run time: {elapsed:.1f}s")
     # A definitive can't-miss or an urgent uncertain differential that was not
     # safely surfaced fails CI. The latter accepts uncertainty; it does not
     # require the model to manufacture a diagnosis.
-    if report.cant_miss_missed or report.urgent_concern_missed:
+    if not args.defer_scoring and (
+        report.cant_miss_missed or report.urgent_concern_missed
+    ):
         missed_count = len(report.cant_miss_missed) + len(report.urgent_concern_missed)
         print(
             f"\nFAIL: {missed_count} critical diagnosis/urgent concern(s) "
@@ -2249,7 +2726,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 3
-    if args.require_perfect:
+    if args.require_perfect and not args.defer_scoring:
         failures = report.perfect_failures()
         if failures:
             print(

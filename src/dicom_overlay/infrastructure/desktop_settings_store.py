@@ -59,7 +59,11 @@ class DesktopSettingsStore:
         self._write_yaml(self._config_path, raw)
 
     def save_analysis_settings(
-        self, *, multi_pass_enabled: bool, max_zoom_targets: int
+        self,
+        *,
+        multi_pass_enabled: bool,
+        max_zoom_targets: int,
+        fast_mode_enabled: bool | None = None,
     ) -> None:
         """Persist the bounded crop/refine settings without dropping config."""
         if not 1 <= max_zoom_targets <= 5:
@@ -68,6 +72,9 @@ class DesktopSettingsStore:
         analysis = raw.setdefault("analysis", {})
         analysis["multi_pass_enabled"] = bool(multi_pass_enabled)
         analysis["multi_pass_max_zoom_targets"] = int(max_zoom_targets)
+        if fast_mode_enabled is not None:
+            openclaw = raw.setdefault("openclaw", {})
+            openclaw["fast_mode"] = bool(fast_mode_enabled)
         self._write_yaml(self._config_path, raw)
 
     def save_provider_profile(
@@ -78,7 +85,7 @@ class DesktopSettingsStore:
         gateway_token: str,
     ) -> None:
         env_updates: dict[str, str] = {}
-        if api_key.strip():
+        if profile.api_key_env and api_key.strip():
             env_updates[profile.api_key_env] = api_key.strip()
         if gateway_token.strip():
             env_updates["OPENCLAW_GATEWAY_TOKEN"] = gateway_token.strip()
@@ -122,6 +129,26 @@ class DesktopSettingsStore:
         model = defaults.get("model")
         primary = model.get("primary") if isinstance(model, dict) else model
         return primary.strip() if isinstance(primary, str) else ""
+
+    def load_provider_api(self) -> str:
+        """Return the active model provider transport without exposing auth."""
+        payload = self._read_openclaw_config()
+        agents = payload.get("agents")
+        defaults = agents.get("defaults") if isinstance(agents, dict) else None
+        model = defaults.get("model") if isinstance(defaults, dict) else None
+        primary = model.get("primary") if isinstance(model, dict) else model
+        if not isinstance(primary, str):
+            return ""
+        provider_id, separator, _model_id = primary.strip().partition("/")
+        if not separator or not provider_id:
+            return ""
+        models = payload.get("models")
+        providers = models.get("providers") if isinstance(models, dict) else None
+        provider = (
+            providers.get(provider_id) if isinstance(providers, dict) else None
+        )
+        api = provider.get("api") if isinstance(provider, dict) else None
+        return api.strip() if isinstance(api, str) else ""
 
     def ecg_founder_configured(self) -> bool:
         """Report configuration presence without probing or exposing secrets."""

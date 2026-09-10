@@ -14,6 +14,16 @@ from dicom_overlay.infrastructure.eval_artifact_validator import (
 )
 
 
+def _gateway_protocol_receipt() -> dict[str, object]:
+    return {
+        "verified": True,
+        "advertised_min_protocol": 3,
+        "advertised_max_protocol": 4,
+        "negotiated_protocol": 4,
+        "server_version": "2026.7.1-2",
+    }
+
+
 def _write_manifest(path: Path, count: int) -> None:
     image_dir = path.parent / "cxr"
     image_dir.mkdir(parents=True, exist_ok=True)
@@ -149,6 +159,7 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
                     "image": f"{i:04d}.png",
                     "protocol_digest": protocol_digest,
                     "source_image_sha256": image_sha256,
+                    "gateway_protocol_receipt": _gateway_protocol_receipt(),
                     "findings": [],
                     "local_image_quality": {"low_signal": False},
                     "local_signal_candidates": {
@@ -251,6 +262,31 @@ def test_verify_eval_artifacts_rejects_missed_urgent_concern(tmp_path: Path) -> 
 
     assert not verification.ok
     assert any("urgent_concern_gate" in item for item in verification.failures)
+
+
+def test_verify_eval_artifacts_can_record_safety_misses_as_outcomes(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    eval_dir = tmp_path / "eval"
+    _write_manifest(manifest, 5)
+    _write_scorecard(
+        eval_dir,
+        5,
+        cant_miss_missed=["public_cxr_0000: ventricular tachycardia"],
+        urgent_concern_missed=["public_cxr_0001: STEMI"],
+    )
+
+    verification = verify_eval_artifacts(
+        eval_dir=eval_dir,
+        manifest_path=manifest,
+        min_cases=5,
+        require_zero_safety_misses=False,
+    )
+
+    assert verification.ok
+    assert "cant_miss_metrics_recorded" in verification.passed_checks
+    assert "urgent_concern_metrics_recorded" in verification.passed_checks
 
 
 def test_verify_eval_artifacts_rejects_missing_review_audit(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -19,20 +20,27 @@ from dicom_overlay.infrastructure.config_loader import load_config, save_roi_con
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.gateway_manager import GatewayManager
+from dicom_overlay.infrastructure.logging_config import resolve_log_path, setup_logging
 from dicom_overlay.infrastructure.openclaw_runtime import (
+    MAX_GATEWAY_PROTOCOL,
+    MIN_GATEWAY_PROTOCOL,
     MIN_SAFE_OPENCLAW_VERSION,
+    PINNED_OPENCLAW_VERSION,
     OpenClawRuntimeError,
     build_harness_manifest,
     build_openclaw_chat_frame,
     ensure_openclaw_runtime_supported,
     is_openclaw_version_supported,
+    parse_gateway_hello,
     read_installed_openclaw_version,
 )
 from dicom_overlay.infrastructure.openclaw_settings import (
+    ProviderAuthMode,
     ProviderProfile,
     ProviderType,
     build_openclaw_config,
     default_provider_profiles,
+    merge_openclaw_config,
 )
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ScreenMonitor
@@ -69,6 +77,7 @@ class TestConfigLoader:
         assert config.phi_roi.configured is False
         assert config.openclaw.gateway_url == "ws://localhost:9999"
         assert config.openclaw.gateway_start_timeout_sec == 180
+        assert config.openclaw.fast_mode is True
         assert config.analysis.trigger_mode == TriggerMode.MANUAL
 
     def test_save_roi_config(self, tmp_path):
@@ -143,8 +152,91 @@ class TestOpenClawSettings:
         )
         assert profile.provider_id == "openai"
         assert profile.provider_type == ProviderType.OPENAI
-        assert profile.model
+        assert profile.model == "gpt-5.4-mini"
+        assert profile.input_modalities == ("text", "image")
+        assert profile.auth_mode is ProviderAuthMode.CODEX_SUBSCRIPTION
+        assert profile.api_key_env == ""
+        assert profile.api == "openai-chatgpt-responses"
+        assert profile.agent_runtime == "openclaw"
         assert profile.requires_vision_check
+
+    def test_build_codex_subscription_config_is_fail_closed_without_api_key(self):
+        profile = next(
+            p for p in default_provider_profiles() if p.key == "openai-codex"
+        )
+
+        config = build_openclaw_config(profile)
+
+        provider = config["models"]["providers"]["openai"]
+        assert provider["timeoutSeconds"] == 165
+        assert "apiKey" not in provider
+        assert "baseUrl" not in provider
+        assert provider["api"] == "openai-chatgpt-responses"
+        assert provider["models"][0] == {
+            "id": "gpt-5.4-mini",
+            "name": "OpenAI Subscription via OpenClaw",
+            "input": ["text", "image"],
+            "reasoning": True,
+            "contextWindow": 400_000,
+            "maxTokens": 128_000,
+            "agentRuntime": {"id": "openclaw"},
+        }
+        assert config["agents"]["defaults"]["models"][profile.model_ref][
+            "agentRuntime"
+        ] == {"id": "openclaw"}
+        assert "plugins" not in config
+
+    def test_subscription_merge_removes_stale_api_transport_and_keeps_plugins(self):
+        profile = next(
+            p for p in default_provider_profiles() if p.key == "openai-codex"
+        )
+        existing = {
+            "models": {
+                "providers": {
+                    "openai": {
+                        "apiKey": {"id": "OPENAI_API_KEY"},
+                        "baseUrl": "https://api.openai.com/v1",
+                        "models": [{"id": "gpt-5.4-mini"}],
+                    }
+                }
+            },
+            "plugins": {
+                "allow": ["dicom-overlay-agent-harness", "codex"],
+                "entries": {
+                    "dicom-overlay-agent-harness": {"enabled": True},
+                    "codex": {
+                        "enabled": True,
+                        "config": {"appServer": {"homeScope": "agent"}},
+                    },
+                },
+                "load": {
+                    "paths": [
+                        "C:/state/plugins/@openclaw/codex",
+                        "C:/workspace/dicom-overlay-agent-harness",
+                    ]
+                },
+            },
+        }
+
+        merged = merge_openclaw_config(existing, build_openclaw_config(profile))
+
+        provider = merged["models"]["providers"]["openai"]
+        assert "apiKey" not in provider
+        assert "baseUrl" not in provider
+        assert provider["api"] == "openai-chatgpt-responses"
+        assert provider["models"][0]["input"] == ["text", "image"]
+        assert provider["models"][0]["agentRuntime"] == {"id": "openclaw"}
+        assert merged["agents"]["defaults"]["models"][profile.model_ref][
+            "agentRuntime"
+        ] == {"id": "openclaw"}
+        assert merged["plugins"]["allow"] == ["dicom-overlay-agent-harness"]
+        assert merged["plugins"]["entries"]["dicom-overlay-agent-harness"] == {
+            "enabled": True
+        }
+        assert "codex" not in merged["plugins"]["entries"]
+        assert merged["plugins"]["load"]["paths"] == [
+            "C:/workspace/dicom-overlay-agent-harness"
+        ]
 
     def test_build_openclaw_config_uses_secret_refs_and_model_allowlist(self):
         profile = ProviderProfile(
@@ -226,6 +318,8 @@ class TestOpenClawRuntimeCompatibility:
         assert is_openclaw_version_supported("2026.4.22")
         assert is_openclaw_version_supported("2026.5.27")
         assert is_openclaw_version_supported("2026.5.24-beta.2")
+        assert not is_openclaw_version_supported("mock-2026.7.1-2")
+        assert not is_openclaw_version_supported("2026.2.30")
 
     def test_reads_installed_openclaw_version_from_node_package(self, tmp_path):
         package = tmp_path / "openclaw" / "node_modules" / "openclaw"
@@ -252,21 +346,140 @@ class TestOpenClawRuntimeCompatibility:
         manifest = build_harness_manifest()
 
         assert manifest["name"] == "dicom-overlay-agent-harness"
+        assert manifest["version"] == "1.5.8"
         assert manifest["compatibility"]["minimumOpenClaw"] == "2026.4.22"
         assert manifest["compatibility"]["gatewayProtocol"]["methods"] == [
             "connect",
             "chat.send",
         ]
+        assert manifest["compatibility"]["gatewayProtocol"]["minProtocol"] == 3
+        assert manifest["compatibility"]["gatewayProtocol"]["maxProtocol"] == 4
         assert manifest["capabilities"]["bboxCropReanalysis"] is True
         assert manifest["capabilities"]["coordinateDriftCalibration"] is True
         assert manifest["capabilities"]["imageTurnBoundBboxReceipts"] is True
+        assert manifest["capabilities"]["compactCoarseTriage"] is True
+        assert manifest["capabilities"]["compactLeadOrderLayout"] is True
+        assert manifest["capabilities"]["nearMissRowPeakGeometryRecovery"] is True
+        assert manifest["capabilities"]["epsilonSafeCropProjection"] is True
+        assert manifest["capabilities"]["overlapAwareSystematicFallback"] is True
+        assert manifest["capabilities"]["finalTurnAfterCompletedRefinement"] is True
+        assert manifest["capabilities"]["boundedFinalizationRetryBudget"] is True
+        assert manifest["capabilities"]["explicitUnassessedChecklistFallback"] is True
+        assert manifest["capabilities"]["finalDispositionBoundBboxReceipt"] is True
+        assert manifest["capabilities"]["finalFindingRetainReviseRetract"] is True
+        assert manifest["capabilities"]["rejectedCoarseBboxRetraction"] is True
+        assert manifest["capabilities"]["objectShapedLayoutGeometry"] is True
+        assert manifest["capabilities"]["semanticUnlocalizedEkgRouting"] is True
+        assert manifest["capabilities"]["geometryDeduplicatedSystematicProbes"] is True
+        assert manifest["capabilities"]["systematicHypothesisReconciliation"] is True
+        assert manifest["capabilities"]["unlocalizedActionableGroundingGuard"] is True
+        assert manifest["capabilities"]["unavailableRhythmRegionReconciliation"] is True
+        assert manifest["capabilities"]["boxedInfoUncertaintyGuard"] is True
+        assert manifest["capabilities"]["preFinalTightEkgBboxGuard"] is True
+        assert manifest["capabilities"]["benignVariantRetractionContract"] is True
+        assert manifest["capabilities"]["timeCriticalStElevationTriageContract"] is True
+        assert manifest["capabilities"]["boundedRhythmStripRefinement"] is True
+        assert manifest["capabilities"]["endToEndRhythmSlaReceipt"] is True
         assert manifest["capabilities"]["ecgFounderWaveformAssist"] is True
         assert manifest["capabilities"]["noScreenshotToWaveformInference"] is True
         assert (
             "ecg_founder_analyze_waveform" in manifest["capabilities"]["openClawTools"]
         )
+        assert manifest["capabilities"]["ineligibleWaveformImageFallback"] is True
         assert manifest["capabilities"]["gatewayOnlyDesktopBoundary"] is True
+        assert manifest["capabilities"]["gatewayHelloProtocolReceipt"] is True
+        assert manifest["capabilities"]["perTurnFastModeRequest"] is True
+        assert (
+            manifest["capabilities"]["transportReceiptRequiredForServiceTierClaim"]
+            is True
+        )
+        assert manifest["capabilities"]["deterministicRowStripDetection"] is True
+        assert manifest["capabilities"]["imageCorroboratedLayoutRecovery"] is True
+        assert (
+            manifest["capabilities"]["deterministicRhythmRegularityMeasurement"] is True
+        )
+        assert manifest["capabilities"]["waveformRhythmConflictGuard"] is True
+        assert manifest["capabilities"]["ekgContextualCropRouting"] is True
+        assert manifest["capabilities"]["partialCropRetractionGuard"] is True
+        assert manifest["capabilities"]["balancedWaveformCandidateVerification"] is True
+        assert manifest["capabilities"]["nonceIdempotentWaveformTool"] is True
+        assert manifest["capabilities"]["compactWaveformAgentPayload"] is True
+        assert manifest["compatibility"]["gatewayProtocol"]["chatSendParameters"] == [
+            "fastMode"
+        ]
         assert "plugin-sdk" not in yaml.safe_dump(manifest)
+
+    def test_gateway_hello_receipt_accepts_only_advertised_protocol_range(self):
+        assert (MIN_GATEWAY_PROTOCOL, MAX_GATEWAY_PROTOCOL) == (3, 4)
+        assert PINNED_OPENCLAW_VERSION == "2026.7.1-2"
+        assert parse_gateway_hello(
+            {
+                "type": "hello-ok",
+                "protocol": 4,
+                "server": {"version": "2026.7.1-2"},
+            }
+        ) == (4, "2026.7.1-2")
+
+        with pytest.raises(OpenClawRuntimeError, match="not hello-ok"):
+            parse_gateway_hello({"status": "connected"})
+        with pytest.raises(OpenClawRuntimeError, match="unsupported"):
+            parse_gateway_hello(
+                {
+                    "type": "hello-ok",
+                    "protocol": 5,
+                    "server": {"version": "future"},
+                }
+            )
+        with pytest.raises(OpenClawRuntimeError, match=r"server\.version"):
+            parse_gateway_hello({"type": "hello-ok", "protocol": 4})
+
+    @pytest.mark.parametrize(
+        "version",
+        [
+            "mock-2026.7.1-2",
+            "2026.02.3",
+            "2026.2.30",
+            "2026.7",
+            "future",
+        ],
+    )
+    def test_gateway_hello_rejects_invalid_calendar_version(self, version):
+        with pytest.raises(OpenClawRuntimeError, match="calendar version"):
+            parse_gateway_hello(
+                {
+                    "type": "hello-ok",
+                    "protocol": 4,
+                    "server": {"version": version},
+                }
+            )
+
+    def test_gateway_hello_rejects_runtime_below_safe_floor(self):
+        with pytest.raises(OpenClawRuntimeError, match="below the minimum"):
+            parse_gateway_hello(
+                {
+                    "type": "hello-ok",
+                    "protocol": 3,
+                    "server": {"version": "2026.4.21"},
+                }
+            )
+
+        assert parse_gateway_hello(
+            {
+                "type": "hello-ok",
+                "protocol": 3,
+                "server": {"version": MIN_SAFE_OPENCLAW_VERSION},
+            }
+        ) == (3, MIN_SAFE_OPENCLAW_VERSION)
+
+    def test_pinned_gateway_must_negotiate_protocol_four(self):
+        with pytest.raises(OpenClawRuntimeError, match=r"must negotiate.*protocol 4"):
+            parse_gateway_hello(
+                {
+                    "type": "hello-ok",
+                    "protocol": 3,
+                    "server": {"version": PINNED_OPENCLAW_VERSION},
+                }
+            )
 
     def test_builds_gateway_chat_frame_with_stable_image_attachment_schema(self):
         frame = build_openclaw_chat_frame(
@@ -275,11 +488,13 @@ class TestOpenClawRuntimeCompatibility:
             message="Analyze this.",
             idempotency_key="idem-1",
             image_base64="ZmFrZQ==",
+            fast_mode=True,
         )
 
         assert frame["method"] == "chat.send"
         assert frame["params"]["sessionKey"] == "main"
         assert frame["params"]["message"] == "Analyze this."
+        assert frame["params"]["fastMode"] is True
         assert frame["params"]["attachments"] == [
             {
                 "type": "image",
@@ -287,6 +502,17 @@ class TestOpenClawRuntimeCompatibility:
                 "content": "ZmFrZQ==",
             }
         ]
+
+    def test_gateway_chat_frame_rejects_non_integer_fast_auto_delay(self):
+        with pytest.raises(ValueError, match="integer"):
+            build_openclaw_chat_frame(
+                request_id="chat-1",
+                session_key="main",
+                message="Analyze this.",
+                idempotency_key="idem-1",
+                fast_mode="auto",
+                fast_auto_on_seconds="30",  # type: ignore[arg-type]
+            )
 
     def test_gateway_manager_reads_bundled_openclaw_runtime_when_frozen(
         self, monkeypatch, tmp_path
@@ -503,6 +729,30 @@ class TestOpenClawRuntimeCompatibility:
             },
         }
 
+    def test_gateway_manager_preloads_subscription_openai_provider(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.delenv("OPENCLAW_GATEWAY_TOKEN", raising=False)
+        profile = next(
+            item for item in default_provider_profiles() if item.key == "openai-codex"
+        )
+        config_path = tmp_path / "openclaw" / "openclaw.json"
+        config_path.parent.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(build_openclaw_config(profile)),
+            encoding="utf-8",
+        )
+        manager = GatewayManager(repo_root=tmp_path)
+
+        path = manager._ensure_openclaw_config()
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["plugins"]["allow"] == [
+            "dicom-overlay-agent-harness",
+            "openai",
+        ]
+        assert payload["plugins"]["entries"]["openai"] == {"enabled": True}
+
     def test_gateway_manager_enables_ecg_founder_only_with_endpoint_and_token(
         self, monkeypatch, tmp_path
     ):
@@ -552,6 +802,15 @@ class TestOpenClawRuntimeCompatibility:
         # Core 4: heavy unused Qt modules are excluded to keep the bundle lean.
         assert "PyQt6.QtWebEngineCore" in spec
         assert "opengl32sw.dll" in spec
+        # Build/test presentation dependencies and Pillow AVIF are not runtime
+        # requirements; PNG/JPEG and FreeType remain gated by package smoke.
+        assert '"rich"' in spec
+        assert '"pygments"' in spec
+        assert '"markdown_it"' in spec
+        assert '"mdurl"' in spec
+        assert '"PIL.AvifImagePlugin"' in spec
+        assert '"PIL._avif"' in spec
+        assert "_imagingft" not in spec
 
 
 class TestAppBaseDir:
@@ -574,6 +833,52 @@ class TestAppBaseDir:
         )
 
         assert base == tmp_path
+
+    def test_frozen_relative_log_is_written_beside_executable_from_other_cwd(
+        self, tmp_path, monkeypatch
+    ):
+        exe = tmp_path / "bundle" / "DICOMOverlayAgent.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_bytes(b"")
+        launch_cwd = tmp_path / "launch-cwd"
+        launch_cwd.mkdir()
+        base = resolve_app_base_dir(
+            frozen=True,
+            executable=str(exe),
+            cwd=launch_cwd,
+        )
+        root = logging.getLogger()
+        previous_handlers = list(root.handlers)
+        previous_level = root.level
+        app_logger = logging.getLogger("dicom_overlay")
+        previous_app_level = app_logger.level
+
+        monkeypatch.chdir(launch_cwd)
+        try:
+            setup_logging(
+                log_level="INFO",
+                log_file="logs/overlay.log",
+                base_dir=base,
+            )
+            logging.getLogger("dicom_overlay.frozen_log_test").info("anchored-marker")
+            for handler in root.handlers:
+                handler.flush()
+            anchored = exe.parent / "logs" / "overlay.log"
+            assert "anchored-marker" in anchored.read_text(encoding="utf-8")
+            assert not (launch_cwd / "logs" / "overlay.log").exists()
+        finally:
+            for handler in list(root.handlers):
+                root.removeHandler(handler)
+                if handler not in previous_handlers:
+                    handler.close()
+            for handler in previous_handlers:
+                root.addHandler(handler)
+            root.setLevel(previous_level)
+            app_logger.setLevel(previous_app_level)
+
+    def test_relative_log_cannot_escape_application_base(self, tmp_path):
+        with pytest.raises(ValueError, match="must stay inside"):
+            resolve_log_path("../outside.log", base_dir=tmp_path / "bundle")
 
 
 class TestDesktopSettingsStore:
@@ -665,11 +970,11 @@ class TestDesktopSettingsStore:
             encoding="utf-8",
         )
         profile = ProviderProfile(
-            key="openai-codex",
-            label="OpenAI Codex",
+            key="openai-vision",
+            label="OpenAI Vision",
             provider_id="openai",
             provider_type=ProviderType.OPENAI,
-            model="gpt-5.2-codex",
+            model="gpt-5.4-mini",
             api_key_env="OPENAI_API_KEY",
             base_url="https://api.openai.com/v1",
         )
@@ -682,6 +987,33 @@ class TestDesktopSettingsStore:
         assert config["models"]["providers"]["openai"]["apiKey"]["id"] == (
             "OPENAI_API_KEY"
         )
+
+    def test_save_codex_subscription_never_writes_platform_api_key(self, tmp_path):
+        profile = next(
+            p for p in default_provider_profiles() if p.key == "openai-codex"
+        )
+        store = DesktopSettingsStore(repo_root=tmp_path)
+
+        store.save_provider_profile(
+            profile,
+            api_key="must-not-be-written",
+            gateway_token="gw-test",
+        )
+
+        env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+        config = yaml.safe_load(
+            (tmp_path / "openclaw" / "openclaw.json").read_text(encoding="utf-8")
+        )
+        assert "must-not-be-written" not in env_text
+        assert "OPENAI_API_KEY" not in env_text
+        provider = config["models"]["providers"]["openai"]
+        assert "apiKey" not in provider
+        assert "baseUrl" not in provider
+        assert provider["api"] == "openai-chatgpt-responses"
+        assert provider["models"][0]["input"] == ["text", "image"]
+        assert config["agents"]["defaults"]["models"][profile.model_ref][
+            "agentRuntime"
+        ] == {"id": "openclaw"}
 
     def test_save_trigger_mode_updates_config_yaml_without_dropping_roi(self, tmp_path):
         config_path = tmp_path / "config.yaml"
@@ -714,6 +1046,7 @@ class TestDesktopSettingsStore:
         store.save_analysis_settings(
             multi_pass_enabled=True,
             max_zoom_targets=2,
+            fast_mode_enabled=False,
         )
 
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -723,6 +1056,7 @@ class TestDesktopSettingsStore:
             "multi_pass_max_zoom_targets": 2,
         }
         assert raw["phi_roi"]["top"] == 12
+        assert raw["openclaw"]["fast_mode"] is False
 
     def test_read_env_file_ignores_comments_and_preserves_values(self, tmp_path):
         env_path = tmp_path / ".env"
@@ -741,6 +1075,83 @@ class TestDesktopSettingsStore:
 
 
 class TestScreenMonitorHashing:
+    def test_window_detection_excludes_own_ui_and_prefers_specific_viewer(
+        self, monkeypatch
+    ):
+        from dicom_overlay.infrastructure import screen_monitor
+
+        windows = {
+            10: {
+                "visible": True,
+                "title": "DICOM Overlay Settings",
+                "pid": os.getpid(),
+                "rect": (1400, 1000, 2300, 1500),
+            },
+            11: {
+                "visible": True,
+                "title": "dicom-overlay-agent - Visual Studio Code",
+                "pid": 411,
+                "rect": (0, 0, 2560, 1550),
+            },
+            12: {
+                "visible": True,
+                "title": "DICOM Harness Viewer",
+                "pid": 412,
+                "rect": (19, 30, 1541, 1166),
+            },
+        }
+
+        class FakeWin32Gui:
+            @staticmethod
+            def EnumWindows(callback, context):
+                for hwnd in windows:
+                    callback(hwnd, context)
+
+            @staticmethod
+            def IsWindowVisible(hwnd):
+                return windows[hwnd]["visible"]
+
+            @staticmethod
+            def IsIconic(_hwnd):
+                return False
+
+            @staticmethod
+            def GetWindowText(hwnd):
+                return windows[hwnd]["title"]
+
+            @staticmethod
+            def GetWindowRect(hwnd):
+                return windows[hwnd]["rect"]
+
+        class FakeWin32Process:
+            @staticmethod
+            def GetWindowThreadProcessId(hwnd):
+                return 1, windows[hwnd]["pid"]
+
+        monkeypatch.setattr(screen_monitor, "HAS_WIN32", True)
+        monkeypatch.setattr(screen_monitor, "win32gui", FakeWin32Gui)
+        monkeypatch.setattr(screen_monitor, "win32process", FakeWin32Process)
+        monitor = ScreenMonitor()
+
+        detected = monitor.find_target_window(["DICOM", "Viewer"])
+
+        assert detected == WindowRect(left=19, top=30, width=1522, height=1136)
+        assert monitor._target_hwnd == 12
+
+        # Do not jump between matching windows while the selected viewer lives.
+        windows[13] = {
+            "visible": True,
+            "title": "DICOM Medical Viewer",
+            "pid": 413,
+            "rect": (50, 50, 1650, 1250),
+        }
+        assert monitor.find_target_window(["DICOM", "Medical", "Viewer"]) == detected
+
+        windows[12]["visible"] = False
+        assert monitor.find_target_window(["DICOM", "Medical", "Viewer"]) == WindowRect(
+            left=50, top=50, width=1600, height=1200
+        )
+
     @staticmethod
     def _pattern_png(invert: bool = False) -> bytes:
         image = Image.new("RGB", (16, 16), "black")

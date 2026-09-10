@@ -38,6 +38,7 @@ from dicom_overlay.domain.entities import (
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.services import VisionAnalyzerService
 from dicom_overlay.infrastructure.openclaw_client import (
+    ModelResponseParseError,
     OpenClawClient,
     _coerce_result_payload,
     _extract_text_from_event,
@@ -419,7 +420,7 @@ class TestPayloadFromChatEvent:
         assert result["summary"] == "Fenced"
 
     def test_empty_message_raises(self):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ModelResponseParseError, match="empty final chat"):
             _payload_from_chat_event({"message": {"content": []}})
 
     def test_non_json_text_raises(self):
@@ -428,7 +429,7 @@ class TestPayloadFromChatEvent:
                 "content": [{"type": "text", "text": "I cannot analyze this image."}]
             }
         }
-        with pytest.raises((RuntimeError, json.JSONDecodeError)):
+        with pytest.raises(ModelResponseParseError):
             _payload_from_chat_event(payload)
 
     def test_multi_block_content(self):
@@ -536,7 +537,11 @@ async def test_chat_about_image_sends_context_and_image_attachment():
                     "type": "res",
                     "id": connect_request["id"],
                     "ok": True,
-                    "payload": {"status": "connected"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -903,7 +908,11 @@ def _make_ws_handler(
                     "type": "res",
                     "id": connect_req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -966,7 +975,11 @@ def _make_chat_ws_handler(analysis_json: dict[str, Any], chat_response: str):
                     "type": "res",
                     "id": connect_req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -1255,7 +1268,11 @@ async def test_ws_error_response():
                     "type": "res",
                     "id": req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -1302,7 +1319,11 @@ async def test_ws_event_error_state():
                     "type": "res",
                     "id": req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -1360,7 +1381,11 @@ async def test_ws_connection_close_during_chat():
                     "type": "res",
                     "id": req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )

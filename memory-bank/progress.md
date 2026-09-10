@@ -1,4 +1,148 @@
-# Progress (Updated: 2026-08-05)
+# Progress (Updated: 2026-09-10)
+
+> Dated evidence history. The newest section describes current work;
+> older results are not evidence for untested current code or models.
+
+## 2026-09-10 Real Astra acceptance / security work in progress
+
+- `ca801b7` pushed; GitHub CI 34465682578 and Secret scan 34465682564 are
+  green. Local full regression: 1288 passed, 4 opt-in skips (165.64 s).
+- Clean real GUI case 41045474 export `desktop-20260910-102218-658881` completed
+  coarse, two crops and finalization in 140.481 s. Source and actual SummaryPanel
+  visually inspected; four public session rows plus four runtime Astra-low
+  observations retained. Preliminary limitation prose still survives final
+  reconciliation and needs a structured lifecycle fix, not indiscriminate deletion.
+- UI-only pilot driver uses real Ctrl+O/QFileDialog, Analyze and Export. It
+  verifies exported source against all 128 inference thumbnails, Gateway receipt,
+  model/effort observations and UI export files before marking a completed case.
+  Gold is not loaded. A technical failure is retained and stops that invocation.
+  `meeti_46169897` hit the initial 60 s deadline; `meeti_46079499` exported as
+  `desktop-20260910-103225-016469` in 124.486 s, nearest-source MAE 0.840/255
+  (runner-up 5.611), three Astra-low runtime observations. Clinical scoring pending.
+- Website evidence snapshot (10:22 UTC) and subscription setup now reflect Astra
+  low, retaining historical failures and honest billing/packaging limits.
+  Frontend-testing-debugging skill required rendered QA; Browser plugin absent,
+  so isolated Playwright/installed headless Edge verified 1440x1000 and 390x844,
+  menu Escape/focus, Docs/Subscription navigation, no overflow or console errors.
+  Screenshots/scripts stayed outside the repo. Pages source tests: 11 passed;
+  public deployment is still pending. No runtime browser dependency was added.
+
+- Calibration retry `desktop-20260910-095926-407907` completed final reconciliation
+  in 165.043 s (first attempt had timed out at 179.252 s); not a clinical pass.
+  Actual QWidget panel render was visually inspected. A compound negation still
+  triggered the local VT guard, so it is now restricted to asserted finding
+  labels, not narrative differential prose. An observed-duration gate prevents
+  starting an optional crop when the prior turn's duration exceeds its budget.
+- Case 41045474 was opened through the real viewer's Ctrl+O/QFileDialog and App
+  Analyze. Export `desktop-20260910-100742-309046` exposed terminal occlusion:
+  Astra correctly described the obstructing console and visible V5/V6 fragments.
+  This is a capture failure, NOT an accepted case. Source launch now uses
+  pythonw; a product-level occlusion gate has been added. No PHI was in this
+  synthetic/deidentified test, but unrelated-window capture must fail closed.
+- The analysis capture now validates viewer identity/geometry/ROI containment
+  and all visible top-level intersections immediately before and after capture.
+  Win32 failures and unstable z-order fail closed; transparent/app-owned
+  surfaces are not exempt. Local hash monitoring remains separate so visible
+  review panels do not disable change detection. No compositor atomicity is
+  claimed. Unit/core/multi-pass/viewer checks: 274 passed.
+- Actual GUI negative check at 10:17:38Z left the viewer's Open dialog over the
+  ECG, then clicked Analyze: `viewer_roi_obstructed`, zero analysis requests,
+  actionable status displayed. A second real check blocked a foreground editor.
+  Keeping viewer activation and Analyze invocation in one UI automation process
+  avoids the helper-process focus switch; a clean retry began at 10:19:26Z.
+- `710fa0a` GitHub CI and both Secret scan runs are green. New changes remain
+  subject to their own CI. The canonical Viewer now supports actual Ctrl+O and
+  optional normal window chrome, retaining the same configured ROI geometry.
+
+- First Astra low real-UI export: `desktop-20260910-094636-035106`, original
+  ROI 1499 x 1079, verified protocol 4. Coarse 40.967 s, first crop 68.548 s,
+  total 179.252 s. The second crop and final reconciliation hit deadlines;
+  this is an incomplete result, not a passed case. Back-projection drift was
+  below 0.67 physical pixels, which alone does not establish correct anatomy.
+- Real output revealed a local negation bug: "exclude a consecutive ventricular
+  run" incorrectly became an unresolved VT candidate. Added scoped negation and
+  positive-contrast regression cases. Multi-event crops now preserve all timed
+  events plus intervening beats rather than selecting only one event.
+- Final output is requested as compact JSON with short values and no regenerated
+  layout geometry (the existing reconciliation already preserves draft layout).
+  Clinical axes and bound bbox validation are unchanged. Speed benefit remains
+  unmeasured until the next real run.
+- Explicit Export now also renders app-owned summary/control/overlay widgets;
+  this avoids black Windows capture-exclusion screenshots without disabling
+  exclusion or copying desktop/background pixels.
+- Full suite before these last refinements: 1243 passed, 4 opt-in skips in
+  206.12 s. Latest targeted multi-pass/Core 2/GUI-export checks: 219 passed.
+
+- Active target changed to Astra low only; historical Luna is not an acceptance
+  result. GUI provider selection and Gateway restart observed
+  `openai/gpt-6-astra`, `thinking=low`, native subscription transport, and a
+  successful HTTP 200 on a real ROI capture from the visible ECG viewer.
+- Fixed stale subscription import: a successful profile listing cannot establish
+  credential freshness. Source OAuth fingerprint changes now trigger the pinned
+  public migration provider; unchanged sources reuse the owned OpenClaw profile.
+  Only OAuth fields enter the temporary import, never a Platform API key.
+- GitHub secret scanning and push protection are enabled. Gitleaks 8.30.1,
+  downloaded with verified release SHA-256, scanned all 152 local-history
+  commits and identified one old Gateway-token disclosure. Current changes
+  scanned clean; history has not been rewritten. The old token differs from
+  current config and environment and is absent from `.env`; only that exact
+  historical finding is baselined in `.gitleaksignore`.
+- Full new Astra cohort, actual partial-lead edge cases, fresh packaged build,
+  updated public Pages evidence, and release publication are still pending.
+
+## Doing
+
+- **Live GPT-5.6 Luna desktop acceptance and release hardening** (2026-08-28):
+  - [x] Launched the packaged Windows GUI and bundled OpenClaw path against a
+    visible credentialed local MEETI ECG. The real `gpt-5.6-luna` MultiPass run
+    reached
+    `DISPLAYING`, and the app-owned Export action preserved the source, report,
+    four diagnostic boxes, two crop outlines and coordinate audit.
+  - [x] Recorded the live baseline: 146.915 s, 5 image turns, 50,607 input +
+    4,906 output + 56,320 cache-read tokens, 1,970 reasoning tokens and 111,833
+    total. The subscription receipt charged USD 0; API-equivalent token pricing
+    is approximately USD 0.017135.
+  - [x] Verified the actual 2560 x 1600 / 150%-DPI projection. Exported boxes
+    stayed in bounds, were not clamped, and showed 0.104-0.368 px maximum edge
+    drift. Added a frozen geometry regression for the same 1522 x 1136 ROI.
+  - [x] Recorded the accuracy failure without relabelling it as success: the
+    agent missed the gold AF/slow-response, prolonged-QT and inferior ST-T
+    findings and instead proposed sinus rhythm/possible LVH.
+  - [x] Kept `openai/gpt-5.4-mini` as the release default and recorded that the
+    Luna run used an explicit `openai-codex` model override; OpenClaw retained
+    every image-analysis turn.
+  - [x] Repaired the current Core 2/Gateway/geometry smoke failures and added
+    invalid-bbox, event/schema/image, charge-safe recovery, 150%-DPI, and
+    10,001-identity resume/fingerprint boundary regressions without widening ROI.
+  - [x] Ran a two-case answer-free pre-release canary with a 1,222-ID denylist:
+    schema/bbox/SLA and zero-JSON-repair gates passed, but strict was 1/2 and
+    mean partial 0.522 after a warning-case LVH/sinus miss. Its dirty fingerprint
+    prevents treating it as the final frozen-source result.
+  - [x] Ran a clean-source two-case frozen canary with a 1,224-ID denylist. It
+    passed schema/bbox/SLA but failed release acceptance at 0/2 strict, 0.456
+    mean partial and 0.0 normal specificity, and exposed a delayed native bbox
+    receipt missing from a parse-retry refinement trace.
+  - [x] Fixed that trace race without another model turn: preserve partial JSONL
+    tails, poll native audit visibility for at most 0.5 s, and enforce exact
+    receipt matching for `confirm` bbox output. Routed every trusted precordial
+    crop through balanced V1-V4 transition and V2-V4 ST-T/T-wave checks.
+  - [x] Exposed post-fix regression completed with 0 errors/repairs and all
+    engineering artifacts/SLAs valid. Normal specificity recovered to 1.0 and
+    aggregate strict/partial improved to 0.5/0.569, but the warning case still
+    missed nonspecific ST-T/T-wave change; this is not blind acceptance evidence.
+  - [x] Removed the prompt conflation between "no acute/reciprocal pattern" and
+    "no nonspecific repolarization abnormality" while preserving a two-related-
+    lead/adjacent-beat reproducibility gate and the no-extra-turn budget.
+  - [ ] Validate the next prompt revision on a fresh frozen-source unseen canary,
+    then start/resume the 9,922-image paired experiment.
+  - [x] Reduced the verified staged OpenClaw runtime to 165.162 MiB, a
+    conservative 19.804 MiB reduction, while retaining seven required templates
+    and all internal `dist` chunks. The full v0.4.7 rebuild is still pending.
+  - [x] Rebuilt the synthetic-only GitHub Pages source and synchronized product
+    v0.4.7 / plugin 1.5.8 across bilingual README, runbook, architecture, spec,
+    roadmap, changelog, and memory-bank release evidence.
+  - [ ] Complete the clean full bundle rebuild, fill exact size/hash/test/canary
+    values, merge to `main`, verify Pages, and publish the signed-off tag/release.
 
 ## Done
 
@@ -697,3 +841,218 @@
 - 將 Torch/checkpoint 放在獨立 sidecar 環境，核對 checkpoint SHA-256，並用
   獨立 calibration cohort 產生部署 threshold；不得從測試集現算 threshold。
 - 修正系統化 MultiPass urgent canary 的 90 秒 timeout/多輪成本後重新 paired run。
+
+## Done (recent) - 2026-08-06
+
+- 建立 9,922 例 MEETI blind inference/gold manifests 與分層 selection report；
+  inference manifest 經檢查無 reference answer 洩漏。
+- 新增 paired experiment supervisor：同一來源指紋依序執行 baseline 與
+  MultiPass candidate，原子化記錄狀態、可續跑，完成後自動比較部分正確率、
+  strict 指標、paired bootstrap/McNemar 統計及 review artifacts。
+- ChatGPT subscription 路徑已改為 OpenClaw-owned loop：Codex 元件只在
+  Gateway 啟動前遷移 OAuth，live config 不載入 Codex agent runtime。
+- 修正安全漏診驗證語意：非 perfect 研究實驗保留 safety misses 為結果，
+  不再把真實漏診誤判成 artifact corruption 或強迫模型產生異常答案。
+- 桌面 review export 新增 source/review/result/bbox-audit，包含實際 pixel
+  座標、clamp、ink/projection 與 lead semantics，便於人工核對框線。
+- 完整 unit/smoke suite：847 passed、3 skipped；Ruff 全綠。
+- 重建 portable app；bundle verifier通過，額外 opt-in packaged selfcheck 與
+  isolated Gateway smoke 共 4 passed。
+- 修正正式 runner 在 OpenClaw 2026.7 將 Codex 視為 bundled origin 時仍要求
+  legacy global install provenance 的 blocker；改共用 migration-only auth helper。
+  真實 1-case canary 已由 OpenClaw embedded agent 完成，runtime ownership 三項
+  marker 全數通過；最終 unit/smoke 為 846 passed、3 skipped，Ruff 全綠。
+- 修正 protocol fingerprint 對 untracked source 只記路徑、不記內容的缺口；
+  現在 shared invariant 包含 scoped worktree content SHA-256 與檔案數，並納入
+  arm runner、paired supervisor、comparator。最終重跑為 847 passed、3 skipped。
+- 修正 npm 開發 runtime 仍殘留完整 Codex agent package/binaries 的缺口；
+  staging 現在只保留 OAuth migration extension，並移除 `@openai/codex` 與
+  `codex.exe`。runtime ownership 改以 agent route、transport、禁止 handoff
+  markers 與實體 dependency/binary 四層驗證；v5 真實 canary 全數通過。
+- 最終 rebuild 成功：EXE 7,342,445 bytes，bundle verifier status ok、零
+  failures；封裝後隔離 selfcheck/Gateway smoke 4 passed。完整 unit/smoke
+  849 passed、3 skipped，Ruff 全綠。
+
+## Doing
+
+- 從凍結版本執行 64 例正式 paired pilot；通過接受門檻後啟動 9,922 例完整
+  paired experiment。由 OpenClaw 執行判讀，模型為 `openai/gpt-5.4-mini`。
+- `1.4.9` fresh 32-case paired gate 已建立，排除 1,144 個曝光 case；待現行
+  `1.4.6` pilot 釋放 Gateway 後執行，不能以已檢視的 64 例宣稱修正後提升。
+
+## Done (recent) - 2026-08-07
+
+- OpenClaw harness/plugin release 更新為 `1.4.7`，每個臨床影像 turn 都要求
+  `fastMode`，並以 60/100/180 秒 hard deadline 記錄 coarse、首 crop/refine
+  與整題 SLA。
+- 修正 fastMode 稽核語意：不再把 Gateway fast request 誤記為 provider
+  priority tier。正式 runner 會產生 `transport-receipt.json`，分別統計
+  trajectory fastMode 與 payload `serviceTier`；真實 baseline 為 64/64 fast、
+  64/64 `serviceTier=undefined`。
+- ECGFounder 新增 lead-II deterministic R-R regularity measurement；AF 衝突
+  防護需同時有 irregular timing 與 top-3 AF/flutter ranking，且只輸出
+  `not excluded`/人工覆核，不強迫診斷。
+- 新增 black-ink row periodicity detector；只有原圖確認 12 橫列時，才修復
+  模型漏列的 V3-V6，並清掉已失效的 layout validation warning。
+- 修正 timeout case latency rebuild、長否定句與 uncertainty concept dedupe，
+  避免 `no ST elevation`、`excludes ... ischemia read` 被算成假陽性。
+- 真實 2-case smoke v3 經 frozen scorer rebuild：strict/partial/schema/SLA
+  全數 1.0；final runtime canary 為 45.613/57.833/92.417 秒，且 receipt
+  證明 OpenClaw ownership、fastMode、ECGFounder 與 layout detector 均有執行。
+- 人工檢視 review PNG：AF 的三個 evidence boxes 均落在 lead II 波形列，
+  normal case 無多餘標框。
+- 全套測試 878 passed、3 skipped；Ruff 全綠。
+- 重新建立 1,080-case exposure denylist 與 `pilot-64-final` 盲測配對 manifest：
+  16 normal、28 warning、20 critical；兩個開發 smoke case 均已排除。
+- 64-case paired pilot 的 baseline 64/64 已完成，candidate 由同一凍結
+  `1.4.6` process 執行中；目前已完成個案的 60/100/180 SLA 皆通過。
+- 重新建置 `dist/DICOMOverlayAgent/DICOMOverlayAgent.exe`；dist 內 harness 與
+  plugin 均為 `1.4.7`，bundle verifier `ok`/0 failures，packaged selfcheck
+  3 passed。Gateway smoke 因 pilot 正使用 18789 而刻意未搶占。
+- 依真實 candidate 錯例完成 `1.4.9` 通用修正：節律/ectopy/AV block
+  取得 rhythm strip 或完整 lead II，多導程型態取得有界 declared-lead context；
+  crop 未涵蓋全部 coarse bboxes 時禁止整項 RETRACT，並留下
+  `partial_crop_retraction_blocked` trace。
+- ECGFounder top-3 PVC/PAC/ectopy 現在會引導 lead-II crop；prompt/skill 移除
+  LVH 特殊優先級，改為 rhythm、conduction、high/low voltage、Q/QS/R-wave、
+  ST-T 的平衡驗證，且禁止僅由 irregular R-R/不清楚 P wave 推論 AF。
+- 3 個 coarse timeout 中有 2 個重複呼叫 ECGFounder；plugin 現以 nonce cache
+  保證 sidecar 只執行一次，重複企圖另記 audit，且回給 agent 的 payload 移除
+  完整 R-R 序列等非必要內容。波形 top-3 亦可依語意路由 lead II/limb/
+  precordial crop，不再一律先用 precordials。
+- 評分器補上 PVC/PAC clinical concept 單複數等價；原始 result 不改，避免把
+  正確的 singular finding 同時計為 miss 與 false positive。
+- `1.4.9` 完整驗證：Ruff 全綠，892 passed、3 skipped。fresh paired gate 為
+  32 例（8 normal/14 warning/10 critical；17 multi-concept、9 urgent、1
+  cant-miss），inference manifest 與 gold 分離且排除 1,144 個曝光病例。
+
+## Done (recent) - 2026-08-09
+
+- `1.5.2` frozen 32-case paired pilot 已由 OpenClaw embedded agent 以
+  `openai/gpt-5.4-mini` 和 ChatGPT/Codex subscription transport 完成；沒有
+  Codex app-server 判讀。MultiPass 相對 minimal one-look baseline：strict
+  `0.000 -> 0.094`、partial `0.253 -> 0.480`、keyword recall
+  `0.291 -> 0.551`；23 improved/4 regressed/5 unchanged，paired sign
+  `p=0.0003107`，partial bootstrap 95% CI `[+0.085,+0.368]`、random-sign
+  `p=0.00449955`。這是 weak-label composite 顯著提升，不是醫療準確率。
+- `1.5.6` fresh unseen 8-case run 排除 1,220 個曝光 identity，8/8 無錯誤，
+  schema/bbox/raw JSON、MultiPass trace、systematic probe、review/projection
+  artifacts 全通過；8 張 marked review PNG、30 張 crop。60/100/180 SLA
+  全數通過，mean 16.180/28.508/71.058 秒。normal specificity 2/2，urgent
+  concern 1/3；保留安全漏診，未假裝通過 clinical safety gate。
+- Scorer 新增 asserted/candidate 分層：只有 incomplete weak label 可讓明確
+  uncertain differential 得半權重；strict/cant-miss/urgent 不受影響，明確
+  否定永遠不得分。v1.5.6 unseen metrics 為 strict 0.250、partial 0.595、
+  asserted concept recall 0.627、candidate recall 0.107、weighted recall 0.557。
+- `1.5.7` 修正 exact study-level rate/rhythm duplicate；優先保留 lead II/
+  rhythm-strip grounded finding，不合併局部 ST morphology。真實 exposed
+  regression case 只輸出兩個不同 findings，23.064/35.498/63.682 秒完成，
+  schema/bbox/artifacts 皆通過；另有 deterministic unit coverage。
+- 桌面 Process tab 顯示 ECGFounder model、uncalibrated ranked labels、
+  deterministic lead-II rate/R-R evidence 與 supporting-only/no-localization
+  邊界。Desktop export 現在實際包含 source/result/marked image/crops/
+  coordinate audit，便於專家逐框複核；只顯示 audit rationale，不宣稱公開
+  private chain-of-thought。
+- 詳細紀錄：`docs/meeti-openclaw-experiments-2026-08-09.md`。
+
+## Done (release verification) - 2026-08-09
+
+- Ruff 全綠；完整 unit/smoke `915 passed, 3 skipped`。重建後 opt-in packaged
+  selfcheck/Gateway smoke `4 passed`，Windows native capture-exclusion `1 passed`。
+- 新 bundle verifier `ok`、0 failure/missing/banned/residue：16,188 files，
+  368.01 MiB；launcher 7,397,370 bytes，SHA-256
+  `27fcb0fafecdb2285d9dc1aae1a51d6ca46a0930592400740abfbe6deb17984e`。
+  OpenClaw `2026.7.1-2`、Node `v24.18.0`、plugin `1.5.7`、51 skills；兩個
+  native tools runtime loaded/0 diagnostics。Codex bundle 僅
+  `oauth_migration_only`，無 agent dependency/binary。
+- 隔離 full GUI 實際啟動 15 秒仍 responding，啟動 1 個 bundled Node/OpenClaw；
+  關閉後 18789 port 釋放。release smoke 未呼叫模型。
+
+## Full cohort publication boundary (2026-08-09)
+
+- 發布前 `meeti-paired-full9922-v157-20260809` 在 baseline 289 results 時主動
+  停止，最終 state=`interrupted`。已證明 OpenClaw ownership、subscription
+  transport、provider HTTP 200 與 per-turn fastMode，但不可與發布後 candidate
+  混用，也不得宣稱 full cohort 完成。
+- 正式 root 為 `meeti-paired-full9922-v157-postpublish-v1`；所有 scoped commit/
+  push 完成後才從 frozen HEAD 啟動。之後以 `paired-experiment.json` 為唯一
+  live/completion 狀態，source/harness/scorer 保持不動直到兩臂與 comparison
+  完成。
+- 依 8-case 實測 71.058 秒/candidate case，MultiPass 單臂 sequential 約 196
+  小時，另加 baseline 與後處理；須維持 AC power、machine uptime 與
+  subscription capacity，完成前不作 full-scale accuracy claim。
+
+## Done (critical-first planning) - 2026-08-28
+
+- 新增 critical-first refinement planner：只有具體、可定位的 critical
+  finding 啟動，top-level critical 或泛稱 finding 仍走原本 systematic path。
+- 多個 critical candidates 在有限 budget 內依序直接驗證；只有剩餘 slot
+  才加一個 EKG 同機轉 support crop，不再拿第二個 critical 的 turn 去跑一般
+  discovery。
+- warning/info、local safety 與無關 systematic crop 會明確延後；trace 記錄
+  selected/overflow/skipped/support/deferred axes，且不超出 configured budget。
+- Finalization prompt 與 deterministic guard 共同禁止將 deferred axes 寫成
+  normal/absent，並在 critical candidate 最終撤回時仍保留
+  incomplete/review-required。
+- Critical planning、VT/lead-II、STEMI reciprocal、hyperkalemia morphology、
+  overflow、CXR、top-level-only、final retraction 與 prompt contract 均有
+  targeted coverage；相關 unit/integration/artifact/wiring tests 全數通過。
+
+## Done (frozen important multi-diagnosis 128 cohort) - 2026-08-28
+
+- 從 9,922-case MEETI manifest 以固定 seed 與 1,230-case preselection
+  denylist 建立 128 例 answer-free inference/gold pair；包含 acute 24、
+  ischemic 28、rhythm 28、conduction/QT 32、structure/voltage 16，且 16
+  個 EKG axes 各至少 12 例。
+- 修正凍結契約未綁實際影像 bytes 的 fail-open：pair id 現包含 128 張 PNG 的
+  ordered SHA-256，並拒絕 exact-byte duplicate。partial artifact 不再 skip，
+  source/denylist/gold/inference/report/pair/profile 均有固定 anchor。
+- `concepts` 與 `uncertain_concepts` 重疊時先排除不確定概念；未知
+  cant-miss/urgent vocabulary、巢狀 answer/diagnosis/ground-truth 欄位與 output
+  覆寫 source/denylist 均 fail closed。
+- 128 個 case/report/image 皆唯一；124 個 canonical signatures，最多重複 2。
+  這是 gold-enriched stress cohort，不代表盛行率加權準確率；source 也沒有
+  patient-group 欄位。Targeted Ruff 通過，unit/smoke 15 passed。
+
+## Done (clinical knowledge governance foundation) - 2026-08-28
+
+- 建立 7-rule canonical YAML registry、EKG/CXR axis registries、strict JSON
+  Schema 與完整 inventory；unknown key/type/semver/status/date/axis/operator、
+  runtime operand、source locator、pytest parity node 與 mapping 均 fail closed。
+- 每條規則同時生成詳細 human differential workflow、精簡 agent steps 與純資料
+  domain runtime；移除手寫 `_BUILTIN_RULES` 重複來源，registry digest 可阻止
+  文件與執行行為悄悄分叉。
+- 新增 application-owned SQLite quick lookup generator/verifier，逐表比對 YAML
+  projection 並排除 eval gold/scorer aliases；不讀寫 OpenClaw 私有 FTS schema。
+- 新增專業共讀 prompt 與 output guard：合法醫療影像任務不得泛用拒答或輸出冗長
+  免責樣板，但缺導程、裁切與需補臨床資料等具體限制仍完整保留。
+- 臨床規則/SQLite/runtime/prompt/validator targeted Ruff 全綠，210 tests passed。
+  指南書目只作 citation；商業部署仍須逐一完成授權與專科臨床審查。
+
+## Done (Gateway protocol receipt hardening) - 2026-08-28
+
+- 核對 pinned OpenClaw `2026.7.1-2` vendored 官方文件：一般 operator/UI
+  current/min protocol 均為 4，protocol 3 只保留給 N-1 node/probe。
+- Desktop client 維持 `3..4` advertised compatibility range，因此可與既有
+  `MIN_SAFE_OPENCLAW_VERSION=2026.4.22` 協商；沒有在缺乏實際不相容證據時提高
+  版本 floor。
+- Connect/health probe 現在必須驗證 `hello-ok`、協商版本及 server version；
+  任意 `ok=true/status=connected` 不再被當成 OpenClaw Gateway 證據。
+- Image smoke 與每個 eval result 都保存無祕密的 negotiated protocol receipt，
+  artifact verifier 對缺漏、超出 advertised range 或未驗證 receipt fail closed。
+
+## Done (packaging/clinical release blockers) - 2026-09-02
+
+- Clinical registry digest 已擴大為 `canonical-input-documents-v1`，涵蓋 rules、
+  axes、legacy inventory、strict schema 及相對路徑；目前 digest 為
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
+- Packaged verifier 不再信任 DB 自報 hash：它從 bundle canonical inputs 重算、
+  驗證 schema ID/version、重生完整 views，並逐表／欄／列核對 SQLite，加上
+  `quick_check`、foreign-key 與 metadata/table-set gate。
+- Release build 透過 `uv` 固定 64-bit CPython 3.13.12；manifest 記錄 exact
+  PyInstaller/Pillow/PyQt6/Qt6/sip toolchain。UPX 有工具才啟用且須觀察到 PE
+  marker，否則明列 `no_upx_baseline`。
+- Frozen 相對 log path 已錨定 executable `base_dir`，不同 launch cwd 的實寫
+  regression 與禁止 `..` escape 均通過。
+- Targeted Ruff 通過；clinical/package/launch/infrastructure suite 為
+  `158 passed, 3 skipped`（3 項皆需 fresh bundle 的 opt-in 實機 smoke）。
