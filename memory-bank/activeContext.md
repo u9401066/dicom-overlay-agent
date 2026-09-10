@@ -2,6 +2,17 @@
 
 ## 2026-09-11 Corrected partial EXE and public evidence refresh
 
+- Same frozen EXE also completes real hidden-label crop (150,81,1370,708) in
+  85.872 s, four bound Astra-low sessions, zero parse retries. All eight rows
+  correctly declare unknown/false; no named crop/finding regions. Schema-valid
+  non-fabrication check passes; clinical accuracy remains null. Source/review
+  visually inspected, no labels present; one low-signal box retained in audit.
+  Idle transport breaks before acceptance; same-idempotency-key replay succeeds.
+  Original raw/usage receipts retained. Combined malformed-or-hidden warning and
+  fixed 12-Lead title remain presentation edges. App 27896 remains in manual
+  mode with this narrower ROI; Viewer 26088 unchanged. Public docs-only PR #18
+  adds both partial trials without main source/runtime changes; CI rerunning.
+
 - Clean 0e55a61 package passes static verifier, 20 frozen smoke tests (100.62 s),
   90 native-source checks, CI and secret scans. 337.01 MiB folder / 54.42 MiB
   App / 4.68 MiB launcher; all 18,771 live-copy hashes match; preserved build
