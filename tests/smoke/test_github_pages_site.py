@@ -127,6 +127,7 @@ def test_pages_site_labels_frozen_mock_and_governance_status_truthfully() -> Non
         "OpenClaw 2.x candidate",
         "Upgrade deferred",
         "stays pinned to 2026.7.1-2",
+        "Latest candidate 2026.9.3",
     ):
         assert evidence in index
 
@@ -154,6 +155,8 @@ def test_pages_public_setup_uses_real_subscription_and_harness_commands() -> Non
     assert "DICOMOverlayAgent.exe --selfcheck" in docs
     assert "run-image-harness-smoke.py" in docs
     assert "OpenClaw owns every image-analysis turn" in docs
+    assert "openclaw-upgrade-audit-2026-09-10.md" in docs
+    assert "No paid model was used" in docs
 
 
 def test_pages_docs_explain_canonical_rules_sqlite_and_package_status() -> None:
