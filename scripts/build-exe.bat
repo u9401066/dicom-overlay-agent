@@ -95,7 +95,7 @@ if errorlevel 1 (
 )
 
 echo [INFO] Building DICOMOverlayAgent.exe...
-call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" -m PyInstaller --clean --noconfirm dicom-overlay-agent.spec
+call "%DICOM_OVERLAY_BUILD_ENV%\Scripts\python.exe" scripts\build-windows-package.py
 if errorlevel 1 (
     echo [ERROR] PyInstaller build failed.
     popd
