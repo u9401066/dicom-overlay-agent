@@ -5,6 +5,20 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Workflow-progress repair uses the exact `pending_multipass_review` marker;
+  successful final reconciliation removes only that marker once all required
+  checklist axes are present. No NLP deletion of clinical limitation prose is
+  performed. Real case `meeti_43397012`, export `desktop-20260910-104309-212614`,
+  completed in 115.592 s with critical triage retained, a resolved progress
+  receipt, and all genuine coverage/calibration/deferred-axis limitations intact.
+  Actual SummaryPanel was visually reviewed. This pilot ran uncommitted changes,
+  so it is not frozen-release evidence. Full suite: 1293 passed, 4 opt-in skips.
+- Pilot `meeti_44371038` completed in 92.102 s with a normal/incomplete report;
+  source and four runtime model/effort receipts match. It is NOT a clinical pass.
+  A following QFileDialog UIA lookup raced dialog construction; the helper now
+  waits for the filename control and can resume an already-open dialog. No
+  model request was sent for that failed open. Receipt helpers now explicitly
+  record dirty source and do not label pilot outputs frozen-release evidence.
 - PR #3 was updated from its historical draft description, marked ready and
   merged as `445ac9e` after `3af5f2c` CI/Secret scan passed. This publishes
   development source, not a clinical release or fresh executable. First Pages
