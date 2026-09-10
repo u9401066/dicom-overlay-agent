@@ -17,6 +17,9 @@ venv/
 # 編譯產物
 dist/
 build/
+# Isolated package acceptance builds use explicit build-* / dist-* roots.
+/dist-*/
+/build-*/
 *.egg-info/
 *.egg
 

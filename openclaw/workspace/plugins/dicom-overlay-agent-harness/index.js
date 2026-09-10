@@ -135,8 +135,14 @@ function validateBox(raw, index, modality) {
   const top = clip01(y);
   const right = clip01(x + w);
   const bottom = clip01(y + h);
-  const clippedWidth = right - left;
-  const clippedHeight = bottom - top;
+  // Do not reconstruct an unchanged extent via (origin + extent) - origin:
+  // cancellation can move a four-decimal half-tie across the receipt boundary.
+  // The host hashes the submitted geometry, so even an unclipped box could
+  // otherwise produce a different digest and a needless paid model retry.
+  const widthWasClipped = left !== x || right !== x + w;
+  const heightWasClipped = top !== y || bottom !== y + h;
+  const clippedWidth = widthWasClipped ? right - left : w;
+  const clippedHeight = heightWasClipped ? bottom - top : h;
   if (clippedWidth < MIN_BOX_EDGE || clippedHeight < MIN_BOX_EDGE) {
     return { accepted: false, id, reason: "too_small_after_clipping" };
   }
@@ -149,17 +155,24 @@ function validateBox(raw, index, modality) {
     return { accepted: false, id, reason: "ekg_box_too_broad" };
   }
 
+  const box = {
+    x: roundCoordinate(left),
+    y: roundCoordinate(top),
+    w: roundCoordinate(clippedWidth),
+    h: roundCoordinate(clippedHeight),
+  };
+  // Independent coordinate rounding must never move an accepted box outside
+  // its source image. Reject this rare boundary case, do not widen the ROI or
+  // silently change the coordinate digest to make validation pass.
+  if (box.x + box.w > 1 || box.y + box.h > 1) {
+    return { accepted: false, id, reason: "rounded_box_out_of_bounds" };
+  }
   return {
     accepted: true,
     id,
-    box: {
-      x: roundCoordinate(left),
-      y: roundCoordinate(top),
-      w: roundCoordinate(clippedWidth),
-      h: roundCoordinate(clippedHeight),
-    },
+    box,
     reason: String(raw?.reason ?? "").trim(),
-    clipped: left !== x || top !== y || right !== x + w || bottom !== y + h,
+    clipped: widthWasClipped || heightWasClipped,
   };
 }
 

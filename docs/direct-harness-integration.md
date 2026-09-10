@@ -95,3 +95,17 @@ Further stages must move the current scientific engine without behavior drift,
 assemble the canonical evidence contract, bind the OpenClaw plugin and external
 tools to it, then repeat actual ROI/partial-image/DPI/canvas and model acceptance.
 Public scientific-method changes require their own tests and pinned review.
+
+## First direct-model packaged checkpoint
+
+Clean source `7abc36467dabfca3cc8cac6947244dad3b5a5024` now has a separately
+preserved local build: static/runtime verifier passes, 90 native dependency
+sources are approved, and 20 actual frozen packaging smoke checks pass in
+126.76 seconds. Launcher: 4,901,372 bytes (4.67 MiB); App layer: 57,059,847 bytes
+(54.42 MiB); full directory: 353,379,972 bytes (337.01 MiB), 18,771 files. The App
+increase over f7e3347 is 605,059 bytes (0.58 MiB), within the existing budget.
+Source-tree SHA-256 is `487d0c514bc2359d39fb36050d73024ea744dfad9f81211208e6a8afecdf3ce2`;
+payload-tree SHA-256 is `315b5495c3f87c07c06ea14fdef1a924a9da4dfc300ac3a295f17152c79a34be`.
+The verifier report is outside the bundle. This is not a published release, a
+real-model check or clinical acceptance. It contains plugin 1.5.8 and does not
+cover the later [bbox producer correction](bbox-receipt-canonicalization.md).

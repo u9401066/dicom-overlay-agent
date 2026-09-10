@@ -347,7 +347,7 @@ class TestOpenClawRuntimeCompatibility:
         manifest = build_harness_manifest()
 
         assert manifest["name"] == "dicom-overlay-agent-harness"
-        assert manifest["version"] == "1.5.8"
+        assert manifest["version"] == "1.5.9"
         assert manifest["compatibility"]["minimumOpenClaw"] == "2026.4.22"
         assert manifest["compatibility"]["gatewayProtocol"]["methods"] == [
             "connect",

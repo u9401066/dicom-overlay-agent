@@ -1,5 +1,31 @@
 # Active Context
 
+## 2026-09-11 Bbox receipt defect and direct-model package checkpoint
+
+- Read-only public Gateway history on an original failed GUI finalization
+  identified native `(origin + extent) - origin` cancellation on unclipped
+  boxes. Synthetic cross-language parity first reproduced 23 failures / 13
+  passes; plugin 1.5.9 preserves untouched extents and rejects rounded ROI
+  overflow, without relaxing exact digest or image/turn binding. New + existing
+  native/Gateway checks: 94 passed; full regression 1505 passed / five explicit
+  skips (210.59 s), Ruff passed. Actual new-model latency/accuracy is not yet
+  measured. See `docs/bbox-receipt-canonicalization.md`.
+- PR #17 direct-model branch merged the candidate scorer; head 7abc364 retains
+  pinned public harness efeff23. Push CI 34498083016 passed; parallel PR CI
+  34498089534 found a Windows 20 ms scheduling-test race (1458 pass / 6 skip).
+  That policy test now uses its existing injected clock; 139 multi-pass checks
+  pass locally, with no production SLA or timeout-test change.
+- Separate clean-source 7abc364 local package: static verifier passes, 90 native
+  dependency sources approved, 20 actual frozen packaging checks pass (126.76 s).
+  Launcher 4.67 MiB, App layer 54.42 MiB, full folder 337.01 MiB. This artifact
+  retains plugin 1.5.8 and does not cover the later receipt correction; older
+  f7e3347 bundle is unchanged. No binary publication/license change.
+- Frozen main cohort at 16:01 UTC has 118 primary distinct GUI successes; index
+  118 initial timeout remains, and index 126 was blocked pre-send by ROI
+  obstruction while packaged tests were also active. Six technical failures
+  are retained. Packaged tests ended; real Viewer rerun 126..127 is in progress,
+  then 118 must be retried before sealing. No gold scoring has run.
+
 ## 2026-09-10 Current acceptance target and runtime fixes
 
 - Separate `agent/direct-harness-models-20260910` worktree consumes public
