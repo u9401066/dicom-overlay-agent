@@ -146,10 +146,16 @@ dicom-overlay-agent/
 
 ## 🚀 Quick Start
 
+This integration branch directly consumes the pinned public harness model types;
+it does not retain the old App model imports. Full engine extraction and canonical
+evidence assembly are still in progress. See the
+[integration scope and verification boundary](docs/direct-harness-integration.md).
+
 ### Run from source (Windows)
 
 ```powershell
 # 1. Sync the Python environment (uv-first)
+git submodule update --init --recursive
 uv sync --all-extras
 
 # 2. Install the repo-local OpenClaw runtime once

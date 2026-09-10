@@ -12,6 +12,11 @@ always keeps the final diagnostic call.
 - Follow DDD layering: `domain → application → infrastructure / presentation`.
   `domain/` must not import GUI, network, or OpenClaw code.
 - Use `uv` for the Python environment; never install globally.
+- Scientific model types are owned by the pinned public
+  `third_party/medical-image-agent-harness` submodule. Import them directly
+  from `medical_image_harness.models`; do not restore local duplicate classes
+  or compatibility re-exports in `domain/entities.py`. Initialize submodules
+  before `uv sync`. See `docs/direct-harness-integration.md` for current scope.
 - Sync the Memory Bank (`memory-bank/`) after meaningful changes.
 - Keep PHI out of code, logs, tests, and fixtures.
 

@@ -254,10 +254,15 @@ dicom-overlay-agent/
 
 ## 🚀 快速開始
 
+此整合分支直接使用固定版本的公開 harness 資料模型，不保留 App 舊型別匯入
+的相容層。完整判讀引擎拆分與 canonical 證據組裝仍在進行，詳見
+[整合範圍與驗證邊界](docs/direct-harness-integration.md)。
+
 ### 從原始碼執行（Windows）
 
 ```powershell
 # 1. 同步 Python 環境（uv 優先）
+git submodule update --init --recursive
 uv sync --all-extras
 
 # 2. 安裝 repo 本地 OpenClaw runtime（只需一次）

@@ -1,0 +1,3 @@
+[submodule "third_party/medical-image-agent-harness"]
+	path = third_party/medical-image-agent-harness
+	url = https://github.com/u9401066/medical-image-agent-harness.git

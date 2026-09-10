@@ -7,18 +7,21 @@ import math
 import os
 import statistics
 from collections.abc import Callable, Iterable
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import mss
 import structlog
 from PIL import Image, ImageChops, ImageFilter
 
-from dicom_overlay.domain.entities import DisplayFrame, RegionRect, WindowRect
+from dicom_overlay.domain.entities import DisplayFrame, WindowRect
 from dicom_overlay.domain.services import (
     CaptureBlockedError,
     ImageProcessorService,
     ScreenMonitorService,
 )
+
+if TYPE_CHECKING:
+    from medical_image_harness.models import RegionRect
 
 logger = structlog.get_logger(__name__)
 

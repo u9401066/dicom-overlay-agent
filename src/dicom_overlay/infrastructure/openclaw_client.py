@@ -41,14 +41,6 @@ from dicom_overlay.application.multi_pass import (
     RefinementDelta,
     RefinementResult,
 )
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
@@ -62,6 +54,14 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     OpenClawRuntimeError,
     build_openclaw_chat_frame,
     parse_gateway_hello,
+)
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
 )
 
 logger = structlog.get_logger(__name__)

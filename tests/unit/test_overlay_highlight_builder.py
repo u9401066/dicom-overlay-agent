@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dicom_overlay.domain.entities import Finding, RegionRect, Severity, WindowRect
+from dicom_overlay.domain.entities import WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
 from dicom_overlay.infrastructure.overlay_highlight_builder import (
     build_ai_bbox_highlights,
 )
+from medical_image_harness.models import Finding, RegionRect, Severity
 
 
 def test_ai_bbox_highlight_builder_draws_calibrated_boxes_with_audit() -> None:

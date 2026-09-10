@@ -2,6 +2,26 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Separate `agent/direct-harness-models-20260910` worktree consumes public
+  harness efeff23 directly for seven shared model types; duplicate App classes
+  and all old caller imports are removed, with no compatibility exports.
+  CI/Pages initialize the submodule and use the frozen uv source map. Schema
+  resources are required by packaging and tested offline. Extra schema dependency
+  installed non-pyc footprint is 1.43 MiB, not a measured EXE/ZIP increase.
+  1127 existing checks passed; new boundary/package-verifier 56 passed; public
+  harness own environment 222 passed plus public/agent-method and built-package
+  integrity checks. Public PR #1 supplies missing py.typed metadata only; CI
+  passed and the direct App's three targeted mypy modules pass without ignores.
+  Full App run exposed one fresh-install OpenClaw staging failure (1420 passed,
+  six explicit skips). Public CLI preparation now runs before OAuth-only
+  migration relocation/pruning, with isolated state and a cleared child
+  environment. Another cold locked install passes 9 helper/staging checks;
+  full App regression passes 1429 / six explicit skips (186.95 s). Main runtime
+  and the earlier accepted bundle remain unchanged. The candidate's isolated
+  preparation fix a7d8fb4 passes CI 34496955373 and secret scans.
+  See `docs/direct-harness-integration.md`. Full engine extraction, canonical
+  host assembly and actual candidate GUI/model/packaging remain pending.
+
 - Integrated candidate is now `f7e3347`: PR #16 merged into #15, then #15
   merged into #13's branch; #13 remains draft and main stays on the frozen
   7.1-2 cohort implementation. CI 34489747248 and Secret 34489747329 pass.

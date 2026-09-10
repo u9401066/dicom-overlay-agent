@@ -16,7 +16,7 @@ from dicom_overlay.domain.services import VisionAnalyzerService
 
 if TYPE_CHECKING:
     from dicom_overlay.application.multi_pass import RefinementResult
-    from dicom_overlay.domain.entities import (
+    from medical_image_harness.models import (
         AnalysisResult,
         Finding,
         Modality,

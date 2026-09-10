@@ -19,14 +19,6 @@ from uuid import uuid4
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from dicom_overlay.domain.entities import (  # noqa: E402
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
 from dicom_overlay.domain.hooks import AnalyzeRequest, HookError  # noqa: E402
 from dicom_overlay.domain.modality_profile import get_active_registry  # noqa: E402
 from dicom_overlay.infrastructure.clinical_rule_loader import (  # noqa: E402
@@ -45,6 +37,14 @@ from dicom_overlay.infrastructure.eval_harness import (  # noqa: E402
 )
 from dicom_overlay.infrastructure.hooks.output_validator import (  # noqa: E402
     OutputValidator,
+)
+from medical_image_harness.models import (  # noqa: E402
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
 )
 
 _EKG_VALID_REGIONS = (

@@ -7,16 +7,16 @@ import io
 
 from PIL import Image, ImageDraw
 
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.hooks import AnalyzeRequest
+from dicom_overlay.infrastructure.bbox_signal_calibrator import calibrate_ekg_bboxes
+from dicom_overlay.infrastructure.hooks.bbox_calibration import BboxCalibrationHook
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.hooks import AnalyzeRequest
-from dicom_overlay.infrastructure.bbox_signal_calibrator import calibrate_ekg_bboxes
-from dicom_overlay.infrastructure.hooks.bbox_calibration import BboxCalibrationHook
 
 
 def _image_base64(*, with_neighbor_signal: bool) -> str:

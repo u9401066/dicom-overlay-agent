@@ -57,7 +57,6 @@ from dicom_overlay.application.rhythm_strip import (  # noqa: E402
     refine_rhythm_strip,
     resolve_rhythm_strip_region,
 )
-from dicom_overlay.domain.entities import Modality, RegionRect, Severity  # noqa: E402
 from dicom_overlay.domain.modality_profile import get_active_registry  # noqa: E402
 from dicom_overlay.domain.services import VisionAnalyzerService  # noqa: E402
 from dicom_overlay.infrastructure.bbox_signal_calibrator import (  # noqa: E402
@@ -99,6 +98,7 @@ from dicom_overlay.infrastructure.openclaw_client import (  # noqa: E402
     _bbox_coordinates_digest,
 )
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor  # noqa: E402
+from medical_image_harness.models import Modality, RegionRect, Severity  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 

@@ -10,16 +10,16 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from dicom_overlay.domain.entities import (
+from dicom_overlay.infrastructure.desktop_review_exporter import (
+    export_desktop_review,
+)
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
     UserRegionAnnotation,
-)
-from dicom_overlay.infrastructure.desktop_review_exporter import (
-    export_desktop_review,
 )
 
 if TYPE_CHECKING:

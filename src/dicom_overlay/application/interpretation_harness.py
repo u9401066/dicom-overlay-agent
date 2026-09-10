@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult, Modality, Severity
+    from medical_image_harness.models import AnalysisResult, Modality, Severity
 
 
 # Eval-only region scope used when a deliberately cropped ECG has no lead name

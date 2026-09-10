@@ -48,11 +48,8 @@ from dicom_overlay.application.rhythm_strip import RhythmStripRefiningAnalyzer
 from dicom_overlay.domain.entities import (
     AgentState,
     AppConfig,
-    Finding,
     FindingDelta,
     FindingOp,
-    Modality,
-    RegionRect,
     WindowRect,
 )
 from dicom_overlay.domain.modality_profile import (
@@ -95,6 +92,7 @@ from dicom_overlay.presentation.overlay_window import OverlayWindow
 from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
+from medical_image_harness.models import Finding, Modality, RegionRect
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.services import VisionAnalyzerService
@@ -888,7 +886,7 @@ def main() -> None:
         ):
             # Region percentages are relative to the ROI-cropped image,
             # so map them to the exact captured content area, not the window.
-            from dicom_overlay.domain.entities import Severity
+            from medical_image_harness.models import Severity
 
             for finding in result.findings:
                 # Normal findings stay in the report. Info findings with boxes

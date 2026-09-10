@@ -12,12 +12,7 @@ from dicom_overlay.domain.ekg_layout import (
     canonical_ekg_lead_name,
     parse_ekg_lead_inventory,
 )
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    Modality,
-    RegionRect,
-    Severity,
-)
+from medical_image_harness.models import AnalysisResult, Modality, RegionRect, Severity
 
 _INK_THRESHOLD = 90
 _LOW_SIGNAL_RATIO = 0.003

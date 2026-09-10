@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from dicom_overlay.domain.entities import RegionRect
+from medical_image_harness.models import RegionRect
 
 STANDARD_EKG_LEADS: tuple[str, ...] = (
     "I",

@@ -45,6 +45,14 @@ Python 桌面程式不匯入 OpenClaw plugin SDK 私有 API，只使用公開 Ga
 
 ## Layer Boundaries
 
+The direct-integration branch obtains image-reading model classes from the pinned
+public `medical_image_harness.models` package. App callers import them directly;
+`domain/entities.py` retains only product-owned geometry/configuration/lifecycle
+and edit types, with no compatibility exports. Current orchestration/transport
+and 16-key draft behavior remain unchanged. Canonical evidence assembly and full
+engine extraction are not yet complete; see
+[direct integration scope](docs/direct-harness-integration.md).
+
 | Layer | Responsibility |
 |---|---|
 | `domain/` | `AnalysisResult`、finding/bbox、EKG layout、delta 與純規則；不依賴 GUI、網路或 OpenClaw |

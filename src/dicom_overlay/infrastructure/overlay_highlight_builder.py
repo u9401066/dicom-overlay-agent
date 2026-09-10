@@ -7,14 +7,17 @@ overlay highlight tuples and keeps a PHI-free audit row for every attempted box.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from dicom_overlay.domain.entities import Finding, RegionRect, Severity, WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
     BboxProjectionCalibration,
     OverlayCoordinateFrame,
     project_bbox_to_overlay_highlight,
 )
+from medical_image_harness.models import Finding, RegionRect, Severity
+
+if TYPE_CHECKING:
+    from dicom_overlay.domain.entities import WindowRect
 
 HighlightTuple = tuple[int, int, int, int, str, str, str]
 

@@ -17,16 +17,16 @@ from dicom_overlay.application.interpretation_harness import (
     PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
 )
 from dicom_overlay.application.multi_pass import RefinementResult
-from dicom_overlay.domain.entities import (
+from dicom_overlay.infrastructure.ecg_variant_corpus import build_variant_corpus
+from dicom_overlay.infrastructure.eval_harness import EvalCase, score_case
+from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.infrastructure.ecg_variant_corpus import build_variant_corpus
-from dicom_overlay.infrastructure.eval_harness import EvalCase, score_case
-from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 
 
 def _load_run_eval_module():

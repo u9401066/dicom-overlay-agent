@@ -46,7 +46,9 @@ from dicom_overlay.application.multi_pass import (
     select_hypothesis_crop_region,
     select_zoom_targets,
 )
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.modality_profile import get_active_registry
+from dicom_overlay.domain.services import VisionAnalyzerService
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,
@@ -54,8 +56,6 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.modality_profile import get_active_registry
-from dicom_overlay.domain.services import VisionAnalyzerService
 
 
 def _result(findings: list[Finding]) -> AnalysisResult:

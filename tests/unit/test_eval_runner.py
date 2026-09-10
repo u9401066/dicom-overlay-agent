@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-from dicom_overlay.domain.entities import RegionRect
+from medical_image_harness.models import RegionRect
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 

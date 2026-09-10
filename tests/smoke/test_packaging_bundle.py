@@ -219,9 +219,26 @@ def test_package_runtime_smoke_handles_windowed_logging_and_image_surfaces(
             "jpeg_decode": True,
             "font_render": True,
             "review_export": True,
+            "harness_contract": True,
         },
         "failures": [],
     }
+
+
+def test_package_runtime_smoke_rejects_missing_harness_resources(tmp_path, monkeypatch):
+    from dicom_overlay.infrastructure.package_runtime_smoke import (
+        run_package_runtime_smoke,
+    )
+    from medical_image_harness import resources
+
+    def missing_skill():
+        raise FileNotFoundError("synthetic missing harness resource")
+
+    monkeypatch.setattr(resources, "load_skill", missing_skill)
+    report = run_package_runtime_smoke(tmp_path)
+    assert report["status"] == "failed"
+    assert report["checks"]["harness_contract"] is False
+    assert any("harness_contract" in item for item in report["failures"])
 
 
 def test_bootstrap_config_load_handles_windowed_process_streams(

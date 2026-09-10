@@ -49,6 +49,9 @@ BUILD_SOURCE_ROOTS = (
     "clinical_rules",
     "clinical_knowledge",
     "scripts",
+    "third_party/medical-image-agent-harness/src",
+    "third_party/medical-image-agent-harness/schemas",
+    "third_party/medical-image-agent-harness/.agents/skills/medical-image-reading",
 )
 BUILD_SOURCE_FILES = (
     "config.yaml",
@@ -59,10 +62,16 @@ BUILD_SOURCE_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "package-build-receipt.json",
     "uv.lock",
+    ".gitmodules",
+    "third_party/medical-image-agent-harness/pyproject.toml",
+    "third_party/medical-image-agent-harness/LICENSE",
+    "third_party/medical-image-agent-harness/NOTICE",
 )
 
 REQUIRED_FILES = (
     "DICOMOverlayAgent.exe",
+    "medical_image_harness/schemas/analysis-result.schema.json",
+    "medical_image_harness/skills/medical-image-reading/SKILL.md",
     "config.yaml",
     "THIRD_PARTY_NOTICES.md",
     "openclaw/notice-inventory.json",

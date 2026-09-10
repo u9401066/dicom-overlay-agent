@@ -19,8 +19,8 @@ def _json_default(obj):
 
 
 async def main():
-    from dicom_overlay.domain.entities import Modality
     from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
+    from medical_image_harness.models import Modality
 
     img_path = Path(__file__).parent / "ecg_sample.jpg"
     with img_path.open("rb") as f:

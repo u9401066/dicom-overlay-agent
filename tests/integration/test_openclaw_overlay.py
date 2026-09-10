@@ -24,14 +24,8 @@ from dicom_overlay.application.multi_pass import RefinementResult
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.domain.entities import (
     AgentState,
-    AnalysisResult,
     AppConfig,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
     ROICrop,
-    Severity,
     TriggerMode,
     WindowRect,
 )
@@ -50,6 +44,14 @@ from dicom_overlay.infrastructure.openclaw_client import (
 )
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
 from tests.unit.test_agent import MockScreenMonitor
 
 # ═══════════════════════════════════════════════════════════════════════

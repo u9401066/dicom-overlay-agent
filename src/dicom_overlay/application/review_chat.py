@@ -15,13 +15,8 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from dicom_overlay.application.annotation_accumulator import iou
-from dicom_overlay.domain.entities import (
-    Finding,
-    FindingDelta,
-    FindingOp,
-    RegionRect,
-    Severity,
-)
+from dicom_overlay.domain.entities import FindingDelta, FindingOp
+from medical_image_harness.models import Finding, RegionRect, Severity
 
 if TYPE_CHECKING:
     from dicom_overlay.application.multi_pass import RefinementResult

@@ -25,15 +25,7 @@ from dicom_overlay.application.multi_pass import (
     RefinementDelta,
     RefinementResult,
 )
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    AppConfig,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
+from dicom_overlay.domain.entities import AppConfig
 from dicom_overlay.domain.hooks import AnalyzeRequest
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import (
@@ -51,6 +43,14 @@ from dicom_overlay.infrastructure.openclaw_client import (
     _payload_from_chat_event,
 )
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
 
 
 def _png_bytes(width: int, height: int) -> bytes:
@@ -2354,7 +2354,7 @@ class TestCropRegionBase64:
     def test_crop_is_subset_and_returns_png(self):
         import base64
 
-        from dicom_overlay.domain.entities import RegionRect
+        from medical_image_harness.models import RegionRect
 
         proc = ImageProcessor()
         src_b64 = proc.to_base64(_png_bytes(1000, 800))
@@ -2370,7 +2370,7 @@ class TestCropRegionBase64:
     def test_crop_clamps_out_of_range_region(self):
         import base64
 
-        from dicom_overlay.domain.entities import RegionRect
+        from medical_image_harness.models import RegionRect
 
         proc = ImageProcessor()
         src_b64 = proc.to_base64(_png_bytes(640, 480))

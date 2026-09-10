@@ -22,11 +22,12 @@ from dicom_overlay.domain.ekg_layout import (
     canonical_ekg_lead_name,
     parse_ekg_lead_inventory,
 )
-from dicom_overlay.domain.entities import RegionRect, WindowRect
+from dicom_overlay.domain.entities import WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
     BboxProjectionCalibration,
     project_bbox_to_overlay_highlight,
 )
+from medical_image_harness.models import RegionRect
 
 if TYPE_CHECKING:
     from PIL.ImageFont import FreeTypeFont

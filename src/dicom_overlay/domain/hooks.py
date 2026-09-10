@@ -16,7 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult, Modality
+    from medical_image_harness.models import AnalysisResult, Modality
 
 
 class HookError(Exception):

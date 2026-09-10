@@ -8,7 +8,7 @@ from dicom_overlay.application.interpretation_harness import (
     build_minimal_control_prompt,
     summarize_result_for_followup,
 )
-from dicom_overlay.domain.entities import (
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,

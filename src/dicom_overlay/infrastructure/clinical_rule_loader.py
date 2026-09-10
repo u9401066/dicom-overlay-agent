@@ -28,7 +28,7 @@ from dicom_overlay.domain.clinical_rules import (
     builtin_rules,
     group_by_modality,
 )
-from dicom_overlay.domain.entities import Severity
+from medical_image_harness.models import Severity
 
 if TYPE_CHECKING:
     from pathlib import Path
