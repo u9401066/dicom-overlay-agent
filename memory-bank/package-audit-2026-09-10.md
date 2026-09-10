@@ -77,6 +77,38 @@ packaged templates from four persistent workspace files, consistent with the
 [upstream workspace contract](https://docs.openclaw.ai/concepts/agent-workspace).
 Fresh frozen rebuild and complete smoke must still pass.
 
+### Corrected rebuild, f184258
+
+The fresh `dist-9-3-portfix-upx` bundle passes static verification and **all 19
+packaging smoke tests**. The actual windowed EXE starts its own Gateway on
+port 56969, authenticates through public `connect`, sends the exact synthetic
+PNG to the local fake provider, receives the pinned runtime's expected public
+401 event, and stops its owned process. The test verifies four persistent
+workspace files, keeps five template assets bundled, and rejects any Codex
+runtime plugin load/command. No leftover test Gateway was observed; the
+independent Astra cohort Gateway stayed running throughout.
+
+The corrected tree measures 352,774,101 B before writing its verifier manifest;
+the complete archive input, including that manifest, is 352,791,459 B / 18,721
+files. App layer: 56,453,976 B; launcher: 4,681,490 B. All 89 native sources are
+approved, and all 52 UPX-marked PE files pass integrity testing.
+
+| Local archive method | Archive size | Creation time | Decompressed verification |
+| --- | ---: | ---: | --- |
+| ZIP Deflate 1 | 154.44 MiB (161,945,565 B) | 9.140 s | All file SHA-256 values match |
+| ZIP Deflate 9 | 141.14 MiB (147,995,486 B) | 23.529 s | All file SHA-256 values match |
+
+Deflate 9 reduces distribution bytes by about 58%, without pruning runtime
+chunks or changing the installed footprint. Its local archive SHA-256 is
+`efe1c86c36aa9a8b1627e27a4ee4ad609d1fffde8b6a6db0777fc4607fab5431`.
+These are measurements on this host during the ongoing cohort, not a startup
+speed comparison or a published download. Real candidate GUI/OAuth/model,
+clinical/partial-image/DPI/rollback and license gates remain open.
+
+Local regression: 1327 unit/smoke tests pass with 5 explicit opt-in skips;
+55 mock integration tests additionally pass. CI 34483865336 passes (1379 tests,
+8 platform/opt-in skips) and Secret scan 34483602372 passes.
+
 Notice inventories preserve 324 npm notices plus 21 App/Python/Node/runtime
 notices with hashes. Installed PyQt6 metadata is GPL-3.0-only; the project's
 Apache-2.0 license does not establish binary distribution rights. Maintainer
@@ -85,7 +117,12 @@ is pending. No license change or binary release has been made.
 
 Gitleaks' default rules exclude node_modules. A vendor-inclusive text scan
 with that single path exclusion removed scanned 235,971,096 bytes and flagged
-24 items; triage is pending. The initial default 513,562-byte scan is not a
+24 items. All match the locked installed source bytes: symbols/exports,
+translation or schema text, database record names, OAuth public client ids,
+WebSocket fixtures and an upstream TTS shared service constant. That constant
+is retained as an upstream design risk, not misrepresented as a local account
+credential leak or a guarantee of vendor safety. The initial default
+513,562-byte scan is not a
 vendor/binary clearance. Reports redact matches; do not blanket-allowlist
 vendor code or call compressed binary contents scanned.
 

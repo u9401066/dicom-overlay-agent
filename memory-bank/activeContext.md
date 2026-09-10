@@ -2,6 +2,27 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- f184258 rebuild is now verified: static bundle checks pass; **19/19 actual
+  frozen packaging smoke checks pass**, including random-port public connect,
+  exact synthetic PNG at the loopback provider, four persistent workspace files,
+  no Codex plugin load/command, and no residual Gateway listener/process. The
+  previous failed candidate remains preserved separately. No real OAuth/model
+  or clinical acceptance is implied. 52 compressed payloads pass `upx -t`.
+  Local unit/smoke 1327 passed / 5 explicit skips plus 55 mock integration
+  tests passed; CI 34483865336 passed (1379 / 8 platform/opt-in skips), Secret
+  scan 34483602372 passed. All code/contract changes are on draft PR #13.
+- Distribution ZIP benchmark on the verified f184258 tree: Deflate 1 gives
+  154.44 MiB in 9.140 s; Deflate 9 gives **141.14 MiB in 23.529 s**. All 18,721
+  decompressed entries match the source SHA-256, with no source mutation.
+  Installed size remains 336.43 MiB; ZIP size is not an EXE/installed-size claim.
+  Artifacts remain local; PyQt distribution-license decision, real candidate
+  GUI/OAuth/clinical/rollback and image-edge gates remain open.
+- The 24 redacted vendor-scan matches were verified byte-identical to the
+  locked installed packages. Classified as JS symbols, translation/schema text,
+  database record names, public OAuth client ids, WebSocket fixture values,
+  and one upstream embedded TTS shared service constant. This is not a claim
+  that upstream constants are risk-free, nor a binary/archive secret scan.
+
 - Candidate fe0a612 full regression passed (1362 tests, 5 explicit skips).
   Its UPX build/verifier passed: 336.43 MiB total, 53.84 MiB App layer, 89
   approved native sources; 52 UPX-marked payloads pass integrity testing.
