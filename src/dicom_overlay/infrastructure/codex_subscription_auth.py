@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 CODEX_MIGRATION_PLUGIN_NAME = "@openclaw/codex"
-CODEX_MIGRATION_PLUGIN_VERSION = "2026.7.1-1"
+CODEX_MIGRATION_PLUGIN_VERSION = "2026.9.3"
 _AUTH_PROBE_TIMEOUT_SEC = 120
 _AUTH_MIGRATION_TIMEOUT_SEC = 180
 
@@ -124,6 +124,14 @@ def ensure_openclaw_subscription_auth(
             models_cache = source_codex_home / "models_cache.json"
             if models_cache.is_file():
                 shutil.copy2(models_cache, sanitized_source / "models_cache.json")
+            migration_env = dict(env)
+            # The migration provider also attempts optional native-plugin
+            # inventory discovery. Bind its public binary override to a missing
+            # file in this owned temporary directory so it cannot start a user's
+            # installed Codex runtime while importing the selected OAuth item.
+            migration_env["OPENCLAW_CODEX_APP_SERVER_BIN"] = str(
+                sanitized_source / "codex-runtime-disabled.exe"
+            )
             try:
                 process = subprocess.run(
                     [
@@ -134,6 +142,8 @@ def ensure_openclaw_subscription_auth(
                         "codex",
                         "--from",
                         str(sanitized_source),
+                        "--item",
+                        "auth:openai",
                         "--include-secrets",
                         "--overwrite",
                         "--yes",
@@ -142,7 +152,7 @@ def ensure_openclaw_subscription_auth(
                         "--json",
                     ],
                     cwd=working_directory,
-                    env=env,
+                    env=migration_env,
                     capture_output=True,
                     text=True,
                     check=False,
@@ -205,6 +215,7 @@ def _verify_migration_plugin(plugin_path: Path) -> None:
             bundle.get("purpose") == "oauth_migration_only"
             and bundle.get("codex_agent_runtime_dependencies_bundled") is False
             and not (plugin_path / "node_modules" / "@openai" / "codex").exists()
+            and not (plugin_path.parents[3] / "@openai" / "codex").exists()
         )
     )
     if (
@@ -301,7 +312,15 @@ def _enable_migration_plugin(config_path: Path, plugin_path: Path) -> None:
     if not isinstance(entries, dict):
         entries = {}
         plugins["entries"] = entries
-    entries["codex"] = {"enabled": True}
+    entries["codex"] = {
+        "enabled": True,
+        "config": {
+            "supervision": {"enabled": False},
+            "sessionCatalog": {"enabled": False},
+            "discovery": {"enabled": False},
+            "computerUse": {"enabled": False, "autoInstall": False},
+        },
+    }
     _write_json_atomic(config_path, config)
 
 

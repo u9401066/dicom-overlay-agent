@@ -286,7 +286,10 @@ def test_gateway_image_smoke_rejects_real_credentials_and_non_loopback_config(
 def _built_exe() -> Path | None:
     if sys.platform != "win32":
         return None
-    exe = _REPO_ROOT / "dist" / "DICOMOverlayAgent" / "DICOMOverlayAgent.exe"
+    bundle = Path(
+        os.environ.get("DICOM_TEST_BUNDLE", str(_REPO_ROOT / "dist/DICOMOverlayAgent"))
+    ).resolve()
+    exe = bundle / "DICOMOverlayAgent.exe"
     return exe if exe.exists() else None
 
 
@@ -361,9 +364,15 @@ def test_built_bundle_package_runtime_smoke_exits_zero():
 def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
     exe = _built_exe()
     assert exe is not None
-    assert not _port_open(18789)
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        gateway_port = reservation.getsockname()[1]
     isolated = shutil.copytree(exe.parent, tmp_path / "DICOMOverlayAgent")
     isolated_exe = isolated / exe.name
+    config_path = isolated / "config.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["openclaw"]["gateway_url"] = f"ws://127.0.0.1:{gateway_port}"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     env = os.environ.copy()
     for name in (
         "OPENCLAW_GATEWAY_TOKEN",
@@ -417,7 +426,7 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
         encoding="utf-8", errors="replace"
     )
     assert "packaged_gateway_image_turn_smoke" in app_log
-    assert "template_count=7" in app_log
+    assert "template_count=5" in app_log
     assert "image_attachment=True" in app_log
     workspace = isolated / "openclaw-home" / ".openclaw" / "workspace"
     assert all(
@@ -425,17 +434,17 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
         for name in (
             "AGENTS.md",
             "SOUL.md",
-            "TOOLS.md",
             "IDENTITY.md",
             "USER.md",
-            "HEARTBEAT.md",
             "BOOTSTRAP.md",
         )
     )
     deadline = time.monotonic() + 15
-    while _port_open(18789) and time.monotonic() < deadline:
+    while _port_open(gateway_port) and time.monotonic() < deadline:
         time.sleep(0.25)
-    assert not _port_open(18789), "packaged Gateway process remained after smoke exit"
+    assert not _port_open(gateway_port), (
+        "packaged Gateway process remained after smoke exit"
+    )
 
 
 def _port_open(port: int) -> bool:

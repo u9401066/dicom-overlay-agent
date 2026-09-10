@@ -390,11 +390,13 @@ portable across OpenClaw releases.
 - [`openclaw_runtime.py`](src/dicom_overlay/infrastructure/openclaw_runtime.py)
   pins `MIN_SAFE_OPENCLAW_VERSION` (`2026.4.22`) and builds the harness
   manifest / chat frame against the documented schema. The client advertises
-  protocol `3..4`; pinned OpenClaw `2026.7.1-2` must return a validated
+  protocol `3..4`; candidate pin OpenClaw `2026.9.3` must return a validated
   `hello-ok` protocol `4` receipt. Images remain in `params.attachments[]`
   with `type` / `mimeType` / `content`.
 - [`openclaw/package.json`](openclaw/package.json) tracks the runtime version
-  (packaged and validated as `openclaw 2026.7.1-2`) and the minimum-safe floor.
+  (candidate `openclaw 2026.9.3`) and the minimum-safe floor. The running
+  September 10 Astra GUI cohort remains frozen on `2026.7.1-2`; candidate
+  changes are isolated until its real-App and package gates close.
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   declares the plugin compatibility window.
 - The OpenClaw-side specialization is intentionally plugin-shaped:
@@ -430,9 +432,11 @@ portable across OpenClaw releases.
   deployment calibration.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema,
   image attachment, OAuth/config migration, state rollback, and clean packaged
-  size. The latest `2026.9.3` candidate passes the isolated protocol/config
-  checks, but migration-only staging, native clinical tools, and the other gates
-  remain open; the active pin stays `2026.7.1-2`.
+  size. The `2026.9.3` slim candidate passes isolated protocol/config,
+  native bbox receipt and OAuth-only migration checks, including the actual
+  App auth helper with fabricated credentials. This is not real subscription
+  authentication or clinical evidence. See the
+  [dated upgrade audit](docs/openclaw-upgrade-audit-2026-09-10.md).
 - The desktop Settings dialog exposes AI Provider profiles and selects the
   model and transport currently active in OpenClaw. The release-default
   `openai-vision` profile uses a Platform API key; **OpenAI Subscription via
@@ -508,11 +512,11 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
   the manifest explicitly records a comparable `no_upx_baseline` instead of
   claiming compression that did not occur.
 - [`scripts/stage-openclaw-runtime.ps1`](scripts/stage-openclaw-runtime.ps1)
-  stages a *slim* OpenClaw runtime, dropping non-Windows native payloads and the
-  disabled UI / browser / voice plugins so only the Gateway surface ships. It
+  stages the locked flat OpenClaw dependency tree, dropping non-Windows native
+  payloads and development assets while preserving internal `dist` chunks. It
   also removes npm-package `.env*` development files; the packaged verifier
   rejects any environment file that reaches the final bundle. The current
-  staging gate also preserves and hashes seven required upstream templates,
+  staging gate also preserves and hashes five required upstream templates,
   removes PDB and tree-sitter C/H development files, and explicitly protects
   OpenClaw `dist`, `quickjs-wasi`, and `playwright-core`.
 - [`scripts/fetch-node.ps1`](scripts/fetch-node.ps1) downloads a portable

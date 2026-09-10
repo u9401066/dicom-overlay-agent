@@ -345,10 +345,11 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 - [`openclaw_runtime.py`](src/dicom_overlay/infrastructure/openclaw_runtime.py)
   釘住 `MIN_SAFE_OPENCLAW_VERSION`（`2026.4.22`），並依文件化 schema
   建立 harness manifest / chat frame。Client 明示 protocol `3..4`；pinned
-  OpenClaw `2026.7.1-2` 必須回傳經驗證的 `hello-ok protocol=4` receipt。
+  候選 pin OpenClaw `2026.9.3` 必須回傳經驗證的 `hello-ok protocol=4` receipt。
   Image 仍放在 `params.attachments[]`，含 `type` / `mimeType` / `content`。
 - [`openclaw/package.json`](openclaw/package.json) 追蹤 runtime 版本
-  （封裝並驗證為 `openclaw 2026.7.1-2`）與最低安全版本下限。
+  （候選 `openclaw 2026.9.3`）與最低安全版本下限。9 月 10 日正在執行的
+  Astra 實機批次仍凍結在 `2026.7.1-2`，候選修改在隔離 worktree 驗證。
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
   宣告 plugin 兼容區間。
 - 同一個 native plugin 提供條件式
@@ -368,8 +369,10 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   V5 導程被安全閘門排除；有效結果都明確標記為未校準的 supporting evidence。
 - **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema、image
   attachment、OAuth/config migration、state rollback 與 clean package size。
-  最新 `2026.9.3` 已通過隔離 protocol/config 檢查，但 migration-only staging、
-  原生臨床工具與其他 gate 尚未閉合，實機批次 pin 仍是 `2026.7.1-2`。
+  `2026.9.3` slim 候選已通過隔離 protocol/config、原生 bbox receipt 與
+  OAuth-only 搬移檢查；App 自己的搬移入口也已用不可登入的假憑證驗證。
+  這不代表真實訂閱認證、臨床正確率或新版 EXE 驗收通過；詳見
+  [升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md)。
 
 ### 核心 4 — 最小化執行檔封裝
 

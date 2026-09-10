@@ -2,6 +2,23 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Isolated candidate branch `agent/openclaw-2026-9-3-20260910` now pins core and
+  OAuth-only migration provider 2026.9.3, with full npm lifecycle under portable
+  Node 24.18.0 (335-package audit: zero matches). Slim staging: 280.62 MiB,
+  18,533 files, five actual bootstrap templates, flat dependencies, no Codex
+  binaries. Native bbox + fabricated OAuth probes pass against slim tree;
+  actual App helper import/reuse passed in 8.440/2.739 s. Main cohort remains
+  frozen, not switched to this candidate. New EXE and real auth gates pending.
+- Fixed managed Gateway/client port drift: both desktop startup and packaged
+  smoke use the configured explicit loopback port. Bundle smoke chooses a
+  temporary port and supports `DICOM_TEST_BUNDLE`; it must not interfere with
+  the ongoing real cohort. 120 targeted tests passed, 3 packaged opt-in skips.
+- Candidate full non-GUI/non-slow regression: 1333 passed, 5 explicit local/
+  packaged/rendered opt-in skips (168.79 s). Final migration self-check pin/flat
+  Codex-ban regression separately passed with the auth module's 3 tests. Ruff
+  passed. Fresh default 9.3 stage restored with no native-probe plugin residue;
+  historical 7.1-2 stage preserved as `build/openclaw-runtime-baseline-7`.
+
 - Package comparisons on clean UI repair source: no-UPX 337.77 MiB vs UPX 5.2.1
   241.29 MiB; existing frozen checks passed. TOC audit revealed ambient MiKTeX /
   TortoiseGit DLL sources, so these are not approved hermetic builds. New build

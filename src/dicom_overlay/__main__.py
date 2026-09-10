@@ -102,16 +102,10 @@ if TYPE_CHECKING:
 logger = structlog.get_logger("dicom_overlay")
 
 _OPENCLAW_RUNTIME_TEMPLATE_PATHS = {
-    "HEARTBEAT.md": Path(
-        "openclaw/node_modules/openclaw/src/agents/templates/HEARTBEAT.md"
-    ),
     "AGENTS.md": Path(
         "openclaw/node_modules/openclaw/docs/reference/templates/AGENTS.md"
     ),
     "SOUL.md": Path("openclaw/node_modules/openclaw/docs/reference/templates/SOUL.md"),
-    "TOOLS.md": Path(
-        "openclaw/node_modules/openclaw/docs/reference/templates/TOOLS.md"
-    ),
     "IDENTITY.md": Path(
         "openclaw/node_modules/openclaw/docs/reference/templates/IDENTITY.md"
     ),
@@ -257,7 +251,7 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
             "openclaw_workspace_templates",
             not missing_templates,
             (
-                "7 pinned upstream templates"
+                "5 pinned upstream templates"
                 if not missing_templates
                 else f"missing or empty: {', '.join(missing_templates)}"
             ),
@@ -384,6 +378,28 @@ def _packaging_smoke_configuration_error(base_dir: Path) -> str:
     return ""
 
 
+def _configured_gateway(base_dir: Path, config: AppConfig) -> GatewayManager:
+    """Use the same explicit loopback endpoint for process and client ownership."""
+    endpoint = urlsplit(config.openclaw.gateway_url)
+    if (
+        endpoint.scheme != "ws"
+        or endpoint.hostname not in {"127.0.0.1", "localhost"}
+        or endpoint.username is not None
+        or endpoint.password is not None
+        or endpoint.path not in {"", "/"}
+        or endpoint.query
+        or endpoint.fragment
+        or endpoint.port is None
+        or endpoint.port == 0
+    ):
+        raise ValueError("Managed Gateway requires ws://127.0.0.1:<port> or localhost")
+    return GatewayManager(
+        repo_root=base_dir,
+        port=endpoint.port,
+        ready_timeout_sec=config.openclaw.gateway_start_timeout_sec,
+    )
+
+
 def _run_gateway_smoke(
     base_dir: Path,
     config_path: Path,
@@ -393,7 +409,7 @@ def _run_gateway_smoke(
 
     The opt-in release test replaces ``openclaw.json`` with a loopback-only
     provider that always returns a marked HTTP 401.  Success means Gateway
-    accepted the image turn, initialized all seven workspace templates, and
+    accepted the image turn, initialized all five workspace templates, and
     reached that explicit local auth failure.  A real API/OAuth configuration
     is rejected before the Gateway starts.
     """
@@ -405,10 +421,7 @@ def _run_gateway_smoke(
 
     settings = DesktopSettingsStore(repo_root=base_dir, config_path=config_path)
     gateway_token = settings.ensure_gateway_token()
-    gateway = GatewayManager(
-        repo_root=base_dir,
-        ready_timeout_sec=config.openclaw.gateway_start_timeout_sec,
-    )
+    gateway = _configured_gateway(base_dir, config)
     client = OpenClawClient(
         gateway_url=config.openclaw.gateway_url,
         timeout_sec=config.openclaw.timeout_sec,
@@ -1659,10 +1672,7 @@ def main() -> None:
     shortcut_toggle.activated.connect(_toggle_enable)
 
     # --- Show UI immediately; portable Gateway migration continues off-thread. ---
-    gateway = GatewayManager(
-        repo_root=base_dir,
-        ready_timeout_sec=config.openclaw.gateway_start_timeout_sec,
-    )
+    gateway = _configured_gateway(base_dir, config)
     control_bar.set_gateway_status("starting")
     control_bar.show()
     control_bar.set_modality(agent.current_modality.value)

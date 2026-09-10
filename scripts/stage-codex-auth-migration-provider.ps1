@@ -18,7 +18,7 @@ $sourceAvailable = Test-Path $PluginSource
 if ($sourceAvailable) {
     $source = Resolve-Path $PluginSource
     $package = Get-Content (Join-Path $source "package.json") -Raw | ConvertFrom-Json
-    if ($package.name -ne "@openclaw/codex" -or $package.version -ne "2026.7.1-1") {
+    if ($package.name -ne "@openclaw/codex" -or $package.version -ne "2026.9.3") {
         throw "Unexpected Codex migration provider identity/version."
     }
     if (-not (Test-Path (Join-Path $source "dist\index.js"))) {
@@ -36,23 +36,24 @@ if ($sourceAvailable) {
     Copy-Item -LiteralPath (Join-Path $source "dist") -Destination $destination -Recurse
     Copy-Item -LiteralPath (Join-Path $source "package.json") -Destination $destination
     Copy-Item -LiteralPath (Join-Path $source "openclaw.plugin.json") -Destination $destination
-    New-Item -ItemType Directory -Force -Path (Join-Path $destination "node_modules") | Out-Null
-    foreach ($dependency in @("typebox", "ws", "zod")) {
-        $dependencySource = Join-Path $source "node_modules\$dependency"
+    # 9.3 publishes a flat npm dependency tree. Keep its frozen resolution;
+    # duplicating nested copies here changes resolution and wastes space.
+    foreach ($dependency in @("semver", "smol-toml", "typebox", "ws", "zod")) {
+        $dependencySource = Join-Path $repo "openclaw\node_modules\$dependency\package.json"
         if (-not (Test-Path $dependencySource)) {
             throw "Codex migration dependency is missing: $dependency"
         }
-        Copy-Item -LiteralPath $dependencySource `
-            -Destination (Join-Path $destination "node_modules") -Recurse
     }
 
     $metadata = [ordered]@{
         schema_version = 1
         package = "@openclaw/codex"
-        version = "2026.7.1-1"
+        version = "2026.9.3"
         purpose = "oauth_migration_only"
         codex_agent_runtime_dependencies_bundled = $false
         omitted_dependencies = @("@openai/codex", "@openai/codex-*-*")
+        verified_capability = "migrate plan/apply --item auth:openai"
+        full_codex_runtime_available = $false
     }
     $metadata | ConvertTo-Json -Depth 4 |
         Set-Content -LiteralPath (Join-Path $destination "migration-bundle.json") -Encoding utf8

@@ -36,7 +36,7 @@
 模型、延遲、封裝尺寸與自訂 WebSocket 範例：
 
 - 桌面程式只透過 OpenClaw 公開 `connect` / `chat.send` 傳送影像；client
-  明示 `3..4` 協定範圍，當前 pinned `2026.7.1-2` 必須回傳並驗證
+  明示 `3..4` 協定範圍，候選 pin `2026.9.3` 必須回傳並驗證
   `hello-ok protocol=4` receipt。Agent loop 由 OpenClaw embedded agent 擁有；
   不提供繞過 Gateway 的 direct-API fallback。
 - Release default 仍為 `openai/gpt-5.4-mini`。Luna 必須以兩個不同 profile 表示：
@@ -59,7 +59,8 @@
 - 2026-08-09 portable bundle 為 368.01 MiB，launcher 7.05 MiB，含 OpenClaw
   `2026.7.1-2`、Node `v24.18.0` 與 harness/plugin `1.5.7`。
 - 產品 metadata 目前為 `0.4.7`、harness/plugin 為 `1.5.8`、OpenClaw pin 為
-  `2026.7.1-2`，但 repository 目前沒有 Git tag 或 GitHub Release；`0.4.7` 是
+  `2026.9.3`（隔離候選；實機批次仍凍結 `2026.7.1-2`），但 repository
+  目前沒有 Git tag 或 GitHub Release；`0.4.7` 是
   Unreleased working-tree state，不是已發布版本。
 - 2026-09-02 以真實桌面 App、viewer、ROI 與 `openai-codex-luna` subscription
   route 對 frozen critical 首例做三次實機嘗試：139.4 秒／74,786 total tokens

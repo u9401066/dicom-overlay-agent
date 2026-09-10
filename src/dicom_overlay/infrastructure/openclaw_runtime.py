@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 MIN_SAFE_OPENCLAW_VERSION = "2026.4.22"
-PINNED_OPENCLAW_VERSION = "2026.7.1-2"
+PINNED_OPENCLAW_VERSION = "2026.9.3"
 DEFAULT_OPENCLAW_NPM_SPEC = "openclaw@latest"
 HARNESS_NAME = "dicom-overlay-agent-harness"
 MIN_GATEWAY_PROTOCOL = 3
@@ -37,7 +37,7 @@ class OpenClawRuntimeError(RuntimeError):
 def parse_gateway_hello(payload: object) -> tuple[int, str]:
     """Validate a public Gateway ``hello-ok`` payload and return its receipt.
 
-    OpenClaw 2026.4.x negotiated protocol 3 while the pinned 2026.7.1-2
+    OpenClaw 2026.4.x negotiated protocol 3 while the pinned 2026.9.3
     runtime negotiates protocol 4.  Accept only a protocol that the client
     explicitly advertised; an arbitrary successful response is not proof that
     the configured listener is an OpenClaw Gateway.
@@ -72,10 +72,13 @@ def parse_gateway_hello(payload: object) -> tuple[int, str]:
             "OpenClaw hello-ok server.version is below the minimum safe runtime: "
             f"{version} < {MIN_SAFE_OPENCLAW_VERSION}"
         )
-    if version == PINNED_OPENCLAW_VERSION and protocol != MAX_GATEWAY_PROTOCOL:
+    # Upgrading the pin must not erase already verified protocol-4 requirements.
+    if (
+        version in {"2026.7.1-2", PINNED_OPENCLAW_VERSION}
+        and protocol != MAX_GATEWAY_PROTOCOL
+    ):
         raise OpenClawRuntimeError(
-            f"Pinned OpenClaw {PINNED_OPENCLAW_VERSION} must negotiate Gateway "
-            f"protocol {MAX_GATEWAY_PROTOCOL}"
+            f"OpenClaw {version} must negotiate Gateway protocol {MAX_GATEWAY_PROTOCOL}"
         )
     return protocol, version
 

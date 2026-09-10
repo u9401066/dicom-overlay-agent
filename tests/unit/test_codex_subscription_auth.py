@@ -10,11 +10,45 @@ from dicom_overlay.infrastructure.codex_subscription_auth import (
     ensure_openclaw_subscription_auth,
     uses_codex_subscription_transport,
 )
+from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 
 
 def _write_json(path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_runtime_selfcheck_uses_matching_migration_pin_and_rejects_flat_codex(tmp_path):
+    modules = tmp_path / "openclaw/node_modules"
+    plugin = modules / "openclaw/dist/extensions/codex"
+    _write_json(
+        plugin / "package.json",
+        {
+            "name": CODEX_MIGRATION_PLUGIN_NAME,
+            "version": CODEX_MIGRATION_PLUGIN_VERSION,
+        },
+    )
+    _write_json(
+        plugin / "migration-bundle.json",
+        {
+            "purpose": "oauth_migration_only",
+            "codex_agent_runtime_dependencies_bundled": False,
+        },
+    )
+    (plugin / "dist").mkdir()
+    (plugin / "dist/index.js").write_text("export default {};", encoding="utf-8")
+    manager = GatewayManager(repo_root=tmp_path)
+
+    def migration_ready():
+        return next(
+            ok
+            for name, ok, _ in manager.verify_runtime()
+            if name == "codex_oauth_migration_provider"
+        )
+
+    assert migration_ready() is True
+    _write_json(modules / "@openai/codex/package.json", {"name": "@openai/codex"})
+    assert migration_ready() is False
 
 
 def _subscription_config() -> dict[str, object]:
@@ -88,12 +122,20 @@ def test_auth_import_uses_plugin_only_for_migration(monkeypatch, tmp_path) -> No
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs["env"]), int(kwargs["timeout"])))
         if "migrate" in command:
+            assert command[command.index("--item") + 1] == "auth:openai"
             sanitized_source = command[command.index("--from") + 1]
+            disabled_runtime = Path(kwargs["env"]["OPENCLAW_CODEX_APP_SERVER_BIN"])
+            assert disabled_runtime.parent == Path(sanitized_source)
+            assert not disabled_runtime.exists()
             copied_auth = json.loads(
                 (Path(sanitized_source) / "auth.json").read_text(encoding="utf-8")
             )
             assert set(copied_auth) == {"auth_mode", "tokens"}
             payload = json.loads(config.read_text(encoding="utf-8"))
+            codex_policy = payload["plugins"]["entries"]["codex"]["config"]
+            assert codex_policy["supervision"]["enabled"] is False
+            assert codex_policy["sessionCatalog"]["enabled"] is False
+            assert codex_policy["discovery"]["enabled"] is False
             payload["auth"] = {
                 "profiles": {
                     "openai:codex-import": {

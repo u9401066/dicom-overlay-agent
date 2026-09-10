@@ -62,26 +62,19 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
         capture_output=True,
     )
 
-    package_root = output_root / "openclaw" / "node_modules" / "openclaw"
+    modules_root = output_root / "openclaw" / "node_modules"
+    package_root = modules_root / "openclaw"
     assert (package_root / "openclaw.mjs").exists()
     assert (package_root / "dist" / "extensions").exists()
     assert (package_root / "dist" / "plugin-sdk").exists()
     assert any((package_root / "skills").glob("*/SKILL.md"))
-    assert (package_root / "node_modules" / "quickjs-wasi").exists()
-    assert (package_root / "node_modules" / "playwright-core").exists()
+    assert (modules_root / "quickjs-wasi").exists()
+    assert (modules_root / "playwright-core").exists()
+    assert not (modules_root / "@openai" / "codex").exists()
+    assert not list(modules_root.rglob("codex.exe"))
     runtime_templates = {
-        "HEARTBEAT.md": package_root / "src/agents/templates/HEARTBEAT.md",
-        **{
-            name: package_root / f"docs/reference/templates/{name}"
-            for name in (
-                "AGENTS.md",
-                "SOUL.md",
-                "TOOLS.md",
-                "IDENTITY.md",
-                "USER.md",
-                "BOOTSTRAP.md",
-            )
-        },
+        name: package_root / f"docs/reference/templates/{name}"
+        for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "BOOTSTRAP.md")
     }
     assert all(
         path.is_file() and path.read_text(encoding="utf-8-sig").strip()
@@ -89,31 +82,31 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
     )
     assert not [
         path
-        for path in package_root.rglob("*")
+        for path in modules_root.rglob("*")
         if path.is_file()
         and (path.name.casefold() == ".env" or path.name.casefold().startswith(".env."))
     ]
-    assert not list(package_root.rglob("*.pdb"))
-    tree_sitter_source = package_root / "node_modules/tree-sitter-bash/src"
+    assert not list(modules_root.rglob("*.pdb"))
+    tree_sitter_source = modules_root / "tree-sitter-bash/src"
     assert not [
         path
         for path in tree_sitter_source.rglob("*")
         if path.is_file() and path.suffix.casefold() in {".c", ".h"}
     ]
     assert [
-        path.name for path in (package_root / "node_modules/@lydell").glob("node-pty-*")
+        path.name for path in (modules_root / "@lydell").glob("node-pty-*")
     ] == ["node-pty-win32-x64"]
     assert [
         path.name
-        for path in (package_root / "node_modules/tree-sitter-bash/prebuilds").iterdir()
+        for path in (modules_root / "tree-sitter-bash/prebuilds").iterdir()
         if path.is_dir()
     ] == ["win32-x64"]
     assert sorted(
         path.name
-        for path in (package_root / "node_modules").glob("sqlite-vec-*")
+        for path in modules_root.glob("sqlite-vec-*")
         if path.is_dir()
     ) == ["sqlite-vec-windows-x64"]
-    pi_tui_native = package_root / "node_modules/@earendil-works/pi-tui/native"
+    pi_tui_native = modules_root / "@earendil-works/pi-tui/native"
     assert sorted(path.name for path in pi_tui_native.iterdir() if path.is_dir()) == [
         "win32"
     ]
@@ -145,7 +138,7 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
 
     # ``gateway --help`` never initializes an agent workspace and therefore
     # did not catch missing templates.  Exercise the pinned public CLI against
-    # a clean, credential-free state directory and require all seven bootstrap
+    # a clean, credential-free state directory and require all five bootstrap
     # files to be materialized from the staged package.
     state = tmp_path / "openclaw-state"
     workspace = state / "workspace"

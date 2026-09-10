@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -24,8 +25,8 @@ MAX_APP_LAYER_BYTES = 100 * MIB
 MAX_OPENCLAW_BYTES = 500 * MIB
 MAX_TOTAL_BYTES = 650 * MIB
 MIN_OPENCLAW_VERSION = (2026, 4, 22)
-MIN_NODE_VERSION = (24, 15, 0)
-EXPECTED_OPENCLAW_VERSION = "2026.7.1-2"
+MIN_NODE_VERSION = (24, 16, 0)
+EXPECTED_OPENCLAW_VERSION = "2026.9.3"
 EXPECTED_NODE_VERSION = "v24.18.0"
 MIN_GATEWAY_PROTOCOL = 3
 MAX_GATEWAY_PROTOCOL = 4
@@ -35,10 +36,8 @@ RELEASE_PYTHON = "3.13.12"
 CLINICAL_DB_SCHEMA_VERSION = "1"
 
 OPENCLAW_WORKSPACE_TEMPLATE_FILES = (
-    "openclaw/node_modules/openclaw/src/agents/templates/HEARTBEAT.md",
     "openclaw/node_modules/openclaw/docs/reference/templates/AGENTS.md",
     "openclaw/node_modules/openclaw/docs/reference/templates/SOUL.md",
-    "openclaw/node_modules/openclaw/docs/reference/templates/TOOLS.md",
     "openclaw/node_modules/openclaw/docs/reference/templates/IDENTITY.md",
     "openclaw/node_modules/openclaw/docs/reference/templates/USER.md",
     "openclaw/node_modules/openclaw/docs/reference/templates/BOOTSTRAP.md",
@@ -123,7 +122,7 @@ _BANNED_PART_PREFIXES = (
     "torch-",
     "torch_",
 )
-_BANNED_FILENAMES = {"opengl32sw.dll"}
+_BANNED_FILENAMES = {"opengl32sw.dll", "codex.exe"}
 _BANNED_DEBUG_SYMBOL_SUFFIXES = {".pdb"}
 _BANNED_MODEL_DATA_SUFFIXES = {
     ".mat",
@@ -240,9 +239,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
     component_counts = _component_counts(bundle)
     selfcheck = _run_selfcheck(exe) if run_selfcheck and exe.is_file() else None
     package_runtime_smoke = (
-        _run_package_runtime_smoke(exe)
-        if run_selfcheck and exe.is_file()
-        else None
+        _run_package_runtime_smoke(exe) if run_selfcheck and exe.is_file() else None
     )
     openclaw_cli = (
         _run_process(
@@ -353,10 +350,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             failures.append(f"bundled OpenClaw component is empty: {component}")
     if selfcheck is not None and selfcheck["exit_code"] != 0:
         failures.append(f"packaged --selfcheck exited {selfcheck['exit_code']}")
-    if (
-        package_runtime_smoke is not None
-        and package_runtime_smoke["exit_code"] != 0
-    ):
+    if package_runtime_smoke is not None and package_runtime_smoke["exit_code"] != 0:
         failures.append(
             "packaged codec/logging/review smoke exited "
             f"{package_runtime_smoke['exit_code']}"
@@ -441,8 +435,6 @@ def _is_tree_sitter_bash_build_source(relative: Path) -> bool:
     vendored_prefix = (
         "openclaw",
         "node_modules",
-        "openclaw",
-        "node_modules",
         "tree-sitter-bash",
         "src",
     )
@@ -485,8 +477,6 @@ def _is_foreign_native_payload(relative: Path) -> bool:
 
     parts = tuple(part.casefold() for part in relative.parts)
     vendored_prefix = (
-        "openclaw",
-        "node_modules",
         "openclaw",
         "node_modules",
     )
@@ -653,7 +643,9 @@ def _inspect_clinical_knowledge(bundle: Path) -> dict[str, Any]:
             if "sqlite_builder" in locals():
                 for table in sqlite_builder._TABLE_COLUMNS:
                     table_counts[table] = int(
-                        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[
+                            0
+                        ]
                     )
         finally:
             connection.close()
@@ -691,7 +683,9 @@ def _inspect_clinical_knowledge(bundle: Path) -> dict[str, Any]:
         else:
             view_digests[name] = match.group(1)
         if expected_text and text != expected_text:
-            errors.append(f"{name} generated view diverges from packaged canonical inputs")
+            errors.append(
+                f"{name} generated view diverges from packaged canonical inputs"
+            )
     if digest and set(view_digests.values()) != {digest}:
         errors.append("generated view digest does not match SQLite")
 
@@ -759,8 +753,7 @@ def _inspect_package_build(bundle: Path) -> dict[str, Any]:
     if (
         platform_info.get("system") != "Windows"
         or platform_info.get("architecture_bits") != 64
-        or str(platform_info.get("machine") or "").casefold()
-        not in {"amd64", "x86_64"}
+        or str(platform_info.get("machine") or "").casefold() not in {"amd64", "x86_64"}
     ):
         errors.append("package was not built with 64-bit Windows Python")
     required_tools = (
@@ -976,12 +969,14 @@ def _inspect_codex_migration_bundle(root: Path) -> dict[str, Any]:
     migration_providers = (
         contracts.get("migrationProviders") if isinstance(contracts, dict) else None
     )
-    runtime_dependency = root / "node_modules" / "@openai" / "codex"
-    platform_binaries = list(root.glob("node_modules/@openai/codex-*/**/codex.exe"))
+    modules = root.parents[3]
+    runtime_dependency = modules / "@openai" / "codex"
+    nested_runtime_dependency = root / "node_modules" / "@openai" / "codex"
+    platform_binaries = list(modules.glob("@openai/codex-*/**/codex.exe"))
     size_bytes = sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
     ok = bool(
         package.get("name") == "@openclaw/codex"
-        and package.get("version") == "2026.7.1-1"
+        and package.get("version") == "2026.9.3"
         and manifest.get("id") == "codex"
         and isinstance(migration_providers, list)
         and "codex" in migration_providers
@@ -989,6 +984,7 @@ def _inspect_codex_migration_bundle(root: Path) -> dict[str, Any]:
         and metadata.get("codex_agent_runtime_dependencies_bundled") is False
         and (root / "dist" / "index.js").is_file()
         and not runtime_dependency.exists()
+        and not nested_runtime_dependency.exists()
         and not platform_binaries
         and size_bytes < 32 * MIB
     )
@@ -1009,67 +1005,201 @@ def _inspect_codex_migration_bundle(root: Path) -> dict[str, Any]:
 
 
 def _inspect_codex_migration_runtime(bundle: Path) -> dict[str, Any]:
-    """Confirm the OAuth migration provider is trusted as a bundled plugin."""
+    """Exercise the public OAuth-only capability, never the Codex runtime.
+
+    9.3's full plugin inspector correctly rejects our omitted Codex dependency.
+    Its independently loaded migration capability supports an exact auth item;
+    prove plan/apply/list with fabricated credentials instead of masking that
+    full-runtime error or installing a prohibited agent binary.
+    """
     with tempfile.TemporaryDirectory(prefix="codex-migration-verify-") as temp_text:
         temp = Path(temp_text)
         state = temp / "state"
         state.mkdir()
-        config = temp / "openclaw.json"
-        config.write_text(
+        source = temp / "fabricated-source"
+        source.mkdir()
+        claims = {
+            "sub": "packaging-fixture-only",
+            "exp": 2000000000,
+            "https://api.openai.com/auth": {"chatgpt_account_id": "packaging-fixture"},
+        }
+        encoded = (
+            base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+        )
+        header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode())
+        fake_token = ".".join(
+            (header.rstrip(b"=").decode(), encoded, "not-a-valid-signature")
+        )
+        (source / "auth.json").write_text(
             json.dumps(
                 {
-                    "plugins": {
-                        "allow": ["codex"],
-                        "entries": {"codex": {"enabled": True}},
-                    }
+                    "auth_mode": "chatgpt",
+                    "tokens": {
+                        "access_token": fake_token,
+                        "id_token": fake_token,
+                        "refresh_token": "non-usable-packaging-fixture",
+                        "account_id": "packaging-fixture",
+                    },
                 }
             ),
             encoding="utf-8",
         )
-        process = _run_process(
-            [
-                str(bundle / "node" / "node.exe"),
-                str(bundle / "openclaw" / "node_modules" / "openclaw" / "openclaw.mjs"),
-                "plugins",
-                "inspect",
-                "codex",
-                "--json",
-            ],
-            cwd=bundle,
-            timeout=PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC,
-            env={
-                **os.environ,
+        config = temp / "openclaw.json"
+        config.write_text(
+            json.dumps(
+                {
+                    "gateway": {"mode": "local"},
+                    "agents": {
+                        "defaults": {
+                            "workspace": str(state / "workspace"),
+                            "model": {"primary": "openai/gpt-6-astra"},
+                            "models": {
+                                "openai/gpt-6-astra": {
+                                    "agentRuntime": {"id": "openclaw"}
+                                }
+                            },
+                        }
+                    },
+                    "logging": {"file": str(state / "runtime.jsonl")},
+                    "plugins": {
+                        "allow": ["codex"],
+                        "entries": {
+                            "codex": {
+                                "enabled": True,
+                                "config": {
+                                    "supervision": {"enabled": False},
+                                    "sessionCatalog": {"enabled": False},
+                                    "discovery": {"enabled": False},
+                                    "computerUse": {
+                                        "enabled": False,
+                                        "autoInstall": False,
+                                    },
+                                },
+                            }
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key.upper()
+            in {
+                "SYSTEMROOT",
+                "WINDIR",
+                "TEMP",
+                "TMP",
+                "COMSPEC",
+                "PATHEXT",
+                "PROCESSOR_ARCHITECTURE",
+            }
+        }
+        env.update(
+            {
                 "OPENCLAW_STATE_DIR": str(state),
                 "OPENCLAW_HOME": str(state),
                 "OPENCLAW_CONFIG_PATH": str(config),
-                "HOME": str(state),
                 "USERPROFILE": str(state),
-            },
-        )
-        if process["exit_code"] != 0:
-            return {
-                "ok": False,
-                "exit_code": process["exit_code"],
-                "error": process["stderr"] or process["stdout"],
+                "OPENCLAW_CODEX_APP_SERVER_BIN": str(
+                    source / "codex-runtime-disabled.exe"
+                ),
+                "PATH": str(bundle / "node")
+                + os.pathsep
+                + str(Path(os.environ.get("SYSTEMROOT", "C:/Windows")) / "System32"),
             }
-        payload = _parse_json_output(process["stdout"])
-        if not payload:
-            return {"ok": False, "error": "plugin inspect did not return JSON"}
-        plugin = payload.get("plugin")
+        )
+        cli = [
+            str(bundle / "node/node.exe"),
+            str(bundle / "openclaw/node_modules/openclaw/openclaw.mjs"),
+        ]
+        outcomes: dict[str, dict[str, Any]] = {}
+        for action in ("plan", "apply"):
+            command = [
+                *cli,
+                "migrate",
+                action,
+                "codex",
+                "--from",
+                str(source),
+                "--include-secrets",
+                "--item",
+                "auth:openai",
+                "--json",
+            ]
+            if action == "apply":
+                command += ["--yes", "--no-backup", "--force"]
+            process = _run_process(
+                command, cwd=temp, env=env, timeout=PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC
+            )
+            if process["exit_code"] != 0:
+                return {
+                    "ok": False,
+                    "exit_code": process["exit_code"],
+                    "error": f"fabricated OAuth {action} command failed",
+                }
+            result = _parse_json_output(process["stdout"])
+            items = result.get("items", [])
+            summary = result.get("summary")
+            expected_status = "planned" if action == "plan" else "migrated"
+            if (
+                result.get("providerId") != "codex"
+                or not isinstance(items, list)
+                or len(items) != 1
+                or not isinstance(items[0], dict)
+                or items[0].get("id") != "auth:openai"
+                or items[0].get("kind") != "auth"
+                or items[0].get("status") != expected_status
+                or not isinstance(summary, dict)
+                or summary.get("errors") != 0
+            ):
+                return {
+                    "ok": False,
+                    "error": f"OAuth-only {action} result contract failed",
+                }
+            outcomes[action] = {"item_id": items[0]["id"], "status": expected_status}
+        current = _read_json(config)
+        current["plugins"] = {"allow": [], "entries": {"codex": {"enabled": False}}}
+        config.write_text(json.dumps(current), encoding="utf-8")
+        process = _run_process(
+            [*cli, "models", "auth", "list", "--json"],
+            cwd=temp,
+            env=env,
+            timeout=PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC,
+        )
+        profiles = _parse_json_output(process["stdout"]).get("profiles", [])
+        agents = current.get("agents")
+        defaults = agents.get("defaults") if isinstance(agents, dict) else None
+        selected = defaults.get("model") if isinstance(defaults, dict) else None
+        models = defaults.get("models") if isinstance(defaults, dict) else None
+        model_config = (
+            models.get("openai/gpt-6-astra") if isinstance(models, dict) else None
+        )
         ok = bool(
-            isinstance(plugin, dict)
-            and plugin.get("id") == "codex"
-            and plugin.get("packageName") == "@openclaw/codex"
-            and plugin.get("origin") == "bundled"
-            and plugin.get("status") == "loaded"
-            and "codex" in plugin.get("migrationProviderIds", [])
+            process["exit_code"] == 0
+            and isinstance(profiles, list)
+            and len(profiles) == 1
+            and isinstance(profiles[0], dict)
+            and profiles[0].get("provider") == "openai"
+            and profiles[0].get("type") == "oauth"
+            and isinstance(selected, dict)
+            and selected.get("primary") == "openai/gpt-6-astra"
+            and isinstance(model_config, dict)
+            and model_config.get("agentRuntime") == {"id": "openclaw"}
         )
         return {
             "ok": ok,
             "exit_code": process["exit_code"],
-            "origin": plugin.get("origin") if isinstance(plugin, dict) else "",
-            "status": plugin.get("status") if isinstance(plugin, dict) else "",
-            "error": "" if ok else "provider was not loaded with bundled trust",
+            "capability": "oauth_migration_only",
+            "source": "fabricated_fixture",
+            "actions": outcomes,
+            "codex_runtime_enabled": False,
+            "real_auth_used": False,
+            "model_requests": 0,
+            "error": ""
+            if ok
+            else "fabricated OAuth profile or model ownership verification failed",
         }
 
 

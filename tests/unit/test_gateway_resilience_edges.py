@@ -138,6 +138,7 @@ def test_gateway_health_probe_rejects_generic_success_without_hello_ok(
         ("2026.4.21", 3),
         ("mock-2026.7.1-2", 4),
         ("2026.7.1-2", 3),
+        ("2026.9.3", 3),
     ],
 )
 def test_gateway_health_probe_rejects_unsafe_hello_receipt(

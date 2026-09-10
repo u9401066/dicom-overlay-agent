@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 from dicom_overlay.infrastructure.codex_subscription_auth import (
+    CODEX_MIGRATION_PLUGIN_VERSION,
     ensure_openclaw_subscription_auth,
     resolve_native_codex_home,
     uses_codex_subscription_transport,
@@ -288,11 +289,12 @@ class GatewayManager:
             codex_bundle = {}
         codex_migration_ready = bool(
             codex_package.get("name") == "@openclaw/codex"
-            and codex_package.get("version") == "2026.7.1-1"
+            and codex_package.get("version") == CODEX_MIGRATION_PLUGIN_VERSION
             and codex_bundle.get("purpose") == "oauth_migration_only"
             and codex_bundle.get("codex_agent_runtime_dependencies_bundled") is False
             and (codex_migration / "dist" / "index.js").is_file()
             and not (codex_migration / "node_modules" / "@openai" / "codex").exists()
+            and not (package_root.parent / "@openai" / "codex").exists()
         )
         rows.append(
             (
@@ -470,6 +472,11 @@ class GatewayManager:
         if not isinstance(defaults, dict):
             defaults = {}
             agents["defaults"] = defaults
+        # Bind the selected workspace to the assets we actually synchronized;
+        # do not depend on an upstream version's implicit HOME/state default.
+        defaults["workspace"] = str(
+            (self._repo_root / _OPENCLAW_HOME / ".openclaw" / "workspace").resolve()
+        )
         primary = defaults.get("model")
         configured_primary = (
             primary.get("primary") if isinstance(primary, dict) else primary
