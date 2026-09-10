@@ -13,6 +13,9 @@ if (-not $PluginSource) {
     $PluginSource = Join-Path $repo "openclaw\node_modules\@openclaw\codex"
 }
 $openclaw = Resolve-Path $OpenClawRoot
+# Finish package-owned lifecycle initialization before relocating the migration
+# provider. A first CLI run can otherwise prune that relocated provider as stale.
+& (Join-Path $PSScriptRoot "prepare-openclaw-runtime.ps1") -RepoRoot $repo.Path
 $destination = Join-Path $openclaw "dist\extensions\codex"
 $sourceAvailable = Test-Path $PluginSource
 if ($sourceAvailable) {
