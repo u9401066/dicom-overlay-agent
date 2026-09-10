@@ -67,6 +67,56 @@ a working slim runtime. A clean staged bundle and actual EXE tests are required.
 Candidate dependency lock SHA-256:
 `e3daab9858ddaccbbc1c664510eb7c6a5baf3fdf6367dde6850afe6e77bb118b`.
 
+## Dependency security release gate
+
+On September 10, `npm audit --omit=dev --json`, executed with portable Node
+24.18.0, reported **11 affected package entries: 7 high, 4 moderate, 0 critical**
+for a fresh install of the pinned lockfile. Each listed version was also found
+in the newly staged slim runtime, not merely in a development installation:
+
+| Staged package | Version | npm severity |
+| --- | --- | --- |
+| `@hono/node-server` | 1.19.14 | moderate |
+| `@openclaw/fs-safe` | 0.4.1 | high (transitive) |
+| `brace-expansion` | 5.0.7 | high |
+| `fast-uri` | 3.1.2 | high |
+| `hono` | 4.12.25 | moderate |
+| `ip-address` | 10.2.0 | high |
+| `openclaw` | 2026.7.1-2 | high (transitive) |
+| `protobufjs` | 7.6.3 | moderate |
+| `qs` | 6.15.2 | moderate |
+| `tar` | 7.5.19 | high |
+| `undici` | 8.5.0 | high |
+
+Pinned lock SHA-256:
+`2205ca87614d93fc1af901413db164d87e9dfc39baf32ec839524214bde31458`.
+The candidate lock identified above reported **zero affected entries** in the
+same day's audit. Counts describe npm's advisory matching, not proven App
+exploits, independent vulnerability counts, or a guarantee of safety.
+
+Representative public upstream advisories, with important reachability limits:
+
+- [Hono Node adapter advisory](https://github.com/advisories/GHSA-frvp-7c67-39w9):
+  affected Windows static serving can bypass prefix-mounted protection through
+  an encoded backslash. Access remains within the configured static root;
+  this is not an arbitrary filesystem escape.
+- [undici cache advisory](https://github.com/advisories/GHSA-4cwx-7wf7-3272):
+  malformed private-cache directives can disclose shared cached responses or
+  fail parsing **when the affected cache interceptor is used**.
+- [node-tar advisory](https://github.com/advisories/GHSA-r292-9mhp-454m):
+  crafted long entry paths can exhaust the stack during archive member
+  selection. Presence of the package alone does not establish that the image
+  interpretation path accepts such archives.
+
+App-specific reachability is not yet established for all advisories. Loopback
+Gateway binding, token authentication, and restricted clinical tools remain
+required controls, but do not prove these dependency issues unreachable.
+**Do not publish the old-pin rebuilt binary as a new release.** Keep it only as
+a measured functional/size baseline. Prioritize the exact-version upgrade and
+the gates below; do not run `npm audit fix --force`, manually prune internal
+`dist` chunks, or override transitive versions without compatibility evidence.
+Re-audit the final candidate lock and shipped package inventory before release.
+
 ## Concrete upgrade work still required
 
 1. **Template relocation:** the staging script's pinned

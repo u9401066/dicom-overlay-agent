@@ -53,6 +53,20 @@ artifact 或未去識別截圖貼到公開 Issue、Discussion 或 PR。
   provider 匯入；audit 只記 SHA-256，不記 token。`openclaw-home` 的 migration、
   skill-workshop、memory 及其他 runtime state 不得加入 commit 或 bundle。
 
+## 已知依賴發布阻擋項（2026-09-10）
+
+以 portable Node 24.18.0 執行 `npm audit --omit=dev --json`，目前固定的
+OpenClaw 2026.7.1-2 lockfile 回報 **11 個受影響套件項目（7 high、4 moderate）**。
+11 個對應版本皆確認存在於重新產生的 slim runtime；不能以「只有開發依賴」
+或「已裁剪」排除。這是套件公告命中數，不是 11 個已證實可利用的 App 漏洞。
+
+**此固定版的重建包僅用作大小／功能基準，不得直接發布為新版二進位。**
+9.3 隔離候選 lockfile 在同日掃描為零項，但這不是無漏洞保證，也不能代替
+OAuth-only migration、native bbox tool、真實 App、封裝與狀態回復驗證。
+不對執行中的 runtime 做 `npm audit fix --force` 或未驗證的相依版本覆寫。
+完整套件／版本、公告連結與升級門檻見
+[September 10 upgrade audit](docs/openclaw-upgrade-audit-2026-09-10.md#dependency-security-release-gate)。
+
 ## Clinical safety 與一般 bug 的分流
 
 漏診、錯誤嚴重度、錯 lead、框位錯誤、generic refusal 或不必要免責詞屬於重要的
