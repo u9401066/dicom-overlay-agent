@@ -19,9 +19,7 @@ class _SiteParser(HTMLParser):
         self.h1_text: list[str] = []
         self._in_h1 = False
 
-    def handle_starttag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         if tag in {"a", "link"} and values.get("href"):
             self.references.append(values["href"] or "")
@@ -135,9 +133,13 @@ def test_pages_site_labels_frozen_mock_and_governance_status_truthfully() -> Non
 
 def test_pages_separates_candidate_contract_checks_from_release_evidence() -> None:
     docs = (SITE_ROOT / "docs.html").read_text(encoding="utf-8")
-    assert "including\n                the App's own auth helper" in docs
-    assert "do not prove real subscription authentication or clinical accuracy" in docs
-    assert "No candidate binary is released" in docs
+    visible_copy = " ".join(docs.split())
+    assert "including the App's own auth helper" in visible_copy
+    assert (
+        "do not prove real subscription authentication or clinical accuracy"
+        in visible_copy
+    )
+    assert "No candidate binary is released" in visible_copy
 
 
 def test_pages_site_reports_public_repository_and_absent_release() -> None:
@@ -219,7 +221,7 @@ def test_mobile_menu_is_progressive_and_keyboard_dismissible() -> None:
     styles = (SITE_ROOT / "styles.css").read_text(encoding="utf-8")
 
     assert '<nav id="site-navigation" class="site-navigation"' in index
-    assert "document.documentElement.classList.add(\"js\")" in script
+    assert 'document.documentElement.classList.add("js")' in script
     assert ".js .site-navigation" in styles
     assert ".js .site-navigation.is-open" in styles
     assert 'event.key === "Escape"' in script
@@ -247,7 +249,9 @@ def test_pages_workflow_uses_current_official_action_majors() -> None:
 
     commands = [step.get("run", "") for step in steps]
     validation_index = next(
-        index for index, step in enumerate(steps) if step.get("name") == "Validate Pages source"
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Validate Pages source"
     )
     upload_index = next(
         index for index, step in enumerate(steps) if step.get("name") == "Upload site"
