@@ -110,10 +110,26 @@ def test_native_inventory_fails_closed_on_empty_or_code(
 
 def test_output_boundary_rejects_root_parent_and_accepts_child(build_module, tmp_path):
     with pytest.raises(ValueError):
-        build_module.child_output(tmp_path, Path())
+        build_module.child_output(tmp_path, Path(), prefix="dist")
     with pytest.raises(ValueError):
-        build_module.child_output(tmp_path, Path(".."))
+        build_module.child_output(tmp_path, Path(".."), prefix="dist")
     assert (
-        build_module.child_output(tmp_path, Path("dist-comparison"))
+        build_module.child_output(tmp_path, Path("dist-comparison"), prefix="dist")
         == tmp_path / "dist-comparison"
     )
+
+
+@pytest.mark.parametrize(
+    "value,prefix",
+    [
+        ("src", "dist"),
+        ("openclaw", "build"),
+        ("build-cache", "dist"),
+        ("dist-output", "build"),
+    ],
+)
+def test_outputs_cannot_replace_source_or_cross_roles(
+    build_module, tmp_path, value, prefix
+):
+    with pytest.raises(ValueError, match="Build output must use"):
+        build_module.child_output(tmp_path, Path(value), prefix=prefix)

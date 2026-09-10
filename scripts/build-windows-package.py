@@ -102,10 +102,13 @@ def inspect_native_sources(toc: Path, roots: Mapping[str, Path]) -> dict[str, ob
     }
 
 
-def child_output(repo: Path, value: Path) -> Path:
+def child_output(repo: Path, value: Path, *, prefix: str) -> Path:
     output = (repo / value).resolve()
     if output == repo or not output.is_relative_to(repo):
         raise ValueError("Build outputs must stay inside the repository")
+    top = output.relative_to(repo).parts[0]
+    if top != prefix and not top.startswith(prefix + "-"):
+        raise ValueError(f"Build output must use a {prefix} or {prefix}-* directory")
     return output
 
 
@@ -118,8 +121,8 @@ def main() -> int:
     try:
         if platform.system() != "Windows" or platform.python_version() != "3.13.12":
             raise ValueError("Release packaging requires Windows Python 3.13.12")
-        dist = child_output(repo, args.distpath)
-        work = child_output(repo, args.workpath)
+        dist = child_output(repo, args.distpath, prefix="dist")
+        work = child_output(repo, args.workpath, prefix="build")
         env = isolated_environment(
             os.environ,
             executable=Path(sys.executable),
