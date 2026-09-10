@@ -5,6 +5,12 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Latest-candidate audit merged through PR #8 as `8883360` after CI/Secret scan
+  passed. Site copy now links the public 2026.9.3 audit; it still identifies the
+  active 2026.7.1-2 pin and unclosed clinical-tool/migration/bundle gates.
+- Isolated UI repair passed 1241 tests with 5 explicit skipped local-artifact /
+  rendered-capture / packaged gates, 41 targeted checks, Ruff, and module mypy.
+  It stays separate from the real-GUI cohort until that run has been frozen.
 - September 10 isolated OpenClaw **2026.9.3** audit passed public protocol 4,
   unchanged image attachment + fastMode acceptance, exact synthetic source hash
   at a local fixture provider, correlated final events, and public validation of
