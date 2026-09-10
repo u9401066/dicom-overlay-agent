@@ -13,6 +13,11 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel
 
+from dicom_overlay.application.multi_pass import (
+    RefinementAction,
+    RefinementDelta,
+    apply_refinement_delta,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     ChecklistItem,
@@ -321,6 +326,45 @@ def test_wrapped_report_text_is_not_compressed_below_its_rendered_height(
     qt_app.processEvents()
     assert finding.minimumHeight() > old_height
     assert finding.height() >= finding.heightForWidth(finding.width())
+    panel.close()
+
+
+def test_report_keeps_crop_scope_next_to_the_limited_observation(
+    qt_app: QApplication,
+) -> None:
+    result = _result()
+    original = replace(result.findings[0], notes=["Original ROI includes labeled V1."])
+    crop_finding = replace(
+        original,
+        notes=["V1 is absent; V2 and V6 are truncated."],
+        bboxes=[RegionRect(0.1, 0.2, 0.2, 0.3)],
+    )
+    result.findings = apply_refinement_delta(
+        [original],
+        RefinementDelta(
+            RefinementAction.CONFIRM,
+            target_id=original.id,
+            finding=crop_finding,
+            rationale="Limb-lead comparison is unavailable.",
+        ),
+        crop_region=RegionRect(0.25, 0.5, 0.5, 0.25),
+        expected_target_id=original.id,
+    )
+    panel = SummaryPanel()
+    panel.resize(430, 700)
+    panel.update_result(result)
+    panel.show()
+    qt_app.processEvents()
+    label = panel._findings_layout.itemAt(0).widget()
+    assert isinstance(label, QLabel)
+    assert label.textFormat() is Qt.TextFormat.PlainText
+    assert "Note: Original ROI includes labeled V1." in label.text()
+    assert (
+        "Note: [Crop-only evidence; ROI x=0.2500 y=0.5000 w=0.5000 h=0.2500] "
+        "V1 is absent; V2 and V6 are truncated."
+    ) in label.text()
+    assert "Note: V1 is absent" not in label.text()
+    assert label.height() >= label.heightForWidth(label.width())
     panel.close()
 
 

@@ -2,6 +2,20 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Separate `agent/crop-provenance-20260910` worktree addresses unscoped crop
+  notes observed in the real UI cohort. Crop notes/rationale now carry the
+  orchestrator-owned normalized ROI bounds; original notes, diagnosis, bbox
+  mapping, prompts and request count remain unchanged. Synthetic scope
+  regression reproduced nine failures first; 149 scope/multi-pass tests pass
+  after the fix. Full unit/smoke/mock-integration: 1393 passed, 6 explicit
+  opt-in/local-artifact skips (171.93 s). Five initial native-plugin failures
+  were ERR_MODULE_NOT_FOUND in the new worktree; installing the locked 9.3
+  runtime under Node 24.18 resolved them without skips. Qt scope/wrapping and
+  JSON export checks pass; a synthetic offscreen report was visually reviewed
+  after explicitly loading Windows fonts (initial preview had missing glyphs).
+  See `docs/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
+  remains pending; main cohort untouched, 80 distinct UI successes at 14:08 UTC.
+
 - English/Traditional-Chinese READMEs, maintenance size charter and the upgrade
   audit now report the verified f184258 package/ZIP measurements, with explicit
   pending real candidate and distribution-license gates. The dated GUI progress

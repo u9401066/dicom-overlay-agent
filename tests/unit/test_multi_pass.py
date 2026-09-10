@@ -3133,7 +3133,10 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert confirmed.label == "opacity"
         assert confirmed.severity is Severity.WARNING
         assert confirmed.detail == "confirmed on targeted crop"
-        assert "targeted second turn" in confirmed.notes
+        assert (
+            "[Crop-only evidence; ROI x=0.2000 y=0.3000 w=0.4000 h=0.3000] "
+            "targeted second turn"
+        ) in confirmed.notes
 
     async def test_confirm_preserves_coarse_result_severity_floor(self):
         box = RegionRect(x=0.2, y=0.3, w=0.4, h=0.3)
