@@ -7,47 +7,83 @@
 🌐 [繁體中文](README.zh-TW.md)
 
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
+(the public deployment currently lags this branch; do not use it as release evidence yet).
 
-## 2026-08-28 v0.4.7 Release-Candidate Status
+## Development evidence — 2026-09-10 (not a release)
 
-- The packaged Windows GUI was run on a 2560×1600 display at 150% DPI while a
-  credentialed local MEETI evaluation ECG was visible in the viewer. It captured
-  only the configured
-  physical-pixel ROI `(19, 30, 1522, 1136)`, reached `DISPLAYING`, and exported
-  four diagnostic boxes, two analysis-crop outlines, and a coordinate audit.
-  External Windows capture correctly excluded the top-most app panels.
-- The release default remains `openai/gpt-5.4-mini`. For this acceptance run,
-  an explicit `openai-codex` model override selected `openai/gpt-5.6-luna` on
-  the OpenClaw-owned subscription route; Codex supplied migrated OAuth state
-  but did not own the image-analysis loop. Five image turns took 146.915 s and
-  recorded 111,833 total tokens. Subscription metering reported US$0; the same
-  traffic is about US$0.017135 at the
-  [published Luna token prices](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
-- All exported boxes remained in bounds with no clamping and at most 0.368
-  physical-pixel edge drift. This geometry success must not hide the clinical
-  failure: the result reported sinus rhythm/possible LVH while the reference
-  described atrial fibrillation with slow ventricular response, prolonged QT,
-  poor R-wave progression, and nonspecific inferior ST-T changes. This is a
-  recorded accuracy miss, not a medical-performance claim.
-- A subsequent answer-free two-case canary (seed `20260828`, 1,222 exposed IDs
-  denied) passed schema and bbox gates with zero JSON repair and met every
-  60/100/180-second SLA. It scored 1/2 strict, 0.522 mean partial credit, and
-  1.0 normal-control specificity: the warning case surfaced abnormal R-wave
-  progression and prominent anterior T waves but missed the weak-label LVH and
-  asserted sinus-rhythm terms. Because its fingerprint recorded `dirty=true`
-  while release metadata was being synchronized, this is bounded pre-release
-  evidence, not the final frozen-source gate.
-- Core 2 now fail-closes empty image attachments, schema/event mismatches and
-  non-finite, zero-area, or fully off-image bboxes. Gateway recovery avoids
-  replay after acceptance and never kills an unknown PID. A 10,001-identity
-  scale/resume gate proves checkpoint set completeness and fingerprint
-  rejection; it is plumbing evidence, not a 10,001-image clinical result.
-- Product metadata is `v0.4.7`, harness/plugin metadata is `1.5.8`, and the
-  OpenClaw pin remains `2026.7.1-2`. The verified staged OpenClaw runtime is
-  165.162 MiB, a conservative 19.804 MiB reduction that preserves required
-  templates and internal `dist` chunks. The final v0.4.7 full bundle and frozen
-  unseen canary have not yet been completed; their size, hash, test count, and
-  accuracy values must be filled from the final release commit.
+The active desktop acceptance target is **GPT-6 Astra low**, selected through
+Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
+Real GUI captures reached the subscription transport with observed
+`gpt-6-astra / low`: the first calibration export timed out at finalization
+(179.252 s); a second completed finalization (165.043 s), but still required
+review. These are two attempts on one case. A second distinct case completed
+all four image turns in 140.481 s with verified clean ROI and Astra low runtime
+receipts; clinical scoring is pending. The next pilot case hit the 60 s initial
+response deadline. This is not a completed 100-case cohort.
+The historical September 2-3 Luna batch produced 60 exports and 43 timeouts
+across 103 attempts; all 60 exported source images matched their intended
+cases, which is identity evidence, not diagnostic accuracy.
+See the [September 10 evidence update](docs/verification-2026-09-10.md).
+
+The working tree identifies itself as `0.4.7` and the harness/plugin as `1.5.8`,
+but this repository currently has **no Git tag and no GitHub Release**. Treat all
+`0.4.7` entries as Unreleased until a clean build, the required live runs, CI,
+tag, and release artifacts have passed.
+
+Explicit provider profiles avoid conflating subscription allowance with API
+billing. All keep the multimodal agent loop inside OpenClaw:
+
+| Settings profile | Authentication / transport | Model | Billing evidence |
+| --- | --- | --- | --- |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | native OpenClaw `openai-chatgpt-responses`; local Codex sign-in; low reasoning effort; no Platform API key | `openai/gpt-6-astra` | subscription usage; cancelled/unreported turns are not zero usage |
+| `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | local ChatGPT/Codex OAuth migrated into native OpenClaw `openai-chatgpt-responses`; no `OPENAI_API_KEY`, no Codex agent runtime | `openai/gpt-5.6-luna` | subscription usage; token cost below is only an API-equivalent estimate |
+| `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` through OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | normal Platform API billing |
+
+On 2026-09-02 the real desktop App/viewer/subscription route was attempted three
+times on the first frozen critical ECG. These are negative/incomplete evidence,
+not acceptance results:
+
+| Desktop export | Wall time | Recorded usage | Outcome |
+| --- | ---: | ---: | --- |
+| `desktop-20260902-082210-259256` | 139.4 s | 74,786 total (48,789 input; 20,480 cached; 5,517 output; 3,217 reasoning), US$0.0167878 API-equivalent | `info`, 0 findings; incorrect |
+| `desktop-20260902-090424-024627` | 61.673 s | 37,811 total (24,787 input; 10,752 cached; 2,272 output; 1,093 reasoning), US$0.00789884 API-equivalent | `info`, 1 possible-LVH finding and only 5 checklist rows; incomplete |
+| `desktop-20260902-092532-259033` | 153.398 s | 87,694 total (61,500 input; 20,480 cached; 5,714 output; 3,053 reasoning), US$0.0195664 API-equivalent | `info`, 1 finding, `incomplete/review`; missed the critical reference |
+
+The estimates use the [official GPT-5.6 Luna API rates](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
+of US$0.20/M input, US$0.02/M cached input, and US$1.20/M output. They are not
+subscription charges. The failed runs exposed Gateway/bbox-receipt and
+critical-first reconciliation issues now under repair; none establishes medical
+accuracy, latency acceptance, or release readiness.
+
+- A purposefully gold-enriched, blinded pair of **128 unique multi-diagnosis
+  ECGs** is frozen (seed `1946247532`, 24 critical/104 warning, 48 asserted/80
+  partially uncertain, at least three canonical diagnoses each; pair id
+  `7bdc87f6…8a46e0`). It has **not** completed the required real App run and is
+  not prevalence-weighted population evidence.
+- The partial-ECG v2 corpus contains eight deterministic variants (edge crops,
+  central/narrow bands, hidden lead labels, and 48 px downsampling). Its 8/8
+  result is **mock schema/bbox/partial-input plumbing only**; no real Luna
+  diagnostic score is claimed.
+- Seven deterministic clinical-consistency rules now come from canonical YAML,
+  with generated human/agent views and an application-owned SQLite projection
+  bound to registry SHA-256
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`.
+  Schema/parity checks do not substitute for specialist clinical review or
+  source licensing review; see [clinical knowledge governance](clinical_knowledge/README.md).
+- Managed Gateway reuse now requires an atomic, secret-free ownership receipt
+  binding PID, port, token SHA-256, launch owner, and one canonical absolute bbox
+  audit path. A healthy listener without that exact receipt is refused, not
+  adopted or killed.
+- The latest complete clean bundle remains the historical 2026-08-09 build:
+  7.05 MiB launcher, 94.74 MiB App+Python/Qt, and 368.01 MiB full bundle. Current
+  `dist/` is runtime-polluted and is not release evidence. Implemented safe
+  staging reductions and further candidates still require a clean measured
+  rebuild; OpenClaw internal `dist`, provider, Playwright, QuickJS, TypeScript,
+  and Node payloads are not candidates for unsupported pruning.
+- OpenClaw `2026.8.2` passed an isolated public `connect`/`chat.send` protocol
+  check, but the upgrade is deferred: auth/config migration, state rollback,
+  and a core unpacked-size increase from 83.43 to 196.68 MiB remain unresolved.
+  See the [2.x decision record](docs/openclaw-2x-decision-2026-09-02.md).
 
 The earlier frozen 32-case pair, 8-case unseen engineering gate, and incomplete
 9,922-case paired run remain historical evidence in the
@@ -352,8 +388,10 @@ portable across OpenClaw releases.
 
 - [`openclaw_runtime.py`](src/dicom_overlay/infrastructure/openclaw_runtime.py)
   pins `MIN_SAFE_OPENCLAW_VERSION` (`2026.4.22`) and builds the harness
-  manifest / chat frame against the documented schema (protocol `3`, image in
-  `params.attachments[]` with `type` / `mimeType` / `content`).
+  manifest / chat frame against the documented schema. The client advertises
+  protocol `3..4`; pinned OpenClaw `2026.7.1-2` must return a validated
+  `hello-ok` protocol `4` receipt. Images remain in `params.attachments[]`
+  with `type` / `mimeType` / `content`.
 - [`openclaw/package.json`](openclaw/package.json) tracks the runtime version
   (packaged and validated as `openclaw 2026.7.1-2`) and the minimum-safe floor.
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
@@ -389,17 +427,20 @@ portable across OpenClaw releases.
   diagnoses was only 0.479, below the 0.75 product target. These are
   waveform-only weak-label research metrics, not screenshot-agent accuracy or
   deployment calibration.
-- **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema
-  and the image attachment format are unchanged; raise the floor only when a
-  real incompatibility is found.
+- **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema,
+  image attachment, OAuth/config migration, state rollback, and clean packaged
+  size. The isolated `2026.8.2` protocol probe passed, but its measured core
+  unpacked size grew from 83.43 to 196.68 MiB and the remaining gates are open;
+  the audited pin therefore stays `2026.7.1-2`.
 - The desktop Settings dialog exposes AI Provider profiles and selects the
-  model and transport currently active in OpenClaw. The `openai-vision` profile
-  uses a Platform API key; **OpenAI Subscription via OpenClaw** uses the local
-  ChatGPT/Codex OAuth allowance and the native `openai-chatgpt-responses`
-  transport. Both route the release-default `openai/gpt-5.4-mini` image turns
-  through the OpenClaw embedded agent. Luna remains an explicit profile; the
-  2026-08-27 desktop acceptance selected it with an `openai-codex` model
-  override rather than changing the default. OpenRouter is also available through
+  model and transport currently active in OpenClaw. The release-default
+  `openai-vision` profile uses a Platform API key; **OpenAI Subscription via
+  OpenClaw** uses local ChatGPT/Codex OAuth and native
+  `openai-chatgpt-responses` for `openai/gpt-5.4-mini`. Luna is separately
+  explicit: `openai-codex-luna` uses that subscription transport with no API
+  key, while `openai-luna` requires `OPENAI_API_KEY` and uses
+  `openai-responses`. All image turns remain owned by the OpenClaw embedded
+  agent. OpenRouter is also available through
   `OPENROUTER_API_KEY` and `https://openrouter.ai/api/v1`. Saving a profile
   writes only app-managed OpenClaw provider/model sections and keeps secrets in
   environment variables or `.env`, not in git or experiment logs.
@@ -459,7 +500,12 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
   unused libraries (`numpy`, `scipy`, `matplotlib`, `pandas`, `imagehash`),
   prunes Qt modules the overlay never loads (WebEngine, Qml/Quick, Pdf,
   Multimedia, the ~20 MB `opengl32sw.dll` software GL fallback, qml/translations
-  data), enables UPX, and builds a windowed (`console=False`) app.
+  data), and builds a windowed (`console=False`) app. The release build pins
+  64-bit CPython 3.13.12 through `uv` and bundles an exact PyInstaller/Pillow/
+  PyQt toolchain receipt. UPX is enabled only when the executable is present;
+  verification then requires an observable UPX-marked PE payload. Otherwise
+  the manifest explicitly records a comparable `no_upx_baseline` instead of
+  claiming compression that did not occur.
 - [`scripts/stage-openclaw-runtime.ps1`](scripts/stage-openclaw-runtime.ps1)
   stages a *slim* OpenClaw runtime, dropping non-Windows native payloads and the
   disabled UI / browser / voice plugins so only the Gateway surface ships. It
@@ -477,7 +523,7 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 - **Portable plug-and-play** — when frozen, runtime paths anchor to the
   executable's folder (not the launch `cwd`, which may be `System32`) via
   [`app_paths.py`](src/dicom_overlay/infrastructure/app_paths.py), so the bundle
-  runs unchanged from a USB stick on a fresh machine. Run
+  also writes a relative configured log beside the bundle. Run
   `DICOMOverlayAgent.exe --selfcheck` to verify Node.js, the OpenClaw runtime, a
   writable base, and `config.yaml` all resolve — without launching the GUI or
   contacting an LLM (exit 0 = ready).
@@ -488,18 +534,26 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 | --- | --- | --- |
 | `DICOMOverlayAgent.exe` launcher | < 50 MiB | **7.05 MiB** in the last complete 2026-08-09 build |
 | App + Python/Qt layer | < 100 MiB | **94.74 MiB** in the last complete 2026-08-09 build |
-| v0.4.7 staged OpenClaw runtime | < 500 MiB | **165.162 MiB** |
+| Unreleased staged OpenClaw runtime | < 500 MiB | **165.162 MiB** |
 | Conservative staging reduction | - | **19.804 MiB** |
 | Portable Node.js `v24.18.0` | - | **88.25 MiB** |
 | Last complete zero-install bundle (2026-08-09) | < 650 MiB | **368.01 MiB** |
-| v0.4.7 full zero-install bundle | < 650 MiB | **Pending clean rebuild; no estimate** |
+| Unreleased full zero-install bundle | < 650 MiB | **Pending clean rebuild; no estimate** |
 
-The verified v0.4.7 stage is 165.162 MiB and keeps required templates, `dist`,
+The historical clean manifest records 7,397,370 B for the launcher, 99,338,066 B
+for App+Python/Qt, 194,011,520 B for OpenClaw, 92,534,088 B for Node, and
+385,883,674 B total. Current `dist/` is 378.18 MiB but includes 10.156 MiB of
+runtime residue, so it is not release evidence.
+
+The verified Unreleased stage is 165.162 MiB and keeps required templates, `dist`,
 and plugin surfaces intact on purpose. Pruning internal `dist` chunks would
 couple the app to OpenClaw internals and break **Core 3** across releases, so
-the 19.804 MiB reduction trims only development and foreign-native payloads
-around the runtime. A full v0.4.7 number will be published only after a clean
-rebuild and packaged verification.
+implemented safe reductions trim PDB/tree-sitter headers (19.804 MiB), foreign
+native payloads (0.642 MiB), and Pillow AVIF (7.471 MiB) around the runtime.
+The resulting ~340.3 MiB arithmetic is not a measured build. Next gated
+candidates are win32ui/MFC (6.41 MiB while preserving pythoncom/win32com SAPI),
+unused Qt plugins (~3.87 MiB), and unused Pillow codecs (~0.70 MiB). A new total
+will be published only after a clean rebuild and packaged verification.
 
 ## 📋 Documentation
 
@@ -509,8 +563,12 @@ rebuild and packaged verification.
 - [Changelog](CHANGELOG.md) - Version history
 - [Roadmap](ROADMAP.md) - Feature planning
 - [Real Test Runbook](REAL_TEST_RUNBOOK.md) - Live stack testing
+- [2026-09-02 Verification Record](docs/verification-2026-09-02.md) - Current evidence, failures, and unfinished gates
+- [Evaluation Cohorts](docs/evaluation-cohorts.md) - 9,922/128/partial corpus identities and claim boundaries
+- [OpenClaw 2.x Decision](docs/openclaw-2x-decision-2026-09-02.md) - Isolated 2026.8.2 evidence and deferred-upgrade gates
+- [Clinical Knowledge Governance](clinical_knowledge/README.md) - Canonical YAML, human/agent steps, and SQLite parity
 - [AGENTS.md](AGENTS.md) - AI maintenance guardrails for the four cores
-- [Image-agent harness reference review](docs/harness-reference-review-2026-08-27.md) - Public patterns adopted without adding a packaged runtime dependency
+- [Image-agent harness reference review](docs/harness-reference-review-2026-08-28.md) - Public patterns adopted without adding a packaged runtime dependency
 - [MEETI/OpenClaw Experiment Record](docs/meeti-openclaw-experiments-2026-08-09.md) - Real paired/unseen results, tools, SLA, and claim boundaries
 - [ECGFounder Tool Contract](docs/ecgfounder-tool.md) - External waveform evidence boundary
 - [2026-08-05 Verification Record](docs/verification-2026-08-05.md) - MultiPass, real canary, coordinates, bundle hashes, and blockers

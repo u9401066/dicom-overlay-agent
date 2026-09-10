@@ -1,10 +1,12 @@
 # Architecture
 
-本文件描述 v0.4.7（2026-08-27）的桌面程式、OpenClaw agent、MultiPass
+本文件描述 Unreleased `0.4.7`（更新至 2026-09-10）的桌面程式、OpenClaw agent、MultiPass
 影像工具、座標投影與 MEETI 評估邊界。歷史 paired 結果以
 [`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)
-為準；本輪實機驗收與尚待完成項目以 [`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md)
-及實驗目錄內的機器可讀 state 為準。
+為準；本輪實機證據與尚待完成項目以
+[`docs/verification-2026-09-10.md`](docs/verification-2026-09-10.md)、
+[`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md) 及實驗目錄內的機器可讀 state
+為準。`0.4.7` 目前只有 source metadata，沒有 Git tag 或 GitHub Release。
 
 ## Runtime Overview
 
@@ -29,8 +31,8 @@ OpenClawClient -- public WebSocket connect/chat.send --> OpenClaw Gateway
                                                         | optional ECGFounder tool
                                                         v
                                   release default: openai/gpt-5.4-mini
-                          explicit acceptance override: openai/gpt-5.6-luna
-                                      openai-chatgpt-responses transport
+                         active acceptance: openai/gpt-6-astra (low)
+                 subscription: openai-chatgpt-responses | API: openai-responses
     ^
     | structured result, tool receipts, timing, provenance
     |
@@ -70,31 +72,45 @@ Subscription-backed inference follows a deliberately narrow path:
 5. A secret-free audit records `billing_route=chatgpt_codex_subscription`,
    `agent_runtime=openclaw`, and `codex_agent_runtime_enabled=false`.
 
-The release default remains `openai/gpt-5.4-mini`. The 2026-08-27 Luna run used
-an explicit `openai-codex` model override; it did not change the default and did
-not transfer the agent loop from OpenClaw to Codex.
+The release default remains `openai/gpt-5.4-mini`. Luna is exposed as two
+non-interchangeable profiles: `openai-codex-luna` has no API-key environment and
+uses the subscription path above; `openai-luna` requires `OPENAI_API_KEY` and
+uses `openai-responses`. Both select `openai/gpt-5.6-luna`, and neither transfers
+the agent loop from OpenClaw to Codex.
 
-## 2026-08-27 Desktop Acceptance Boundary
+Managed Gateway process reuse is also an ownership decision. The launcher
+atomically writes `data/tmp/openclaw-gateway.lock/ownership.json` with schema,
+PID, port, token SHA-256, launch-owner SHA-256, and the one absolute bbox-audit
+path shared with the client. Reuse requires every field, process liveness, and
+the listening PID to match. An otherwise healthy external listener is refused
+without being adopted or killed. No token value is stored in the receipt.
 
-The packaged app was exercised on a 2560×1600 Windows display at 150% DPI. The
-viewer capture remained exactly `(19, 30, 1522, 1136)` in physical pixels, the
-app reached `DISPLAYING`, and the export contained four diagnostic boxes, two
-analysis-crop outlines, and a coordinate audit. All boxes stayed in bounds with
-no clamping and no more than 0.368 px physical-edge drift. External Windows
-capture correctly excluded the app's top-most panels.
+## 2026-09-02 Desktop Evidence Boundary
 
-Five OpenClaw-owned `gpt-5.6-luna` image turns took 146.915 seconds and recorded
-111,833 total tokens. Subscription metering was US$0; the same traffic is about
-US$0.017135 at published API token prices. These facts establish transport,
-rendering, privacy, and geometry behavior—not diagnostic accuracy. The result
-reported sinus rhythm/possible LVH while the reference described atrial
-fibrillation with slow ventricular response, prolonged QT, poor R-wave
-progression, and inferior ST-T changes. It is an explicit accuracy miss. A
-two-case answer-free follow-up passed schema/bbox/SLA with zero JSON repair but
-scored only 1/2 strict and 0.522 mean partial credit; its warning case missed
-weak-label LVH and sinus rhythm. That run's source fingerprint was dirty while
-release metadata was being synchronized, so a fresh unseen canary against the
-final frozen release source remains pending.
+This dated section is historical. The active target is now Astra low, with
+native OAuth freshness receipts and actual runtime model/effort observations.
+See the September 10 record for successful ROI exports and retained failures.
+The analysis capture verifies viewer identity, physical geometry, containment,
+and visible top-level intersections before and after grabbing pixels. Local
+hash monitoring stays separate from this transmission gate. No atomic desktop
+compositor lock or clinical accuracy guarantee is implied.
+
+Three real desktop App/viewer/subscription attempts were recorded on the first
+frozen critical ECG. They took 139.4, 61.673, and 153.398 seconds and recorded
+74,786, 37,811, and 87,694 total tokens respectively. Their API-equivalent Luna
+costs were US$0.0167878, US$0.00789884, and US$0.0195664; these are estimates,
+not subscription charges. The outputs were respectively: zero findings; one
+possible-LVH finding with only five checklist rows; and one `info` finding with
+`incomplete/review`. Every attempt failed to recover the critical reference.
+This is diagnostic failure evidence and a latency baseline, not acceptance.
+
+The failures identified a concrete ownership/localization path: an independently
+started Gateway and client could resolve different relative bbox audit files,
+so valid model semantics were lost when no matching native tool receipt became
+visible. The current design uses the canonical absolute path and ownership
+receipt described above. Missing-receipt and mismatched-receipt behavior is
+tested separately; September 10 App reruns retained matching native bbox
+receipts. That closes those individual transport checks, not clinical scoring.
 
 The desktop Settings page identifies the route as either **OpenClaw agent |
 ChatGPT subscription OAuth** or **OpenClaw agent | Provider API key**. MEETI
@@ -212,7 +228,39 @@ schema/bbox quality and partial credit. Paired comparison reports per-case
 deltas, bootstrap confidence intervals and random-sign/sign-test p-values.
 Weak report agreement is not medical diagnostic accuracy.
 
-The authoritative status and completed results are documented in
+The current targeted cohort is `important-multi-128-v1`: a purposefully
+gold-enriched, answer-separated pair selected with seed `1946247532`. It contains
+128 unique images and reports, 24 critical/104 warning cases, 48 asserted/80
+partially uncertain labels, and at least three canonical diagnoses per case.
+Its pair id is
+`7bdc87f6d184b321938a09e4f02335692fbda75a378127305742b6f41e8a46e0`.
+The cohort is frozen but the 128-case real App run has not completed, so no
+aggregate score, speed claim, or population accuracy may be reported.
+
+The answer-free partial-ECG v2 corpus has eight deterministic transformations.
+An 8/8 mock result proves only manifest/image hashing, partial-input propagation,
+schema, and bbox plumbing. It has not completed the real App/Luna path and has no
+diagnostic score. See [`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md).
+
+## Clinical Knowledge Projection
+
+`clinical_knowledge/` is the sole human-maintained clinical-rule source. Seven
+rules in canonical YAML, the axis registry, legacy inventory, and JSON schema
+compile into the pure-data domain runtime, a full human catalogue, a concise
+agent-step view, and an application-owned SQLite quick-lookup database. Every
+view binds registry SHA-256
+`d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`
+with digest scope `canonical-input-documents-v1`.
+
+Generated files and SQLite are never edited directly. Verification reconstructs
+and compares every table and view from canonical inputs, but that establishes
+software parity only. A qualified specialist still has to approve clinical
+content/review dates, and legal review still has to approve source licensing.
+The rule engine checks consistency of model-produced structured text; it does
+not independently diagnose pixels or move bboxes. See
+[`clinical_knowledge/README.md`](clinical_knowledge/README.md).
+
+Historical completed results under their original protocol are documented in
 [`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md).
 
 ## Portable Runtime
@@ -224,12 +272,25 @@ directory rather than the launch working directory. Verification rejects `.env`,
 MEETI images, waveform/checkpoint data, SQLite state, Torch, Codex agent runtime
 dependencies and platform binaries.
 
-The current v0.4.7 staged OpenClaw runtime is verified at 165.162 MiB, a
+The current Unreleased stage of pinned OpenClaw is verified at 165.162 MiB, a
 conservative 19.804 MiB reduction that retains seven required upstream
 templates, internal `dist` chunks, `quickjs-wasi`, and `playwright-core`. The
-last complete 2026-08-09 bundle was 368.01 MiB with a 7.05 MiB launcher; those
-are historical values, not an estimate for v0.4.7. The final v0.4.7 bundle size,
-file count, hash, and packaged smoke result remain pending a clean rebuild.
+last complete 2026-08-09 build measured a 7,397,370 B launcher (7.05 MiB),
+99,338,066 B App+Python/Qt layer (94.74 MiB), 194,011,520 B OpenClaw layer
+(185.02 MiB), 92,534,088 B Node layer (88.25 MiB), and 385,883,674 B full bundle
+(368.01 MiB). Current `dist/` contains 10.156 MiB of runtime residue and is not
+release evidence. PDB/tree-sitter headers, foreign-native payloads, and Pillow
+AVIF removal are implemented safe reductions; win32ui/MFC, unused Qt plugins,
+and unused Pillow codecs are gated candidates. Only a clean rebuild may turn
+those into measured claims. Internal OpenClaw chunks, TypeScript, Playwright,
+provider dependencies, QuickJS, and Node remain protected.
+
+OpenClaw `2026.8.2` has passed an isolated public `connect`/`chat.send` contract
+probe, but is not adopted. Its core unpacked footprint measured 196.68 MiB versus
+83.43 MiB for the pinned baseline; OAuth/config migration and state-schema
+rollback also remain open. The pin therefore stays at `2026.7.1-2`; the full
+decision and upgrade gates are in
+[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md).
 
 ## Development Context
 

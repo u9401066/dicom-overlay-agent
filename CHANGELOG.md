@@ -7,9 +7,38 @@
 
 ## [Unreleased]
 
-## [0.4.7] - 2026-08-28
+> Working-tree metadata is `0.4.7`, but no `v0.4.7` tag or GitHub Release exists.
+> This section becomes a released version only after the clean bundle, live
+> cohort gates, CI, tag, and release artifacts are complete.
 
 ### Added
+
+- **Astra low native subscription preset**：`openai-codex-astra` 選擇
+  `openai/gpt-6-astra` / low，保持 OpenClaw-owned image agent；native OAuth
+  fingerprint 變動時重新以公開 migration provider 匯入，不保留 Platform API key。
+- **Real GUI capture safety**：Viewer 支援 Ctrl+O；正式截圖前後驗證視窗身分、
+  位置、ROI 與遮擋，無法驗證就不傳送。`start.bat` 改用無主控台 `pythonw`。
+- **Evidence-preserving refinements**：VT guard 不再從否定或鑑別文字推導診斷；
+  crop 啟動预算參考前一階段實測耗時，並保留 final report 的預留時間。
+- **2026-09-10 evidence**：Astra low 兩個不同案例已有三份有效 ROI 匯出；
+  含重跑與 incomplete，另有遮擋失敗與首階段逾時，不宣稱百例或臨床通過。
+
+- **Luna auth routes are explicit**：新增 `openai-codex-luna`（ChatGPT/Codex
+  subscription OAuth、`openai-chatgpt-responses`、無 Platform API key）並保留
+  `openai-luna`（`OPENAI_API_KEY`、`openai-responses`）；兩者都由 OpenClaw
+  embedded agent 執行 `openai/gpt-5.6-luna`，不得混用 billing evidence。
+- **128-case important multi-diagnosis frozen pair**：以 seed `1946247532`
+  固定 128 張唯一 ECG（24 critical/104 warning、48 asserted/80 partially
+  uncertain、每例至少 3 個 canonical diagnoses），inference/gold 分離並綁定
+  pair id `7bdc87f6d184b321938a09e4f02335692fbda75a378127305742b6f41e8a46e0`；
+  real App 批次尚未完成，不能宣稱 aggregate accuracy。
+- **Partial-ECG v2 corpus**：建立 8 種 deterministic crop/mask/downsample
+  變體與 answer-free manifest；8/8 只通過 mock schema/bbox/partial-input
+  plumbing，真實 App/Luna 驗證仍待完成。
+- **Canonical clinical knowledge registry**：七條 rules 以 YAML/schema 為單一
+  維護來源，生成 human catalogue、agent steps、domain runtime 與 SQLite 速查投影；
+  registry SHA-256 為
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
 
 - **真實 Luna 桌面驗收證據**：在 2560×1600、Windows 150% DPI 的實機上，
   以 ROI `(19, 30, 1522, 1136)` 顯示本機受控 MEETI 評估 ECG，透過 OpenClaw
@@ -19,8 +48,9 @@
 - **10,001-case resume scale gate**：以 10,001 個 case identity 驗證 completed／
   pending 集合完備且互斥、fingerprint 變動 fail closed，並保留小型 atomic disk
   checkpoint 測試；這是續跑與規模 plumbing 證據，不是 10,001 張臨床影像成果。
-- **公開 GitHub Pages 與操作文件**：重新建立 synthetic-only 產品網站、live evidence、
+- **GitHub Pages 原始碼與操作文件**：重新建立 synthetic-only 產品網站、live evidence、
   安全邊界、安裝與 subscription/harness 操作頁，不公開 credentialed MEETI 影像。
+  截至 2026-09-02，公開 Pages 尚未部署目前 branch 內容，因此不記為已發布網站。
 - **Plugin 1.5.8**：同步 native harness metadata 與 runtime manifest，保留 OpenClaw
   `2026.7.1-2`、Gateway protocol 3–4 及 `connect`／`chat.send` 公開邊界。
 - **OpenClaw-owned subscription route**：新增 `OpenAI Subscription via OpenClaw`
@@ -75,6 +105,11 @@
 
 ### Fixed
 
+- **Gateway ownership 與 bbox audit 同路徑**：App-managed Gateway 原子寫入
+  secret-free `ownership.json`，綁定 PID、port、token/launch-owner digest 與
+  canonical absolute bbox audit path；只有完整匹配才 reuse，未知 listener 不接管、
+  不終止，避免 Gateway/client 相對路徑不同而遺失有效 bbox receipt。
+
 - **Refinement receipt 競態與 `confirm` 漏驗**：JSONL reader 不再消耗尚未完成的
   native audit 行；boxed turn 在 Gateway final 後最多等待 0.5 秒讓 Windows append
   可見，並把 `confirm` finding 的 bbox 納入 exact nonce／source／coordinate digest
@@ -118,6 +153,19 @@
 - **config 字串防呆**：`checklist_keys`/`aliases` 單一字串不再被逐字元拆解
 
 ### Changed
+
+- **2026-09-02 真實 App 負面證據**：frozen critical 首例的三次 Luna subscription
+  桌面嘗試分別耗時 139.4/61.673/153.398 秒，記錄 74,786/37,811/87,694 total
+  tokens；輸出依序為 0 findings、僅 possible LVH/5 列 checklist、以及一個
+  `info` finding 且 `incomplete/review`。三次都漏掉 critical reference；對應
+  US$0.0167878/0.00789884/0.0195664 僅是 API 等值估算，不是 subscription 扣款。
+- **OpenClaw 2.x 暫緩**：`2026.8.2` 隔離副本通過 public Gateway
+  `connect`/`chat.send` probe，但 core unpacked size 83.43→196.68 MiB，且 OAuth/
+  config migration 與 state rollback gate 尚未閉合；維持 `2026.7.1-2` pin。
+- **封裝數字維持可稽核**：最近 clean full bundle 仍是 2026-08-09 的
+  385,883,674 B（368.01 MiB）。目前 `dist/` 含 10.156 MiB runtime residue，不作
+  release evidence；安全減量與後續候選必須以 clean rebuild 實測，不能用約
+  340.3 MiB 的算術推估當成果。
 
 - **2026-08-27 實機結果邊界**：Luna run 耗時 146.915 秒，記錄 111,833 total
   tokens；subscription receipt 為零 API 計費，同量 token 依公開 Luna 價格換算

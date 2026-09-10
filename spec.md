@@ -1,28 +1,33 @@
 # DICOM Overlay Agent — 系統規格書
 
 **Version:** 0.4.7
-**Date:** 2026-08-28
+**Date:** 2026-09-10
 **Author:** 寧寧 (AI Research Assistant, KMUH Anesthesiology)
 
 ---
 
 ## 0. Current Implementation Binding
 
-### 0.1 2026-08-27 acceptance binding
+### 0.1 2026-09-10 acceptance binding
 
 本輪交付不得只以 mock、headless 或單元測試代替產品驗收，必須同時留下：
 
 - Windows 封裝 GUI 實際啟動、OpenClaw Gateway ready、測試影像在 viewer 中
   可見，以及 overlay/report 實際渲染的桌面截圖證據。
-- 精確模型路由 `openai/gpt-5.6-luna`（底層 model id
-  `gpt-5.6-luna`）的真實影像交易、每階段延遲、request/token usage 與可重算成本；
+- 精確模型路由 `openai/gpt-6-astra`（底層 model id
+  `gpt-6-astra`、reasoning effort `low`）的真實影像交易、每階段延遲及 usage receipts；
+  本輪不再比較 Luna high。Public session token snapshots 不是 lifetime billing ledger，
+  缺漏或取消階段不能當作零用量，API 等值估算與 subscription 扣款分開；
   若外部帳號、訂閱或額度阻擋，必須保留 provider receipt 並明確標成 blocked，
   不得用 mock 結果替代。
 - Smoke、ROI capture exclusion、16-key schema、Gateway event correlation、bbox
   邊界/投影、deadline degradation 與 interrupted/resume 的 edge regressions。
+- 正式影像擷取前後都驗證 viewer identity、physical geometry、ROI containment 與
+  上方可見視窗遮擋；無法驗證即禁止送出。App 自己的圖層也須先隱藏，不得豁免。
+  這是 pre/post 保護而非 compositor atomic lock；local hash monitoring 不等於允許傳送。
 - 速度與正確率變更先通過未曝光 blinded canary；9,922 張正式 paired run 僅能在
   source fingerprint 凍結、驗證、commit 且 push 後啟動，並可原子續跑。任何小樣本、
-  weak-label 或 waveform-only 結果不得宣稱為臨床正確率。
+  weak-label、mock 或 waveform-only 結果不得宣稱為臨床正確率。
 - 封裝瘦身必須維持四核心、公開 Gateway 邊界與現有 banned-content gate；不得刪除
   OpenClaw 內部 `dist` chunks。網站、雙語 README、runbook、release evidence 與實際
   bundle 數字需同步，並以分段 Conventional Commit、tag 與 GitHub Release 發布。
@@ -30,13 +35,16 @@
 本長篇規格保留早期產品設計與 prior-art 背景；以下條款覆蓋後文仍存在的舊版
 模型、延遲、封裝尺寸與自訂 WebSocket 範例：
 
-- 桌面程式只透過 OpenClaw 公開 `connect` / `chat.send` protocol 3 傳送影像，
-  agent loop 由 OpenClaw embedded agent 擁有；不提供繞過 Gateway 的 direct-API
-  fallback。
-- Release default 仍為 `openai/gpt-5.4-mini`；本輪真實桌面驗收透過顯式
-  `openai-codex` model override 選擇 `openai/gpt-5.6-luna`，沒有改動全域預設。
-  ChatGPT/Codex subscription OAuth 只作 transport credential；官方 Codex
-  migration provider 不作影像判讀，bundle 亦不得包含或啟用 Codex agent runtime。
+- 桌面程式只透過 OpenClaw 公開 `connect` / `chat.send` 傳送影像；client
+  明示 `3..4` 協定範圍，當前 pinned `2026.7.1-2` 必須回傳並驗證
+  `hello-ok protocol=4` receipt。Agent loop 由 OpenClaw embedded agent 擁有；
+  不提供繞過 Gateway 的 direct-API fallback。
+- Release default 仍為 `openai/gpt-5.4-mini`。Luna 必須以兩個不同 profile 表示：
+  `openai-codex-luna` 使用 ChatGPT/Codex subscription OAuth 與 OpenClaw 原生
+  `openai-chatgpt-responses`，不讀 `OPENAI_API_KEY`；`openai-luna` 使用
+  `OPENAI_API_KEY` 與 `openai-responses`。兩者都指定 `openai/gpt-5.6-luna`，且
+  agent loop 均由 OpenClaw 擁有。官方 Codex migration provider 只移轉 OAuth
+  state，不作影像判讀；bundle 不得包含或啟用 Codex agent runtime。
 - 預設開啟 app `MultiPassAnalyzer`：完整圖 coarse read、原圖 crop/refine、EKG
   systematic/rhythm probe、選配 ECGFounder waveform evidence 及 final
   reconciliation。SLA 目標為首次概略 60 秒、首次 crop/detail 100 秒、整題
@@ -50,24 +58,47 @@
   bbox 與 SLA 分開報告，不把正常 ECG 強迫判成異常。
 - 2026-08-09 portable bundle 為 368.01 MiB，launcher 7.05 MiB，含 OpenClaw
   `2026.7.1-2`、Node `v24.18.0` 與 harness/plugin `1.5.7`。
-- v0.4.7 產品 metadata 為 `0.4.7`、harness/plugin 為 `1.5.8`，OpenClaw pin
-  維持 `2026.7.1-2`。已驗證 staged OpenClaw runtime 為 165.162 MiB，比先前
-  stage 保守減少 19.804 MiB；最終完整 bundle 尚未乾淨重建，不預估總尺寸與 hash。
-- 實機證據來自 2560×1600 / 150% DPI 桌面與 physical ROI
-  `(19, 30, 1522, 1136)`：五個 Luna 影像回合耗時 146.915 秒、111,833 total
-  tokens、subscription API charge US$0、API 等值約 US$0.017135；bbox 無 clamp，
-  最大 edge drift ≤0.368 px，capture exclusion 正常。
-- 此次模型把 reference 的 atrial fibrillation with slow ventricular response、
-  prolonged QT、poor R-wave progression 與 inferior ST-T changes 判成 sinus
-  rhythm／possible LVH。這是 accuracy miss，不得用 transport、UI 或座標成功
-  包裝成醫療正確率成功；fresh unseen canary 尚待 final frozen source 完成後補值。
-- 後續 answer-free 兩例 canary 以 1,222-ID denylist 通過 schema、bbox、SLA 且
-  零 JSON repair，但 strict 只有 1/2、mean partial 0.522；warning 例漏掉弱標籤
-  LVH 與 asserted sinus rhythm。該次 fingerprint 為 `dirty=true`，因此只算
-  pre-release bounded evidence，不能取代 final frozen-source canary。
+- 產品 metadata 目前為 `0.4.7`、harness/plugin 為 `1.5.8`、OpenClaw pin 為
+  `2026.7.1-2`，但 repository 目前沒有 Git tag 或 GitHub Release；`0.4.7` 是
+  Unreleased working-tree state，不是已發布版本。
+- 2026-09-02 以真實桌面 App、viewer、ROI 與 `openai-codex-luna` subscription
+  route 對 frozen critical 首例做三次實機嘗試：139.4 秒／74,786 total tokens
+  得到 0 findings；61.673 秒／37,811 total tokens 只得到 possible LVH 與 5 列
+  checklist；153.398 秒／87,694 total tokens 得到一個 finding 且標為
+  `incomplete/review`，仍漏掉 critical reference。三次 API 等值成本依序為
+  US$0.0167878、US$0.00789884、US$0.0195664；不是 subscription 扣款，也不是
+  latency 或 accuracy 驗收通過。
+- 已建立並凍結 purposefully gold-enriched 的 128-case multi-diagnosis pair：seed
+  `1946247532`、24 critical/104 warning、48 asserted/80 partially uncertain、每例
+  至少三個 canonical diagnoses、pair id
+  `7bdc87f6d184b321938a09e4f02335692fbda75a378127305742b6f41e8a46e0`。尚未完成
+  真實 App 批次；其 sampling design 也不得解讀為 prevalence-weighted accuracy。
+- Partial-ECG v2 的八種 deterministic 影像變體已通過 8/8 mock schema/bbox/
+  partial-input plumbing，尚未跑完真實 App/Luna，因此沒有診斷效能數字。
+- Clinical rules 以 `clinical_knowledge/rules/*.rule.yaml` 與 axes/legacy/schema 作
+  canonical input，生成完整 human steps、精簡 agent steps、domain runtime 與
+  application-owned SQLite。當前 7 rules 的 registry SHA-256 是
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`；任何 generated
+  view/SQLite 不可手改，schema/parity 通過亦不能取代專科臨床與授權審查。
+- Gateway ownership receipt 必須原子綁定 PID、port、token SHA-256、launch owner
+  與 client/Gateway 共用的 canonical absolute bbox audit path；缺漏或不符時拒絕
+  reuse，且不得終止未知 listener。
+- 最近一次完整乾淨封裝仍是 2026-08-09：launcher 7,397,370 B（7.05 MiB）、
+  App+Python/Qt 99,338,066 B（94.74 MiB）、OpenClaw 194,011,520 B（185.02 MiB）、
+  Node 92,534,088 B（88.25 MiB）、full bundle 385,883,674 B（368.01 MiB）。目前
+  `dist/` 含 runtime residue，不能作發布證據；已實作與候選減量都須由 clean
+  build 重新量測，不得以算術估計冒充實測。
+- OpenClaw `2026.8.2` 的隔離副本已通過公開 Gateway `connect`/`chat.send` 契約，
+  但 core unpacked size 由 83.43 MiB 增為 196.68 MiB，且 auth/config migration、
+  state schema rollback 與 portable size gate 尚未閉合，因此暫緩全面升級，維持
+  `2026.7.1-2` pin。
 
 執行細節以 [`ARCHITECTURE.md`](ARCHITECTURE.md)、
 [`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md) 與
+[`docs/verification-2026-09-02.md`](docs/verification-2026-09-02.md)、
+[`docs/verification-2026-09-10.md`](docs/verification-2026-09-10.md)、
+[`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md)、
+[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md) 及
 [`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)
 為準。
 
@@ -486,58 +517,69 @@ Step 5: 持續循環
 **訊息格式：** JSON over WebSocket（OpenClaw 原生協定）
 
 ```
-→ Overlay → OpenClaw（分析請求）
+→ Overlay → OpenClaw（先完成公開 connect negotiation）
 {
-  "type": "vision.analyze",
-  "session": "dicom-overlay",
-  "payload": {
-    "image_base64": "<ROI裁切後 PNG base64>",
-    "modality": "EKG",               // EKG | CXR | CT_BRAIN | auto
-    "skill": "dicom-ekg-analysis",   // 對應 OpenClaw workspace skill
-    "valid_regions": ["lead_I", "lead_II", ...],  // 注入合法區域清單
-    "response_format": "json"
+  "type": "req",
+  "id": "connect-<unique>",
+  "method": "connect",
+  "params": {
+    "minProtocol": 3,
+    "maxProtocol": 4,
+    "client": {
+      "id": "gateway-client",
+      "version": "<app-version>",
+      "platform": "<platform>",
+      "mode": "backend"
+    },
+    "role": "operator",
+    "scopes": ["operator.admin", "operator.read", "operator.write",
+               "operator.approvals", "operator.pairing"],
+    "auth": {"token": "<loopback token; never logged>"}
   }
 }
 
-← OpenClaw → Overlay（分析結果）
+← OpenClaw → Overlay（同 request id 的 hello receipt）
 {
-  "type": "vision.result",
-  "session": "dicom-overlay",
+  "type": "res",
+  "id": "connect-<unique>",
+  "ok": true,
   "payload": {
-    "modality": "EKG",
-    "analysis_time_ms": 4230,
-    "summary": "Sinus rhythm with borderline QTc prolongation",
-    "severity": "warning",
-    "findings": [...],               // 同 §3.3 JSON 格式
-    "checklist": {...},
-    "model_used": "openai/gpt-5.4-mini", // release default；OpenClaw 回報實際模型
-    "tokens": { "input": 1200, "output": 450 }
+    "type": "hello-ok",
+    "protocol": 4,
+    "server": {"version": "2026.7.1-2"}
   }
 }
 
-← OpenClaw → Overlay（錯誤）
+→ Overlay → OpenClaw（每次影像都是 chat.send；prompt 內含 modality/schema）
 {
-  "type": "vision.error",
-  "session": "dicom-overlay",
-  "error": {
-    "code": "RATE_LIMITED",          // RATE_LIMITED | TIMEOUT | MODEL_ERROR
-    "message": "API quota exceeded",
-    "retryable": true,
-    "retry_after_sec": 30
+  "type": "req",
+  "id": "chat-<unique>",
+  "method": "chat.send",
+  "params": {
+    "sessionKey": "analysis-<per-image uuid>",
+    "message": "<clinical prompt + 16-key JSON contract>",
+    "idempotencyKey": "<immutable per-turn key>",
+    "fastMode": true,
+    "attachments": [{
+      "type": "image",
+      "mimeType": "image/png",
+      "content": "<non-empty ROI PNG base64>"
+    }]
   }
 }
 
-← OpenClaw → Overlay（模型切換通知）
-{
-  "type": "model.failover",
-  "session": "dicom-overlay",
-  "payload": {
-    "from": "claude-opus-4-6",
-    "to": "gpt-4o",
-    "reason": "primary_unavailable"
-  }
-}
+← OpenClaw → Overlay
+  同 id acceptance response（含 runId）
+  → correlated chat events
+  → final event 中的 structured 16-key AnalysisResult
 ```
+
+`vision.analyze`、`vision.result`、`model.failover` 不是本產品 wire contract。
+每個 `chat.send` frame 在傳送後保持 immutable；Gateway 已接受並給出 `runId` 後若
+連線中斷，不得 replay 造成重複 subscription charge。Client 必須驗證 request/run/
+session correlation、最終 16-key schema、模型/transport receipt 與 bbox tool receipt。
+OpenClaw provider failover 若發生，必須由實際 event/provenance 顯式記錄，不能由桌面
+程式偽造一個自訂通知或悄悄 direct-API fallback。
 
 **OpenClaw Skill 結構（workspace skill）：**
 
@@ -548,9 +590,43 @@ Step 5: 持續循環
 ```
 
 **連線管理：**
-- 斷線自動重連（`reconnect_interval_sec`，指數退避，最大 30s）
-- 心跳偵測（OpenClaw 內建 ping/pong）
-- Session 持久化（OpenClaw 自動管理）
+- 斷線採 bounded recovery；`chat.send` 尚未被接受才可用同一 idempotency key replay
+- 已取得 `runId` 後斷線不 replay，保留 failed attempt/acceptance provenance，避免重複計費
+- Long inference 停用 client keepalive ping，以明確 request/deadline timeout 管理，避免
+  模型仍工作時誤判 1011 timeout
+- 影像分析使用每張圖隔離的 session key；一般 follow-up chat 才保留對話 session
+
+### 3.7 Clinical knowledge governance 與 SQLite projection
+
+臨床一致性規則的唯一人工維護來源是 `clinical_knowledge/` 下的 canonical YAML、
+axis registry、legacy inventory 與 JSON schema。生成鏈如下：
+
+```text
+canonical YAML / JSON schema
+        ├─ generated/human-catalogue.md   # 給專科 reviewer 的完整鑑別步驟
+        ├─ generated/agent-steps.md       # 同 step ID 的精簡執行步驟
+        ├─ domain/generated_clinical_rules.py
+        └─ application-owned clinical-knowledge.sqlite
+```
+
+當前 registry 有 7 條 deterministic consistency rules，digest scope 為
+`canonical-input-documents-v1`，SHA-256 為
+`d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。SQLite 的
+`rules`、`human_steps`、`agent_steps`、`sources`、`runtime_conditions`、
+`lookup_terms`、`legacy_map` 與 `axes` table 必須逐表逐列等於 canonical 投影；
+不能只相信 DB metadata 自稱相同 digest。Generated Python/Markdown/SQLite 一律
+不得手改。
+
+Human workflow 必須依序說明 capture/lead/projection、可見 morphology、重要 mimic
+與 exclusion、可取得的 serial/clinical evidence、以及 summary/checklist/severity/
+review/bbox 如何一致。Agent workflow 使用相同 step ID 與順序，只刪除教學性文字，
+不得加入 gold/scorer alias、泛用拒答或免責樣板。Runtime rule 只檢查模型已輸出的
+結構化內容，不重新看 pixels、也不移動 bbox。
+
+Schema、generated-view 與 SQLite parity 是 software gate；仍須由相關專科 reviewer
+審查規則內容、來源定位、review date 與 severity policy，並由法務確認引用／授權。
+七條規則不是完整 ECG/CXR guideline。完整維護命令與稽核邊界見
+[`clinical_knowledge/README.md`](clinical_knowledge/README.md)。
 
 ---
 
@@ -560,7 +636,7 @@ Step 5: 持續循環
 
 ```
 系統 prompt：
-你是心電圖判讀助理。分析這張 12-lead EKG 截圖。
+你是心電圖判讀助理。分析這張 EKG 截圖；先盤點實際可見導極，不能預設完整 12-lead。
 回傳完整 JSON，包含 checklist 和區域標注。
 重點 flag：STEMI/NSTEMI pattern、arrhythmia、
 QTc prolongation、AV block、bundle branch block。
@@ -568,8 +644,11 @@ QTc prolongation、AV block、bundle branch block。
 重要限制：
 - 你看的是螢幕截圖，不是原始訊號，無法精確測量數值
 - 使用定性描述（normal / borderline / prolonged）而非精確 ms
-- 用區域名稱（lead_I, lead_V4, rhythm_strip）而非座標
-- 專注 pattern 識別，不要捶造數值
+- 有可信 lead mapping 時使用區域名稱（lead_I, lead_V4, rhythm_strip）；任何
+  finding bbox 另以 normalized `0..1` 小範圍座標回傳並取得 exact tool receipt
+- 缺導極、裁切或解析度不足時，只限制受影響 axis，明確寫出可見範圍；不得用
+  generic refusal 取代仍可完成的專業判讀
+- 專注 pattern 識別，不要捏造數值
 ```
 
 ### 4.2 CXR

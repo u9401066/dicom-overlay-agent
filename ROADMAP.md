@@ -2,6 +2,9 @@
 
 專案發展路線圖與功能規劃。
 
+> 下列版本標題是 implementation milestones，不等於 GitHub Releases。Repo 截至
+> 2026-09-02 沒有 Git tag 或 GitHub Release；`0.4.7` 仍是 Unreleased。
+
 ## 已完成 ✅
 
 ### v0.1.0 (2025-12-15)
@@ -169,7 +172,23 @@
 - [ ] Decide whether a separate single-pass and MultiPass-without-ECGFounder
   ablation is required after the primary two-arm full cohort finishes.
 
-### v0.4.7 Live Luna acceptance and release hardening (2026-08-27)
+## 進行中 🚧
+
+### Unreleased 0.4.7 — Astra low acceptance and release hardening
+
+- [x] Add and select `openai-codex-astra` / `gpt-6-astra` / low, verify native
+  subscription runtime observations, and reimport changed native OAuth safely.
+- [x] Block obstructed, moved, or unverifiable viewer captures before model
+  submission; reproduce the rejection through the actual Open dialog and App.
+- [x] Preserve actual QWidget exports without disabling capture exclusion;
+  add a real Ctrl+O viewer workflow and receipt-verified UI-only pilot driver.
+- [x] Push `ca801b7` with green GitHub CI and Secret scan; local suite is
+  1288 passed, 4 opt-in skips. These are engineering tests, not clinical cases.
+- [ ] Complete at least 100 distinct real Astra low cases plus partial ECG
+  variants, including usage/source identity and blinded scoring. Initial timeout,
+  lingering preliminary-limitations text, and skill access remain under review.
+
+The Luna observations below are historical, not the current model target.
 
 - [x] Run the packaged Windows GUI on a 2560×1600 / 150%-DPI desktop against a
   visible credentialed local MEETI evaluation ECG, using only ROI
@@ -187,9 +206,12 @@
   a clinical-accuracy claim from the successful transport/geometry path.
 - [x] Harden Core 2 image/schema/event contracts, invalid-bbox rejection,
   charge-safe Gateway recovery, and a 10,001-identity resumability scale gate.
-- [x] Publish product metadata `v0.4.7` and harness/plugin `1.5.8` while keeping
-  OpenClaw pinned at `2026.7.1-2`; rebuild the synthetic-only GitHub Pages and
-  public setup documentation.
+- [x] Align working-tree product metadata `0.4.7` and harness/plugin `1.5.8`
+  while keeping OpenClaw pinned at `2026.7.1-2`; prepare the synthetic-only
+  GitHub Pages source and public setup documentation.
+- [ ] Deploy the current Pages source, verify the public URL against the release
+  commit, then create the first Git tag and GitHub Release. Do not call metadata
+  alignment a publication.
 - [x] Reduce the verified staged OpenClaw runtime to 165.162 MiB, a conservative
   19.804 MiB reduction, while retaining required templates and internal `dist`
   chunks.
@@ -197,11 +219,33 @@
   schema/bbox/SLA passed with zero JSON repair, but strict was 1/2 and mean
   partial credit 0.522 because the warning case missed weak-label LVH and sinus
   rhythm. Its dirty source fingerprint prevents use as the frozen release gate.
+- [x] Freeze `important-multi-128-v1` from the 9,922-image source with seed
+  `1946247532`: 128 unique images/reports, at least three canonical diagnoses
+  each, 24 critical/104 warning, 48 asserted/80 partially uncertain, and
+  inference/gold separation. This is cohort construction, not a completed run.
+- [x] Build partial-ECG v2 with eight deterministic crop/mask/downsample
+  variants and pass 8/8 mock schema/bbox/partial plumbing. This is not a real
+  Luna or diagnostic result.
+- [x] Generate seven clinical rules, human/agent views and SQLite from canonical
+  YAML at registry SHA-256
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`;
+  specialist clinical and licensing review remain release gates.
+- [x] Split Luna subscription (`openai-codex-luna`) from Platform API-key
+  (`openai-luna`) profiles and bind Gateway reuse to a matching ownership
+  receipt plus canonical absolute bbox audit path.
+- [x] Preserve three 2026-09-02 real desktop App attempts as negative evidence:
+  all missed the frozen critical first case; do not convert completed transport
+  into an accuracy pass.
+- [ ] Rerun and pass that first critical case through the fixed real App, then
+  run all eight partial variants and all 128 frozen cases through the actual
+  viewer/App workflow with per-case screenshots, exports, timing, usage, and
+  blinded scoring.
+- [x] Probe OpenClaw `2026.8.2` in isolation: public Gateway contract works, but
+  unpacked core grows 83.43→196.68 MiB and migration/rollback gates remain open.
+  Defer adoption and keep `2026.7.1-2` pinned.
 - [ ] Run and record a fresh unseen canary from the final frozen release source.
-- [ ] Perform the clean full v0.4.7 bundle rebuild, packaged verification, size
+- [ ] Perform the clean full Unreleased `0.4.7` bundle rebuild, packaged verification, size
   measurement and hash capture; do not estimate these values in advance.
-
-## 進行中 🚧
 
 - [ ] 完善 Skills 觸發機制
 - [ ] 套件更新自動檢查 hook

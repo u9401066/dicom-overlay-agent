@@ -5,6 +5,28 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- `ca801b7` pushed; GitHub CI 34465682578 and Secret scan 34465682564 are
+  green. Local full regression: 1288 passed, 4 opt-in skips (165.64 s).
+- Clean real GUI case 41045474 export `desktop-20260910-102218-658881` completed
+  coarse, two crops and finalization in 140.481 s. Source and actual SummaryPanel
+  visually inspected; four public session rows plus four runtime Astra-low
+  observations retained. Preliminary limitation prose still survives final
+  reconciliation and needs a structured lifecycle fix, not indiscriminate deletion.
+- UI-only pilot driver uses real Ctrl+O/QFileDialog, Analyze and Export. It
+  verifies exported source against all 128 inference thumbnails, Gateway receipt,
+  model/effort observations and UI export files before marking a completed case.
+  Gold is not loaded. A technical failure is retained and stops that invocation.
+  `meeti_46169897` hit the initial 60 s deadline; `meeti_46079499` exported as
+  `desktop-20260910-103225-016469` in 124.486 s, nearest-source MAE 0.840/255
+  (runner-up 5.611), three Astra-low runtime observations. Clinical scoring pending.
+- Website evidence snapshot (10:22 UTC) and subscription setup now reflect Astra
+  low, retaining historical failures and honest billing/packaging limits.
+  Frontend-testing-debugging skill required rendered QA; Browser plugin absent,
+  so isolated Playwright/installed headless Edge verified 1440x1000 and 390x844,
+  menu Escape/focus, Docs/Subscription navigation, no overflow or console errors.
+  Screenshots/scripts stayed outside the repo. Pages source tests: 11 passed;
+  public deployment is still pending. No runtime browser dependency was added.
+
 - Calibration retry `desktop-20260910-095926-407907` completed final reconciliation
   in 165.043 s (first attempt had timed out at 179.252 s); not a clinical pass.
   Actual QWidget panel render was visually inspected. A compound negation still

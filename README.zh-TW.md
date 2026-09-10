@@ -7,40 +7,72 @@
 🌐 [English](README.md)
 
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
+（公開部署目前落後此 branch，尚不可作 release evidence）。
 
-## 2026-08-28 v0.4.7 發布候選驗證狀態
+## 開發證據 — 2026-09-10（尚未發布）
 
-- Windows 封裝 GUI 已在 2560×1600、150% DPI 的實機上啟動，viewer 中顯示
-  本機受控 MEETI 評估 ECG。程式只擷取設定好的 physical-pixel ROI
-  `(19, 30, 1522, 1136)`，到達 `DISPLAYING`，並匯出四個診斷框、兩個
-  analysis-crop outline 與座標 audit；Windows 外部截圖也正確排除 top-most
-  app panels。
-- Release default 仍是 `openai/gpt-5.4-mini`。本次驗收以顯式
-  `openai-codex` model override 選擇 `openai/gpt-5.6-luna`，走 OpenClaw-owned
-  subscription route；Codex 只提供遷移後 OAuth state，不擁有影像判讀 loop。
-  五個影像回合耗時 146.915 秒，共記錄 111,833 total tokens。Subscription
-  metering 為 US$0；依 [Luna 官方 token 價格](https://developers.openai.com/api/docs/models/gpt-5.6-luna)，
-  同量流量約等值 US$0.017135。
-- 所有匯出框皆未越界、未 clamp，physical edge drift 最大 0.368 px。但座標成功
-  不代表判讀正確：reference 為 atrial fibrillation with slow ventricular
-  response、prolonged QT、poor R-wave progression 與 nonspecific inferior
-  ST-T changes，agent 卻回報 sinus rhythm／possible LVH。這是已記錄的
-  accuracy miss，不是醫療效能成功案例。
-- 後續 answer-free 兩例 canary（seed `20260828`，denylist 1,222 個已曝光 ID）
-  以零 JSON repair 通過 schema、bbox 與 60/100/180 秒 SLA；strict 1/2、mean
-  partial 0.522、normal specificity 1.0。warning 例看見異常 R-wave progression
-  與 prominent anterior T waves，仍漏掉弱標籤 LVH 與 asserted sinus rhythm。
-  因執行時版本 metadata 正在同步，fingerprint 為 `dirty=true`；這只能算
-  pre-release bounded evidence，不是最終 frozen-source gate。
-- Core 2 現在會對空影像附件、schema/event 不符及 non-finite、零面積、完全離圖
-  bbox fail closed；Gateway 在 acceptance 後不 replay，且不終止未知 PID。
-  10,001 identity scale/resume gate 證明 checkpoint 集合完備與 fingerprint
-  變更拒絕；這是規模與續跑 plumbing 證據，不是 10,001 張臨床影像成果。
-- 產品 metadata 為 `v0.4.7`、harness/plugin 為 `1.5.8`，OpenClaw 仍固定
-  `2026.7.1-2`。已驗證 staged OpenClaw runtime 為 165.162 MiB，保守減少
-  19.804 MiB，且保留必要 templates 與內部 `dist` chunks。v0.4.7 最終完整
-  bundle 與 frozen unseen canary 尚未完成；尺寸、hash、測試總數與正確率只能從
-  最終 release commit 補入。
+目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
+`openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由，
+runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整合階段逾時
+（179.252 秒），第二次完成整合（165.043 秒），但仍需複核。另一個不同案例在
+140.481 秒完成四個影像階段，來源 ROI 與 Astra low runtime 已核對，臨床評分待做；
+下一個 pilot 案例碰到首階段 60 秒逾時。這些不是已完成百例驗收。
+另已核對 9 月 2–3 日的歷史 Luna 批次：103 次嘗試、60 份匯出、43 次逾時。
+60 份來源影像均匹配預定案例，這只證明影像身分，並非診斷正確率。
+詳見[9 月 10 日證據更新](docs/verification-2026-09-10.md)。
+
+目前 working tree 的產品 metadata 是 `0.4.7`、harness/plugin 是 `1.5.8`，但
+repository **沒有任何 Git tag，也沒有 GitHub Release**。在乾淨封裝、指定實機
+批次、CI、tag 與 release artifacts 全部通過以前，所有 `0.4.7` 內容都屬於
+Unreleased。
+
+Luna 有兩條刻意分開的路由，避免把訂閱額度與 Platform API 計費混為一談；兩條
+路由的多模態 agent loop 都仍由 OpenClaw 擁有：
+
+| Settings profile | 認證／transport | 模型 | 計費證據 |
+| --- | --- | --- | --- |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth、`thinkingDefault=low`；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
+| `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | 本機 ChatGPT/Codex OAuth 遷移到 OpenClaw 原生 `openai-chatgpt-responses`；不使用 `OPENAI_API_KEY`，也不啟用 Codex agent runtime | `openai/gpt-5.6-luna` | 訂閱用量；下列 token 成本只作 API 等值估算 |
+| `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` 經 OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | 一般 Platform API 計費 |
+
+2026-09-02 以真實桌面 App／viewer／subscription route 對第一個 frozen critical
+ECG 進行三次嘗試。三次都是負面或不完整證據，不是驗收通過：
+
+| Desktop export | 實耗 | 記錄用量 | 結果 |
+| --- | ---: | ---: | --- |
+| `desktop-20260902-082210-259256` | 139.4 秒 | total 74,786（input 48,789、cached 20,480、output 5,517、reasoning 3,217），API 等值 US$0.0167878 | `info`、0 findings；判讀錯誤 |
+| `desktop-20260902-090424-024627` | 61.673 秒 | total 37,811（input 24,787、cached 10,752、output 2,272、reasoning 1,093），API 等值 US$0.00789884 | `info`、1 個 possible-LVH finding、僅 5 列 checklist；不完整 |
+| `desktop-20260902-092532-259033` | 153.398 秒 | total 87,694（input 61,500、cached 20,480、output 5,714、reasoning 3,053），API 等值 US$0.0195664 | `info`、1 finding、`incomplete/review`；漏掉 critical reference |
+
+估算採 [GPT-5.6 Luna 官方 API 價格](https://developers.openai.com/api/docs/models/gpt-5.6-luna)：
+input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱扣款。
+這些失敗揭露了 Gateway/bbox receipt 與 critical-first reconciliation 問題，仍在
+修正中，不能據此宣稱臨床正確率、延遲 SLA 或發布就緒。
+
+- 已凍結一組刻意 gold-enriched、答案隔離的 **128 張唯一多重診斷 ECG**（seed
+  `1946247532`；24 critical/104 warning；48 asserted/80 partially uncertain；
+  每例至少三個 canonical diagnoses；pair id `7bdc87f6…8a46e0`）。尚未完成指定的
+  真實 App 批次，而且不是 prevalence-weighted 的母群準確率樣本。
+- Partial-ECG v2 有八種 deterministic 變體（四邊裁切、中央／窄帶、遮住導極
+  label、短邊 48 px）。目前 8/8 只證明 mock schema/bbox/partial-input plumbing；
+  尚無真實 Luna 診斷分數。
+- 七條 deterministic clinical-consistency rules 以 canonical YAML 為唯一人工
+  維護來源，生成 human/agent views 與 application-owned SQLite；registry SHA-256
+  為 `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
+  Schema/parity 通過不等於專科臨床審查或來源授權完成；詳見
+  [clinical knowledge governance](clinical_knowledge/README.md)。
+- Managed Gateway 只有在原子、無 secret 的 ownership receipt 同時綁定 PID、port、
+  token SHA-256、launch owner 與唯一 canonical absolute bbox audit path 時才可重用；
+  健康但 receipt 不符的 listener 會被拒絕，不會被接管或終止。
+- 最近一次完整乾淨 bundle 仍是 2026-08-09 的歷史 build：launcher 7.05 MiB、
+  App+Python/Qt 94.74 MiB、full bundle 368.01 MiB。目前 `dist/` 受 runtime residue
+  污染，不是 release evidence；已實作的安全 staging 減量與後續候選仍須乾淨實測。
+  不會用刪除 OpenClaw `dist`、provider、Playwright、QuickJS、TypeScript 或 Node 的
+  方式製造不可靠的小數字。
+- OpenClaw `2026.8.2` 已通過隔離的公開 `connect`/`chat.send` protocol 檢查，仍
+  暫緩全面升級：auth/config migration、state rollback，以及 core unpacked size
+  由 83.43 增到 196.68 MiB 尚未解決。詳見
+  [2.x 決策紀錄](docs/openclaw-2x-decision-2026-09-02.md)。
 
 較早的 32-case frozen pair、8-case unseen engineering gate 與尚未完成的
 9,922-case paired run 保留為歷史證據，詳見
@@ -139,10 +171,11 @@
   `connect` + `chat.send` 與 OpenClaw 溝通，不匯入 OpenClaw plugin SDK
   內部 API。
 - 桌面版 Settings 的 AI Provider 分頁可明確選擇 Platform API key 或
-  ChatGPT/Codex subscription OAuth；兩者都由 OpenClaw embedded agent 執行
-  release-default `openai/gpt-5.4-mini` 影像回合。Luna 仍是顯式 profile；
-  2026-08-27 實機驗收透過 `openai-codex` model override 選擇 Luna，並未改動
-  全域預設。OpenRouter 等 API profile 仍可使用，設定只
+  ChatGPT/Codex subscription OAuth；兩者都由 OpenClaw embedded agent 擁有
+  影像回合。Release default `openai/gpt-5.4-mini` 可走 `openai-vision` API 或
+  `openai-codex` subscription。Luna 另分成 `openai-codex-luna`（無 API key、
+  `openai-chatgpt-responses`）與 `openai-luna`（`OPENAI_API_KEY`、
+  `openai-responses`），不可混用 auth/billing evidence。OpenRouter 等 API profile 仍可使用，設定只
   寫入 OpenClaw managed provider/model 區段，secret 留在環境變數、`.env` 或
   OpenClaw 私有 auth store，不進 git 與實驗紀錄。
 - MEETI 生產級評估 gate 使用 Zenodo record `18523205` 的 `MEETI.rar`
@@ -310,8 +343,9 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 - [`openclaw_runtime.py`](src/dicom_overlay/infrastructure/openclaw_runtime.py)
   釘住 `MIN_SAFE_OPENCLAW_VERSION`（`2026.4.22`），並依文件化 schema
-  建立 harness manifest / chat frame（protocol `3`，image 在
-  `params.attachments[]`，含 `type` / `mimeType` / `content`）。
+  建立 harness manifest / chat frame。Client 明示 protocol `3..4`；pinned
+  OpenClaw `2026.7.1-2` 必須回傳經驗證的 `hello-ok protocol=4` receipt。
+  Image 仍放在 `params.attachments[]`，含 `type` / `mimeType` / `content`。
 - [`openclaw/package.json`](openclaw/package.json) 追蹤 runtime 版本
   （封裝並驗證為 `openclaw 2026.7.1-2`）與最低安全版本下限。
 - [`manifest.json`](openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json)
@@ -331,8 +365,10 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   MEETI paired build 已保留 1,000 筆相符的原始 12 導程波形；固定官方
   checkpoint 的真實批次已完整遍歷 1,000 筆，其中 999 筆 eligible，1 筆全零
   V5 導程被安全閘門排除；有效結果都明確標記為未校準的 supporting evidence。
-- **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema 與 image
-  attachment 格式未變；只有發現真正不兼容時才拉高下限。
+- **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema、image
+  attachment、OAuth/config migration、state rollback 與 clean package size。
+  `2026.8.2` 的隔離 protocol probe 已通過，但 core unpacked size 由 83.43 增至
+  196.68 MiB，其他 gate 未閉合，因此 audited pin 仍是 `2026.7.1-2`。
 
 ### 核心 4 — 最小化執行檔封裝
 
@@ -342,8 +378,11 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 - [`dicom-overlay-agent.spec`](dicom-overlay-agent.spec) 排除未用的重量函式庫
   （`numpy`、`scipy`、`matplotlib`、`pandas`、`imagehash`），並修剪 overlay
   從不載入的 Qt 模組（WebEngine、Qml/Quick、Pdf、Multimedia、~20 MB 的
-  `opengl32sw.dll` 軟體 GL fallback、qml/translations 資料），啟用 UPX，
-  建為 windowed（`console=False`）。
+  `opengl32sw.dll` 軟體 GL fallback、qml/translations 資料），並建為 windowed
+  （`console=False`）。Release build 透過 `uv` 固定 64-bit CPython 3.13.12，且把
+  PyInstaller／Pillow／PyQt 的精確 toolchain receipt 封入 manifest。只有找到 UPX
+  執行檔時才啟用；verifier 還必須在 PE 檔觀察到 UPX marker。找不到時則明確記錄
+  可比較的 `no_upx_baseline`，不會宣稱其實未發生的壓縮。
 - [`scripts/stage-openclaw-runtime.ps1`](scripts/stage-openclaw-runtime.ps1)
   化 *slim* OpenClaw runtime，移除非 Windows 原生載荷與停用的
   UI / browser / voice plugins，只保留 Gateway 面。現行 staging gate 另保留
@@ -356,8 +395,9 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 - `pywin32` 為 Windows-only 條件依賴，保持 Linux/CI 安裝乾淨。
 - **可攜帶即插即用** — 凍結（frozen）時，runtime 路徑透過
   [`app_paths.py`](src/dicom_overlay/infrastructure/app_paths.py) 錨定到
-  執行檔所在資料夾（而非啟動 `cwd`，後者可能是 `System32`），因此 bundle 能在
-  全新機器上從 USB 隨身碟原樣執行。執行 `DICOMOverlayAgent.exe --selfcheck`
+  執行檔所在資料夾（而非啟動 `cwd`，後者可能是 `System32`），相對 log path 也會
+  寫在 bundle 旁，因此能在全新機器上從 USB 隨身碟原樣執行。執行
+  `DICOMOverlayAgent.exe --selfcheck`
   即可驗證 Node.js、OpenClaw runtime、可寫入 base 與 `config.yaml` 全部就緒——
   不啟動 GUI、不呼叫 LLM（exit 0 = 就緒）。
 
@@ -367,16 +407,23 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 | --- | --- | --- |
 | `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | 最近一次 2026-08-09 完整 build 為 **7.05 MiB** |
 | App + Python/Qt 層 | < 100 MiB | 最近一次 2026-08-09 完整 build 為 **94.74 MiB** |
-| v0.4.7 staged OpenClaw runtime | < 500 MiB | **165.162 MiB** |
+| Unreleased staged OpenClaw runtime | < 500 MiB | **165.162 MiB** |
 | 保守 staging 減量 | - | **19.804 MiB** |
 | 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
 | 最近一次完整零安裝 bundle（2026-08-09） | < 650 MiB | **368.01 MiB** |
-| v0.4.7 完整零安裝 bundle | < 650 MiB | **待乾淨重建；不預估** |
+| Unreleased 完整零安裝 bundle | < 650 MiB | **待乾淨重建；不預估** |
 
-已驗證的 v0.4.7 stage 為 165.162 MiB，必要 templates、`dist` 與 plugin
+歷史 clean manifest 記錄 launcher 7,397,370 B、App+Python/Qt 99,338,066 B、
+OpenClaw 194,011,520 B、Node 92,534,088 B、總計 385,883,674 B。目前 `dist/`
+是 378.18 MiB，但含 10.156 MiB runtime residue，因此不是 release evidence。
+
+已驗證的 Unreleased stage 為 165.162 MiB，必要 templates、`dist` 與 plugin
 surfaces 都保持完整。修剪內部 `dist` chunks 會讓 app 耦合 OpenClaw 內部並
-跨版本破壞 **核心 3**；19.804 MiB 減量只來自 runtime 周圍的開發與 foreign
-native payload。完整 v0.4.7 數字只會在乾淨重建與 packaged verifier 通過後發布。
+跨版本破壞 **核心 3**。已實作的安全候選為 PDB/tree-sitter headers（19.804 MiB）、
+foreign-native payload（0.642 MiB）與 Pillow AVIF（7.471 MiB）；約 340.3 MiB
+只是算術推估，不是實測 bundle。下一批 gated 候選是 win32ui/MFC（6.41 MiB，
+保留 pythoncom/win32com SAPI）、未用 Qt plugins（約 3.87 MiB）及未用 Pillow
+codecs（約 0.70 MiB）。新數字只會在 clean rebuild 與 packaged verifier 通過後發布。
 
 ## 📋 文檔
 
@@ -386,8 +433,12 @@ native payload。完整 v0.4.7 數字只會在乾淨重建與 packaged verifier 
 - [變更日誌](CHANGELOG.md) - 版本歷史
 - [路線圖](ROADMAP.md) - 功能規劃
 - [真實測試 Runbook](REAL_TEST_RUNBOOK.md) - Live stack 測試
+- [2026-09-02 驗證紀錄](docs/verification-2026-09-02.md) - 當前證據、失敗與未完成 gates
+- [Evaluation cohorts](docs/evaluation-cohorts.md) - 9,922／128／partial corpus 身分與宣稱邊界
+- [OpenClaw 2.x 決策](docs/openclaw-2x-decision-2026-09-02.md) - 2026.8.2 隔離證據與暫緩升級 gates
+- [Clinical knowledge governance](clinical_knowledge/README.md) - Canonical YAML、人／agent 步驟與 SQLite parity
 - [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
-- [影像 agent harness 參考稽核](docs/harness-reference-review-2026-08-27.md) - 採用公開設計模式但不增加封裝 runtime 依賴
+- [影像 agent harness 參考稽核](docs/harness-reference-review-2026-08-28.md) - 採用公開設計模式但不增加封裝 runtime 依賴
 - [ECGFounder 工具契約](docs/ecgfounder-tool.md) - 外部波形證據邊界
 - [2026-08-09 MEETI/OpenClaw 實驗紀錄](docs/meeti-openclaw-experiments-2026-08-09.md) - 真實 paired/unseen 結果、工具、SLA 與宣稱邊界
 - [2026-08-05 驗證紀錄](docs/verification-2026-08-05.md) - MultiPass、真實 canary、座標、bundle hash 與阻擋項

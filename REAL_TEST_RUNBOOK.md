@@ -10,6 +10,47 @@ Run the project on Windows with a workspace-local OpenClaw Gateway and verify th
 4. The Python overlay agent launches and connects to the real gateway.
 5. A real DICOM viewer can trigger ROI setup and analysis.
 
+This runbook distinguishes a source/mock check from a product acceptance run.
+For the requested acceptance, opening a PNG with a script or sending it directly
+to a client is insufficient: the test case must be visible in the real viewer,
+the real desktop App must acquire only its configured ROI, the App-managed
+Gateway must own the request, and the rendered/exported result must be inspected.
+
+## Current target (2026-09-10)
+
+Use Settings → **OpenAI GPT-6 Astra via Codex Subscription** (`openai-codex-astra`),
+verify `gpt-6-astra` and reasoning **low**, save, and fully quit the old App before
+restarting its managed Gateway. Luna is not the current acceptance target.
+Use the real viewer's Ctrl+O dialog, App Analyze, and App Export. Verify the
+exported source matches the intended case; never infer identity from timing
+alone. Never mark a timeout as a completed case on resume.
+
+See [September 10 evidence](docs/verification-2026-09-10.md): 60 historical Luna
+exports are preserved, but no complete 100-case Astra run exists yet. The older
+gate state below is retained as dated history, not current batch coverage.
+
+## Historical gate status (2026-09-02)
+
+- **Not released:** source metadata says `0.4.7`, but there is no Git tag or
+  GitHub Release.
+- **Real App negative evidence:** three Luna subscription attempts on the first
+  frozen critical case finished in 139.4/61.673/153.398 seconds with
+  74,786/37,811/87,694 total tokens. They returned zero findings, an incomplete
+  possible-LVH read, and an `incomplete/review` read; all missed the critical
+  reference. Do not mark the first case passed.
+- **Frozen, not run:** `important-multi-128-v1` contains 128 unique,
+  gold-enriched multi-diagnosis ECGs (24 critical/104 warning), but the complete
+  real desktop App run has not happened.
+- **Mock only:** `incomplete-ecg-20260902-v2` has eight deterministic partial ECG
+  variants and passes 8/8 mock plumbing. No real-model diagnostic pass exists.
+- **Package pending:** the only complete clean size evidence is the historical
+  2026-08-09 368.01 MiB bundle. Rebuild from a clean worktree before publishing
+  a new size or hash.
+
+See [`docs/verification-2026-09-02.md`](docs/verification-2026-09-02.md) for the
+full evidence matrix and [`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md)
+for cohort identities and claim boundaries.
+
 ## Prerequisites
 
 1. Windows 10/11.
@@ -51,10 +92,14 @@ This does the following:
 5. Runs gateway health check.
 6. Launches the DICOM Overlay Agent.
 
-For a subscription-backed desktop launch, open Settings and choose **OpenAI
-Subscription via OpenClaw**. The route label must read `OpenClaw agent |
-ChatGPT subscription OAuth`. The official Codex package is used only as an
-OAuth migration provider; the live inference agent is OpenClaw.
+For a Luna subscription-backed desktop launch, open Settings and choose
+**OpenAI GPT-5.6 Luna via Codex Subscription** (`openai-codex-luna`). The route
+label must read `OpenClaw agent | ChatGPT subscription OAuth`; the effective
+transport must be `openai-chatgpt-responses`, with no Platform API key. The
+official Codex package is used only as an OAuth migration provider; the live
+inference agent is OpenClaw. Do not confuse this with **OpenAI GPT-5.6 Luna
+Vision (API key)** (`openai-luna`), which requires `OPENAI_API_KEY` and uses
+`openai-responses` through OpenClaw.
 
 ## Manual path
 
@@ -66,13 +111,17 @@ scripts\install-openclaw-local.bat
 
 `scripts\install-openclaw-local.bat` keeps repeat runs light: it skips npm when
 an already-installed runtime is at or above `MIN_SAFE_OPENCLAW_VERSION`. To
-force a fresh npm latest update during a release/maintenance pass, run:
+reinstall the currently audited pin during a release/maintenance pass, run:
 
 ```bat
 set FORCE_OPENCLAW_INSTALL=1
-set OPENCLAW_NPM_SPEC=openclaw@latest
+set OPENCLAW_NPM_SPEC=openclaw@2026.7.1-2
 scripts\install-openclaw-local.bat
 ```
+
+Do not use `openclaw@latest` in release evidence. OpenClaw `2026.8.2` has only
+passed an isolated protocol probe and remains deferred; see
+[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md).
 
 ### 2. Sync skills into the runtime workspace
 
@@ -85,7 +134,6 @@ scripts\sync-openclaw-workspace.bat
 ```bat
 set OPENCLAW_STATE_DIR=%CD%\openclaw-home
 set OPENCLAW_CONFIG_PATH=%CD%\openclaw\openclaw.json
-set HOME=%CD%\openclaw-home
 set USERPROFILE=%CD%\openclaw-home
 ```
 
@@ -132,21 +180,64 @@ Expected result:
    - Overlay panel appearing
    - Region highlights drawn on the viewer
 
-## What is already truly tested
+### Required frozen-cohort desktop protocol
 
-1. Repo-local OpenClaw install works.
-2. OpenClaw CLI runs from `node openclaw/.../openclaw.mjs`.
-3. Portable config validates.
-4. Real Gateway starts and passes health check.
-5. Python stack unit/smoke tests pass.
+For `important-multi-128-v1`, keep the gold manifest sealed while acquiring
+results. Use `important-multi-128-v1.inference.json` only to obtain the ordered
+opaque case id and exact image path. For every case, including cases after a
+resume:
 
-## What still requires your manual real-world check
+1. Open that exact PNG in the real viewer and visually confirm its title/window
+   is the one monitored by the App.
+2. Confirm the configured ROI remains inside the PHI-cleared image content; do
+   not widen it to capture the whole desktop.
+3. Trigger from the App control bar. Do not substitute a script-side model call,
+   direct file upload, mock, or headless-only result.
+4. Wait for the App to settle, then capture the visible viewer+overlay and export
+   the desktop review package. Record wall time, token categories, model,
+   subscription/API route, Gateway ownership receipt, source digest, result,
+   bbox audit, and any incomplete/review state.
+5. Advance the real viewer to the next ordered case only after the current
+   evidence is durable. On interruption, resume from the first missing case;
+   never silently overwrite a prior attempt.
+6. Unseal `important-multi-128-v1.gold.json` only after inference artifacts for
+   the selected run are frozen. Score asserted and partially uncertain concepts
+   separately and retain every critical miss.
 
-1. Your actual DICOM viewer title is detectable.
-2. ROI selection UX feels correct on your screen layout.
-3. OpenClaw model credentials are valid.
-4. Real model output matches the JSON structure expected by this project.
-5. Overlay click-through behavior is acceptable on your workstation.
+Use the same interaction for the eight cases in
+`data/eval-datasets/incomplete-ecg-20260902-v2/manifest.json`. In addition to the
+normal export, verify `incomplete=true`, `review_required=true`, explicit visible
+scope, no invented full-12-lead layout, no named claim for an unverified lead,
+and exact-variant bbox receipt binding when a box exists. The current 8/8 mock
+artifact is only a preflight and does not satisfy any of these live steps.
+
+## What is already evidenced
+
+1. Repo-local pinned OpenClaw install/CLI/config and authenticated public Gateway
+   connect have prior evidence.
+2. A real Windows viewer and desktop App can reach the Luna subscription route;
+   the three 2026-09-02 outputs are retained as diagnostic failures.
+3. Unit/smoke checks cover schema, event correlation, partial-input manifest
+   propagation, bbox projection, and the ownership receipt. A green source test
+   is not a real-viewer result.
+4. Canonical clinical YAML generates the human/agent views, domain data, and
+   seven-rule SQLite projection at registry SHA-256
+   `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`.
+
+## What still requires the authorized real desktop workflow
+
+1. Rerun the first frozen critical case after the receipt/reconciliation fixes
+   and verify severity, all expected axes, boxes, report, screenshots, and export.
+2. Run all eight partial-ECG v2 variants by opening each in the real viewer and
+   triggering the real App; verify that limitations are specific rather than a
+   generic refusal and that no invisible lead is claimed.
+3. Run all 128 frozen multi-diagnosis cases through the same real viewer/App
+   workflow, preserving per-case usage, timing, raw result, overlay/export, and
+   blinded scoring. Script-only batch output cannot close this gate.
+4. Exercise the required display-resolution/mixed-DPI matrix and manually
+   inspect actual overlay alignment, not only coordinate math.
+5. Complete a clean portable build, package verifier, real EXE/App/viewer smoke,
+   size/hash inventory, CI, tag, and GitHub Release.
 
 ## Recognition evaluation (how results are recorded)
 
@@ -307,13 +398,14 @@ repo config. The desktop Settings dialog can also save OpenAI/OpenRouter
 profiles without storing the secret in git. Always rerun config validation,
 the image harness smoke, and readiness after changing providers or OpenClaw.
 
-The release default remains `openai/gpt-5.4-mini`. The 2026-08-27 desktop
-acceptance did not change it: that run used an explicit `openai-codex` model
-override to select `openai/gpt-5.6-luna` on the OpenClaw-owned subscription
-transport. Record the default and the override separately in every artifact;
-an OAuth migration source is not evidence that Codex owned the agent loop.
+The release default remains `openai/gpt-5.4-mini`. Record the default and every
+explicit override separately in each artifact. For Luna, also record whether
+the selected profile was subscription-backed `openai-codex-luna` or API-key
+backed `openai-luna`; sharing the same model id does not make their auth or
+billing evidence interchangeable. An OAuth migration source is not evidence
+that Codex owned the agent loop.
 
-Current local evidence (2026-08-27 release candidate):
+Historical local evidence (2026-08-27; superseded as current status):
 
 - The packaged GUI ran on a 2560×1600 Windows display at 150% DPI with a
   credentialed local MEETI evaluation ECG visible in the viewer. The configured
@@ -640,10 +732,23 @@ migrations, authenticates over WebSocket, stops OpenClaw, and checks that port
 18789 is closed. It does not send a model request. Desktop startup allows 180
 seconds for Gateway readiness independently of the per-inference timeout.
 
-For v0.4.7, do not copy the previous full-bundle numbers into release notes.
+For Unreleased `0.4.7`, do not copy the previous full-bundle numbers into release notes.
 After the clean rebuild, require `bundle-manifest.json` to report `status=ok`,
 the exact frozen release commit, `git_dirty=false`, OpenClaw `2026.7.1-2`,
 harness/plugin `1.5.8`, seven non-empty hashed workspace templates, and empty
-sensitive/residue/banned-content scans. Until that completes, the only current
-packaging measurement is the verified 165.162 MiB staged OpenClaw runtime and
-its conservative 19.804 MiB reduction.
+sensitive/residue/banned-content scans. Until that completes:
+
+- historical clean evidence is launcher 7,397,370 B (7.05 MiB), App+Python/Qt
+  99,338,066 B (94.74 MiB), OpenClaw 194,011,520 B (185.02 MiB), Node
+  92,534,088 B (88.25 MiB), and full bundle 385,883,674 B (368.01 MiB);
+- current `dist/` is 378.18 MiB with 10.156 MiB of runtime residue and is not a
+  release measurement;
+- implemented safe candidates are PDB/tree-sitter C/H (19.804 MiB), foreign
+  native payloads (0.642 MiB), and Pillow AVIF (7.471 MiB); the approximately
+  340.3 MiB result is arithmetic only, not a measured bundle;
+- next gated candidates are win32ui plus `mfc140u.dll` (6.41 MiB, while keeping
+  pythoncom/win32com SAPI), unused Qt plugins (about 3.87 MiB), and unused Pillow
+  native codecs (about 0.70 MiB);
+- OpenClaw `dist`, TypeScript, Playwright, provider dependencies, QuickJS, and
+  Node are protected because removing them would couple packaging to internals
+  or break the public-Gateway runtime.
