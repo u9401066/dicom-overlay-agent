@@ -334,7 +334,7 @@ def _remove_migration_plugin(config_path: Path, plugin_path: Path) -> None:
         plugins["allow"] = [value for value in allow if value != "codex"]
     entries = plugins.get("entries")
     if isinstance(entries, dict):
-        entries.pop("codex", None)
+        entries["codex"] = {"enabled": False}
     load = plugins.get("load")
     paths = load.get("paths") if isinstance(load, dict) else None
     if isinstance(paths, list):

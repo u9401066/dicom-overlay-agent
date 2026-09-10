@@ -58,6 +58,37 @@ This does not close the real packaged GUI/OAuth/clinical or security gates.
 
 ## Publication blockers
 
+### OpenClaw 2026.9.3 isolated candidate, fe0a612
+
+The notice-preserving UPX candidate passed static package verification at
+**336.43 MiB** (launcher 4.46; App/Python/Qt 53.84; OpenClaw 260.17; Node 22.43).
+Its 89 native sources are within approved build/runtime roots; all 52 marked
+UPX PE payloads, including `.pyd` / `.node`, pass `upx -t`. This is a local
+candidate, **not an approved release**. The large difference from the old-pin
+239.03 MiB baseline is chiefly the new upstream runtime; no internal `dist`
+chunks were removed. App-layer and launcher budgets remain met.
+
+Actual frozen Gateway smoke failed because `GatewayManager._port` was not
+propagated to the CLI. The subsequent source-App check proved the corrected
+random loopback port, public authentication, exact local provider request,
+and explicit Codex plugin exclusion, but failed the previous assumption that
+BOOTSTRAP.md must remain in a managed workspace. Tests now distinguish five
+packaged templates from four persistent workspace files, consistent with the
+[upstream workspace contract](https://docs.openclaw.ai/concepts/agent-workspace).
+Fresh frozen rebuild and complete smoke must still pass.
+
+Notice inventories preserve 324 npm notices plus 21 App/Python/Node/runtime
+notices with hashes. Installed PyQt6 metadata is GPL-3.0-only; the project's
+Apache-2.0 license does not establish binary distribution rights. Maintainer
+decision on GPL-compatible distribution versus a commercial PyQt entitlement
+is pending. No license change or binary release has been made.
+
+Gitleaks' default rules exclude node_modules. A vendor-inclusive text scan
+with that single path exclusion removed scanned 235,971,096 bytes and flagged
+24 items; triage is pending. The initial default 513,562-byte scan is not a
+vendor/binary clearance. Reports redact matches; do not blanket-allowlist
+vendor code or call compressed binary contents scanned.
+
 The old pinned lock has 11 affected production package entries (7 high / 4
 moderate), all present in staging. See SECURITY.md and the September 10 upgrade
 audit. Neither comparison may be published as a new binary release. Candidate

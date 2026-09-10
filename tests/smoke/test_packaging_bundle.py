@@ -293,6 +293,81 @@ def _built_exe() -> Path | None:
     return exe if exe.exists() else None
 
 
+@pytest.mark.parametrize(
+    "error_text,run_id,templates,expected",
+    [
+        ("expected", "synthetic-run", True, 0),
+        ("expected", "synthetic-run", "without-bootstrap", 0),
+        ("expected", "", True, 1),
+        ("expected", "synthetic-run", False, 1),
+        ("HTTP 401", "synthetic-run", True, 1),
+        ("PACKAGED_SMOKE_EXPECTED_AUTH_FAILURE", "synthetic-run", True, 1),
+        ("Authentication failed for a different provider", "synthetic-run", True, 1),
+        ("Missing bootstrap template", "synthetic-run", True, 1),
+        ("", "synthetic-run", True, 1),
+        (None, "synthetic-run", True, 1),
+    ],
+)
+def test_gateway_smoke_requires_exact_public_auth_error_and_run_receipts(
+    tmp_path, monkeypatch, error_text, run_id, templates, expected
+):
+    from dicom_overlay import __main__ as app
+    from dicom_overlay.domain.entities import AppConfig
+
+    events = []
+
+    class Gateway:
+        def start(self):
+            events.append("start")
+
+        async def wait_ready(self):
+            return True
+
+        def stop(self):
+            events.append("stop")
+
+    class Client:
+        async def connect(self):
+            events.append("connect")
+
+        async def chat_about_image(self, _prompt, *, image_base64):
+            assert image_base64 == app._PACKAGING_SMOKE_PNG_BASE64
+            if error_text is not None:
+                raise RuntimeError(
+                    app._PACKAGING_SMOKE_AUTH_ERROR
+                    if error_text == "expected"
+                    else error_text
+                )
+            return "unexpected successful inference"
+
+        async def disconnect(self):
+            events.append("disconnect")
+
+        def last_run_trace(self):
+            return {"run_id": run_id}
+
+    monkeypatch.setattr(app, "_packaging_smoke_configuration_error", lambda _: "")
+    monkeypatch.setattr(
+        app.DesktopSettingsStore,
+        "ensure_gateway_token",
+        lambda _: "synthetic-gateway-token",
+    )
+    monkeypatch.setattr(app, "_configured_gateway", lambda *_: Gateway())
+    monkeypatch.setattr(app, "OpenClawClient", lambda **_: Client())
+    if templates:
+        workspace = tmp_path / "openclaw-home/.openclaw/workspace"
+        workspace.mkdir(parents=True)
+        for name in app._OPENCLAW_RUNTIME_TEMPLATE_PATHS:
+            if templates == "without-bootstrap" and name == "BOOTSTRAP.md":
+                continue
+            (workspace / name).write_text("Synthetic bootstrap", encoding="utf-8")
+    assert (
+        app._run_gateway_smoke(tmp_path, tmp_path / "config.yaml", AppConfig())
+        == expected
+    )
+    assert events == ["start", "connect", "disconnect", "stop"]
+
+
 @pytest.mark.skipif(
     os.environ.get("RUN_BUNDLE_SMOKE") != "1" or _built_exe() is None,
     reason=(
@@ -417,16 +492,27 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
         request["authorization"] == "Bearer invalid-packaging-smoke-key"
         for request in provider_requests
     )
-    assert any(
-        b"input_image" in request["body"]
-        and b"data:image/png;base64," in request["body"]
+    from dicom_overlay.__main__ import _PACKAGING_SMOKE_PNG_BASE64
+
+    expected_image = "data:image/png;base64," + _PACKAGING_SMOKE_PNG_BASE64
+    images = [
+        part["image_url"]
         for request in provider_requests
-    ), "loopback provider request did not contain the PNG image attachment"
+        for message in json.loads(request["body"])["input"]
+        for part in message.get("content", [])
+        if isinstance(part, dict) and part.get("type") == "input_image"
+    ]
+    assert images and all(image == expected_image for image in images), (
+        "loopback provider request did not contain the exact synthetic PNG"
+    )
+    assert "Registered plugin command: /codex" not in gateway_log
+    assert "[plugins] loading codex " not in gateway_log
     app_log = (isolated / "overlay_agent.log").read_text(
         encoding="utf-8", errors="replace"
     )
     assert "packaged_gateway_image_turn_smoke" in app_log
-    assert "template_count=5" in app_log
+    assert "template_count=4" in app_log
+    assert "packaged_template_count=5" in app_log
     assert "image_attachment=True" in app_log
     workspace = isolated / "openclaw-home" / ".openclaw" / "workspace"
     assert all(
@@ -436,7 +522,6 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
             "SOUL.md",
             "IDENTITY.md",
             "USER.md",
-            "BOOTSTRAP.md",
         )
     )
     deadline = time.monotonic() + 15

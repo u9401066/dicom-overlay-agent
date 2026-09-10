@@ -404,7 +404,7 @@ def _remove_codex_runtime_plugin_config(config: dict[str, Any]) -> None:
         plugins["allow"] = [item for item in allow if item != "codex"]
     entries = plugins.get("entries")
     if isinstance(entries, dict):
-        entries.pop("codex", None)
+        entries["codex"] = {"enabled": False}
     load = plugins.get("load")
     paths = load.get("paths") if isinstance(load, dict) else None
     if isinstance(paths, list):

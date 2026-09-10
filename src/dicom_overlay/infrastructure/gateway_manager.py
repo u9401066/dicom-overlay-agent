@@ -139,6 +139,12 @@ class GatewayManager:
         bbox_tool_audit_path: str | Path | None = None,
     ) -> None:
         if (
+            isinstance(port, bool)
+            or not isinstance(port, int)
+            or not 1 <= port <= 65535
+        ):
+            raise ValueError("port must be an integer between 1 and 65535")
+        if (
             isinstance(ready_timeout_sec, bool)
             or not isinstance(ready_timeout_sec, (int, float))
             or not 5 <= ready_timeout_sec <= 600
@@ -531,6 +537,8 @@ class GatewayManager:
             plugins["allow"] = allow
         if _HARNESS_PLUGIN not in allow:
             allow.append(_HARNESS_PLUGIN)
+        plugins["allow"] = [item for item in allow if item != "codex"]
+        allow = plugins["allow"]
         subscription_transport = _uses_openai_subscription_provider(payload)
         if subscription_transport and _OPENAI_PROVIDER_PLUGIN not in allow:
             allow.append(_OPENAI_PROVIDER_PLUGIN)
@@ -554,6 +562,10 @@ class GatewayManager:
             entry = {}
             entries[_HARNESS_PLUGIN] = entry
         entry["enabled"] = True
+        # Absence is not a disable policy for a bundled default-on plugin.
+        # OAuth migration temporarily enables its isolated provider, then
+        # restores this explicit runtime boundary before Gateway startup.
+        entries["codex"] = {"enabled": False}
         if subscription_transport:
             provider_entry = entries.setdefault(_OPENAI_PROVIDER_PLUGIN, {})
             if not isinstance(provider_entry, dict):
@@ -1092,7 +1104,21 @@ class GatewayManager:
             if disable_plugins is not None:
                 env["OPENCLAW_DISABLE_BUNDLED_PLUGINS"] = disable_plugins
 
-            cmd = [node, str(script), "gateway", "run", "--verbose"]
+            # The listener must match the probe/client/ownership receipt even
+            # when config or an inherited environment names a different port.
+            # Use the public CLI override, and never expose the desktop Gateway
+            # beyond loopback through an ambient bind setting.
+            cmd = [
+                node,
+                str(script),
+                "gateway",
+                "run",
+                "--port",
+                str(self._port),
+                "--bind",
+                "loopback",
+                "--verbose",
+            ]
             logger.info("Starting OpenClaw Gateway: %s", " ".join(cmd))
 
             # Write Gateway output to a log file for debugging

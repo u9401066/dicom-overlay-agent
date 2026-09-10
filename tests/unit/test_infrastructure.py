@@ -233,7 +233,7 @@ class TestOpenClawSettings:
         assert merged["plugins"]["entries"]["dicom-overlay-agent-harness"] == {
             "enabled": True
         }
-        assert "codex" not in merged["plugins"]["entries"]
+        assert merged["plugins"]["entries"]["codex"] == {"enabled": False}
         assert merged["plugins"]["load"]["paths"] == [
             "C:/workspace/dicom-overlay-agent-harness"
         ]

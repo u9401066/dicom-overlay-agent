@@ -4,6 +4,14 @@ import pytest
 
 from dicom_overlay.__main__ import _configured_gateway
 from dicom_overlay.domain.entities import AppConfig
+from dicom_overlay.infrastructure.gateway_manager import GatewayManager
+
+
+@pytest.mark.parametrize("port", [True, False, None, "18789", 1.5, 0, -1, 65536])
+def test_manager_rejects_invalid_port_before_creating_state(tmp_path, port):
+    with pytest.raises(ValueError, match="port must be an integer"):
+        GatewayManager(repo_root=tmp_path, port=port)
+    assert not list(tmp_path.iterdir())
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])

@@ -114,12 +114,24 @@ _OPENCLAW_RUNTIME_TEMPLATE_PATHS = {
         "openclaw/node_modules/openclaw/docs/reference/templates/BOOTSTRAP.md"
     ),
 }
+# BOOTSTRAP is a one-time first-run ritual, not a persistent workspace file.
+# The desktop seeds skills/plugins before the Gateway; that is already a
+# managed workspace. Keep the template packaged, without requiring a ritual.
+_OPENCLAW_PERSISTENT_WORKSPACE_FILES = (
+    "AGENTS.md",
+    "SOUL.md",
+    "IDENTITY.md",
+    "USER.md",
+)
 _PACKAGING_SMOKE_MODE_ENV = "DICOM_OVERLAY_PACKAGING_SMOKE_MODE"
 _PACKAGING_SMOKE_MODE = "loopback-provider-auth-failure-v1"
 _PACKAGING_SMOKE_API_KEY_ENV = "DICOM_OVERLAY_PACKAGING_SMOKE_API_KEY"
 _PACKAGING_SMOKE_API_KEY = "invalid-packaging-smoke-key"
 _PACKAGING_SMOKE_PROVIDER = "packaging-smoke"
-_PACKAGING_SMOKE_ERROR_MARKER = "PACKAGED_SMOKE_EXPECTED_AUTH_FAILURE"
+_PACKAGING_SMOKE_AUTH_ERROR = (
+    "⚠️ packaging-smoke/image-auth-failure request failed "
+    "(authentication failed, HTTP 401). Re-authenticate the provider and try again."
+)
 _PACKAGING_SMOKE_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A"
     "AQUBAScY42YAAAAASUVORK5CYII="
@@ -409,7 +421,7 @@ def _run_gateway_smoke(
 
     The opt-in release test replaces ``openclaw.json`` with a loopback-only
     provider that always returns a marked HTTP 401.  Success means Gateway
-    accepted the image turn, initialized all five workspace templates, and
+    accepted the image turn, initialized the four persistent workspace files, and
     reached that explicit local auth failure.  A real API/OAuth configuration
     is rejected before the Gateway starts.
     """
@@ -464,9 +476,13 @@ def _run_gateway_smoke(
                 )
             except RuntimeError as exc:
                 error_text = str(exc)
-                if _PACKAGING_SMOKE_ERROR_MARKER not in error_text:
+                # The pinned Gateway redacts raw provider error bodies on its
+                # public event stream. Require its exact fixed-model auth error;
+                # the external smoke fixture separately verifies that the real
+                # HTTP request carried our invalid key and exact synthetic PNG.
+                if error_text != _PACKAGING_SMOKE_AUTH_ERROR:
                     logger.error(
-                        "Image turn failed before the marked loopback auth gate: %s",
+                        "Image turn failed before the loopback auth gate: %s",
                         error_text,
                     )
                     return 1
@@ -479,7 +495,7 @@ def _run_gateway_smoke(
             workspace = base_dir / "openclaw-home" / ".openclaw" / "workspace"
             missing_workspace_files = [
                 name
-                for name in _OPENCLAW_RUNTIME_TEMPLATE_PATHS
+                for name in _OPENCLAW_PERSISTENT_WORKSPACE_FILES
                 if not (workspace / name).is_file()
             ]
             if not run_id:
@@ -494,7 +510,9 @@ def _run_gateway_smoke(
             logger.info(
                 "packaged_gateway_image_turn_smoke",
                 run_id=run_id,
-                template_count=len(_OPENCLAW_RUNTIME_TEMPLATE_PATHS),
+                template_count=len(_OPENCLAW_PERSISTENT_WORKSPACE_FILES),
+                packaged_template_count=len(_OPENCLAW_RUNTIME_TEMPLATE_PATHS),
+                first_run_ritual_present=(workspace / "BOOTSTRAP.md").is_file(),
                 image_attachment=True,
                 provider_outcome="expected_loopback_auth_failure",
             )

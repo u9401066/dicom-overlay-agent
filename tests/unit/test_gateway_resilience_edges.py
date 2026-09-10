@@ -286,9 +286,11 @@ def test_gateway_reuses_authenticated_live_lock_without_terminating_owner(
     assert lock_dir.exists()
 
 
+@pytest.mark.parametrize("port", [18789, 49152, 65535])
 def test_gateway_and_client_share_explicit_absolute_bbox_audit_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    port: int,
 ) -> None:
     monkeypatch.setenv("DICOM_OVERLAY_ALLOW_REAL_OPENCLAW_IN_TESTS", "1")
     monkeypatch.setenv("OPENCLAW_GATEWAY_TOKEN", "not-written-to-receipt")
@@ -297,6 +299,7 @@ def test_gateway_and_client_share_explicit_absolute_bbox_audit_path(
     explicit_path = Path("custom-audit") / "bbox.jsonl"
     manager = GatewayManager(
         repo_root=tmp_path,
+        port=port,
         bbox_tool_audit_path=explicit_path,
     )
     client = OpenClawClient(
@@ -310,7 +313,8 @@ def test_gateway_and_client_share_explicit_absolute_bbox_audit_path(
     monkeypatch.setattr(manager, "_gateway_script", lambda: tmp_path / "openclaw.mjs")
     monkeypatch.setattr(manager, "prepare_workspace", lambda: None)
 
-    def capture_popen(*_args: object, **kwargs: Any) -> _FakeProcess:
+    def capture_popen(command: list[str], **kwargs: Any) -> _FakeProcess:
+        captured["command"] = command
         captured.update(kwargs)
         return process
 
@@ -318,10 +322,26 @@ def test_gateway_and_client_share_explicit_absolute_bbox_audit_path(
 
     manager.start()
 
+    configured = json.loads(
+        (tmp_path / "openclaw/openclaw.json").read_text(encoding="utf-8")
+    )
+    assert configured["plugins"]["entries"]["codex"] == {"enabled": False}
+    assert "codex" not in configured["plugins"]["allow"]
     expected = (tmp_path / explicit_path).resolve()
     assert manager.bbox_tool_audit_path == expected
     assert client.bbox_tool_audit_path == expected
     assert captured["env"]["DICOM_BBOX_AUDIT_PATH"] == str(expected)
+    assert captured["command"] == [
+        "node",
+        str(tmp_path / "openclaw.mjs"),
+        "gateway",
+        "run",
+        "--port",
+        str(port),
+        "--bind",
+        "loopback",
+        "--verbose",
+    ]
     receipt_text = (
         tmp_path / "data/tmp/openclaw-gateway.lock/ownership.json"
     ).read_text(encoding="utf-8")
@@ -330,7 +350,7 @@ def test_gateway_and_client_share_explicit_absolute_bbox_audit_path(
     assert receipt["status"] == "starting"
     assert receipt["supervisor_pid"] == process.pid
     assert receipt["listener_pid"] is None
-    assert receipt["port"] == 18789
+    assert receipt["port"] == port
     assert receipt["bbox_audit_path"] == str(expected)
     assert len(receipt["token_sha256"]) == 64
     manager.stop()

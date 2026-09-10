@@ -193,7 +193,7 @@ def test_auth_import_uses_plugin_only_for_migration(monkeypatch, tmp_path) -> No
     assert all(timeout > 0 for _command, _env, timeout in calls)
     final_config = json.loads(config.read_text(encoding="utf-8"))
     assert "codex" not in final_config["plugins"]["allow"]
-    assert "codex" not in final_config["plugins"]["entries"]
+    assert final_config["plugins"]["entries"]["codex"] == {"enabled": False}
     assert final_config["plugins"]["load"]["paths"] == ["C:/app/harness"]
     assert "email" not in final_config["auth"]["profiles"]["openai:codex-import"]
     audit_text = audit.read_text(encoding="utf-8")

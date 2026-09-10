@@ -2,10 +2,46 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Candidate fe0a612 full regression passed (1362 tests, 5 explicit skips).
+  Its UPX build/verifier passed: 336.43 MiB total, 53.84 MiB App layer, 89
+  approved native sources; 52 UPX-marked payloads pass integrity testing.
+  **Actual packaged Gateway smoke failed**: the manager's configured port
+  was not passed to `gateway run`, so the child attempted the occupied default
+  port. It exited without stopping the ongoing cohort Gateway. Follow-up now
+  pins public `--port` / `--bind loopback` and rejects invalid port types/ranges.
+  Real source-App probe reached a local 401 image endpoint on the chosen port.
+  It exposed two more smoke assumptions: public 9.3 error events sanitize the
+  provider marker, and one-time BOOTSTRAP.md is not guaranteed in the App's
+  pre-seeded workspace. Require the exact fixed-model public auth error, an
+  accepted run id, four persistent workspace files, and independent exact-PNG
+  provider proof; keep all five upstream templates packaged. Fresh EXE rerun
+  remains pending. Unit/smoke regression: 1326 passed, 5 opt-in skips; final
+  persistent-template adjustment separately passes 84 tests, 3 opt-in skips.
+- Runtime Codex exclusion is now explicit `entries.codex.enabled=false` in
+  managed Gateway config and after OAuth migration/settings cleanup. Real
+  source-App startup confirmed no Codex plugin loading/command registration,
+  while native harness loaded. Fabricated App OAuth import/reuse still passes
+  (16.765/3.024 s); no real credentials or paid model requests in that probe.
+- Full vendor text secret scan now removes Gitleaks' default node_modules
+  path exclusion: 235.97 MB scanned vs the earlier 0.51 MB. It reported 24
+  vendor findings requiring classification, not zero findings. Binary/archive
+  coverage is not claimed; no new broad allowlist has been added.
+- Main GUI cohort paused at case 64 when switching the docs merge checkout
+  changed raw CRLF bytes. Read-only audit verified all 88 implementation files
+  equal frozen 58af7a5 Git content after CRLF normalization. The affected
+  receipt remains a failure; GUI rerun succeeded under a new raw fingerprint.
+  Another pre-send Viewer stale-image guard stopped case 67; GUI driver now
+  waits at most five seconds for a matching actual repaint, then boundedly
+  reopens via QFileDialog. Identity threshold unchanged; no inference sent on
+  the stale image. Do not switch the main worktree while this batch is active.
+  66 distinct pilot/main UI successes observed before case 67 restart; clinical
+  accuracy remains unevaluated. Public Pages PR #14 merged as 01c5c4d; deploy
+  34481931670 and real Edge desktop/mobile QA passed, including menu focus.
+
 - Candidate bfd7426 pushed as draft PR #13; CI 34478247522 and both Secret scans
   passed. Initial UPX build was deliberately stopped (owned PyInstaller process)
   after audit found 47 upstream notice files omitted by extension slimming.
-  No completed candidate EXE size is claimed. Fix restores 324 exact npm
+  That interrupted build has no completed size. Fix restores 324 exact npm
   notices (562,442 B); refreshed slim stage is 280.77 MiB / 18,581 files.
   Python/runtime closure, bootloader, Python, Node and App add 21 notices;
   both inventories verify SHA-256 and safe paths. Node download now checks
@@ -20,7 +56,7 @@
   request bodies caused early socket-close races. Rejection now discards only
   a known <=16 KiB body within a total one-second deadline, never parses it or
   invokes inference. Thirty real 401 exchanges plus bounded/chunked/invalid/
-  trickling-body regressions pass (23 sidecar tests). Full suite rerun pending.
+  trickling-body regressions pass (23 sidecar tests); fe0a612 full suite passed.
 
 - Isolated candidate branch `agent/openclaw-2026-9-3-20260910` now pins core and
   OAuth-only migration provider 2026.9.3, with full npm lifecycle under portable
@@ -29,8 +65,8 @@
   binaries. Native bbox + fabricated OAuth probes pass against slim tree;
   actual App helper import/reuse passed in 8.440/2.739 s. Main cohort remains
   frozen, not switched to this candidate. New EXE and real auth gates pending.
-- Fixed managed Gateway/client port drift: both desktop startup and packaged
-  smoke use the configured explicit loopback port. Bundle smoke chooses a
+- Initial managed Gateway/client port wiring passed unit tests, but did not
+  propagate to the child CLI (see actual failure/fix above). Bundle smoke chooses a
   temporary port and supports `DICOM_TEST_BUNDLE`; it must not interfere with
   the ongoing real cohort. 120 targeted tests passed, 3 packaged opt-in skips.
 - Candidate full non-GUI/non-slow regression: 1333 passed, 5 explicit local/
