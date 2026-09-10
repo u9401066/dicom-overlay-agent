@@ -34,6 +34,7 @@ from dicom_overlay.domain.entities import (
     TriggerMode,
     WindowRect,
 )
+from dicom_overlay.domain.services import CaptureBlockedError
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import AppConfig, ROICrop
@@ -977,7 +978,20 @@ class OverlayAgent:
             capture_rect.height,
         )
         try:
+            self._monitor.verify_capture_target(capture_rect)
             screenshot = self._monitor.capture_region(capture_rect)
+            self._monitor.verify_capture_target(capture_rect)
+        except CaptureBlockedError as exc:
+            logger.warning("ROI capture blocked", reason=str(exc))
+            with self._review_lock:
+                self._review_snapshot = None
+            self._transition(AgentState.ERROR)
+            if self.on_error:
+                self.on_error(
+                    "Viewer 被遮擋、移動或 ROI 超出視窗，未送出影像。"
+                    "請關閉遮擋視窗、確認 ROI 後按 Analyze 重試。"
+                )
+            return
         except Exception:
             logger.exception("ROI capture failed")
             self._transition(AgentState.ERROR)

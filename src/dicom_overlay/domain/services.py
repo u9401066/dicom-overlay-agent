@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     )
 
 
+class CaptureBlockedError(RuntimeError):
+    """The selected viewer/ROI cannot be safely captured for transmission."""
+
+
 class ScreenMonitorService(ABC):
     """Detects DICOM viewer window and monitors for image changes (spec §3.1)."""
 
@@ -34,6 +38,14 @@ class ScreenMonitorService(ABC):
         """
         del window
         return None
+
+    @abstractmethod
+    def verify_capture_target(self, rect: WindowRect) -> None:
+        """Raise CaptureBlockedError if the ROI is not an unobstructed viewer.
+
+        Called immediately before and after the analysis screenshot. Local
+        change detection may still run while app-owned overlays are visible.
+        """
 
     @abstractmethod
     def capture_region(self, rect: WindowRect) -> bytes:

@@ -62,3 +62,33 @@ def test_harness_viewer_swap_file_advances_image(qtbot, tmp_path):
     swap.write_text(str(tmp_path / "does-not-exist.png"), encoding="utf-8")
     window.poll_swap_file()
     assert window.current_path == str(second)
+
+
+def test_harness_viewer_opens_an_image_through_dialog(qtbot, tmp_path, monkeypatch):
+    first = _png(tmp_path / "first.png", (1000, 720), (255, 255, 255))
+    second = _png(tmp_path / "second.png", (1000, 720), (0, 0, 0))
+    window = HarnessViewerWindow(first, windowed=True)
+    qtbot.addWidget(window)
+    monkeypatch.setattr(
+        "dicom_overlay.presentation.harness_viewer.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: (str(second), "Images (*.png)"),
+    )
+
+    window.open_image_dialog()
+
+    assert window.current_path == str(second)
+    assert window.accessibleDescription() == "Loaded image: second.png"
+
+
+def test_harness_viewer_cancelled_dialog_preserves_case(qtbot, tmp_path, monkeypatch):
+    first = _png(tmp_path / "first.png", (1000, 720), (255, 255, 255))
+    window = HarnessViewerWindow(first)
+    qtbot.addWidget(window)
+    monkeypatch.setattr(
+        "dicom_overlay.presentation.harness_viewer.QFileDialog.getOpenFileName",
+        lambda *args, **kwargs: ("", ""),
+    )
+
+    window.open_image_dialog()
+
+    assert window.current_path == str(first)

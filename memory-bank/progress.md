@@ -5,6 +5,33 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Calibration retry `desktop-20260910-095926-407907` completed final reconciliation
+  in 165.043 s (first attempt had timed out at 179.252 s); not a clinical pass.
+  Actual QWidget panel render was visually inspected. A compound negation still
+  triggered the local VT guard, so it is now restricted to asserted finding
+  labels, not narrative differential prose. An observed-duration gate prevents
+  starting an optional crop when the prior turn's duration exceeds its budget.
+- Case 41045474 was opened through the real viewer's Ctrl+O/QFileDialog and App
+  Analyze. Export `desktop-20260910-100742-309046` exposed terminal occlusion:
+  Astra correctly described the obstructing console and visible V5/V6 fragments.
+  This is a capture failure, NOT an accepted case. Source launch now uses
+  pythonw; a product-level occlusion gate has been added. No PHI was in this
+  synthetic/deidentified test, but unrelated-window capture must fail closed.
+- The analysis capture now validates viewer identity/geometry/ROI containment
+  and all visible top-level intersections immediately before and after capture.
+  Win32 failures and unstable z-order fail closed; transparent/app-owned
+  surfaces are not exempt. Local hash monitoring remains separate so visible
+  review panels do not disable change detection. No compositor atomicity is
+  claimed. Unit/core/multi-pass/viewer checks: 274 passed.
+- Actual GUI negative check at 10:17:38Z left the viewer's Open dialog over the
+  ECG, then clicked Analyze: `viewer_roi_obstructed`, zero analysis requests,
+  actionable status displayed. A second real check blocked a foreground editor.
+  Keeping viewer activation and Analyze invocation in one UI automation process
+  avoids the helper-process focus switch; a clean retry began at 10:19:26Z.
+- `710fa0a` GitHub CI and both Secret scan runs are green. New changes remain
+  subject to their own CI. The canonical Viewer now supports actual Ctrl+O and
+  optional normal window chrome, retaining the same configured ROI geometry.
+
 - First Astra low real-UI export: `desktop-20260910-094636-035106`, original
   ROI 1499 x 1079, verified protocol 4. Coarse 40.967 s, first crop 68.548 s,
   total 179.252 s. The second crop and final reconciliation hit deadlines;

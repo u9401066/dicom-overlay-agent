@@ -37,6 +37,13 @@ def test_load_env_batch_never_prints_values() -> None:
     assert "echo %" not in script.lower()
 
 
+def test_desktop_launcher_does_not_leave_a_console_over_the_roi() -> None:
+    script = Path("start.bat").read_text(encoding="utf-8")
+    assert 'start "" ".venv\\Scripts\\pythonw.exe" -m dicom_overlay' in script
+    assert "python.exe -m dicom_overlay" not in script
+    assert script.index("load-env.bat") < script.index("pythonw.exe")
+
+
 def test_real_stack_batch_avoids_interactive_gateway_conhost() -> None:
     script = Path("scripts/test-real-stack.bat").read_text(encoding="utf-8")
     lowered = script.lower()

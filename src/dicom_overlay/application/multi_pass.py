@@ -2539,10 +2539,10 @@ def apply_ekg_ventricular_run_evidence_guard(
     findings: list[Finding] = []
     events: list[dict[str, object]] = []
     for finding in result.findings:
-        if not (
-            _contains_asserted_ventricular_run_claim(finding.label)
-            or _contains_asserted_ventricular_run_claim(finding.detail)
-        ):
+        # Only constrain an explicit finding label. Free-text differential
+        # prose is not a reliable positive classifier ("no pacing spike or
+        # ventricular run" must not rewrite "Possible isolated ectopy").
+        if not _contains_asserted_ventricular_run_claim(finding.label):
             findings.append(finding)
             continue
         unique_timestamps = _unique_ekg_event_timestamp_count(finding.bboxes)
@@ -3399,6 +3399,7 @@ class MultiPassInterpreter:
         refinements: list[tuple[_RefinementTarget, RegionRect, RefinementResult]] = []
         first_crop_created_ms: int | None = None
         first_refinement_completed_ms: int | None = None
+        observed_refinement_sec = 0.0
         skipped_refinement_count = 0
         degradation_reasons: list[str] = []
         can_finalize = callable(getattr(self._analyzer, "finalize", None))
@@ -3412,7 +3413,11 @@ class MultiPassInterpreter:
                 if first_refinement_pending
                 else refinement_absolute_limit
             )
-            if deadline.remaining_sec(stage_limit) < self._min_followup_budget_sec:
+            required_turn_sec = max(
+                self._min_followup_budget_sec,
+                observed_refinement_sec * 1.25,
+            )
+            if deadline.remaining_sec(stage_limit) < required_turn_sec:
                 skipped_refinement_count += len(targets) - target_index
                 status = (
                     "first_refinement_deadline_exhausted"
@@ -3427,6 +3432,8 @@ class MultiPassInterpreter:
                         "target_id": target.key,
                         "skipped_target_count": len(targets) - target_index,
                         "elapsed_ms": deadline.elapsed_ms(),
+                        "minimum_start_budget_sec": round(required_turn_sec, 3),
+                        "previous_refinement_sec": round(observed_refinement_sec, 3),
                     }
                 )
                 degradation_reasons.append(
@@ -3545,6 +3552,11 @@ class MultiPassInterpreter:
             if refinement is not None and refinement.deltas:
                 refinements.append((target, crop_region, refinement))
             refinement_completed_ms = deadline.elapsed_ms()
+            if refinement is not None:
+                observed_refinement_sec = max(
+                    observed_refinement_sec,
+                    (refinement_completed_ms - turn_started_ms) / 1000,
+                )
             absolute_deadline_ms = int(turn_limit * 1000)
             trace.append(
                 {
@@ -3720,6 +3732,7 @@ class MultiPassInterpreter:
                     "turn_started_ms": turn_started_ms,
                     "turn_budget_ms": turn_budget_ms,
                     "absolute_deadline_ms": int(absolute_deadline_sec * 1000),
+                    **self._read_runtime_trace(),
                 }
             )
             reason = (

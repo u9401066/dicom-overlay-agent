@@ -22,8 +22,8 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QApplication, QLabel
+from PyQt6.QtGui import QKeySequence, QPixmap, QShortcut
+from PyQt6.QtWidgets import QApplication, QFileDialog, QLabel, QMessageBox
 
 WINDOW_TITLE = "DICOM Harness Viewer"
 DEFAULT_X = 100
@@ -42,15 +42,18 @@ class HarnessViewerWindow(QLabel):
         y: int = DEFAULT_Y,
         swap_file: Path | None = None,
         swap_poll_ms: int = DEFAULT_SWAP_POLL_MS,
+        windowed: bool = False,
     ) -> None:
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, not windowed)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.move(x, y)
         self._swap_file = swap_file
         self._current_path = ""
         self.show_image(image_path)
+        self._open_shortcut = QShortcut(QKeySequence.StandardKey.Open, self)
+        self._open_shortcut.activated.connect(self.open_image_dialog)
         if swap_file is not None:
             self._timer = QTimer(self)
             self._timer.timeout.connect(self.poll_swap_file)
@@ -67,6 +70,25 @@ class HarnessViewerWindow(QLabel):
         self.setPixmap(pixmap)
         self.resize(pixmap.width(), pixmap.height())
         self._current_path = str(image_path)
+        self.setAccessibleDescription(f"Loaded image: {image_path.name}")
+
+    def open_image_dialog(self) -> None:
+        """Open a case through the actual viewer UI, including automation users."""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open test image",
+            str(Path(self._current_path).parent),
+            "Images (*.png *.jpg *.jpeg *.bmp)",
+            options=QFileDialog.Option.DontUseNativeDialog,
+        )
+        if not filename:
+            return
+        try:
+            self.show_image(Path(filename))
+        except ValueError:
+            QMessageBox.warning(
+                self, "Image not opened", "The image could not be read."
+            )
 
     def poll_swap_file(self) -> None:
         """Advance to the image path in the swap file when it changes."""
@@ -93,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--x", type=int, default=DEFAULT_X)
     parser.add_argument("--y", type=int, default=DEFAULT_Y)
     parser.add_argument(
+        "--windowed",
+        action="store_true",
+        help="Use a normal titlebar window; configure ROI to exclude its frame",
+    )
+    parser.add_argument(
         "--swap-file",
         type=Path,
         default=None,
@@ -115,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         y=args.y,
         swap_file=args.swap_file,
         swap_poll_ms=args.swap_poll_ms,
+        windowed=args.windowed,
     )
     window.show()
     return app.exec()

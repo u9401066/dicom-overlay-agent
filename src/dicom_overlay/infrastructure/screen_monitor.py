@@ -14,7 +14,11 @@ import structlog
 from PIL import Image, ImageChops, ImageFilter
 
 from dicom_overlay.domain.entities import DisplayFrame, RegionRect, WindowRect
-from dicom_overlay.domain.services import ImageProcessorService, ScreenMonitorService
+from dicom_overlay.domain.services import (
+    CaptureBlockedError,
+    ImageProcessorService,
+    ScreenMonitorService,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -40,6 +44,21 @@ except ImportError:
 
 
 _HashFunc = Callable[[Image.Image], str]
+
+
+def _window_is_cloaked(hwnd: int) -> bool:
+    """Only skip a window when DWM positively confirms it is not displayed."""
+    import ctypes
+    from ctypes import wintypes
+
+    cloaked = wintypes.DWORD()
+    try:
+        status = ctypes.windll.dwmapi.DwmGetWindowAttribute(
+            wintypes.HWND(hwnd), 14, ctypes.byref(cloaked), ctypes.sizeof(cloaked)
+        )
+    except (AttributeError, OSError):
+        return False
+    return status == 0 and bool(cloaked.value)
 
 
 class _SignalCandidate(TypedDict):
@@ -114,6 +133,8 @@ class ScreenMonitor(ScreenMonitorService):
             {os.getpid(), *(int(pid) for pid in excluded_process_ids)}
         )
         self._target_hwnd: int | None = None
+        self._target_rect: WindowRect | None = None
+        self._target_pid: int | None = None
         logger.info("Hash algorithm: %s", algo)
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
@@ -175,6 +196,8 @@ class ScreenMonitor(ScreenMonitorService):
         if self._target_hwnd is not None:
             existing = _candidate(self._target_hwnd)
             if existing is not None:
+                self._target_rect = existing[1]
+                self._target_pid = process.GetWindowThreadProcessId(self._target_hwnd)[1]
                 return existing[1]
             self._target_hwnd = None
 
@@ -195,7 +218,65 @@ class ScreenMonitor(ScreenMonitorService):
             return None
         _score, hwnd, result = max(candidates, key=lambda item: item[0])
         self._target_hwnd = hwnd
+        self._target_rect = result
+        self._target_pid = process.GetWindowThreadProcessId(hwnd)[1]
         return result
+
+    def verify_capture_target(self, rect: WindowRect) -> None:
+        """Fail closed on visible top-level intersections, without reading titles.
+
+        GetWindow(GW_HWNDPREV) walks windows *above* the selected viewer.
+        A bounded, cycle-checked walk rejects a changing/indeterminate z-order.
+        Transparent and app-owned windows are not exempt: they can still render
+        pixels or capture-exclusion masks over the ROI. Presentation must hide
+        them first. This pre/post check reduces, but cannot atomically eliminate,
+        desktop compositor races during a screen capture.
+
+        https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getwindow
+        """
+        if not HAS_WIN32 or win32gui is None or win32process is None:
+            raise CaptureBlockedError("window_verification_unavailable")
+        hwnd = self._target_hwnd
+        if hwnd is None or self._target_rect is None or self._target_pid is None:
+            raise CaptureBlockedError("viewer_not_selected")
+        gui = win32gui
+        try:
+            if not gui.IsWindowVisible(hwnd) or gui.IsIconic(hwnd) or _window_is_cloaked(hwnd):
+                raise CaptureBlockedError("viewer_not_visible")
+            if win32process.GetWindowThreadProcessId(hwnd)[1] != self._target_pid:
+                raise CaptureBlockedError("viewer_identity_changed")
+            left, top, right, bottom = gui.GetWindowRect(hwnd)
+            current = WindowRect(left, top, right - left, bottom - top)
+            if current != self._target_rect:
+                raise CaptureBlockedError("viewer_geometry_changed")
+            if (
+                rect.width <= 0 or rect.height <= 0
+                or rect.left < left or rect.top < top
+                or rect.right > right or rect.bottom > bottom
+            ):
+                raise CaptureBlockedError("roi_outside_viewer")
+            visited = {hwnd}
+            for _ in range(2048):
+                hwnd = gui.GetWindow(hwnd, 3)  # GW_HWNDPREV
+                if not hwnd:
+                    return
+                if hwnd in visited:
+                    raise CaptureBlockedError("unstable_window_order")
+                visited.add(hwnd)
+                if not gui.IsWindowVisible(hwnd) or gui.IsIconic(hwnd) or _window_is_cloaked(hwnd):
+                    continue
+                other_left, other_top, other_right, other_bottom = gui.GetWindowRect(hwnd)
+                if (
+                    max(rect.left, other_left) < min(rect.right, other_right)
+                    and max(rect.top, other_top) < min(rect.bottom, other_bottom)
+                ):
+                    raise CaptureBlockedError("viewer_roi_obstructed")
+            raise CaptureBlockedError("unstable_window_order")
+        except CaptureBlockedError:
+            raise
+        except Exception:
+            # Win32 exceptions may contain window metadata; do not propagate it.
+            raise CaptureBlockedError("window_verification_failed") from None
 
     def display_for_window(self, window: WindowRect) -> DisplayFrame | None:
         """Resolve a Win32 window rectangle to its nearest physical monitor."""

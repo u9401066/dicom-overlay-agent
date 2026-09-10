@@ -60,6 +60,13 @@ class _HarnessScreenMonitor(ScreenMonitorService):
     def display_for_window(self, _window: WindowRect) -> DisplayFrame | None:
         return DisplayFrame(physical_rect=self._window, is_primary=True)
 
+    def verify_capture_target(self, rect: WindowRect) -> None:
+        """Synthetic contract fixture; capture_region verifies its exact bounds.
+
+        This is not desktop visibility evidence.
+        """
+        del rect
+
     def capture_region(self, rect: WindowRect) -> bytes:
         """Return exactly ``rect``; the smoke must exercise the real ROI contract."""
 

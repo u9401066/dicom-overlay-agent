@@ -55,6 +55,9 @@ class MockScreenMonitor(ScreenMonitorService):
         self.capture_rects.append(rect)
         return self.screenshot
 
+    def verify_capture_target(self, rect: WindowRect) -> None:
+        del rect
+
     def compute_hash(self, image_data: bytes) -> str:
         return self.hash_value
 
@@ -216,6 +219,34 @@ class TestOverlayAgent:
     @pytest.mark.asyncio
     async def test_init_state(self, agent):
         assert agent.state == AgentState.INIT
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("blocked_check", [1, 2])
+    async def test_capture_obstruction_before_or_after_screenshot_never_sends(
+        self, agent, agent_deps, monkeypatch, blocked_check,
+    ):
+        from dicom_overlay.domain.services import CaptureBlockedError
+
+        monitor = agent_deps["screen_monitor"]
+        monitor.window = WindowRect(0, 0, 1920, 1080)
+        agent._set_target_window(monitor.window)
+        errors = []
+        agent.on_error = errors.append
+        checks = []
+
+        def verify(rect):
+            checks.append(rect)
+            if len(checks) == blocked_check:
+                raise CaptureBlockedError("viewer_roi_obstructed")
+
+        monkeypatch.setattr(monitor, "verify_capture_target", verify)
+        await agent.trigger_manual()
+        assert len(checks) == blocked_check
+        assert len(monitor.capture_rects) == blocked_check - 1
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+        assert agent.state is AgentState.ERROR
+        assert agent.review_snapshot is None
+        assert errors and "未送出影像" in errors[0]
 
     def test_reviewer_confirmed_delta_updates_result_and_trace(self, agent):
         original = Finding(

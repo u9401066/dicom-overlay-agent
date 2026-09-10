@@ -838,6 +838,7 @@ class TestEkgVentricularRunEvidenceGuard:
             "VT was not observed.",
             "Ventricular run excluded by intervening intrinsic beats.",
             "Cannot exclude ventricular tachycardia.",
+            "No unequivocal pacing spike or ventricular run.",
         ],
     )
     def test_negated_or_uncertain_run_is_not_promoted_to_new_candidate(self, detail):
@@ -861,7 +862,7 @@ class TestEkgVentricularRunEvidenceGuard:
             "VT excluded in the first segment; ventricular run in the second.",
         ],
     )
-    def test_negation_does_not_hide_a_separate_positive_assertion(self, detail):
+    def test_narrative_differential_does_not_reclassify_a_nonvt_label(self, detail):
         finding = _finding(
             "rhythm",
             Severity.CRITICAL,
@@ -874,7 +875,7 @@ class TestEkgVentricularRunEvidenceGuard:
 
         guarded = apply_ekg_ventricular_run_evidence_guard(result)
 
-        assert guarded.findings[0].label.startswith("Unresolved")
+        assert guarded is result
         assert guarded.findings[0].severity is Severity.CRITICAL
 
     def test_same_synchronized_event_across_leads_counts_once_and_qualifies_claim(
@@ -1731,6 +1732,53 @@ class _SlowRefinementAnalyzer(_HypothesisAwareAnalyzer):
 
 @pytest.mark.asyncio
 class TestMultiPassInterpreter:
+    async def test_observed_crop_duration_reserves_time_for_finalization(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "dicom_overlay.application.multi_pass._SLA_RETURN_BUFFER_SEC",
+            0.001,
+        )
+
+        class SlowFinalizingAnalyzer(_FinalizingAnalyzer):
+            async def refine(self, *args, **kwargs):
+                await asyncio.sleep(0.03)
+                return await super().refine(*args, **kwargs)
+
+        coarse = _result(
+            [
+                _finding("first", Severity.WARNING, RegionRect(0.1, 0.1, 0.1, 0.1)),
+                _finding("second", Severity.WARNING, RegionRect(0.7, 0.7, 0.1, 0.1)),
+            ]
+        )
+        analyzer = SlowFinalizingAnalyzer(
+            coarse,
+            [RefinementResult(), RefinementResult()],
+            coarse,
+        )
+        interpreter = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            max_zoom_targets=2,
+            initial_response_sla_sec=0.02,
+            first_refinement_sla_sec=0.06,
+            total_analysis_sla_sec=0.15,
+            finalization_reserve_sec=0.10,
+            min_followup_budget_sec=0.001,
+        )
+
+        result = await interpreter.interpret("img", Modality.CXR, [])
+
+        assert len(analyzer.refine_calls) == 1
+        assert len(analyzer.finalize_calls) == 1
+        skipped = next(
+            event
+            for event in result.analysis_trace
+            if event.get("status") == "total_deadline_reserve_reached"
+        )
+        assert skipped["previous_refinement_sec"] >= 0.025
+        assert skipped["minimum_start_budget_sec"] >= 0.031
+
     async def test_prefers_compact_coarse_capability_when_available(self):
         analyzer = _CoarseAwareAnalyzer([_result([])])
         interp = MultiPassInterpreter(analyzer, _RecordingCropper())
