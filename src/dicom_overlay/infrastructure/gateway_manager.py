@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 from uuid import uuid4
@@ -24,6 +27,7 @@ from dicom_overlay.infrastructure.codex_subscription_auth import (
     uses_codex_subscription_transport,
 )
 from dicom_overlay.infrastructure.env_file import read_env_file
+from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
     ensure_openclaw_runtime_supported,
 )
@@ -50,6 +54,10 @@ _HARNESS_PLUGIN = "dicom-overlay-agent-harness"
 _OPENAI_PROVIDER_PLUGIN = "openai"
 _ECG_FOUNDER_TOOL = "ecg_founder_analyze_waveform"
 _GATEWAY_LAUNCH_LOCK = Path("data/tmp/openclaw-gateway.lock")
+_GATEWAY_OWNERSHIP_RECEIPT = "ownership.json"
+_GATEWAY_OWNERSHIP_SCHEMA_VERSION = 2
+_GATEWAY_STARTUP_REUSE_WAIT_SEC = 3.0
+_GATEWAY_STARTUP_REUSE_POLL_SEC = 0.1
 DEFAULT_GATEWAY_READY_TIMEOUT_SEC = 180.0
 
 
@@ -127,6 +135,7 @@ class GatewayManager:
         port: int = 18789,
         *,
         ready_timeout_sec: float = DEFAULT_GATEWAY_READY_TIMEOUT_SEC,
+        bbox_tool_audit_path: str | Path | None = None,
     ) -> None:
         if (
             isinstance(ready_timeout_sec, bool)
@@ -134,8 +143,12 @@ class GatewayManager:
             or not 5 <= ready_timeout_sec <= 600
         ):
             raise ValueError("ready_timeout_sec must be between 5 and 600 seconds")
-        self._repo_root = repo_root or Path.cwd()
+        self._repo_root = (repo_root or Path.cwd()).resolve()
         self._port = port
+        self._bbox_tool_audit_path = resolve_bbox_tool_audit_path(
+            self._repo_root,
+            explicit_path=bbox_tool_audit_path,
+        )
         self._ready_timeout_sec = float(ready_timeout_sec)
         self._process: subprocess.Popen | None = None
         self._gateway_log: TextIO | None = None
@@ -151,6 +164,12 @@ class GatewayManager:
         if not self._reused_gateway:
             return False
         return self._reused_pid is not None and self._pid_is_running(self._reused_pid)
+
+    @property
+    def bbox_tool_audit_path(self) -> Path:
+        """Absolute receipt path passed to the Gateway plugin."""
+
+        return self._bbox_tool_audit_path
 
     def _find_node(self) -> str:
         """Find the node executable, preferring a repo-local / bundled binary.
@@ -609,6 +628,244 @@ class GatewayManager:
         except (FileNotFoundError, OSError, ValueError):
             return None
 
+    def _resolved_gateway_token(self) -> str:
+        from dicom_overlay.infrastructure.openclaw_client import (
+            resolve_openclaw_gateway_token,
+        )
+
+        return resolve_openclaw_gateway_token(self._repo_root) or ""
+
+    def _token_fingerprint(self) -> str:
+        return hashlib.sha256(
+            self._resolved_gateway_token().encode("utf-8")
+        ).hexdigest()
+
+    def _write_gateway_ownership_receipt(
+        self,
+        lock_dir: Path,
+        supervisor_pid: int,
+        *,
+        listener_pid: int | None = None,
+    ) -> None:
+        """Write non-secret starting/ready ownership through an atomic replace."""
+
+        if not self._launch_lock_token:
+            raise RuntimeError("cannot write Gateway ownership without launch owner")
+        receipt = {
+            "schema_version": _GATEWAY_OWNERSHIP_SCHEMA_VERSION,
+            "status": "ready" if listener_pid is not None else "starting",
+            "supervisor_pid": supervisor_pid,
+            "listener_pid": listener_pid,
+            "port": self._port,
+            "token_sha256": self._token_fingerprint(),
+            "bbox_audit_path": str(self._bbox_tool_audit_path),
+            "launch_owner_sha256": hashlib.sha256(
+                self._launch_lock_token.encode("utf-8")
+            ).hexdigest(),
+        }
+        pending = lock_dir / f"{_GATEWAY_OWNERSHIP_RECEIPT}.tmp"
+        pending.write_text(
+            json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        pending.replace(lock_dir / _GATEWAY_OWNERSHIP_RECEIPT)
+
+    def _bind_gateway_listener_ownership(self) -> bool:
+        """Publish the authenticated listener PID beside the supervisor PID.
+
+        The public ``openclaw.mjs`` launcher may respawn itself to configure
+        Node's compile cache.  In that case ``Popen.pid`` belongs to the
+        supervising launcher while the child owns the Gateway port.  Reuse must
+        be tied to the actual listener observed after a successful public
+        ``connect`` handshake, not to an implementation assumption about the
+        launcher's process topology.
+        """
+
+        lock_dir = self._launch_lock_dir
+        launch_token = self._launch_lock_token
+        if self._process is None or lock_dir is None or not launch_token:
+            return False
+        try:
+            current_token = (lock_dir / "owner").read_text(encoding="utf-8")
+        except OSError:
+            return False
+        if not hmac.compare_digest(current_token, launch_token):
+            logger.error("Gateway launch ownership changed before listener binding")
+            return False
+
+        listener_pids = self._port_occupant_pids()
+        if len(listener_pids) != 1:
+            logger.error(
+                "Expected exactly one authenticated Gateway listener on port %d; "
+                "observed pids=%s",
+                self._port,
+                sorted(listener_pids),
+            )
+            return False
+        listener_pid = next(iter(listener_pids))
+        if not self._pid_is_running(listener_pid):
+            logger.error(
+                "Authenticated Gateway listener pid %d is not live", listener_pid
+            )
+            return False
+        try:
+            self._write_gateway_ownership_receipt(
+                lock_dir,
+                self._process.pid,
+                listener_pid=listener_pid,
+            )
+        except OSError:
+            logger.exception("Failed to bind Gateway ownership to listener pid")
+            return False
+        return True
+
+    def _matching_gateway_ownership_receipt(
+        self,
+    ) -> tuple[str, int, int | None] | None:
+        """Read a live peer's non-secret schema-v2 ownership contract."""
+
+        lock_dir = self._repo_root / _GATEWAY_LAUNCH_LOCK
+        lock_pid = self._read_lock_pid(lock_dir)
+        try:
+            owner = (lock_dir / "owner").read_text(encoding="utf-8")
+            receipt = json.loads(
+                (lock_dir / _GATEWAY_OWNERSHIP_RECEIPT).read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(receipt, dict) or lock_pid is None:
+            return None
+        expected_keys = {
+            "schema_version",
+            "status",
+            "supervisor_pid",
+            "listener_pid",
+            "port",
+            "token_sha256",
+            "bbox_audit_path",
+            "launch_owner_sha256",
+        }
+        if set(receipt) != expected_keys or not owner:
+            return None
+        status = receipt.get("status")
+        supervisor_pid = receipt.get("supervisor_pid")
+        listener_pid = receipt.get("listener_pid")
+        port = receipt.get("port")
+        if (
+            receipt.get("schema_version") != _GATEWAY_OWNERSHIP_SCHEMA_VERSION
+            or status not in {"starting", "ready"}
+            or isinstance(supervisor_pid, bool)
+            or not isinstance(supervisor_pid, int)
+            or supervisor_pid <= 0
+            or supervisor_pid != lock_pid
+            or isinstance(port, bool)
+            or port != self._port
+        ):
+            return None
+        if status == "starting":
+            if listener_pid is not None:
+                return None
+        elif (
+            isinstance(listener_pid, bool)
+            or not isinstance(listener_pid, int)
+            or listener_pid <= 0
+        ):
+            return None
+        token_fingerprint = receipt.get("token_sha256")
+        owner_fingerprint = receipt.get("launch_owner_sha256")
+        if not isinstance(token_fingerprint, str) or not hmac.compare_digest(
+            token_fingerprint,
+            self._token_fingerprint(),
+        ):
+            return None
+        expected_owner_fingerprint = hashlib.sha256(owner.encode("utf-8")).hexdigest()
+        if not isinstance(owner_fingerprint, str) or not hmac.compare_digest(
+            owner_fingerprint,
+            expected_owner_fingerprint,
+        ):
+            return None
+        raw_audit_path = receipt.get("bbox_audit_path")
+        if not isinstance(raw_audit_path, str) or not raw_audit_path.strip():
+            return None
+        try:
+            receipt_audit_path = Path(raw_audit_path).resolve()
+        except OSError:
+            return None
+        if receipt_audit_path != self._bbox_tool_audit_path:
+            return None
+        if not self._pid_is_running(supervisor_pid):
+            return None
+        if listener_pid is not None and not self._pid_is_running(listener_pid):
+            return None
+        return status, supervisor_pid, listener_pid
+
+    def _verified_gateway_owner_pid(self) -> int | None:
+        """Return the listener PID only for a complete matching ownership receipt."""
+
+        receipt = self._matching_gateway_ownership_receipt()
+        if receipt is None:
+            return None
+        status, _supervisor_pid, listener_pid = receipt
+        if (
+            status != "ready"
+            or listener_pid is None
+            or listener_pid not in self._port_occupant_pids()
+        ):
+            return None
+        return listener_pid
+
+    def _startup_reuse_clock(self) -> float:
+        """Monotonic clock seam for fast deterministic startup-race tests."""
+
+        return time.monotonic()
+
+    def _startup_reuse_sleep(self, delay_sec: float) -> None:
+        """Sleep seam for the synchronous, bounded peer-startup wait."""
+
+        time.sleep(delay_sec)
+
+    def _wait_for_gateway_startup_owner(
+        self,
+        supervisor_pid: int,
+        *,
+        initial_probe_ready: bool,
+    ) -> None:
+        """Wait briefly for a verified live peer to publish its ready receipt.
+
+        This path is intentionally read-only.  A second desktop instance may
+        observe the launcher's atomic ``starting`` receipt before the public
+        Gateway handshake is available, or may complete the handshake just
+        before the launcher atomically replaces that receipt with ``ready``.
+        Neither ordering grants this manager ownership of the peer's lock or
+        process.
+        """
+
+        deadline = self._startup_reuse_clock() + _GATEWAY_STARTUP_REUSE_WAIT_SEC
+        probe_ready = initial_probe_ready
+        while True:
+            receipt = self._matching_gateway_ownership_receipt()
+            if receipt is None or receipt[1] != supervisor_pid:
+                raise RuntimeError(
+                    "OpenClaw Gateway startup ownership receipt became invalid or "
+                    "changed; refusing to reuse or terminate the unowned process"
+                )
+            status = receipt[0]
+            if probe_ready and status == "ready":
+                self._mark_gateway_reused()
+                return
+
+            now = self._startup_reuse_clock()
+            if now >= deadline:
+                raise RuntimeError(
+                    "OpenClaw Gateway startup owner did not become ready within "
+                    f"{_GATEWAY_STARTUP_REUSE_WAIT_SEC:g}s; refusing to start a "
+                    "second process or alter the live launch lock"
+                )
+            self._startup_reuse_sleep(
+                min(_GATEWAY_STARTUP_REUSE_POLL_SEC, deadline - now)
+            )
+            probe_ready = self._probe_existing_gateway()
+
     def _pid_is_running(self, pid: int) -> bool:
         return pid_is_running(pid)
 
@@ -673,18 +930,16 @@ class GatewayManager:
         return pids
 
     def _mark_gateway_reused(self) -> None:
-        lock_dir = self._repo_root / _GATEWAY_LAUNCH_LOCK
-        lock_pid = self._read_lock_pid(lock_dir)
-        if lock_pid is not None and not self._pid_is_running(lock_pid):
-            logger.warning("Removing stale OpenClaw Gateway launch lock: %s", lock_dir)
-            shutil.rmtree(lock_dir, ignore_errors=True)
-            lock_pid = None
-        occupant_pids = self._port_occupant_pids()
-        self._reused_pid = (
-            lock_pid
-            if lock_pid is not None and lock_pid in occupant_pids
-            else next(iter(occupant_pids), None)
-        )
+        self._reused_gateway = False
+        self._reused_pid = None
+        owner_pid = self._verified_gateway_owner_pid()
+        if owner_pid is None:
+            raise RuntimeError(
+                "Healthy OpenClaw Gateway lacks a matching local ownership receipt; "
+                "refusing external clinical reuse without verified pid, port, token "
+                "fingerprint, and bbox audit path"
+            )
+        self._reused_pid = owner_pid
         self._reused_gateway = True
         logger.info(
             "Reusing healthy OpenClaw Gateway on port %d (pid=%s)",
@@ -727,7 +982,21 @@ class GatewayManager:
         # Validate the public protocol before touching a process or lock.  This
         # allows multiple desktop instances to share one healthy local Gateway
         # and, critically, never treats an arbitrary live listener as killable.
-        if self._probe_existing_gateway():
+        probe_ready = self._probe_existing_gateway()
+        if probe_ready and self._verified_gateway_owner_pid() is not None:
+            self._mark_gateway_reused()
+            return
+
+        ownership = self._matching_gateway_ownership_receipt()
+        if ownership is not None:
+            self._wait_for_gateway_startup_owner(
+                ownership[1],
+                initial_probe_ready=probe_ready,
+            )
+            return
+        if probe_ready:
+            # Preserve the strict refusal for a healthy listener without a
+            # matching app-owned receipt.  It is never safe to adopt or kill it.
             self._mark_gateway_reused()
             return
 
@@ -784,10 +1053,14 @@ class GatewayManager:
                 "OPENCLAW_CONFIG_PATH": str(config),
                 "HOME": str(home),
                 "USERPROFILE": str(home),
-                "DICOM_BBOX_AUDIT_PATH": str(
-                    self._repo_root / "data" / "tmp" / "bbox-tool-audit.jsonl"
-                ),
+                "DICOM_BBOX_AUDIT_PATH": str(self._bbox_tool_audit_path),
             }
+            resolved_gateway_token = self._resolved_gateway_token()
+            if resolved_gateway_token:
+                # The ownership fingerprint and the spawned listener must refer
+                # to the exact same effective credential even when .env and the
+                # parent process contain different values.
+                env["OPENCLAW_GATEWAY_TOKEN"] = resolved_gateway_token
             if subscription_transport:
                 env.pop("OPENAI_API_KEY", None)
                 env.pop("CODEX_HOME", None)
@@ -832,6 +1105,7 @@ class GatewayManager:
             self._reused_gateway = False
             self._reused_pid = None
             (lock_dir / "pid").write_text(str(self._process.pid), encoding="utf-8")
+            self._write_gateway_ownership_receipt(lock_dir, self._process.pid)
             logger.info("Gateway started (pid=%d)", self._process.pid)
         except Exception:
             if self._process is not None:
@@ -863,6 +1137,14 @@ class GatewayManager:
                         "Gateway died (code=%d) but port %d belongs to another Gateway",
                         self._process.returncode,
                         self._port,
+                    )
+                    return False
+                if (
+                    self._process is not None
+                    and not self._bind_gateway_listener_ownership()
+                ):
+                    logger.error(
+                        "Gateway authenticated but listener ownership could not be recorded"
                     )
                     return False
                 logger.info("Gateway is ready on port %d", self._port)
@@ -924,9 +1206,14 @@ class GatewayManager:
         if self._process is not None and self._process.poll() is None:
             return True
         if self._reused_gateway:
-            if await self.wait_ready(timeout_sec=min(5.0, self._ready_timeout_sec)):
+            if (
+                self._verified_gateway_owner_pid() == self._reused_pid
+                and await self.wait_ready(timeout_sec=min(5.0, self._ready_timeout_sec))
+            ):
                 return True
-            logger.warning("Previously reused Gateway is no longer healthy")
+            logger.warning(
+                "Previously reused Gateway is no longer healthy or ownership changed"
+            )
             self._reused_gateway = False
             self._reused_pid = None
 

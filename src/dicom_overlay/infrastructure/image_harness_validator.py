@@ -13,7 +13,13 @@ from dicom_overlay.domain.modality_profile import default_registry
 from dicom_overlay.infrastructure.hooks.output_validator import (
     EKG_RESULT_LAYOUT_FORMATS,
 )
-from dicom_overlay.infrastructure.openclaw_runtime import MIN_SAFE_OPENCLAW_VERSION
+from dicom_overlay.infrastructure.openclaw_runtime import (
+    MAX_GATEWAY_PROTOCOL,
+    MIN_GATEWAY_PROTOCOL,
+    MIN_SAFE_OPENCLAW_VERSION,
+    OpenClawRuntimeError,
+    parse_gateway_hello,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -98,6 +104,13 @@ def verify_image_harness_artifacts(
     else:
         failures.append(
             "harness_manifest_contract: expected safe OpenClaw floor and Gateway method manifest"
+        )
+
+    if isinstance(result, dict) and _gateway_protocol_receipt_ok(result):
+        passed.append("gateway_protocol_receipt")
+    else:
+        failures.append(
+            "gateway_protocol_receipt: expected verified hello-ok protocol receipt"
         )
 
     return HarnessVerification(ok=not failures, passed_checks=passed, failures=failures)
@@ -271,12 +284,39 @@ def _manifest_contract_ok(result: dict[str, Any]) -> bool:
     gateway = compatibility.get("gatewayProtocol")
     if not isinstance(gateway, dict):
         return False
-    return compatibility.get(
-        "minimumOpenClaw"
-    ) == MIN_SAFE_OPENCLAW_VERSION and gateway.get("methods") == [
-        "connect",
-        "chat.send",
-    ]
+    return bool(
+        compatibility.get("minimumOpenClaw") == MIN_SAFE_OPENCLAW_VERSION
+        and gateway.get("minProtocol") == MIN_GATEWAY_PROTOCOL
+        and gateway.get("maxProtocol") == MAX_GATEWAY_PROTOCOL
+        and gateway.get("methods") == ["connect", "chat.send"]
+    )
+
+
+def _gateway_protocol_receipt_ok(result: dict[str, Any]) -> bool:
+    receipt = result.get("gateway_protocol_receipt")
+    if not isinstance(receipt, dict) or receipt.get("verified") is not True:
+        return False
+    negotiated = receipt.get("negotiated_protocol")
+    server_version = receipt.get("server_version")
+    if not (
+        receipt.get("advertised_min_protocol") == MIN_GATEWAY_PROTOCOL
+        and receipt.get("advertised_max_protocol") == MAX_GATEWAY_PROTOCOL
+        and isinstance(negotiated, int)
+        and not isinstance(negotiated, bool)
+        and isinstance(server_version, str)
+    ):
+        return False
+    try:
+        parsed_protocol, parsed_version = parse_gateway_hello(
+            {
+                "type": "hello-ok",
+                "protocol": negotiated,
+                "server": {"version": server_version},
+            }
+        )
+    except OpenClawRuntimeError:
+        return False
+    return parsed_protocol == negotiated and parsed_version == server_version.strip()
 
 
 def _production_output_contract_ok(result: dict[str, Any]) -> bool:

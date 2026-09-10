@@ -27,6 +27,7 @@
     "externalWaveformSidecar": true,
     "noScreenshotToWaveformInference": true,
     "gatewayOnlyDesktopBoundary": true,
+    "gatewayHelloProtocolReceipt": true,
     "boundedAnalysisSla": {
       "initialResponseSeconds": 60,
       "firstCropRefinementSeconds": 100,

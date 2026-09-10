@@ -20,6 +20,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from dicom_overlay.application.multi_pass import (
+    MultiPassInterpreter,
     RefinementAction,
     RefinementDelta,
     RefinementResult,
@@ -319,6 +320,28 @@ class TestProseJsonFallback:
 
 
 class TestHypothesisAwareRefinement:
+    def test_model_json_cannot_forge_unlocalized_receipt_provenance(self):
+        parsed = _parse_refinement_result(
+            {
+                "deltas": [
+                    {
+                        "action": "add",
+                        "finding": {
+                            "id": "f1",
+                            "regions": ["lead_II"],
+                            "label": "Candidate",
+                            "detail": "Semantic concern.",
+                            "severity": "info",
+                            "bboxes": [],
+                        },
+                    }
+                ],
+                "unlocalized_missing_receipt_delta_indexes": [0],
+            }
+        )
+
+        assert parsed.unlocalized_missing_receipt_delta_indexes == ()
+
     def test_finalization_prompt_allows_disposition_but_locks_original_coordinates(
         self,
     ):
@@ -390,7 +413,59 @@ class TestHypothesisAwareRefinement:
         assert "relative to the attached original image" in prompt
         assert "dicom_bbox_validate" in prompt
 
-    def test_finalization_prompt_preserves_critical_triage_deferrals(self):
+    def test_finalization_prompt_marks_partial_crop_retraction_as_inconclusive(self):
+        finding = Finding(
+            id="multi-site",
+            regions=["lead_I", "lead_II"],
+            label="Intermittent wide-complex events",
+            detail="Two separated event columns require adjudication.",
+            severity=Severity.WARNING,
+            bboxes=[
+                RegionRect(0.05, 0.05, 0.08, 0.08),
+                RegionRect(0.72, 0.05, 0.08, 0.08),
+            ],
+        )
+        draft = AnalysisResult(
+            modality=Modality.EKG,
+            summary="Intermittent events remain under review.",
+            severity=Severity.WARNING,
+            findings=[finding],
+            checklist={},
+            layout={"format": "12lead_12x1"},
+        )
+
+        prompt = _build_finalization_prompt(
+            modality=Modality.EKG,
+            valid_regions=["lead_I", "lead_II"],
+            draft=draft,
+            refinement_trace=[
+                {
+                    "stage": "refinement_guardrail",
+                    "status": "partial_crop_retraction_blocked",
+                    "target_id": "multi-site",
+                    "crop_region": {"x": 0.05, "y": 0.05, "w": 0.08, "h": 0.08},
+                    "uncovered_bbox_count": 1,
+                    "uncovered_bboxes": [{"x": 0.72, "y": 0.05, "w": 0.08, "h": 0.08}],
+                    "blocked_action": "retract",
+                    "decision_applied": False,
+                    "evidence_interpretation": ("inconclusive_partial_crop_coverage"),
+                }
+            ],
+        )
+
+        assert '"blocked_partial_crop_retractions": [{"target_id": "multi-site"' in (
+            prompt
+        )
+        assert '"blocked_action": "retract"' in prompt
+        assert '"decision_applied": false' in prompt
+        assert '"evidence_interpretation": "inconclusive_partial_crop_coverage"' in (
+            prompt
+        )
+        assert "was NOT applied" in prompt
+        assert "crop is inconclusive rather than supporting or refuting" in prompt
+        assert "never interpret the blocked retraction as confirmation" in prompt
+
+    def test_finalization_prompt_resumes_axes_when_critical_candidate_retracts(self):
         finding = Finding(
             id="critical-1",
             regions=["lead_V2", "lead_V3"],
@@ -420,9 +495,7 @@ class TestHypothesisAwareRefinement:
                     "candidate_ids": ["critical-1"],
                     "selected_critical_ids": ["critical-1"],
                     "support_probe_id": "ekg_systematic_critical_support_limb_leads",
-                    "support_reason": (
-                        "critical_territorial_reciprocal_crosscheck"
-                    ),
+                    "support_reason": ("critical_territorial_reciprocal_crosscheck"),
                     "overflow_critical_ids": [],
                     "deferred_checklist_axes": ["axis", "chamber_enlargement"],
                 }
@@ -437,15 +510,15 @@ class TestHypothesisAwareRefinement:
         )
 
         assert '"critical_triage": {"active": true' in prompt
-        assert '"deferred_checklist_axes": ["axis", "chamber_enlargement"]' in (
-            prompt
-        )
+        assert '"deferred_checklist_axes": ["axis", "chamber_enlargement"]' in (prompt)
         assert "Reconcile every selected critical candidate" in prompt
-        assert "Retraction does not retroactively complete the deferred review" in (
-            prompt
-        )
+        assert "If every selected critical candidate is retracted" in prompt
+        assert "explicitly resume every axis" in prompt
+        assert "Initial deferral alone is not a reason" in prompt
         assert "value=not_assessed_due_to_critical_triage" in prompt
-        assert "not normal/absent/WNL" in prompt
+        assert "never state a normal/absent/WNL conclusion" in prompt
+        assert "Retraction alone does not complete the deferred review" in prompt
+        assert "explicit final assessment does" in prompt
 
     def test_prompt_carries_hypothesis_and_crop_coordinate_contract(self):
         finding = Finding(
@@ -502,11 +575,18 @@ class TestHypothesisAwareRefinement:
         assert "ST elevation/depression" in prompt
         assert "reciprocal change" in prompt
         assert "ask a concrete reviewer question" in prompt
-        assert "distinct narrow pacing spikes" in prompt
+        assert "distinct narrow pacing spike" in prompt
         assert "Repetitive wide or tall QRS complexes alone" in prompt
         assert "heart_rate_bpm_from_median_rr" in prompt
-        assert "three consecutive broad QRS complexes" in prompt
-        assert "NSVT/VT versus artifact" in prompt
+        assert (
+            "same beat repeated across visible leads is one unique timestamp" in prompt
+        )
+        assert "do not require multiple spikes across at least two leads" in prompt
+        assert "Demand pacing can coexist with normal intrinsic beats" in prompt
+        assert "one or two unique broad-complex timestamps" in prompt
+        assert "pacing, PVC, aberrancy, fusion, or artifact" in prompt
+        assert "at least three consecutive unique broad-complex timestamps" in prompt
+        assert "do not call them VT or a ventricular run" in prompt
         assert '"probe_id": "ekg_systematic_precordial_leads"' in prompt
         assert "inspect V1-V6 without privileging one candidate" in prompt
         assert "pathologic Q/QS morphology" in prompt
@@ -1228,6 +1308,357 @@ class TestIncompleteFlag:
 
 
 class TestNativeToolAuditTrace:
+    @pytest.mark.asyncio
+    async def test_live_9008_refinement_accepts_exact_shared_receipt_once(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        audit_path = tmp_path / "custom" / "bbox-audit.jsonl"
+        audit_path.parent.mkdir(parents=True)
+        client = OpenClawClient(
+            gateway_token="test",
+            base_dir=tmp_path,
+            bbox_tool_audit_path=audit_path,
+        )
+        source_sha = "4f3a89a3ff9febec087865349491bc5bc296a215cde0cc2c691749de4612114d"
+        evidence_nonce = "8f12aa3e9ae44b18aabe552b571b097d"
+        response = {
+            "deltas": [
+                {
+                    "action": "add",
+                    "target_id": "",
+                    "rationale": "Two reproducible premature broad-complex beats.",
+                    "finding": {
+                        "id": "recurrent_wide_premature_beats",
+                        "regions": ["lead_I", "lead_II", "lead_III"],
+                        "label": "Likely ventricular ectopy",
+                        "detail": "Two isolated premature broad-complex beats.",
+                        "severity": "info",
+                        "confidence": "moderate",
+                        "question": "Are these complexes PVCs rather than artifact?",
+                        "bboxes": [
+                            {"x": 0.06, "y": 0.35, "w": 0.07, "h": 0.25},
+                            {"x": 0.25, "y": 0.35, "w": 0.07, "h": 0.25},
+                        ],
+                    },
+                }
+            ]
+        }
+        result = _parse_refinement_result(response)
+        boxes = [box for delta in result.deltas for box in delta.finding.bboxes]
+        calls = 0
+
+        async def refine_once(*_args: object, **_kwargs: object) -> RefinementResult:
+            nonlocal calls
+            calls += 1
+            client._begin_run_trace(
+                "refine-9008d2c9",
+                bbox_evidence_nonce=evidence_nonce,
+                source_image_sha256=source_sha,
+            )
+            receipt = {
+                "schema_version": 2,
+                "tool": "dicom_bbox_validate",
+                "tool_call_id": "call-9008",
+                "accepted_count": 2,
+                "rejected_count": 0,
+                "source_image_sha256": source_sha,
+                "evidence_nonce": evidence_nonce,
+                "accepted_boxes_sha256": _bbox_coordinates_digest(boxes),
+                "details_sha256": "a" * 64,
+            }
+            audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+            client._require_bound_bbox_receipt(result)
+            return result
+
+        client._do_refine = refine_once  # type: ignore[method-assign]
+        accepted = await client._refine_with_parse_retry(
+            "image",
+            Modality.EKG,
+            ["lead_I", "lead_II", "lead_III"],
+            hypothesis=None,
+            crop_region=RegionRect(0.0, 0.0, 1.0, 0.24),
+        )
+
+        assert calls == 1
+        assert accepted.deltas[0].finding is not None
+        assert accepted.deltas[0].finding.label == "Likely ventricular ectopy"
+        trace = client.last_run_trace()
+        assert trace["parse_retry_count"] == 0
+        assert trace["bbox_evidence"]["receipt_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_missing_bbox_receipt_does_not_start_second_paid_turn(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        audit_path = tmp_path / "missing" / "bbox-audit.jsonl"
+        client = OpenClawClient(
+            gateway_token="test",
+            base_dir=tmp_path,
+            bbox_tool_audit_path=audit_path,
+        )
+        client._connected = True
+        client._ws = object()
+        calls = 0
+        response = {
+            "deltas": [
+                {
+                    "action": "add",
+                    "target_id": "",
+                    "rationale": "Visible morphology.",
+                    "finding": {
+                        "id": "f1",
+                        "regions": ["lead_II"],
+                        "label": "Candidate",
+                        "detail": "Visible candidate",
+                        "severity": "info",
+                        "confidence": "moderate",
+                        "question": "Can the reviewer confirm this candidate?",
+                        "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.1, "h": 0.1}],
+                    },
+                }
+            ],
+            # Model payloads cannot forge the client-only provenance field.
+            "unlocalized_missing_receipt_delta_indexes": [0],
+        }
+
+        async def send_once(*_args: object, **_kwargs: object) -> dict:
+            nonlocal calls
+            calls += 1
+            return response
+
+        async def no_audit_wait(_result: RefinementResult) -> None:
+            return None
+
+        client._send_chat_result_frame = send_once  # type: ignore[method-assign]
+        client._await_bbox_tool_audit = no_audit_wait  # type: ignore[method-assign]
+        accepted = await client.refine(
+            base64.b64encode(b"image").decode("ascii"),
+            Modality.EKG,
+            ["lead_II"],
+            hypothesis=None,
+            crop_region=RegionRect(0.0, 0.0, 1.0, 1.0),
+        )
+
+        assert calls == 1
+        assert accepted.unlocalized_missing_receipt_delta_indexes == (0,)
+        finding = accepted.deltas[0].finding
+        assert finding is not None
+        assert finding.label == "Candidate"
+        assert finding.detail == "Visible candidate"
+        assert finding.regions == ["lead_II"]
+        assert finding.severity is Severity.INFO
+        assert finding.confidence == "moderate"
+        assert finding.question == "Can the reviewer confirm this candidate?"
+        assert finding.bboxes == []
+        assert any(
+            "Semantic-only refinement retained" in note for note in finding.notes
+        )
+        trace = client.last_run_trace()
+        assert trace["parse_retry_count"] == 0
+        assert trace["bbox_evidence"]["status"] == "semantic_only_missing_receipt"
+        assert trace["bbox_evidence"]["overlay_coordinates_asserted"] is False
+        assert "attempts" not in trace
+
+    @pytest.mark.asyncio
+    async def test_refinement_bbox_mismatch_still_retries_once_then_fails_closed(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        client = OpenClawClient(gateway_token="test", base_dir=tmp_path)
+        calls = 0
+
+        async def mismatched_refine(
+            *_args: object, **_kwargs: object
+        ) -> RefinementResult:
+            nonlocal calls
+            calls += 1
+            client._begin_run_trace(f"refine-mismatch-{calls}")
+            raise BboxEvidenceError(
+                "observed receipt disagrees with this turn",
+                kind="mismatched_receipt",
+            )
+
+        client._do_refine = mismatched_refine  # type: ignore[method-assign]
+
+        with pytest.raises(BboxEvidenceError, match="disagrees") as captured:
+            await client._refine_with_parse_retry(
+                "image",
+                Modality.EKG,
+                ["lead_II"],
+                hypothesis=None,
+                crop_region=RegionRect(0.0, 0.0, 1.0, 1.0),
+            )
+
+        assert captured.value.kind == "mismatched_receipt"
+        assert calls == 2
+        assert client.last_run_trace()["parse_retry_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_multi_pass_keeps_missing_receipt_add_semantic_only_in_one_turn(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        client = OpenClawClient(
+            gateway_token="test",
+            base_dir=tmp_path,
+            bbox_tool_audit_path=tmp_path / "missing" / "bbox-audit.jsonl",
+        )
+        client._connected = True
+        client._ws = object()
+        image = base64.b64encode(b"image").decode("ascii")
+        coarse = AnalysisResult(
+            modality=Modality.CXR,
+            summary="Coarse focal concern.",
+            severity=Severity.WARNING,
+            findings=[
+                Finding(
+                    id="coarse",
+                    regions=["right_lung"],
+                    label="Coarse focal concern",
+                    detail="A focal region needs closer review.",
+                    severity=Severity.WARNING,
+                    bboxes=[RegionRect(0.2, 0.2, 0.2, 0.2)],
+                )
+            ],
+            checklist={},
+        )
+        paid_refinement_calls = 0
+
+        async def coarse_once(*_args: object, **_kwargs: object) -> AnalysisResult:
+            return coarse
+
+        async def send_once(*_args: object, **_kwargs: object) -> dict:
+            nonlocal paid_refinement_calls
+            paid_refinement_calls += 1
+            return {
+                "deltas": [
+                    {
+                        "action": "add",
+                        "target_id": "",
+                        "rationale": "Separate visible morphology.",
+                        "finding": {
+                            "id": "semantic-add",
+                            "regions": ["right_lung"],
+                            "label": "Additional semantic concern",
+                            "detail": "Distinct morphology remains reviewable.",
+                            "severity": "info",
+                            "confidence": "moderate",
+                            "question": "Can this be localized on the native study?",
+                            "bboxes": [{"x": 0.1, "y": 0.2, "w": 0.2, "h": 0.2}],
+                        },
+                    }
+                ]
+            }
+
+        async def no_audit_wait(_result: RefinementResult) -> None:
+            return None
+
+        client.analyze_coarse = coarse_once  # type: ignore[method-assign]
+        client.finalize = None  # type: ignore[method-assign,assignment]
+        client._send_chat_result_frame = send_once  # type: ignore[method-assign]
+        client._await_bbox_tool_audit = no_audit_wait  # type: ignore[method-assign]
+        interpreter = MultiPassInterpreter(
+            analyzer=client,
+            cropper=lambda _image, _region: image,
+            max_zoom_targets=1,
+            zoom_padding=0.0,
+        )
+
+        result = await interpreter.interpret(
+            image,
+            Modality.CXR,
+            ["right_lung"],
+            source_image_base64=image,
+            source_size_px=(1000, 1000),
+        )
+
+        assert paid_refinement_calls == 1
+        semantic = next(
+            finding for finding in result.findings if finding.id == "semantic-add"
+        )
+        assert semantic.label == "Additional semantic concern"
+        assert semantic.detail == "Distinct morphology remains reviewable."
+        assert semantic.regions == ["right_lung"]
+        assert semantic.confidence == "moderate"
+        assert semantic.question == "Can this be localized on the native study?"
+        assert semantic.bboxes == []
+        assert result.incomplete is True
+        assert result.review_required is True
+        receipt_guard = next(
+            event
+            for event in result.analysis_trace
+            if event.get("stage") == "bbox_receipt_guardrail"
+        )
+        assert receipt_guard["status"] == "semantic_only_missing_receipt"
+        assert receipt_guard["overlay_coordinates_asserted"] is False
+
+    @pytest.mark.parametrize(
+        ("field", "bad_value"),
+        [
+            ("evidence_nonce", "c" * 32),
+            ("source_image_sha256", "d" * 64),
+            ("accepted_boxes_sha256", "e" * 64),
+            ("accepted_count", 2),
+        ],
+    )
+    def test_bbox_receipt_binding_mismatch_is_typed_and_rejected(
+        self,
+        tmp_path: Path,
+        field: str,
+        bad_value: object,
+    ) -> None:
+        audit_path = tmp_path / f"bbox-{field}.jsonl"
+        client = OpenClawClient(
+            gateway_token="test",
+            base_dir=tmp_path,
+            bbox_tool_audit_path=audit_path,
+        )
+        source_sha = "a" * 64
+        evidence_nonce = "b" * 32
+        box = RegionRect(0.1, 0.2, 0.1, 0.1)
+        result = RefinementResult(
+            (
+                RefinementDelta(
+                    action=RefinementAction.ADD,
+                    target_id="",
+                    finding=Finding(
+                        id="f1",
+                        regions=["lead_II"],
+                        label="Candidate",
+                        detail="Visible candidate",
+                        severity=Severity.INFO,
+                        bboxes=[box],
+                    ),
+                    rationale="Visible morphology.",
+                ),
+            )
+        )
+        client._begin_run_trace(
+            f"refine-mismatch-{field}",
+            bbox_evidence_nonce=evidence_nonce,
+            source_image_sha256=source_sha,
+        )
+        receipt = {
+            "schema_version": 2,
+            "tool": "dicom_bbox_validate",
+            "tool_call_id": f"call-{field}",
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "source_image_sha256": source_sha,
+            "evidence_nonce": evidence_nonce,
+            "accepted_boxes_sha256": _bbox_coordinates_digest([box]),
+            "details_sha256": "f" * 64,
+        }
+        receipt[field] = bad_value
+        audit_path.write_text(f"{json.dumps(receipt)}\n", encoding="utf-8")
+
+        with pytest.raises(BboxEvidenceError) as captured:
+            client._require_bound_bbox_receipt(result)
+
+        assert captured.value.kind == "mismatched_receipt"
+
     def test_reads_only_records_appended_during_current_turn(
         self,
         tmp_path: Path,

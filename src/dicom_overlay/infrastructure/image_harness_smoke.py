@@ -127,7 +127,11 @@ async def run_image_harness_smoke(
                     "type": "res",
                     "id": connect_request["id"],
                     "ok": True,
-                    "payload": {"status": "connected"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -171,14 +175,15 @@ async def run_image_harness_smoke(
         port = server.sockets[0].getsockname()[1]
         config = _build_smoke_config(f"ws://127.0.0.1:{port}")
         monitor = _HarnessScreenMonitor(image_bytes)
+        client = OpenClawClient(
+            gateway_url=config.openclaw.gateway_url,
+            # This transport smoke uses an in-process Gateway stub rather
+            # than the native OpenClaw plugin. The plugin's bound-receipt
+            # contract is exercised independently by packaging/plugin tests.
+            require_bound_bbox_receipts=False,
+        )
         hooked_analyzer = HookedVisionAnalyzer(
-            inner=OpenClawClient(
-                gateway_url=config.openclaw.gateway_url,
-                # This transport smoke uses an in-process Gateway stub rather
-                # than the native OpenClaw plugin. The plugin's bound-receipt
-                # contract is exercised independently by packaging/plugin tests.
-                require_bound_bbox_receipts=False,
-            ),
+            inner=client,
             hooks=[OutputValidator(strict=True, registry=default_registry())],
         )
         agent = OverlayAgent(
@@ -252,6 +257,7 @@ async def run_image_harness_smoke(
                 "captured_image_size": list(monitor.last_capture_size or (0, 0)),
             },
             "harness_manifest": build_harness_manifest(),
+            "gateway_protocol_receipt": client.gateway_protocol_receipt(),
         }
         result_path.write_text(json.dumps(artifact, indent=2), encoding="utf-8")
         log_path.write_text(

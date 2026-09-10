@@ -10,18 +10,74 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 MIN_SAFE_OPENCLAW_VERSION = "2026.4.22"
+PINNED_OPENCLAW_VERSION = "2026.7.1-2"
 DEFAULT_OPENCLAW_NPM_SPEC = "openclaw@latest"
 HARNESS_NAME = "dicom-overlay-agent-harness"
+MIN_GATEWAY_PROTOCOL = 3
+MAX_GATEWAY_PROTOCOL = 4
+_OPENCLAW_CALENDAR_VERSION = re.compile(
+    r"^(?P<year>[1-9]\d{3})\."
+    r"(?P<month>[1-9]|1[0-2])\."
+    r"(?P<day>[1-9]|[12]\d|3[01])"
+    r"(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"
+)
 
 
 class OpenClawRuntimeError(RuntimeError):
     """Raised when the local OpenClaw runtime cannot be used safely."""
+
+
+def parse_gateway_hello(payload: object) -> tuple[int, str]:
+    """Validate a public Gateway ``hello-ok`` payload and return its receipt.
+
+    OpenClaw 2026.4.x negotiated protocol 3 while the pinned 2026.7.1-2
+    runtime negotiates protocol 4.  Accept only a protocol that the client
+    explicitly advertised; an arbitrary successful response is not proof that
+    the configured listener is an OpenClaw Gateway.
+    """
+
+    if not isinstance(payload, dict) or payload.get("type") != "hello-ok":
+        raise OpenClawRuntimeError("OpenClaw connect response is not hello-ok")
+    protocol = payload.get("protocol")
+    if (
+        not isinstance(protocol, int)
+        or isinstance(protocol, bool)
+        or not MIN_GATEWAY_PROTOCOL <= protocol <= MAX_GATEWAY_PROTOCOL
+    ):
+        raise OpenClawRuntimeError(
+            "OpenClaw negotiated an unsupported Gateway protocol"
+        )
+    server = payload.get("server")
+    version = server.get("version") if isinstance(server, dict) else None
+    if not isinstance(version, str) or not version.strip():
+        raise OpenClawRuntimeError(
+            "OpenClaw hello-ok response is missing server.version"
+        )
+    version = version.strip()
+    try:
+        version_date = _calendar_version_tuple(version)
+    except ValueError as exc:
+        raise OpenClawRuntimeError(
+            "OpenClaw hello-ok server.version is not a valid calendar version"
+        ) from exc
+    if version_date < _calendar_version_tuple(MIN_SAFE_OPENCLAW_VERSION):
+        raise OpenClawRuntimeError(
+            "OpenClaw hello-ok server.version is below the minimum safe runtime: "
+            f"{version} < {MIN_SAFE_OPENCLAW_VERSION}"
+        )
+    if version == PINNED_OPENCLAW_VERSION and protocol != MAX_GATEWAY_PROTOCOL:
+        raise OpenClawRuntimeError(
+            f"Pinned OpenClaw {PINNED_OPENCLAW_VERSION} must negotiate Gateway "
+            f"protocol {MAX_GATEWAY_PROTOCOL}"
+        )
+    return protocol, version
 
 
 def read_installed_openclaw_version(repo_root: Path) -> str | None:
@@ -56,7 +112,12 @@ def ensure_openclaw_runtime_supported(repo_root: Path) -> str:
 
 def is_openclaw_version_supported(version: str) -> bool:
     """Check OpenClaw version against the minimum patched version boundary."""
-    return _version_tuple(version) >= _version_tuple(MIN_SAFE_OPENCLAW_VERSION)
+    try:
+        return _calendar_version_tuple(version) >= _calendar_version_tuple(
+            MIN_SAFE_OPENCLAW_VERSION
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def build_harness_manifest() -> dict[str, Any]:
@@ -69,8 +130,8 @@ def build_harness_manifest() -> dict[str, Any]:
             "minimumOpenClaw": MIN_SAFE_OPENCLAW_VERSION,
             "installDefault": DEFAULT_OPENCLAW_NPM_SPEC,
             "gatewayProtocol": {
-                "minProtocol": 3,
-                "maxProtocol": 4,
+                "minProtocol": MIN_GATEWAY_PROTOCOL,
+                "maxProtocol": MAX_GATEWAY_PROTOCOL,
                 "methods": ["connect", "chat.send"],
                 "chatSendParameters": ["fastMode"],
                 "imageAttachment": {
@@ -90,6 +151,7 @@ def build_harness_manifest() -> dict[str, Any]:
             "externalWaveformSidecar": True,
             "noScreenshotToWaveformInference": True,
             "gatewayOnlyDesktopBoundary": True,
+            "gatewayHelloProtocolReceipt": True,
             "boundedAnalysisSla": {
                 "initialResponseSeconds": 60,
                 "firstCropRefinementSeconds": 100,
@@ -205,9 +267,16 @@ def build_openclaw_chat_frame(
     }
 
 
-def _version_tuple(version: str) -> tuple[int, int, int]:
-    core = version.split("-", 1)[0]
-    parts = [int(part) for part in re.findall(r"\d+", core)[:3]]
-    while len(parts) < 3:
-        parts.append(0)
-    return (parts[0], parts[1], parts[2])
+def _calendar_version_tuple(version: str) -> tuple[int, int, int]:
+    """Parse an OpenClaw calendar version without accepting embedded digits."""
+
+    if not isinstance(version, str):
+        raise TypeError("OpenClaw version must be a string")
+    match = _OPENCLAW_CALENDAR_VERSION.fullmatch(version.strip())
+    if match is None:
+        raise ValueError("invalid OpenClaw calendar version")
+    year = int(match["year"])
+    month = int(match["month"])
+    day = int(match["day"])
+    date(year, month, day)
+    return (year, month, day)

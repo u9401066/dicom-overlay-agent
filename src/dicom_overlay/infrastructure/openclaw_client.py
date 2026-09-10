@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from dicom_overlay.application.interpretation_harness import (
     EKG_LVH_BALANCE_GUIDANCE,
     EKG_PRECORDIAL_REVIEW_GUIDANCE,
+    PROFESSIONAL_CO_READER_GUIDANCE,
     build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
@@ -53,7 +54,14 @@ from dicom_overlay.domain.modality_profile import (
 )
 from dicom_overlay.domain.services import VisionAnalyzerService
 from dicom_overlay.infrastructure.env_file import read_env_file
-from dicom_overlay.infrastructure.openclaw_runtime import build_openclaw_chat_frame
+from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
+from dicom_overlay.infrastructure.openclaw_runtime import (
+    MAX_GATEWAY_PROTOCOL,
+    MIN_GATEWAY_PROTOCOL,
+    OpenClawRuntimeError,
+    build_openclaw_chat_frame,
+    parse_gateway_hello,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -68,6 +76,10 @@ _MAX_WS_MESSAGE_BYTES = 16 * 1024 * 1024
 _WS_CLOSE_TIMEOUT_SEC = 2.0
 _BBOX_AUDIT_FLUSH_GRACE_SEC = 0.5
 _BBOX_AUDIT_POLL_INTERVAL_SEC = 0.01
+_UNLOCALIZED_MISSING_RECEIPT_NOTE = (
+    "Semantic-only refinement retained because no image/turn-bound bbox "
+    "validation receipt was observed; no overlay coordinates are asserted."
+)
 _DEFAULT_SCOPES = [
     "operator.admin",
     "operator.read",
@@ -80,6 +92,12 @@ _WAVEFORM_ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 class BboxEvidenceError(ValueError):
     """A boxed result lacks a receipt bound to this image and model turn."""
+
+    def __init__(self, message: str, *, kind: str = "mismatched_receipt") -> None:
+        if kind not in {"missing_receipt", "mismatched_receipt"}:
+            raise ValueError("unsupported bbox evidence failure kind")
+        super().__init__(message)
+        self.kind = kind
 
 
 class ModelResponseParseError(ValueError):
@@ -132,8 +150,8 @@ def probe_openclaw_gateway(
         raise ValueError("timeout_sec must be positive")
     connect_id = f"health-{uuid4().hex}"
     params: dict[str, Any] = {
-        "minProtocol": 3,
-        "maxProtocol": 4,
+        "minProtocol": MIN_GATEWAY_PROTOCOL,
+        "maxProtocol": MAX_GATEWAY_PROTOCOL,
         "client": {
             "id": "gateway-client",
             "version": _OPENCLAW_VERSION,
@@ -173,12 +191,16 @@ def probe_openclaw_gateway(
                     and response.get("type") == "res"
                     and response.get("id") == connect_id
                 ):
-                    return bool(response.get("ok"))
+                    if not response.get("ok"):
+                        return False
+                    parse_gateway_hello(response.get("payload"))
+                    return True
     except (
         OSError,
         TimeoutError,
         ValueError,
         json.JSONDecodeError,
+        OpenClawRuntimeError,
         websockets.WebSocketException,
     ):
         return False
@@ -213,6 +235,7 @@ class OpenClawClient(VisionAnalyzerService):
         analysis_prompt_profile: str = "clinical",
         require_bound_bbox_receipts: bool = True,
         fast_mode: bool = False,
+        bbox_tool_audit_path: str | Path | None = None,
     ) -> None:
         if analysis_prompt_profile not in _ANALYSIS_PROMPT_PROFILES:
             raise ValueError(
@@ -251,9 +274,14 @@ class OpenClawClient(VisionAnalyzerService):
         self._last_run_started_at = 0.0
         self._last_run_elapsed_ms = 0
         self._last_run_aborted = False
+        self._gateway_protocol: int | None = None
+        self._gateway_server_version = ""
         self._bbox_evidence_nonce = ""
         self._bbox_source_image_sha256 = ""
-        self._tool_audit_path = _resolve_bbox_tool_audit_path(self._base_dir)
+        self._tool_audit_path = resolve_bbox_tool_audit_path(
+            self._base_dir,
+            explicit_path=bbox_tool_audit_path,
+        )
         self._tool_audit_offset = _file_size(self._tool_audit_path)
         self._ecg_founder_tool_audit_path = _resolve_ecg_founder_tool_audit_path(
             self._base_dir
@@ -263,6 +291,9 @@ class OpenClawClient(VisionAnalyzerService):
         )
         self._last_waveform_binding: _WaveformArtifactBinding | None = None
         self._last_tool_audit_records: list[dict[str, object]] = []
+        self._last_bbox_audit_observations: list[dict[str, object]] = []
+        self._last_bbox_semantic_salvage: dict[str, object] = {}
+        self._last_attempt_history: list[dict[str, object]] = []
         self._waveform_artifact_context: ContextVar[_WaveformArtifactBinding | None] = (
             ContextVar(
                 f"openclaw_waveform_artifact_{id(self)}",
@@ -329,6 +360,8 @@ class OpenClawClient(VisionAnalyzerService):
     async def connect(self) -> None:
         try:
             self._pending_frames.clear()
+            self._gateway_protocol = None
+            self._gateway_server_version = ""
             self._ws = await asyncio.wait_for(
                 websockets.connect(
                     self._url,
@@ -379,6 +412,23 @@ class OpenClawClient(VisionAnalyzerService):
 
     def is_connected(self) -> bool:
         return self._connected and self._ws is not None
+
+    def gateway_protocol_receipt(self) -> dict[str, object]:
+        """Return non-secret proof of the negotiated public Gateway contract."""
+
+        return {
+            "verified": self._gateway_protocol is not None,
+            "advertised_min_protocol": MIN_GATEWAY_PROTOCOL,
+            "advertised_max_protocol": MAX_GATEWAY_PROTOCOL,
+            "negotiated_protocol": self._gateway_protocol,
+            "server_version": self._gateway_server_version,
+        }
+
+    @property
+    def bbox_tool_audit_path(self) -> Path:
+        """Absolute receipt path shared with the managed Gateway plugin."""
+
+        return self._tool_audit_path
 
     def set_fast_mode(self, enabled: bool) -> None:
         """Apply the explicit per-turn OpenClaw fast-mode request."""
@@ -462,13 +512,29 @@ class OpenClawClient(VisionAnalyzerService):
         modality: Modality,
         valid_regions: list[str],
     ) -> AnalysisResult:
+        self._start_attempt_sequence()
         for attempt in range(2):
             try:
                 result = await self._do_analyze(image_base64, modality, valid_regions)
-            except (json.JSONDecodeError, BboxEvidenceError):
+            except BboxEvidenceError as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if exc.kind == "missing_receipt":
+                    self._last_parse_retry_count = attempt
+                    raise
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
+                self._last_parse_retry_count = 1
+                logger.warning(
+                    "Analysis bbox receipt mismatch; retrying once with a new turn"
+                )
+                continue
+            except json.JSONDecodeError as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                self._last_parse_retry_count = 1
                 logger.warning("Malformed analysis JSON; retrying once with a new turn")
                 continue
             self._last_parse_retry_count = attempt
@@ -481,6 +547,7 @@ class OpenClawClient(VisionAnalyzerService):
         modality: Modality,
         valid_regions: list[str],
     ) -> AnalysisResult:
+        self._start_attempt_sequence()
         for attempt in range(2):
             try:
                 result = await self._do_coarse_analyze(
@@ -488,14 +555,25 @@ class OpenClawClient(VisionAnalyzerService):
                     modality,
                     valid_regions,
                 )
-            except (
-                json.JSONDecodeError,
-                BboxEvidenceError,
-                ModelResponseParseError,
-            ):
+            except BboxEvidenceError as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if exc.kind == "missing_receipt":
+                    self._last_parse_retry_count = attempt
+                    raise
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
+                self._last_parse_retry_count = 1
+                logger.warning(
+                    "Coarse triage bbox receipt mismatch; retrying once with a new turn"
+                )
+                continue
+            except (json.JSONDecodeError, ModelResponseParseError) as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                self._last_parse_retry_count = 1
                 logger.warning(
                     "Malformed coarse triage JSON; retrying once with a new turn"
                 )
@@ -515,6 +593,7 @@ class OpenClawClient(VisionAnalyzerService):
         probe_id: str = "",
         crop_lead_regions: dict[str, RegionRect] | None = None,
     ) -> RefinementResult:
+        self._start_attempt_sequence()
         for attempt in range(2):
             try:
                 result = await self._do_refine(
@@ -526,14 +605,25 @@ class OpenClawClient(VisionAnalyzerService):
                     probe_id=probe_id,
                     crop_lead_regions=crop_lead_regions,
                 )
-            except (
-                json.JSONDecodeError,
-                BboxEvidenceError,
-                ModelResponseParseError,
-            ):
+            except BboxEvidenceError as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if exc.kind == "missing_receipt":
+                    self._last_parse_retry_count = attempt
+                    raise
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
+                self._last_parse_retry_count = 1
+                logger.warning(
+                    "Refinement bbox receipt mismatch; retrying once with a new turn"
+                )
+                continue
+            except (json.JSONDecodeError, ModelResponseParseError) as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                self._last_parse_retry_count = 1
                 logger.warning(
                     "Malformed refinement JSON; retrying once with a new turn"
                 )
@@ -551,6 +641,7 @@ class OpenClawClient(VisionAnalyzerService):
         draft: AnalysisResult,
         refinement_trace: list[dict[str, object]],
     ) -> AnalysisResult:
+        self._start_attempt_sequence()
         for attempt in range(2):
             try:
                 result = await self._do_finalize(
@@ -560,14 +651,23 @@ class OpenClawClient(VisionAnalyzerService):
                     draft=draft,
                     refinement_trace=refinement_trace,
                 )
-            except (
-                json.JSONDecodeError,
-                BboxEvidenceError,
-                ModelResponseParseError,
-            ):
+            except BboxEvidenceError as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if exc.kind == "missing_receipt":
+                    self._last_parse_retry_count = attempt
+                    raise
                 if attempt:
                     self._last_parse_retry_count = attempt
                     raise
+                self._last_parse_retry_count = 1
+                logger.warning("Final report bbox receipt mismatch; retrying once")
+                continue
+            except (json.JSONDecodeError, ModelResponseParseError) as exc:
+                self._record_failed_attempt(exc, attempt=attempt)
+                if attempt:
+                    self._last_parse_retry_count = attempt
+                    raise
+                self._last_parse_retry_count = 1
                 logger.warning("Malformed final report JSON; retrying once")
                 continue
             self._last_parse_retry_count = attempt
@@ -736,7 +836,36 @@ class OpenClawClient(VisionAnalyzerService):
         response = await self._send_chat_result_frame(frame)
         result = _parse_refinement_result(response)
         await self._await_bbox_tool_audit(result)
-        self._require_bound_bbox_receipt(result)
+        try:
+            self._require_bound_bbox_receipt(result)
+        except BboxEvidenceError as exc:
+            observed_mismatch = any(
+                item.get("bbox_evidence_failure") == "mismatched_receipt"
+                for item in self._last_attempt_history
+            )
+            if exc.kind != "missing_receipt" or observed_mismatch:
+                raise
+            result = _retain_unlocalized_refinement_semantics(result)
+            if not result.unlocalized_missing_receipt_delta_indexes:
+                raise
+            unlocalized_findings = [
+                delta.finding.id
+                for index, delta in enumerate(result.deltas)
+                if index in result.unlocalized_missing_receipt_delta_indexes
+                and delta.finding is not None
+            ]
+            self._last_bbox_semantic_salvage = {
+                "status": "semantic_only_missing_receipt",
+                "unlocalized_delta_indexes": list(
+                    result.unlocalized_missing_receipt_delta_indexes
+                ),
+                "unlocalized_finding_ids": unlocalized_findings,
+                "overlay_coordinates_asserted": False,
+            }
+            logger.warning(
+                "Retaining refinement semantics without unverified bbox coordinates",
+                finding_ids=unlocalized_findings,
+            )
         return result
 
     async def _do_finalize(
@@ -797,7 +926,6 @@ class OpenClawClient(VisionAnalyzerService):
         self._last_session_key = session_key
         self._last_run_id = ""
         self._last_run_tools = []
-        self._last_parse_retry_count = 0
         self._last_run_started_at = time.monotonic()
         self._last_run_elapsed_ms = 0
         self._last_run_aborted = False
@@ -810,9 +938,38 @@ class OpenClawClient(VisionAnalyzerService):
                 self._ecg_founder_tool_audit_path
             )
         self._last_tool_audit_records = []
+        self._last_bbox_audit_observations = []
+        self._last_bbox_semantic_salvage = {}
 
-    def last_run_trace(self) -> dict[str, object]:
-        """Return auditable runtime facts, never hidden chain-of-thought."""
+    def _start_attempt_sequence(self) -> None:
+        """Start one logical operation that may create multiple model turns."""
+
+        self._last_parse_retry_count = 0
+        self._last_attempt_history = []
+
+    def _record_failed_attempt(self, exc: Exception, *, attempt: int) -> None:
+        """Preserve a failed paid-turn receipt before the next turn resets it."""
+
+        trace = (
+            self._current_run_trace()
+            if hasattr(self, "_tool_audit_path")
+            else {
+                "session_key": getattr(self, "_last_session_key", ""),
+                "run_id": getattr(self, "_last_run_id", ""),
+            }
+        )
+        trace.update(
+            {
+                "attempt": attempt + 1,
+                "status": "rejected",
+                "error_type": type(exc).__name__,
+            }
+        )
+        if isinstance(exc, BboxEvidenceError):
+            trace["bbox_evidence_failure"] = exc.kind
+        self._last_attempt_history.append(trace)
+
+    def _current_run_trace(self) -> dict[str, object]:
         self._refresh_tool_audit()
         return {
             "session_key": self._last_session_key,
@@ -827,6 +984,7 @@ class OpenClawClient(VisionAnalyzerService):
                     for record in self._last_tool_audit_records
                     if record.get("tool") == "dicom_bbox_validate"
                 ),
+                **self._last_bbox_semantic_salvage,
             },
             "parse_retry_count": self._last_parse_retry_count,
             "turn_elapsed_ms": self._current_run_elapsed_ms(),
@@ -837,6 +995,13 @@ class OpenClawClient(VisionAnalyzerService):
             # is a separate transport fact and must come from a transport log.
             "priority_service_observed": None,
         }
+
+    def last_run_trace(self) -> dict[str, object]:
+        """Return auditable runtime facts, never hidden chain-of-thought."""
+        trace = self._current_run_trace()
+        if self._last_attempt_history:
+            trace["attempts"] = [dict(item) for item in self._last_attempt_history]
+        return trace
 
     def _current_run_elapsed_ms(self) -> int:
         if self._last_run_elapsed_ms > 0:
@@ -869,9 +1034,19 @@ class OpenClawClient(VisionAnalyzerService):
             and record.get("accepted_count") == len(boxes)
         ]
         if not matching:
+            kind = (
+                "mismatched_receipt"
+                if self._last_bbox_audit_observations
+                or any(
+                    record.get("tool") == "dicom_bbox_validate"
+                    for record in self._last_tool_audit_records
+                )
+                else "missing_receipt"
+            )
             raise BboxEvidenceError(
                 "boxed output lacks a matching image/turn-bound "
-                "dicom_bbox_validate receipt"
+                "dicom_bbox_validate receipt",
+                kind=kind,
             )
 
     async def _await_bbox_tool_audit(
@@ -896,10 +1071,7 @@ class OpenClawClient(VisionAnalyzerService):
         deadline = time.monotonic() + _BBOX_AUDIT_FLUSH_GRACE_SEC
         while True:
             self._refresh_tool_audit()
-            if any(
-                record.get("tool") == "dicom_bbox_validate"
-                for record in self._last_tool_audit_records
-            ):
+            if self._last_bbox_audit_observations:
                 return
             remaining = deadline - time.monotonic()
             if remaining <= 0.0:
@@ -1060,10 +1232,17 @@ class OpenClawClient(VisionAnalyzerService):
 
     def _refresh_tool_audit(self) -> None:
         """Read native-plugin evidence appended since this model turn began."""
-        self._tool_audit_offset, bbox_records = _read_new_tool_audit_records(
+        (
+            self._tool_audit_offset,
+            bbox_records,
+            invalid_bbox_observations,
+        ) = _read_new_tool_audit_records(
             self._tool_audit_path,
             self._tool_audit_offset,
             _valid_bbox_tool_audit_record,
+        )
+        self._last_bbox_audit_observations.extend(
+            [*bbox_records, *invalid_bbox_observations]
         )
         bbox_records = [
             record
@@ -1075,7 +1254,7 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is not None:
             ecg_records = self._refresh_waveform_binding(binding)
         else:
-            self._ecg_founder_tool_audit_offset, _discarded = (
+            self._ecg_founder_tool_audit_offset, _discarded, _invalid = (
                 _read_new_tool_audit_records(
                     self._ecg_founder_tool_audit_path,
                     self._ecg_founder_tool_audit_offset,
@@ -1093,7 +1272,7 @@ class OpenClawClient(VisionAnalyzerService):
         self,
         binding: _WaveformArtifactBinding,
     ) -> list[dict[str, object]]:
-        binding.audit_offset, records = _read_new_tool_audit_records(
+        binding.audit_offset, records, _invalid = _read_new_tool_audit_records(
             self._ecg_founder_tool_audit_path,
             binding.audit_offset,
             _valid_ecg_founder_tool_audit_record,
@@ -1253,6 +1432,7 @@ class OpenClawClient(VisionAnalyzerService):
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
         session_key = f"image-followup-{idempotency_key}"
+        self._start_attempt_sequence()
         self._begin_run_trace(session_key)
 
         frame = build_openclaw_chat_frame(
@@ -1281,6 +1461,7 @@ class OpenClawClient(VisionAnalyzerService):
         request_id = self._next_request_id("chat")
         idempotency_key = str(uuid4())
         session_key = f"image-followup-{idempotency_key}"
+        self._start_attempt_sequence()
         self._begin_run_trace(session_key)
 
         frame = build_openclaw_chat_frame(
@@ -1335,15 +1516,26 @@ class OpenClawClient(VisionAnalyzerService):
         request_id = str(frame.get("id") or "")
         if not request_id or frame.get("method") != "chat.send":
             raise ValueError("expected a chat.send frame with a request id")
+        params = frame.get("params")
+        session_key = (
+            str(params.get("sessionKey") or "") if isinstance(params, dict) else ""
+        )
+        if not session_key:
+            raise ValueError("expected a chat.send frame with a session key")
         serialized = payload_json if payload_json is not None else json.dumps(frame)
         deadline = time.monotonic() + self._inference_timeout
 
         try:
-            await self._send_current_transport(serialized, deadline=deadline)
+            await self._send_current_transport(
+                serialized,
+                deadline=deadline,
+                session_key=session_key,
+            )
             return await self._wait_for_chat_payload(
                 request_id,
                 expect_text=expect_text,
                 deadline=deadline,
+                session_key=session_key,
             )
         except _GatewayRunConnectionLost as interrupted:
             first_loss = interrupted
@@ -1373,6 +1565,7 @@ class OpenClawClient(VisionAnalyzerService):
                     request_id,
                     expect_text=expect_text,
                     deadline=first_loss.deadline,
+                    session_key=session_key,
                     initial_run_id=first_loss.run_id,
                     response_accepted=True,
                 )
@@ -1384,11 +1577,13 @@ class OpenClawClient(VisionAnalyzerService):
             await self._send_current_transport(
                 serialized,
                 deadline=first_loss.deadline,
+                session_key=session_key,
             )
             return await self._wait_for_chat_payload(
                 request_id,
                 expect_text=expect_text,
                 deadline=first_loss.deadline,
+                session_key=session_key,
             )
         except _GatewayRunConnectionLost:
             self._connected = False
@@ -1401,8 +1596,15 @@ class OpenClawClient(VisionAnalyzerService):
                 "Gateway connection lost after one idempotent pre-acceptance replay"
             ) from None
 
-    async def _send_current_transport(self, payload: str, *, deadline: float) -> None:
-        if self._ws is None:
+    async def _send_current_transport(
+        self,
+        payload: str,
+        *,
+        deadline: float,
+        session_key: str,
+    ) -> None:
+        websocket = self._ws
+        if websocket is None:
             raise _GatewayRunConnectionLost(
                 "Gateway transport unavailable before acceptance",
                 run_id=None,
@@ -1410,7 +1612,15 @@ class OpenClawClient(VisionAnalyzerService):
                 deadline=deadline,
             )
         try:
-            await self._ws.send(payload)
+            await websocket.send(payload)
+        except asyncio.CancelledError:
+            self._mark_turn_aborted(session_key)
+            await self._abort_chat_run(
+                session_key=session_key,
+                run_id=None,
+                websocket=websocket,
+            )
+            raise
         except (
             websockets.ConnectionClosed,
             websockets.exceptions.ConcurrencyError,
@@ -1445,6 +1655,7 @@ class OpenClawClient(VisionAnalyzerService):
         *,
         expect_text: bool,
         deadline: float,
+        session_key: str,
         initial_run_id: str | None = None,
         response_accepted: bool = False,
     ) -> dict[str, Any] | str:
@@ -1452,12 +1663,14 @@ class OpenClawClient(VisionAnalyzerService):
             return await self._wait_for_chat_text(
                 request_id,
                 deadline=deadline,
+                session_key=session_key,
                 initial_run_id=initial_run_id,
                 response_accepted=response_accepted,
             )
         return await self._wait_for_chat_result(
             request_id,
             deadline=deadline,
+            session_key=session_key,
             initial_run_id=initial_run_id,
             response_accepted=response_accepted,
         )
@@ -1467,12 +1680,15 @@ class OpenClawClient(VisionAnalyzerService):
         request_id: str,
         *,
         deadline: float | None = None,
+        session_key: str | None = None,
         initial_run_id: str | None = None,
         response_accepted: bool = False,
     ) -> str:
         """Wait for a chat response and return raw text (no JSON parsing)."""
         assert self._ws is not None
 
+        turn_session_key = session_key or self._last_session_key
+        websocket = self._ws
         run_id = initial_run_id
         accepted = response_accepted or run_id is not None
         deadline = deadline or (time.monotonic() + self._inference_timeout)
@@ -1483,12 +1699,22 @@ class OpenClawClient(VisionAnalyzerService):
                     raise TimeoutError
                 raw = await self._recv_gateway_frame(remaining)
             except TimeoutError:
-                await self._abort_chat_run(run_id)
+                self._mark_turn_aborted(turn_session_key)
+                await self._abort_chat_run(
+                    session_key=turn_session_key,
+                    run_id=run_id,
+                    websocket=websocket,
+                )
                 raise TimeoutError(
                     f"Chat timeout after {self._inference_timeout}s"
                 ) from None
             except asyncio.CancelledError:
-                self._schedule_chat_abort(run_id)
+                self._mark_turn_aborted(turn_session_key)
+                await self._abort_chat_run(
+                    session_key=turn_session_key,
+                    run_id=run_id,
+                    websocket=websocket,
+                )
                 raise
             except websockets.ConnectionClosed as exc:
                 self._connected = False
@@ -1544,7 +1770,7 @@ class OpenClawClient(VisionAnalyzerService):
     async def _handshake(self) -> None:
         assert self._ws is not None
 
-        # Negotiate protocol 3..4. OpenClaw 2026.4.x speaks 3; 2026.5.x raised
+        # Negotiate protocol 3..4. OpenClaw 2026.4.x speaks 3; newer operator
         # the floor to 4 and made operator *write* scopes require a bound device
         # identity. The desktop app spawns the Gateway as a co-located child
         # process and talks to it over loopback, so it connects with the
@@ -1553,8 +1779,8 @@ class OpenClawClient(VisionAnalyzerService):
         # an interactive device-pairing flow.
         connect_id = self._next_request_id("connect")
         params: dict[str, Any] = {
-            "minProtocol": 3,
-            "maxProtocol": 4,
+            "minProtocol": MIN_GATEWAY_PROTOCOL,
+            "maxProtocol": MAX_GATEWAY_PROTOCOL,
             "client": {
                 "id": "gateway-client",
                 "version": _OPENCLAW_VERSION,
@@ -1585,6 +1811,9 @@ class OpenClawClient(VisionAnalyzerService):
                 raise ConnectionError(
                     f"OpenClaw connect failed: {error.get('code')} - {error.get('message')}"
                 )
+            protocol, server_version = parse_gateway_hello(response.get("payload"))
+            self._gateway_protocol = protocol
+            self._gateway_server_version = server_version
             return
 
     async def _recv_gateway_frame(self, timeout: float) -> str:
@@ -1603,11 +1832,14 @@ class OpenClawClient(VisionAnalyzerService):
         request_id: str,
         *,
         deadline: float | None = None,
+        session_key: str | None = None,
         initial_run_id: str | None = None,
         response_accepted: bool = False,
     ) -> dict[str, Any]:
         assert self._ws is not None
 
+        turn_session_key = session_key or self._last_session_key
+        websocket = self._ws
         run_id = initial_run_id
         accepted = response_accepted or run_id is not None
         deadline = deadline or (time.monotonic() + self._inference_timeout)
@@ -1619,7 +1851,12 @@ class OpenClawClient(VisionAnalyzerService):
                     raise TimeoutError
                 raw = await self._recv_gateway_frame(remaining)
             except TimeoutError:
-                await self._abort_chat_run(run_id)
+                self._mark_turn_aborted(turn_session_key)
+                await self._abort_chat_run(
+                    session_key=turn_session_key,
+                    run_id=run_id,
+                    websocket=websocket,
+                )
                 logger.error(
                     "OpenClaw analysis timed out after %ds (request_id=%s, run_id=%s)",
                     self._inference_timeout,
@@ -1630,7 +1867,12 @@ class OpenClawClient(VisionAnalyzerService):
                     f"Analysis timeout after {self._inference_timeout}s"
                 ) from None
             except asyncio.CancelledError:
-                self._schedule_chat_abort(run_id)
+                self._mark_turn_aborted(turn_session_key)
+                await self._abort_chat_run(
+                    session_key=turn_session_key,
+                    run_id=run_id,
+                    websocket=websocket,
+                )
                 raise
             except websockets.ConnectionClosed as exc:
                 self._connected = False
@@ -1703,13 +1945,25 @@ class OpenClawClient(VisionAnalyzerService):
                     self._last_run_elapsed_ms = self._current_run_elapsed_ms()
                     return _payload_from_chat_event(payload)
 
-    async def _abort_chat_run(self, run_id: str | None) -> None:
-        """Ask Gateway to stop a timed-out turn without invoking another runtime."""
-        if self._ws is None or not self._last_session_key:
+    def _mark_turn_aborted(self, session_key: str) -> None:
+        """Synchronously mark only the trace that owns ``session_key``."""
+
+        if not session_key or self._last_session_key != session_key:
             return
         self._last_run_aborted = True
         self._last_run_elapsed_ms = self._current_run_elapsed_ms()
-        params: dict[str, object] = {"sessionKey": self._last_session_key}
+
+    async def _abort_chat_run(
+        self,
+        *,
+        session_key: str,
+        run_id: str | None,
+        websocket: Any,
+    ) -> None:
+        """Ask Gateway to stop a timed-out turn without invoking another runtime."""
+        if websocket is None or not session_key:
+            return
+        params: dict[str, object] = {"sessionKey": session_key}
         if run_id:
             params["runId"] = run_id
         frame = {
@@ -1719,28 +1973,13 @@ class OpenClawClient(VisionAnalyzerService):
             "params": params,
         }
         try:
-            await asyncio.wait_for(self._ws.send(json.dumps(frame)), timeout=2.0)
+            await asyncio.wait_for(websocket.send(json.dumps(frame)), timeout=2.0)
         except Exception:
             logger.warning(
                 "Could not send OpenClaw chat.abort",
-                session_key=self._last_session_key,
+                session_key=session_key,
                 run_id=run_id or "",
             )
-
-    def _schedule_chat_abort(self, run_id: str | None) -> None:
-        """Schedule cancellation cleanup when an outer stage timeout cancels us."""
-        try:
-            task = asyncio.create_task(self._abort_chat_run(run_id))
-        except RuntimeError:
-            return
-
-        def consume_result(done: asyncio.Task[None]) -> None:
-            try:
-                done.result()
-            except (asyncio.CancelledError, Exception):
-                return
-
-        task.add_done_callback(consume_result)
 
     def _record_tool_events(self, frame: object) -> None:
         for tool_name in _extract_tool_names(frame):
@@ -2087,12 +2326,33 @@ def _build_finalization_prompt(
     ]
     safe_trace = [
         {
+            "stage": event.get("stage", ""),
+            "status": event.get("status", ""),
             "target_id": event.get("target_id", ""),
             "hypothesis": event.get("hypothesis", ""),
             "crop_source": event.get("crop_source", ""),
+            "crop_region": event.get("crop_region", {}),
             "decisions": event.get("decisions", []),
+            "blocked_action": event.get("blocked_action", ""),
+            "decision_applied": event.get("decision_applied"),
+            "evidence_interpretation": event.get("evidence_interpretation", ""),
+            "uncovered_bbox_count": event.get("uncovered_bbox_count", 0),
+            "uncovered_bboxes": event.get("uncovered_bboxes", []),
         }
         for event in refinement_trace
+    ]
+    blocked_partial_crop_retractions = [
+        {
+            "target_id": event["target_id"],
+            "blocked_action": event["blocked_action"],
+            "decision_applied": False,
+            "evidence_interpretation": event["evidence_interpretation"],
+            "crop_region": event["crop_region"],
+            "uncovered_bbox_count": event["uncovered_bbox_count"],
+            "uncovered_bboxes": event["uncovered_bboxes"],
+        }
+        for event in safe_trace
+        if event["status"] == "partial_crop_retraction_blocked"
     ]
     critical_triage_event = next(
         (
@@ -2129,23 +2389,31 @@ def _build_finalization_prompt(
         "candidate_bbox_count": len(candidate_boxes),
         "candidate_bbox_multiset": candidate_boxes,
         "critical_triage": critical_triage_context,
+        "blocked_partial_crop_retractions": blocked_partial_crop_retractions,
     }
     critical_triage_contract = ""
     if critical_triage_event is not None:
         critical_triage_contract = (
             "- This draft used critical-first triage. Reconcile every selected "
             "critical candidate and its mechanism-related support evidence before "
-            "any lower-priority narrative. Do not add a deferred lower-priority "
-            "finding; final IDs remain constrained to the draft subset.\n"
-            "- Preserve incomplete=true, review_required=true, and the critical-"
-            "triage limitation even if the original-image turn retracts every "
-            "critical candidate. Retraction does not retroactively complete the "
-            "deferred review.\n"
-            "- Checklist axes listed in critical_triage.deferred_checklist_axes "
-            "must use value=not_assessed_due_to_critical_triage with info status, "
-            "not normal/absent/WNL. Only axes directly supported by the selected "
-            "critical mechanism or its crop evidence may carry a clinical "
-            "conclusion.\n"
+            "any lower-priority narrative. Do not add a new lower-priority finding; "
+            "final finding IDs remain constrained to the draft subset.\n"
+            "- If at least one selected candidate remains critical after original-"
+            "image reconciliation, keep time-critical reporting first. Deferred "
+            "checklist axes may remain value=not_assessed_due_to_critical_triage "
+            "with info status; never state a normal/absent/WNL conclusion for an "
+            "axis that was not actually assessed.\n"
+            "- If every selected critical candidate is retracted or revised below "
+            "critical, explicitly resume every axis in critical_triage."
+            "deferred_checklist_axes on the attached original image. Record a "
+            "concise normal, abnormal, or indeterminate value for each axis that is "
+            "actually assessable. Initial deferral alone is not a reason to leave "
+            "an axis unassessed.\n"
+            "- Use the unassessed sentinel only for an axis genuinely limited by "
+            "image coverage, image quality, or the bounded final-turn deadline. In "
+            "that case keep incomplete=true and review_required=true and state the "
+            "specific limitation. Retraction alone does not complete the deferred "
+            "review; explicit final assessment does.\n"
         )
     checklist_contract = ""
     if modality is Modality.EKG:
@@ -2193,12 +2461,18 @@ def _build_finalization_prompt(
         "limitations, and next steps agree with the final finding set and all "
         "retractions/revisions. Return one JSON object only, with the same complete "
         "top-level shape as final_grounded_draft.\n\n"
+        f"{PROFESSIONAL_CO_READER_GUIDANCE}\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         "Hard provenance rules:\n"
         "- For every draft finding, make one final disposition: RETAIN it unchanged, "
         "REVISE its label/detail/severity/confidence/question, or RETRACT it by "
         "omitting it from findings. This original-image turn may resolve an early "
         "crop candidate as a benign variant or artifact.\n"
+        "- A retraction listed in blocked_partial_crop_retractions was NOT applied: "
+        "its crop omitted one or more source evidence boxes, so that crop is "
+        "inconclusive rather than supporting or refuting. Reassess that finding on "
+        "the attached original image and make a fresh final disposition; never "
+        "interpret the blocked retraction as confirmation of the draft.\n"
         "- Do not retain duplicate study-level rate or rhythm findings with the "
         "same clinical meaning. Keep the best-grounded item (prefer lead II or a "
         "true rhythm strip) and RETRACT redundant IDs; never create duplicate "
@@ -2405,23 +2679,31 @@ def _build_refinement_prompt(
             "visible. Absence of acute ST elevation or reciprocal change alone is "
             "not a reason to retract a reproducible nonspecific ST-T/T-wave change. "
             f"{EKG_LVH_BALANCE_GUIDANCE} "
-            "Diagnose a paced "
-            "rhythm only when distinct narrow pacing spikes, separate from the "
-            "QRS upstroke and grid lines, immediately precede multiple QRS "
-            "complexes in at least two visible leads. Repetitive wide or tall "
-            "QRS complexes alone are not pacing evidence; compare ventricular "
-            "ectopy, bundle-branch conduction, high voltage, and artifact. Do not "
+            "Group repeated morphology by horizontal time before counting events: "
+            "the same beat repeated across visible leads is one unique timestamp, "
+            "not multiple events. A distinct narrow pacing spike, separate from "
+            "the QRS upstroke and grid lines and immediately preceding a QRS in a "
+            "clear lead, may support a pacing candidate; do not require multiple "
+            "spikes across at least two leads merely to retain or ask about that "
+            "candidate. Diagnose a paced rhythm only when a repeatable spike-to-QRS "
+            "relationship or other visible pacing morphology supports it. Demand "
+            "pacing can coexist with normal intrinsic beats, so intervening normal "
+            "beats do not exclude pacing. Repetitive wide or tall QRS complexes "
+            "alone are not pacing evidence; compare ventricular ectopy, aberrancy, "
+            "fusion, bundle-branch conduction, high voltage, and artifact. Do not "
             "call sinus from regular timing alone: require repeatable P waves "
             "before QRS complexes with a stable P-QRS relationship in at least "
             "one clear lead. If neither sinus nor AF/flutter has positive visible "
             "morphology, keep the rhythm indeterminate rather than forcing either "
-            "diagnosis. At an "
-            "abrupt abnormal interval, test whether at least three consecutive "
-            "broad QRS complexes recur at the same horizontal positions across "
-            "multiple visible leads. If they do, evaluate NSVT/VT versus artifact "
-            "or conduction before attributing secondary ST-T distortion to "
-            "ischemia. A plausible ventricular run remains a critical cautious "
-            "differential with an urgent-review question."
+            "diagnosis. At an abrupt abnormal interval, one or two unique broad-"
+            "complex timestamps remain candidates for pacing, PVC, aberrancy, "
+            "fusion, or artifact; do not call them VT or a ventricular run. Reserve "
+            "NSVT/VT or ventricular-run terminology for at least three consecutive "
+            "unique broad-complex timestamps, then confirm that each event's "
+            "morphology is reproduced across corresponding visible leads before "
+            "attributing secondary ST-T distortion to ischemia. A plausible "
+            "ventricular run remains a critical cautious differential with an "
+            "urgent-review question."
             f"{probe_focus}{waveform_guidance}"
         )
     return (
@@ -2431,6 +2713,7 @@ def _build_refinement_prompt(
         "hypothesis. Finish this one bounded crop decision directly; do not inspect "
         "external files or call tools other than the required bbox validator. This "
         "is an auditable decision summary, not hidden reasoning.\n\n"
+        f"{PROFESSIONAL_CO_READER_GUIDANCE}\n\n"
         f"Context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         "Return JSON only with this shape: "
         '{"deltas":[{"action":"confirm|revise|retract|add",'
@@ -2887,14 +3170,6 @@ def _extract_tool_names(value: object) -> list[str]:
     return list(dict.fromkeys(found))
 
 
-def _resolve_bbox_tool_audit_path(base_dir: Path) -> Path:
-    configured = os.getenv("DICOM_BBOX_AUDIT_PATH", "").strip()
-    if configured:
-        path = Path(configured)
-        return path if path.is_absolute() else (base_dir / path).resolve()
-    return (base_dir / "data" / "tmp" / "bbox-tool-audit.jsonl").resolve()
-
-
 def _resolve_ecg_founder_tool_audit_path(base_dir: Path) -> Path:
     configured = os.getenv("DICOM_ECGFOUNDER_AUDIT_PATH", "").strip()
     if configured:
@@ -2907,8 +3182,13 @@ def _read_new_tool_audit_records(
     path: Path,
     offset: int,
     validator: Callable[[object], bool],
-) -> tuple[int, list[dict[str, object]]]:
-    """Read and validate JSONL receipts appended after ``offset``."""
+) -> tuple[int, list[dict[str, object]], list[dict[str, object]]]:
+    """Read complete JSONL receipts appended after ``offset``.
+
+    Invalid complete lines are returned as metadata-only observations.  The
+    caller can therefore distinguish a genuinely absent receipt from a
+    malformed current-turn receipt without retaining or logging raw content.
+    """
     start_offset = offset
     try:
         size = path.stat().st_size
@@ -2916,12 +3196,12 @@ def _read_new_tool_audit_records(
             offset = 0
             start_offset = 0
         if size == offset:
-            return offset, []
+            return offset, [], []
         with path.open("rb") as handle:
             handle.seek(offset)
             payload = handle.read()
     except OSError:
-        return offset, []
+        return offset, [], []
 
     # Do not consume a record while another process is still appending it.  If
     # a reader advances past a partial JSON object, the completed receipt can
@@ -2929,18 +3209,34 @@ def _read_new_tool_audit_records(
     # every JSONL record with a newline, so only complete lines are consumable.
     last_newline = payload.rfind(b"\n")
     if last_newline < 0:
-        return start_offset, []
+        return start_offset, [], []
     complete_payload = payload[: last_newline + 1]
     offset = start_offset + len(complete_payload)
     records: list[dict[str, object]] = []
+    invalid_observations: list[dict[str, object]] = []
     for line in complete_payload.splitlines():
+        if not line.strip():
+            continue
         try:
             record = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
+            invalid_observations.append(
+                {
+                    "receipt_valid": False,
+                    "failure": "malformed_jsonl",
+                }
+            )
             continue
         if validator(record) and isinstance(record, dict):
             records.append(record)
-    return offset, records
+        else:
+            invalid_observations.append(
+                {
+                    "receipt_valid": False,
+                    "failure": "invalid_receipt_schema",
+                }
+            )
+    return offset, records, invalid_observations
 
 
 def _file_size(path: Path) -> int:
@@ -3120,6 +3416,43 @@ def _result_bbox_coordinates(
             }
         ]
     return [box for finding in findings for box in finding.bboxes]
+
+
+def _retain_unlocalized_refinement_semantics(
+    result: RefinementResult,
+) -> RefinementResult:
+    """Strip unverified geometry while preserving a parsed refinement delta.
+
+    This helper is called only after the current turn produced no bbox audit
+    record at all.  A receipt that exists but disagrees with the turn binding
+    never reaches this path.  The structured index provenance is created here,
+    not parsed from model JSON.
+    """
+
+    deltas: list[RefinementDelta] = []
+    unlocalized_indexes: list[int] = []
+    for index, delta in enumerate(result.deltas):
+        finding = delta.finding
+        if finding is None or not finding.bboxes:
+            deltas.append(delta)
+            continue
+        notes = list(dict.fromkeys([*finding.notes, _UNLOCALIZED_MISSING_RECEIPT_NOTE]))
+        deltas.append(
+            replace(
+                delta,
+                finding=replace(
+                    finding,
+                    bboxes=[],
+                    notes=notes,
+                ),
+            )
+        )
+        unlocalized_indexes.append(index)
+    return replace(
+        result,
+        deltas=tuple(deltas),
+        unlocalized_missing_receipt_delta_indexes=tuple(unlocalized_indexes),
+    )
 
 
 def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:

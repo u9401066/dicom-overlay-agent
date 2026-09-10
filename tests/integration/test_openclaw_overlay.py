@@ -537,7 +537,11 @@ async def test_chat_about_image_sends_context_and_image_attachment():
                     "type": "res",
                     "id": connect_request["id"],
                     "ok": True,
-                    "payload": {"status": "connected"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -904,7 +908,11 @@ def _make_ws_handler(
                     "type": "res",
                     "id": connect_req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -967,7 +975,11 @@ def _make_chat_ws_handler(analysis_json: dict[str, Any], chat_response: str):
                     "type": "res",
                     "id": connect_req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -1256,7 +1268,11 @@ async def test_ws_error_response():
                     "type": "res",
                     "id": req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -1303,7 +1319,11 @@ async def test_ws_event_error_state():
                     "type": "res",
                     "id": req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -1361,7 +1381,11 @@ async def test_ws_connection_close_during_chat():
                     "type": "res",
                     "id": req["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )

@@ -1,7 +1,26 @@
-# Progress (Updated: 2026-08-28)
+# Progress (Updated: 2026-09-10)
 
-> This file is append-only evidence history. The 2026-08-28 section is the
-> current release-candidate state; earlier entries are dated historical evidence.
+> Dated evidence history. The newest section describes current work;
+> older results are not evidence for untested current code or models.
+
+## 2026-09-10 Real Astra acceptance / security work in progress
+
+- Active target changed to Astra low only; historical Luna is not an acceptance
+  result. GUI provider selection and Gateway restart observed
+  `openai/gpt-6-astra`, `thinking=low`, native subscription transport, and a
+  successful HTTP 200 on a real ROI capture from the visible ECG viewer.
+- Fixed stale subscription import: a successful profile listing cannot establish
+  credential freshness. Source OAuth fingerprint changes now trigger the pinned
+  public migration provider; unchanged sources reuse the owned OpenClaw profile.
+  Only OAuth fields enter the temporary import, never a Platform API key.
+- GitHub secret scanning and push protection are enabled. Gitleaks 8.30.1,
+  downloaded with verified release SHA-256, scanned all 152 local-history
+  commits and identified one old Gateway-token disclosure. Current changes
+  scanned clean; history has not been rewritten. The old token differs from
+  current config and environment and is absent from `.env`; only that exact
+  historical finding is baselined in `.gitleaksignore`.
+- Full new Astra cohort, actual partial-lead edge cases, fresh packaged build,
+  updated public Pages evidence, and release publication are still pending.
 
 ## Doing
 
@@ -926,3 +945,46 @@
 - 128 個 case/report/image 皆唯一；124 個 canonical signatures，最多重複 2。
   這是 gold-enriched stress cohort，不代表盛行率加權準確率；source 也沒有
   patient-group 欄位。Targeted Ruff 通過，unit/smoke 15 passed。
+
+## Done (clinical knowledge governance foundation) - 2026-08-28
+
+- 建立 7-rule canonical YAML registry、EKG/CXR axis registries、strict JSON
+  Schema 與完整 inventory；unknown key/type/semver/status/date/axis/operator、
+  runtime operand、source locator、pytest parity node 與 mapping 均 fail closed。
+- 每條規則同時生成詳細 human differential workflow、精簡 agent steps 與純資料
+  domain runtime；移除手寫 `_BUILTIN_RULES` 重複來源，registry digest 可阻止
+  文件與執行行為悄悄分叉。
+- 新增 application-owned SQLite quick lookup generator/verifier，逐表比對 YAML
+  projection 並排除 eval gold/scorer aliases；不讀寫 OpenClaw 私有 FTS schema。
+- 新增專業共讀 prompt 與 output guard：合法醫療影像任務不得泛用拒答或輸出冗長
+  免責樣板，但缺導程、裁切與需補臨床資料等具體限制仍完整保留。
+- 臨床規則/SQLite/runtime/prompt/validator targeted Ruff 全綠，210 tests passed。
+  指南書目只作 citation；商業部署仍須逐一完成授權與專科臨床審查。
+
+## Done (Gateway protocol receipt hardening) - 2026-08-28
+
+- 核對 pinned OpenClaw `2026.7.1-2` vendored 官方文件：一般 operator/UI
+  current/min protocol 均為 4，protocol 3 只保留給 N-1 node/probe。
+- Desktop client 維持 `3..4` advertised compatibility range，因此可與既有
+  `MIN_SAFE_OPENCLAW_VERSION=2026.4.22` 協商；沒有在缺乏實際不相容證據時提高
+  版本 floor。
+- Connect/health probe 現在必須驗證 `hello-ok`、協商版本及 server version；
+  任意 `ok=true/status=connected` 不再被當成 OpenClaw Gateway 證據。
+- Image smoke 與每個 eval result 都保存無祕密的 negotiated protocol receipt，
+  artifact verifier 對缺漏、超出 advertised range 或未驗證 receipt fail closed。
+
+## Done (packaging/clinical release blockers) - 2026-09-02
+
+- Clinical registry digest 已擴大為 `canonical-input-documents-v1`，涵蓋 rules、
+  axes、legacy inventory、strict schema 及相對路徑；目前 digest 為
+  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
+- Packaged verifier 不再信任 DB 自報 hash：它從 bundle canonical inputs 重算、
+  驗證 schema ID/version、重生完整 views，並逐表／欄／列核對 SQLite，加上
+  `quick_check`、foreign-key 與 metadata/table-set gate。
+- Release build 透過 `uv` 固定 64-bit CPython 3.13.12；manifest 記錄 exact
+  PyInstaller/Pillow/PyQt6/Qt6/sip toolchain。UPX 有工具才啟用且須觀察到 PE
+  marker，否則明列 `no_upx_baseline`。
+- Frozen 相對 log path 已錨定 executable `base_dir`，不同 launch cwd 的實寫
+  regression 與禁止 `..` escape 均通過。
+- Targeted Ruff 通過；clinical/package/launch/infrastructure suite 為
+  `158 passed, 3 skipped`（3 項皆需 fresh bundle 的 opt-in 實機 smoke）。

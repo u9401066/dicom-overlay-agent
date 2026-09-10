@@ -52,8 +52,10 @@ call it out and propose mitigation before proceeding.
   (`connect` + `chat.send`). Never import OpenClaw plugin SDK internals.
 - `infrastructure/openclaw_runtime.py` owns `MIN_SAFE_OPENCLAW_VERSION`
   (`2026.4.22`), `build_harness_manifest`, and `build_openclaw_chat_frame`
-  (protocol `3`; image in `params.attachments[]` with `type` / `mimeType` /
-  `content`, `image/png`).
+  (advertised Gateway range `3..4`; pinned OpenClaw `2026.7.1-2` negotiates
+  `hello-ok` protocol `4`; image in `params.attachments[]` with `type` /
+  `mimeType` / `content`, `image/png`). A successful connect must retain a
+  validated negotiated-protocol receipt.
 - Before bumping OpenClaw (`openclaw/package.json`, currently `2026.7.1-2`),
   confirm the `connect` / `chat.send` schema and attachment format are
   unchanged. Raise the version floor only for a real, verified incompatibility,

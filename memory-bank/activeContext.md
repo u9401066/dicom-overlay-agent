@@ -1,5 +1,33 @@
 # Active Context
 
+## 2026-09-10 Current acceptance target and runtime fixes
+
+- User now requests **GPT-6 Astra low only**; Luna high comparison is dropped.
+  Exact model ID is `gpt-6-astra`, routed through OpenClaw's
+  `openai-chatgpt-responses` subscription transport, not a Codex agent runtime.
+- GUI settings were operated and photographed: Astra/low is now saved. A Qt
+  list-item selection alone did not commit the combo box; actual pointer
+  activation and re-reading the saved configuration confirmed the selection.
+- Real desktop startup/normal Quit validated owned Gateway cleanup. The first
+  Analyze attempt exposed stale migrated OAuth after native Codex rotation;
+  importing a fingerprinted OAuth-only snapshot repairs this on next startup.
+- Gateway receipt validation, exact process ownership, cancellation isolation,
+  and multi-pass partial-crop evidence protections have targeted regression
+  coverage (421 tests passed before the new subscription change).
+- The September 2-3 historical GUI batch attempted 103 records: 60 exports and
+  43 timeouts. Offline source-image matching identified the intended case in
+  all 60 exports (maximum thumbnail MAE 0.39/255), and all 60 have Gateway
+  receipts. These are NOT 100 completed cases, clinical passes, or an Astra
+  result; reasoning effort was not recorded for that historical Luna batch.
+- Broad title matching can latch onto the repository's VS Code window when no
+  viewer exists. Current real-run config is manual and matches only
+  `DICOM Harness Viewer`; general product target-selection hardening remains.
+- GitHub secret scanning and push protection enabled September 10. A fully
+  redacted Gitleaks history scan found one historical Gateway-token disclosure
+  in commit `08581ba`; it is absent from current Memory Bank and differs from
+  the active config. No history rewriting has been performed. Runtime migration,
+  skill-workshop, and memory directories must remain private and untracked.
+
 ## 2026-08-28 live Luna / GUI / release acceptance in progress
 
 - Current objective requires real Windows desktop evidence: launch the packaged
@@ -886,3 +914,52 @@
   `38bcf5b0bd4008ac3bb6a39da3cb7f430278c55aff4c818d0a08a1fd2348c7ca`.
   Local gold/inference/report artifacts stay gitignored; they must never be
   published or treated as available in clean CI without a controlled download.
+
+## 2026-08-28 Auditable clinical knowledge registry
+
+- Seven deterministic EKG/CXR consistency rules now have one canonical
+  `clinical_knowledge/rules/core.rule.yaml` source with strict JSON Schema and
+  dependency-free semantic validation. Unknown keys/axes/operators, stale
+  review dates, unmapped runtime IDs, invalid source locators, or missing parity
+  test nodes fail closed.
+- The same step IDs generate a detailed clinician-facing differential workflow,
+  a compact agent execution view, and pure domain runtime data. The previous
+  hand-written `_BUILTIN_RULES` duplication was removed; runtime behavior is
+  generated from YAML and guarded by the registry SHA-256.
+- Priority metadata distinguishes product safety severity floors from guideline
+  statements. A citation does not claim that a guideline directly defines the
+  app's warning/critical enum, and screenshot findings remain distinct from a
+  clinical diagnosis requiring symptoms, biomarkers, serial studies, or other
+  imaging.
+- An application-owned SQLite quick-lookup projection is generated and verified
+  table-by-table from YAML. OpenClaw's private empty `main.sqlite` FTS cache is
+  neither written nor treated as a rule source, preserving the public Gateway
+  boundary.
+- Registry digest scope is now `canonical-input-documents-v1`: parsed rule and
+  axis YAML, legacy inventory, strict JSON schema, and their relative paths.
+  The packaged verifier reloads those bundled canonical inputs, rejects the
+  wrong schema ID/version or an empty shell, regenerates both views, and checks
+  every SQLite table/column/row plus integrity and foreign keys. Current digest
+  is `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`.
+- Prompt and OutputValidator contracts now reject generic AI/medical refusal or
+  disclaimer boilerplate while preserving concrete case-specific capture limits.
+  The agent remains a specialist co-reader and does not redirect routine work to
+  another professional.
+- OpenClaw `2026.7.1-2` documents current operator/UI protocol 4 while retaining
+  protocol 3 only for the N-1 node/probe window. The desktop client still
+  advertises its verified `3..4` compatibility range, but now rejects a generic
+  successful response unless it is a valid `hello-ok`, records negotiated
+  protocol/server version, and carries that receipt into smoke/eval artifacts.
+  `MIN_SAFE_OPENCLAW_VERSION` remains `2026.4.22`; no floor bump was inferred.
+
+## 2026-09-02 Reproducible package evidence
+
+- Release builds use an isolated no-dev environment pinned through `uv` to
+  64-bit CPython 3.13.12. The bundle carries a receipt with exact Python
+  architecture plus PyInstaller, Pillow, PyQt6, Qt6, and sip versions.
+- UPX remains enabled by default in the spec. `build-exe.bat` enables it only
+  when the tool is available; verification requires an observed UPX-marked app
+  PE. Otherwise the receipt says `no_upx_baseline` rather than claiming an
+  unobserved compression gain.
+- Relative configured logs now resolve inside the executable's `base_dir`,
+  independent of launch cwd; traversal outside that base is rejected.

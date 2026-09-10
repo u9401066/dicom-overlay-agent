@@ -69,6 +69,13 @@ def _valid_output_and_capture_contract() -> dict:
             ],
             "captured_image_size": [840, 540],
         },
+        "gateway_protocol_receipt": {
+            "verified": True,
+            "advertised_min_protocol": 3,
+            "advertised_max_protocol": 4,
+            "negotiated_protocol": 4,
+            "server_version": "2026.7.1-2",
+        },
     }
 
 
@@ -85,8 +92,27 @@ async def test_codex_verifier_accepts_valid_harness_artifacts(tmp_path):
 
     assert verification.ok
     assert "gateway_contract" in verification.passed_checks
+    assert "gateway_protocol_receipt" in verification.passed_checks
     assert "image_payload_proof" in verification.passed_checks
     assert "overlay_annotation_contract" in verification.passed_checks
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_codex_verifier_rejects_unsafe_gateway_version_receipt(tmp_path):
+    smoke = await run_image_harness_smoke(output_dir=tmp_path, show_viewer=False)
+    payload = json.loads(smoke.result_path.read_text(encoding="utf-8"))
+    payload["gateway_protocol_receipt"]["server_version"] = "mock-2026.7.1-2"
+    smoke.result_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    verification = verify_image_harness_artifacts(
+        log_path=smoke.log_path,
+        result_path=smoke.result_path,
+        require_viewer=False,
+    )
+
+    assert not verification.ok
+    assert any("gateway_protocol_receipt" in item for item in verification.failures)
 
 
 @pytest.mark.asyncio
@@ -144,7 +170,11 @@ def test_codex_verifier_rejects_bbox_extent_overflow(tmp_path):
                 "harness_manifest": {
                     "compatibility": {
                         "minimumOpenClaw": "2026.4.22",
-                        "gatewayProtocol": {"methods": ["connect", "chat.send"]},
+                        "gatewayProtocol": {
+                            "minProtocol": 3,
+                            "maxProtocol": 4,
+                            "methods": ["connect", "chat.send"],
+                        },
                     }
                 },
             }
@@ -197,7 +227,11 @@ def test_codex_verifier_accepts_near_boundary_bbox_with_float_rounding(tmp_path)
                 "harness_manifest": {
                     "compatibility": {
                         "minimumOpenClaw": "2026.4.22",
-                        "gatewayProtocol": {"methods": ["connect", "chat.send"]},
+                        "gatewayProtocol": {
+                            "minProtocol": 3,
+                            "maxProtocol": 4,
+                            "methods": ["connect", "chat.send"],
+                        },
                     }
                 },
             }

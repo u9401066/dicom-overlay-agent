@@ -30,7 +30,11 @@ async def test_mvp_smoke_pipeline() -> None:
                     "type": "res",
                     "id": connect_request["id"],
                     "ok": True,
-                    "payload": {"status": "ok"},
+                    "payload": {
+                        "type": "hello-ok",
+                        "protocol": 4,
+                        "server": {"version": "2026.7.1-2"},
+                    },
                 }
             )
         )
@@ -84,7 +88,10 @@ async def test_mvp_smoke_pipeline() -> None:
                                                 }
                                             ],
                                             "checklist": {
-                                                "rate": {"value": "72", "status": "normal"}
+                                                "rate": {
+                                                    "value": "72",
+                                                    "status": "normal",
+                                                }
                                             },
                                         }
                                     ),
@@ -111,9 +118,7 @@ async def test_mvp_smoke_pipeline() -> None:
         config.region_maps = {
             "EKG": {
                 "layout": "standard_4x3",
-                "regions": {
-                    "lead_I": {"x": 0.0, "y": 0.0, "w": 0.25, "h": 0.27}
-                },
+                "regions": {"lead_I": {"x": 0.0, "y": 0.0, "w": 0.25, "h": 0.27}},
             }
         }
 
