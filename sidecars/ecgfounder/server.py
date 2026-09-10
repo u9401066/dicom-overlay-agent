@@ -19,6 +19,7 @@ import os
 import re
 import statistics
 import threading
+import time
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -91,9 +92,8 @@ def summarize_rr_intervals_ms(rr_intervals_ms: list[float]) -> dict[str, Any]:
     """Summarize beat timing without converting it into an AF diagnosis."""
 
     intervals = [float(value) for value in rr_intervals_ms]
-    if (
-        len(intervals) < _RHYTHM_MIN_RR_INTERVALS
-        or any(not 250.0 <= value <= 3_000.0 for value in intervals)
+    if len(intervals) < _RHYTHM_MIN_RR_INTERVALS or any(
+        not 250.0 <= value <= 3_000.0 for value in intervals
     ):
         return {
             "method": _RHYTHM_MEASUREMENT_METHOD,
@@ -780,9 +780,11 @@ def build_handler(
 
         def do_POST(self) -> None:
             if urlsplit(self.path).path != endpoint_path:
+                self._discard_rejected_body()
                 self._json(HTTPStatus.NOT_FOUND, {"status": "not_found"})
                 return
             if not _authorized(self.headers, token):
+                self._discard_rejected_body()
                 self._json(HTTPStatus.UNAUTHORIZED, {"status": "unauthorized"})
                 return
             try:
@@ -802,6 +804,40 @@ def build_handler(
                 self._json(HTTPStatus.BAD_REQUEST, {"status": "invalid_json"})
                 return
             self._json(HTTPStatus.OK, service.analyze(request))
+
+        def _discard_rejected_body(self) -> None:
+            """Avoid closing a socket with unread small request data (Windows RST).
+
+            Authentication still precedes JSON decoding and inference. Neither
+            an oversized body nor an incomplete upload can cause an unbounded
+            unauthenticated read; rejected bytes are never retained or logged.
+            """
+            if self.headers.get("transfer-encoding"):
+                return
+            try:
+                size = int(self.headers.get("content-length") or "0")
+            except ValueError:
+                return
+            if not 0 < size <= MAX_REQUEST_BYTES:
+                return
+            previous_timeout = self.connection.gettimeout()
+            deadline = time.monotonic() + 1.0
+            try:
+                while size:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    self.connection.settimeout(remaining)
+                    # read1 performs at most one raw read; read(size) could let
+                    # a trickling sender restart a per-socket timeout forever.
+                    chunk = self.rfile.read1(size)
+                    if not chunk:
+                        break
+                    size -= len(chunk)
+            except OSError:
+                pass
+            finally:
+                self.connection.settimeout(previous_timeout)
 
     return Handler
 

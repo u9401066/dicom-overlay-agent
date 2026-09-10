@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import threading
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sidecars.ecgfounder import batch, server
@@ -245,12 +247,21 @@ def test_http_endpoint_requires_bearer_token(tmp_path: Path) -> None:
         }
     ).encode()
     try:
-        with pytest.raises(urllib.error.HTTPError) as unauthorized:
-            urllib.request.urlopen(
-                urllib.request.Request(endpoint, data=payload, method="POST"),
-                timeout=2,
-            )
-        assert unauthorized.value.code == 401
+        # Repeated real HTTP requests exercise early rejection/connection-close
+        # races; every response must be a complete 401, never a socket reset.
+        for _ in range(30):
+            with pytest.raises(urllib.error.HTTPError) as unauthorized:
+                urllib.request.urlopen(
+                    urllib.request.Request(endpoint, data=payload, method="POST"),
+                    timeout=2,
+                )
+            try:
+                assert unauthorized.value.code == 401
+                assert json.loads(unauthorized.value.read()) == {
+                    "status": "unauthorized"
+                }
+            finally:
+                unauthorized.value.close()
 
         health_request = urllib.request.Request(
             health_endpoint,
@@ -290,6 +301,55 @@ def test_http_endpoint_requires_bearer_token(tmp_path: Path) -> None:
 def test_non_loopback_bind_is_rejected() -> None:
     with pytest.raises(Exception, match="loopback"):
         server._loopback_host("8.8.8.8")
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"content-length": "invalid"},
+        {"content-length": "-1"},
+        {"content-length": str(server.MAX_REQUEST_BYTES + 1)},
+        {"content-length": "12", "transfer-encoding": "chunked"},
+    ],
+)
+def test_rejected_upload_never_drains_unbounded_or_unknown_body(headers):
+    handler_type = server.build_handler(None, token="fixture")
+    handler = handler_type.__new__(handler_type)
+    handler.headers = headers
+    # No connection/read stream: touching either would fail this guard test.
+    handler._discard_rejected_body()
+
+
+def test_rejected_trickling_body_obeys_total_deadline(monkeypatch):
+    handler_type = server.build_handler(None, token="fixture")
+    handler = handler_type.__new__(handler_type)
+    handler.headers = {"content-length": "100"}
+    timeouts = []
+    handler.connection = SimpleNamespace(
+        gettimeout=lambda: 7, settimeout=timeouts.append
+    )
+    ticks = iter([0.0, 0.1, 1.1])
+    monkeypatch.setattr(server.time, "monotonic", lambda: next(ticks))
+    reads = []
+    handler.rfile = SimpleNamespace(read1=lambda size: reads.append(size) or b"x")
+    handler._discard_rejected_body()
+    assert reads == [100]
+    assert timeouts == [0.9, 7]
+
+
+def test_rejected_upload_consumes_only_declared_body_and_restores_timeout():
+    handler_type = server.build_handler(None, token="fixture")
+    handler = handler_type.__new__(handler_type)
+    handler.headers = {"content-length": "3"}
+    timeouts = []
+    handler.connection = SimpleNamespace(
+        gettimeout=lambda: None, settimeout=timeouts.append
+    )
+    handler.rfile = io.BytesIO(b"abcFOLLOWING")
+    handler._discard_rejected_body()
+    assert handler.rfile.read() == b"FOLLOWING"
+    assert timeouts[-1] is None
 
 
 def test_batch_loader_requires_one_registered_waveform_per_case(tmp_path: Path) -> None:

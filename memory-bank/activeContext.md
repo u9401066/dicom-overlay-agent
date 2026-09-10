@@ -2,6 +2,26 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Candidate bfd7426 pushed as draft PR #13; CI 34478247522 and both Secret scans
+  passed. Initial UPX build was deliberately stopped (owned PyInstaller process)
+  after audit found 47 upstream notice files omitted by extension slimming.
+  No completed candidate EXE size is claimed. Fix restores 324 exact npm
+  notices (562,442 B); refreshed slim stage is 280.77 MiB / 18,581 files.
+  Python/runtime closure, bootloader, Python, Node and App add 21 notices;
+  both inventories verify SHA-256 and safe paths. Node download now checks
+  official SHA-256 and extracts only binary/LICENSE without recursive temp
+  deletion. 106 targeted tests pass. Maintainer asked non-blockingly about
+  PyQt GPL-compatible vs commercial distribution; do not change source license
+  or publish binary before that decision and other release gates.
+- Follow-up smoke exposed unavailable `Get-FileHash` in pytest-spawned Windows
+  PowerShell; staging/downloader use streaming .NET SHA-256 instead. Real
+  staging/bootstrap smoke now passes (2 tests, 113.60 s). Separate HTTP sidecar
+  regression reproduced WinError 10053 on repeated unauthorized POSTs: unread
+  request bodies caused early socket-close races. Rejection now discards only
+  a known <=16 KiB body within a total one-second deadline, never parses it or
+  invokes inference. Thirty real 401 exchanges plus bounded/chunked/invalid/
+  trickling-body regressions pass (23 sidecar tests). Full suite rerun pending.
+
 - Isolated candidate branch `agent/openclaw-2026-9-3-20260910` now pins core and
   OAuth-only migration provider 2026.9.3, with full npm lifecycle under portable
   Node 24.18.0 (335-package audit: zero matches). Slim staging: 280.62 MiB,
