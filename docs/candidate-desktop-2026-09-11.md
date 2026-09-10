@@ -2,8 +2,9 @@
 
 This is exposed development validation, **not a new blind clinical benchmark or
 release**. The failed 121-case baseline remains sealed and unchanged. The actual
-App is the clean c3532d7 frozen EXE, with OpenClaw 2026.9.3 and plugin 1.5.9,
-run from a separately hash-verified writable copy of the preserved package.
+Apps are the clean c3532d7 and corrected 0e55a61 frozen EXEs, with OpenClaw
+2026.9.3 and plugin 1.5.9, each run from a separately hash-verified writable
+copy of its preserved package.
 
 ## Actual EXE, subscription and known-failure case
 
@@ -105,7 +106,39 @@ The prompt audit also follows the official recommendation to inspect
 [Astra's loaded instructions](https://developers.openai.com/api/docs/guides/latest-model#prompting-best-practices);
 neither source establishes this candidate's clinical accuracy.
 
-Further partial-ECG variants, a fresh EXE/model rerun of the format correction,
+## Corrected 0e55a61 actual EXE rerun
+
+The actual Settings UI selects Astra subscription, then Quit/relaunch imports
+OAuth through the pinned provider. On loopback port 18792, Gateway protocol 4
+and server 2026.9.3 are verified. Codex agent runtime and Platform key remain
+disabled. The real Viewer file dialog, Analyze and Export controls repeat the
+same eight-row ROI; its source hash above matches the failed c3532d7 capture
+exactly, with Viewer-subrectangle MAE 0.0.
+
+The analysis completes in **96.990 s** (103.286 s including GUI/export), with
+four bound Astra-low/public-usage sessions, all completed with zero parse retries.
+Individual model turns take 26.776, 16.038, 17.307 and 36.633 s.
+The result uses schema-valid `format=partial` and eight canonical `name` /
+boolean `label_visible` entries. The parser accepts eight declarations, zero
+malformed entries, and retains V3–V6 as missing. Both refinement crops now have
+nonempty mapped lead inventories, containing only declared original-ROI leads.
+A separate read-only audit validates these properties without another model
+request or result mutation. Result SHA-256:
+`462234165629ebece90e013c14b6c5223004b69f0efe75db1e793d2b0febac07`.
+
+This passes the single-case **layout-schema and crop-mapping regression**, not
+clinical or label-visibility adjudication. Upper labels/deflections are clipped;
+the model's `label_visible=true` is a declaration, not an independent proof that
+each label is readable. A hidden-label challenge remains necessary. The result
+has three low-confidence findings, is incomplete and requires review. Source/
+review and actual App-owned summary renders were visually inspected at 150% DPI;
+capture exclusion remained enabled. The fixed panel title still says “12-Lead
+EKG Analysis” for partial input: a remaining presentation edge, not a completeness
+claim. Five projected boxes have maximum edge drift 0.744 physical pixels, not
+clinical localization accuracy. There is no general speedup claim (this partial
+run is slower than c3532d7's failed-contract run).
+
+Further partial-ECG variants, hidden-label grounding,
 display-scale transitions, canvas/layer interactions and broader candidate model
 validation remain separate gates. Binary distribution licensing and specialist
 adjudication of the failed clinical baseline stay open.

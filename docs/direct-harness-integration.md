@@ -134,3 +134,20 @@ pinned migration provider, with Codex agent runtime and Platform key disabled.
 Settings was selected through the real GUI. One exposed development case
 completed all four Astra-low stages under negotiated Gateway protocol 4 /
 OpenClaw 2026.9.3. See the [candidate desktop checkpoint](candidate-desktop-2026-09-11.md).
+
+## Partial-format corrected package
+
+Clean source `0e55a61197fadd8eaea97e3fcf5712b6a8afe87c` passes static/runtime
+verification and 20 frozen packaging smoke checks (100.62 s), with 90 approved
+native sources. Its 18,771 files total 353,382,280 bytes (337.01 MiB): launcher
+4,902,902 bytes (4.68 MiB), App layer 57,061,377 bytes (54.42 MiB), OpenClaw
+272,805,439 bytes, Node 23,515,464 bytes. This is 794 bytes above c3532d7.
+Source SHA-256: `1fe722db0755b6c9a118c511261ba16f9f9f56ab935ef8f38867a5761c1a2414`.
+Launcher SHA-256: `4fcf83c79bdf2de1a839b16c6601c56abadc015ed2667c079f0810a37240e179`.
+Payload SHA-256: `6ed7bf05c8d2a39d9b0a58de0aa865793148af2642c5b77ca36ce8d2c7a7ef5a`.
+Every source/live-copy file hash matches; original package remains unchanged.
+Push CI 34505422499 and PR CI 34505426574, and both secret scans, pass.
+The corrected actual partial-input run completes in 96.990 s with four
+Astra-low sessions and valid lead declarations/crop mapping. It remains incomplete
+and is not clinical acceptance. The c3532d7 ZIP/UPX transfer experiment above
+must not be relabeled as a 0e55a61 ZIP verification; no binary is published.

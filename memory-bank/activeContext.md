@@ -1,5 +1,27 @@
 # Active Context
 
+## 2026-09-11 Corrected partial EXE and public evidence refresh
+
+- Clean 0e55a61 package passes static verifier, 20 frozen smoke tests (100.62 s),
+  90 native-source checks, CI and secret scans. 337.01 MiB folder / 54.42 MiB
+  App / 4.68 MiB launcher; all 18,771 live-copy hashes match; preserved build
+  unchanged. Exact provenance is in docs/direct-harness-integration.md.
+- Actual new EXE PID 27896 / owned Gateway 15000 / port 18792: real Settings
+  Astra OAuth import, file dialog, Analyze, Export. Partial case 119 repeats
+  identical source SHA 00294b0b...1270 in 96.990 s (103.286 s GUI wall), four
+  verified Astra-low sessions, zero retries, valid eight-lead declarations and
+  both crop mappings; V3-V6 remain absent. Raw result SHA 46223416...ac07 and
+  separate read-only audit/usage receipts retained. Not label-visibility or
+  clinical acceptance, not general speedup. Review required; actual widget and
+  ROI render inspected at 150% DPI. Fixed 12-Lead title on partial input remains
+  a presentation edge; hidden-label grounding is another separate gate.
+- Pages update now states failed sealed 121-case baseline, exact denominators,
+  exposed rerun scope, measured candidates and unresolved distribution license.
+  Frontend testing skill / Browser unavailable -> existing Playwright + Edge.
+  Real screenshot caught long statistic overlap; wrapping fixed and own-cell
+  bounds added. Local 1440x1000, 390x844, 320x700 navigation/menu/Escape/focus,
+  console/overflow checks pass; 14 static site tests pass. Public deploy pending.
+
 ## 2026-09-11 Actual corrected EXE and first resize guard
 
 - c3532d7 ZIP is 148,419,324 bytes (141.54 MiB), SHA

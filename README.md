@@ -24,8 +24,10 @@ analysis time is 136.662 s. See the [sealed baseline and limitations](docs/evalu
 
 The separate c3532d7 EXE now has an actual OAuth/Astra-low case (113.735 s,
 no finalization retry) and a pre-send resize guard check. An intentional missing-
-lead capture exposed a structured-layout failure; its correction still needs a
-new EXE/model run. [Candidate evidence and open gates](docs/candidate-desktop-2026-09-11.md).
+lead capture exposed a structured-layout failure. Corrected 0e55a61 EXE reruns
+the identical ROI in 96.990 s with valid declarations and crop mapping, but
+still requires review; visible-label and clinical accuracy are not adjudicated.
+[Candidate evidence and open gates](docs/candidate-desktop-2026-09-11.md).
 
 Earlier pilot evidence:
 Real GUI captures reached the subscription transport with observed
