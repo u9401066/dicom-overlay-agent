@@ -123,6 +123,8 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "tall or broad T waves" in prompt
     assert "never rhythm_strip" in prompt
     assert "under 2200 characters" in prompt
+    assert "pending_multipass_review" in prompt
+    assert "not stage progress" in prompt
     assert "Normal/WNL is valid" in prompt
     assert "never emit urgent/emergent" in prompt
     assert "full modality checklist" in prompt

@@ -1670,6 +1670,64 @@ def test_final_report_can_revise_clinical_fields_with_locked_geometry() -> None:
     assert disposition["geometry_locked"] is True
 
 
+@pytest.mark.parametrize("limitation", ["", "Lead V1 missing", "Preliminary triage; review pending"])
+def test_final_report_resolves_only_exact_workflow_marker(limitation):
+    from dicom_overlay.application.interpretation_harness import (
+        PENDING_MULTIPASS_REASON,
+    )
+    from dicom_overlay.domain.modality_profile import get_active_registry
+
+    draft = _result([])
+    draft.incomplete = True
+    draft.incomplete_reasons = [PENDING_MULTIPASS_REASON, *([limitation] if limitation else [])]
+    final = _result([])
+    final.checklist = {
+        key: ChecklistItem(value="assessed", status=Severity.NORMAL)
+        for key in get_active_registry().resolve(final.modality.value).checklist_keys
+    }
+    result = reconcile_final_report(draft, final)
+    assert result.incomplete_reasons == ([limitation] if limitation else [])
+    assert result.incomplete is bool(limitation)
+    assert result.analysis_trace[-1]["stage"] == "workflow_progress"
+    assert result.analysis_trace[-1]["clinical_limitations_removed"] is False
+
+
+def test_incomplete_final_checklist_cannot_resolve_workflow_marker():
+    from dicom_overlay.application.interpretation_harness import (
+        PENDING_MULTIPASS_REASON,
+    )
+
+    draft = _result([])
+    draft.incomplete = True
+    draft.incomplete_reasons = [PENDING_MULTIPASS_REASON]
+    final = _result([])
+    final.checklist = {"rhythm": ChecklistItem(value="sinus", status=Severity.NORMAL)}
+    result = reconcile_final_report(draft, final)
+    assert result.incomplete
+    assert result.incomplete_reasons == [PENDING_MULTIPASS_REASON]
+
+
+def test_final_limitations_remain_after_workflow_resolution():
+    from dicom_overlay.application.interpretation_harness import (
+        PENDING_MULTIPASS_REASON,
+    )
+    from dicom_overlay.domain.modality_profile import get_active_registry
+
+    draft = _result([])
+    draft.incomplete = True
+    draft.incomplete_reasons = [PENDING_MULTIPASS_REASON]
+    final = _result([])
+    final.incomplete = True
+    final.incomplete_reasons = ["Lead V6 absent"]
+    final.checklist = {
+        key: ChecklistItem(value="not_assessable", status=Severity.INFO)
+        for key in get_active_registry().resolve(final.modality.value).checklist_keys
+    }
+    result = reconcile_final_report(draft, final)
+    assert result.incomplete
+    assert result.incomplete_reasons == ["Lead V6 absent"]
+
+
 def test_final_report_rejects_added_ids_and_moved_geometry() -> None:
     box = RegionRect(0.2, 0.2, 0.2, 0.2)
     draft = _result([_finding("f1", Severity.WARNING, box)])

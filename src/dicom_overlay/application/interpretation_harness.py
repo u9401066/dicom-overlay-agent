@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 # clinical region name: prompts must keep ``finding.regions`` empty while still
 # giving InputGuard a non-empty, fail-closed scope.
 PARTIAL_ECG_VISIBLE_PIXELS_SCOPE = "partial_ecg_visible_pixels_no_named_leads"
+PENDING_MULTIPASS_REASON = "pending_multipass_review"
 
 PROFESSIONAL_CO_READER_GUIDANCE = (
     "Act as professional image-interpretation software assisting a specialist "
@@ -345,7 +346,12 @@ def build_coarse_analysis_prompt(
         "must have bboxes=[]; never return a rejected coordinate.\n"
         "Return one JSON object only with keys modality, summary, severity, findings, "
         "checklist, layout, next_steps, image_quality, model_used, incomplete, and "
-        "incomplete_reasons. Set checklist={} in this triage turn. severity must be "
+        "incomplete_reasons. Set checklist={} in this triage turn. "
+        "For unfinished crop/final workflow, use the exact incomplete reason "
+        f"'{PENDING_MULTIPASS_REASON}' and incomplete=true; do not paraphrase "
+        "pending workflow as prose. Other incomplete reasons must describe actual "
+        "image coverage, quality, or clinical-evidence limitations, not stage progress. "
+        "severity must be "
         "exactly normal, info, warning, or critical; never emit urgent/emergent as "
         "a severity value. Keep the entire "
         "JSON under 2200 characters: summary <=25 words, each detail <=18 words, "

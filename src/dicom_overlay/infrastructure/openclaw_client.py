@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from dicom_overlay.application.interpretation_harness import (
     EKG_LVH_BALANCE_GUIDANCE,
     EKG_PRECORDIAL_REVIEW_GUIDANCE,
+    PENDING_MULTIPASS_REASON,
     PROFESSIONAL_CO_READER_GUIDANCE,
     build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
@@ -2511,6 +2512,11 @@ def _build_finalization_prompt(
         "supporting rhythm morphology.\n"
         "- Preserve clinically honest incomplete reasons and cautious language. "
         "Do not invent precise measurements from a screenshot.\n"
+        f"- {PENDING_MULTIPASS_REASON} is a workflow marker, not an image limitation. "
+        "Omit that exact marker once this final report supplies every required "
+        "checklist axis. Retain every genuine coverage, quality, unresolved "
+        "clinical-evidence or unassessed-axis limitation. Never copy preliminary "
+        "stage-progress prose into the completed report.\n"
         "- Top-level severity must agree with the final retained findings and "
         "checklist, with no severity floor inherited from a retracted draft "
         "candidate. Image-quality limitations do not raise clinical severity.\n"

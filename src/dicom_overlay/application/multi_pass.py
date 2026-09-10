@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 import structlog
 
+from dicom_overlay.application.interpretation_harness import PENDING_MULTIPASS_REASON
 from dicom_overlay.domain.ekg_layout import (
     canonical_ekg_lead_name,
     normalize_ekg_row_strip_layout,
@@ -2268,19 +2269,44 @@ def reconcile_final_report(
         severity_floor,
         key=lambda item: _SEVERITY_RANK[item],
     )
+    required_axes = get_active_registry().resolve(draft.modality.value).checklist_keys
+    pending_resolved = (
+        PENDING_MULTIPASS_REASON in draft.incomplete_reasons
+        and bool(required_axes)
+        and set(required_axes) <= final.checklist.keys()
+        and PENDING_MULTIPASS_REASON not in final.incomplete_reasons
+    )
+    draft_reasons = [
+        reason for reason in draft.incomplete_reasons
+        if not (pending_resolved and reason == PENDING_MULTIPASS_REASON)
+    ]
+    draft_still_incomplete = draft.incomplete and (
+        not pending_resolved or bool(draft_reasons)
+    )
     incomplete_reasons = unique(
-        draft.incomplete_reasons,
+        draft_reasons,
         final.incomplete_reasons,
     )
     validation_warnings = unique(
         draft.validation_warnings,
         final.validation_warnings,
     )
-    incomplete = draft.incomplete or final.incomplete or bool(validation_warnings)
+    incomplete = (
+        draft_still_incomplete or final.incomplete
+        or bool(validation_warnings) or bool(incomplete_reasons)
+    )
     review_reasons = unique(
-        draft.review_reasons if draft.incomplete else [],
+        draft.review_reasons if draft_still_incomplete else [],
         final.review_reasons,
     )
+    if pending_resolved:
+        disposition_trace.append({
+            "stage": "workflow_progress",
+            "status": "resolved",
+            "reason": PENDING_MULTIPASS_REASON,
+            "evidence": "accepted_final_report_with_all_required_checklist_axes",
+            "clinical_limitations_removed": False,
+        })
 
     return dataclasses.replace(
         final,
