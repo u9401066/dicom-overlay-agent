@@ -2,6 +2,22 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- New `scripts/score-desktop-cohort.py` verifies a complete >=100-case primary
+  hash seal before opening the pre-digested paired gold, then scores immutable
+  GUI exports with the existing scorer and no guardrail replay. Pilots stay
+  separate; original technical failures remain in the report. Source/usage/model
+  binding, pairing, changed evidence/gold, traversal, duplicate/negative indices,
+  overwrite protection and descriptive Wilson endpoints have synthetic checks.
+  New plus existing rebuild regressions: 38 passed; full unit/smoke/mock-integration
+  suite: 1437 passed, 5 explicit opt-in/local-artifact skips (205.01 s); Ruff passed. Initial test
+  exposed a floating-point nonzero lower endpoint at 0/100; fixed explicitly.
+  This is tooling, not a real clinical score. Main at 15:06 UTC: 95 primary
+  successes + six earlier pilots = 101 distinct actual UI cases.
+- Direct independent-harness integration is being developed in a new isolated
+  worktree based on bf28d82, pinning public harness 9d24e28. It does not merge
+  old PR #4 compatibility exports, change the frozen main cohort, or modify the
+  verified f7e3347 package. No full-extraction or canonical export claim yet.
+
 - Integrated candidate is now `f7e3347`: PR #16 merged into #15, then #15
   merged into #13's branch; #13 remains draft and main stays on the frozen
   7.1-2 cohort implementation. CI 34489747248 and Secret 34489747329 pass.
