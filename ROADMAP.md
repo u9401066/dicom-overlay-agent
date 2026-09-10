@@ -209,9 +209,11 @@ The Luna observations below are historical, not the current model target.
 - [x] Align working-tree product metadata `0.4.7` and harness/plugin `1.5.8`
   while keeping OpenClaw pinned at `2026.7.1-2`; prepare the synthetic-only
   GitHub Pages source and public setup documentation.
-- [ ] Deploy the current Pages source, verify the public URL against the release
-  commit, then create the first Git tag and GitHub Release. Do not call metadata
-  alignment a publication.
+- [x] Deploy Pages from `main` and verify the public URL on desktop/mobile.
+  September 10 deployment `34467904677` published `2fd0fec`; this is a
+  development website, not a clinical or binary release.
+- [ ] After the remaining clinical and clean-bundle gates, create the first Git
+  tag and GitHub Release. Metadata alignment and Pages alone are not a release.
 - [x] Reduce the verified staged OpenClaw runtime to 165.162 MiB, a conservative
   19.804 MiB reduction, while retaining required templates and internal `dist`
   chunks.

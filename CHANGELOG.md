@@ -13,6 +13,12 @@
 
 ### Added
 
+- **GitHub Pages published**：9 月 10 日由 `main` 部署成功，公開 URL 已以
+  Edge/Playwright 驗證桌面與手機版、導覽、主控台與版面。網站發布不代表
+  百例臨床驗收或新版執行檔完成；仍未建立 release tag。
+- **Workflow/clinical limitation separation**：final report 完整覆蓋 checklist
+  後只解除精確的 `pending_multipass_review` 工作流程標記，保留真正的
+  臨床限制、缺漏與驗證警告；不模糊刪除舊版自由文字。
 - **Astra low native subscription preset**：`openai-codex-astra` 選擇
   `openai/gpt-6-astra` / low，保持 OpenClaw-owned image agent；native OAuth
   fingerprint 變動時重新以公開 migration provider 匯入，不保留 Platform API key。

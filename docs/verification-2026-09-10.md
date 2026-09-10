@@ -80,13 +80,21 @@ Local full suite before the final incremental changes: **1243 passed, 4 opt-in
 skips**. Subsequent targeted contract/acceptance checks: **302 passed**.
 Commit `ca801b7` passed GitHub CI and Secret scan. Its local full suite was
 **1288 passed, 4 opt-in skips**. Later changes must earn their own CI result;
-mocks and unit tests do not count as real GUI cases.
+mocks and unit tests do not count as real GUI cases. Workflow-progress commit
+`a9fc705` subsequently passed all CI/Secret scan checks and was merged through
+PR #6 as `58af7a5`. Its local suite passed **1293 tests, 4 opt-in skips**.
 
 Website source passed 11 smoke checks and actual Playwright/installed Edge QA
 at 1440×1000 and 390×844: identity, content, console, overflow, docs navigation,
 mobile menu open/Escape/focus, and screenshots. Browser plugin was unavailable;
 QA used an isolated dependency environment, not the packaged App. Public Pages
-deployment of this source is still pending.
+deployment **34467904677** published commit `2fd0fec` successfully; the same
+interaction and screenshot checks then passed against the
+[public URL](https://u9401066.github.io/dicom-overlay-agent/). The preceding
+failed deployment remains recorded: pytest had auto-loaded Qt without libEGL;
+the static-site job now disables only the unused pytest-qt plugin and still
+runs its 11 required tests. This publishes the development website, not a
+clinical release, release tag, or new packaged binary.
 
 GitHub secret scanning and push protection are enabled. The one historical
 Gateway-token disclosure has an exact documented Gitleaks baseline; it is not
@@ -95,4 +103,4 @@ has not been rewritten. See [SECURITY.md](../SECURITY.md).
 
 Outstanding release gates: ≥100 distinct real Astra cases with source/model
 identity and honest clinical scoring, real partial-lead tests, visual bbox/DPI
-review, fresh clean bundle measurement, Pages publication, and release artifacts.
+review, fresh clean bundle measurement, and release artifacts.

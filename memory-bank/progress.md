@@ -5,6 +5,16 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Public Pages deployed successfully at `2fd0fec` (run 34467904677) and passed
+  actual public-URL desktop/mobile browser QA. PR #5 fixes only static-site Qt
+  plugin loading. PR #6 workflow-marker fix passed CI and merged as `58af7a5`.
+  Neither website nor source publication is a clinical/binary release.
+- Main real-GUI batch begins at cohort index 7 after private pilot cases.
+  A transient UIAutomation ElementNotAvailableException initially prevented
+  opening, before any model request. Bounded UI-only retries now require an
+  explicit open receipt and a real Viewer-client screenshot identity check
+  before Analyze. Successful exports still require independent ROI/model
+  receipts; technical timeouts are retained and never counted as completions.
 - Workflow-progress repair uses the exact `pending_multipass_review` marker;
   successful final reconciliation removes only that marker once all required
   checklist axes are present. No NLP deletion of clinical limitation prose is
