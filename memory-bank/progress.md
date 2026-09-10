@@ -5,6 +5,14 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Isolated-PATH UPX package passed 84-file native provenance audit and frozen
+  checks; 239.03 MiB total / 53.41 MiB App layer. Compressed Node HTTPS request
+  succeeded. Main full regression 1305 passed, 4 opt-in skips. No binary release.
+- OpenClaw 9.3 native bbox tool actually executed through public Gateway with
+  exact source/nonce/coordinate digest receipt. Public migration-only CLI also
+  imported fabricated OAuth with no Codex binary present; full plugin runtime
+  inspection correctly remains an error. No real auth/model used in these probes.
+
 - Fresh pinned lock npm audit: 11 affected production package entries, 7 high
   and 4 moderate; all found at the same versions in slim staging. Candidate
   2026.9.3 raw lock: zero. Reachability not established; old-pin rebuilt binaries

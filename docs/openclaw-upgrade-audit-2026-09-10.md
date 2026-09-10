@@ -33,6 +33,27 @@ an ephemeral Gateway credential, explicit isolated workspace, and read-only
 config mode. It imported no subscription credential and sent no model request.
 Config validity is not authentication evidence.
 
+Two further isolated checks now have concrete receipts:
+
+- **Native bbox tool execution:** a local fixture provider invoked the unchanged
+  `dicom_bbox_validate` through the candidate Gateway. One valid box was retained,
+  one boundary-crossing box was clipped, and an overly broad ECG box was rejected.
+  Exact tool-call ID, image digest, per-turn nonce and canonical accepted-box
+  digest matched the absolute-path audit. Run
+  `53c98061226545b6834ec11d2cb22aa6` completed with correlated final events.
+- **OAuth-only migration capability:** a separate candidate installation omitted
+  both `@openai/codex` and its platform package/executable. Public
+  `migrate plan/apply codex --item auth:openai` successfully imported fabricated,
+  non-usable OAuth values; `models auth list --json` reported one `openai` OAuth
+  profile. No real credentials were read and no model request was sent. The
+  selected OpenClaw model stayed unchanged and the migration plugin was disabled
+  afterward. Full `plugins inspect codex` still reports a missing native-runtime
+  dependency; **that is not a full-plugin loading pass**. The migration-only
+  capability was tested independently and succeeded without a Codex executable.
+
+These tests do not establish real subscription authentication, clinical accuracy,
+state rollback, graceful shutdown, or readiness of a slim candidate bundle.
+
 Private receipts remain under `data/tmp/openclaw-upgrade-research-20260910/`.
 Probe run ID: `661ed7803578461eac4f665aa533e378`. No private evaluation images,
 credentials, or user session contents are published with this document.
@@ -119,19 +140,24 @@ Re-audit the final candidate lock and shipped package inventory before release.
 
 ## Concrete upgrade work still required
 
-1. **Template relocation:** the staging script's pinned
-   `src/agents/templates/HEARTBEAT.md` does not exist in the candidate. The other
-   six checked `docs/reference/templates/` assets remain present. Select the
-   candidate's supported template source and verify fresh-workspace startup;
-   do not simply skip the missing template check.
+1. **Published layout changes:** the candidate provides the historical HEARTBEAT
+   document under `docs/reference/templates/`, not `src/agents/templates/`.
+   Verify which current templates fresh workspace startup actually requires;
+   do not simply skip the old check. npm now installs the core's dependencies
+   beside `openclaw`, not nested inside it. Staging only the core directory would
+   omit the dependency closure. Preserve the frozen flat tree and slim around
+   it without pruning internal `dist` chunks.
 2. **OAuth-only migration packaging:** the new migration plugin has a different
    dependency graph and requires its matching host API. The current staging
    script intentionally rejects any identity other than 2026.7.1-1. Validate a
-   new exact, minimal migration-only staging recipe and prove it works without
-   Codex agent binaries, supervision, or Platform API keys.
-3. **Native clinical harness:** validate plugin registration and actual
-   `dicom_bbox_validate` tool receipts, image/turn binding, final reconciliation,
-   timeout/cancel paths, and absolute audit paths against the new Gateway.
+   new exact, minimal migration-only staging recipe. The fabricated-auth probe
+   above proves the public capability can work without Codex binaries; repeat
+   against the final slim package and actual App. Use exact `auth:openai` item
+   selection, disable supervision/catalog discovery, and never substitute a full
+   Codex runtime or Platform key to satisfy the inspector.
+3. **Native clinical harness:** the basic native bbox/image/nonce/digest/absolute
+   audit contract now passes. Final reconciliation, timeout/cancel paths and
+   real clinical turns still require validation against the new Gateway.
 4. **State and rollback:** test migration in explicit copies. Preserve the
    currently working old runtime/state; never use the newer state as an
    assumed backwards-compatible rollback.

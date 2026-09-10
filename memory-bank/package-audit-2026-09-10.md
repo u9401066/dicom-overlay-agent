@@ -44,7 +44,17 @@ passing bundle; local absolute user paths are not written into that inventory.
 
 Regression checks cover mixed-case PATH pollution, unrelated Qt/Python paths,
 unresolved Windows roots, sibling-prefix escapes, empty/malformed inventories
-and output boundaries. Isolated-PATH real rebuild and size checks remain next.
+and protected output boundaries. Full regression: **1305 passed, 4 explicit
+opt-in skips**; Ruff passed.
+
+The isolated-PATH UPX rebuild at `8ba5ea8` passed the existing package verifier
+and the new source audit: **84 native source files** (52 build environment,
+24 Python runtime, 7 staged OpenClaw, 1 portable Node), none from ambient apps.
+It measures **239.03 MiB total**: launcher 4.46, App/Python/Qt 53.41, OpenClaw
+163.19, Node 22.43 MiB. The native inventory itself is included in that total.
+The compressed Node executable successfully fetched official npm metadata over
+HTTPS (Node 24.18.0, exact package 2026.9.3); no auth or model traffic was sent.
+This does not close the real packaged GUI/OAuth/clinical or security gates.
 
 ## Publication blockers
 
