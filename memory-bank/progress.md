@@ -5,6 +5,12 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- PR #3 was updated from its historical draft description, marked ready and
+  merged as `445ac9e` after `3af5f2c` CI/Secret scan passed. This publishes
+  development source, not a clinical release or fresh executable. First Pages
+  deploy 34467412590 failed because pytest auto-loaded the desktop Qt plugin
+  without Linux libEGL; static Pages checks now explicitly disable pytest-qt.
+  Website checks themselves remain mandatory before upload.
 - `ca801b7` pushed; GitHub CI 34465682578 and Secret scan 34465682564 are
   green. Local full regression: 1288 passed, 4 opt-in skips (165.64 s).
 - Clean real GUI case 41045474 export `desktop-20260910-102218-658881` completed

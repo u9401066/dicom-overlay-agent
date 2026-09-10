@@ -248,3 +248,4 @@ def test_pages_workflow_uses_current_official_action_majors() -> None:
         for command in commands
     )
     assert validation_index < upload_index
+    assert "-p no:pytest-qt" in steps[validation_index]["run"]
