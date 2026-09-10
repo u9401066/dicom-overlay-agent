@@ -2,6 +2,52 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Capture client guard pushed as draft stacked PR #16 (`69ac5c9`); CI
+  34488167020 and Secret scans 34488169068 / 34488160587 pass. No main runtime
+  change or binary release. The original 9.3 packaged f184258 artifact is not
+  evidence for these later crop/client changes.
+- Main cohort case 85 completed actual GUI inference/export but its diagnostic
+  usage collector failed: Gateway log masking shortened one UUID to a prefix
+  plus `***`. Public session metadata and the exact session id still bound the
+  four actual Astra-low turns. Helper now requires matching public session id,
+  provider/model, >=16-character masked-run prefix and one unique log match;
+  14 synthetic positive/negative binding checks pass. Original failed receipt
+  and export remain unchanged; separate `usage-receipt.recovered.json` plus an
+  append-only recovery row record the repair, with no new model request.
+  Batch resumed at index 86. At 14:27 UTC, primary 79 distinct successes plus
+  six early pilots = 85; four primary technical-failure rows remain retained.
+  Primary seal preflight verifies 1301 artifact hashes, excludes pilots, and
+  will refuse sealing before planned indices 7..127 are complete. Gold scoring
+  has not run. Diagnostic helper changes do not alter the frozen main runtime.
+
+- Separate stacked `agent/capture-client-boundary-20260910` branch adds
+  fail-closed native client-area containment before/after screenshot capture.
+  Proportional window-margin scaling can enter a fixed-height titlebar after
+  a resize; no automatic ROI intersection/expansion is allowed. Ten regression
+  failures reproduced first, then 98 capture/agent/ROI tests pass. Read-only
+  native check against Viewer PID 26088 at 150% DPI accepted the current safe
+  ROI and rejected all four one-pixel chrome crossings; no screenshot or model
+  calls. Full unit/smoke/mock-integration regression: 1406 passed, 6 explicit
+  opt-in/local-artifact skips (166.24 s); Ruff passes. Actual resize/DPI and
+  model cases remain pending. See `docs/viewer-client-capture-boundary.md`.
+- Crop-scope fix is pushed as draft stacked PR #15 (`e583a92`); CI 34487320267
+  and Secret scans 34487320261 / 34487314337 pass. Candidate #13 is clean after
+  isolated merge `8c3fb6e`; CI 34486122894 and Secret scan 34486038887 pass.
+
+- Separate `agent/crop-provenance-20260910` worktree addresses unscoped crop
+  notes observed in the real UI cohort. Crop notes/rationale now carry the
+  orchestrator-owned normalized ROI bounds; original notes, diagnosis, bbox
+  mapping, prompts and request count remain unchanged. Synthetic scope
+  regression reproduced nine failures first; 149 scope/multi-pass tests pass
+  after the fix. Full unit/smoke/mock-integration: 1393 passed, 6 explicit
+  opt-in/local-artifact skips (171.93 s). Five initial native-plugin failures
+  were ERR_MODULE_NOT_FOUND in the new worktree; installing the locked 9.3
+  runtime under Node 24.18 resolved them without skips. Qt scope/wrapping and
+  JSON export checks pass; a synthetic offscreen report was visually reviewed
+  after explicitly loading Windows fonts (initial preview had missing glyphs).
+  See `docs/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
+  remains pending; main cohort untouched, 80 distinct UI successes at 14:08 UTC.
+
 - English/Traditional-Chinese READMEs, maintenance size charter and the upgrade
   audit now report the verified f184258 package/ZIP measurements, with explicit
   pending real candidate and distribution-license gates. The dated GUI progress

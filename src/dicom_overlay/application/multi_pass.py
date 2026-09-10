@@ -1653,11 +1653,33 @@ def _remap_finding_boxes(
     return dataclasses.replace(finding, bboxes=boxes)
 
 
-def _append_rationale(notes: list[str], rationale: str) -> list[str]:
-    text = rationale.strip()
-    if not text or text in notes:
-        return list(notes)
-    return [*notes, text]
+def _merge_crop_notes(
+    original_notes: list[str],
+    crop_notes: list[str],
+    rationale: str,
+    crop_region: RegionRect,
+) -> list[str]:
+    """Retain the local evidence scope when merging into a study-level finding.
+
+    For example, a refinement's "V1 is absent" describes the selected crop,
+    not necessarily the original ROI. The scope comes from the actual crop
+    supplied by the orchestrator, never from model-authored lead names. Raw
+    rationale and precise coordinates remain in the refinement audit trace.
+    """
+    prefix = (
+        "[Crop-only evidence; ROI "
+        f"x={crop_region.x:.4f} y={crop_region.y:.4f} "
+        f"w={crop_region.w:.4f} h={crop_region.h:.4f}] "
+    )
+    notes = list(original_notes)
+    for text in [*crop_notes, rationale]:
+        text = text.strip()
+        if not text:
+            continue
+        scoped = prefix + text
+        if scoped not in notes:
+            notes.append(scoped)
+    return notes
 
 
 def _unique_finding_id(findings: list[Finding], requested: str) -> str:
@@ -1708,7 +1730,7 @@ def apply_refinement_delta(
         mapped = dataclasses.replace(
             mapped,
             id=_unique_finding_id(findings, mapped.id),
-            notes=_append_rationale(mapped.notes, delta.rationale),
+            notes=_merge_crop_notes([], mapped.notes, delta.rationale, crop_region),
         )
         return [*findings, mapped]
 
@@ -1722,17 +1744,17 @@ def apply_refinement_delta(
             result.append(
                 dataclasses.replace(
                     current,
-                    notes=_append_rationale(current.notes, delta.rationale),
+                    notes=_merge_crop_notes(
+                        current.notes, [], delta.rationale, crop_region
+                    ),
                 )
             )
             continue
 
         mapped = _remap_finding_boxes(payload, crop_region)
-        notes = list(current.notes)
-        for note in mapped.notes:
-            if note and note not in notes:
-                notes.append(note)
-        notes = _append_rationale(notes, delta.rationale)
+        notes = _merge_crop_notes(
+            current.notes, mapped.notes, delta.rationale, crop_region
+        )
         if delta.action is RefinementAction.CONFIRM:
             result.append(
                 dataclasses.replace(

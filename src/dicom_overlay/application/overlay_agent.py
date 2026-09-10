@@ -987,10 +987,16 @@ class OverlayAgent:
                 self._review_snapshot = None
             self._transition(AgentState.ERROR)
             if self.on_error:
-                self.on_error(
-                    "Viewer 被遮擋、移動或 ROI 超出視窗，未送出影像。"
-                    "請關閉遮擋視窗、確認 ROI 後按 Analyze 重試。"
-                )
+                if str(exc) == "roi_outside_viewer_client":
+                    self.on_error(
+                        "ROI 跨入 Viewer 標題列或邊框，未送出影像。"
+                        "請重新框選安全影像區域後按 Analyze 重試。"
+                    )
+                else:
+                    self.on_error(
+                        "Viewer 被遮擋、移動或 ROI 超出視窗，未送出影像。"
+                        "請關閉遮擋視窗、確認 ROI 後按 Analyze 重試。"
+                    )
             return
         except Exception:
             logger.exception("ROI capture failed")
