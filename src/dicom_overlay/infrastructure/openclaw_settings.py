@@ -56,6 +56,7 @@ class ProviderProfile:
     context_window: int = 0
     max_tokens: int = 0
     reasoning: bool = False
+    reasoning_effort: str = ""
     agent_runtime: str = ""
     requires_vision_check: bool = True
     notes: str = ""
@@ -112,6 +113,7 @@ def default_provider_profiles() -> list[ProviderProfile]:
             provider_type=ProviderType.OPENAI,
             model="gpt-5.6-luna",
             api_key_env="",
+            reasoning_effort="high",
             auth_mode=ProviderAuthMode.CODEX_SUBSCRIPTION,
             api="openai-chatgpt-responses",
             input_modalities=("text", "image"),
@@ -124,6 +126,27 @@ def default_provider_profiles() -> list[ProviderProfile]:
                 "uses the local ChatGPT/Codex OAuth allowance. Run `codex "
                 "login` first; no Platform API key or Codex agent runtime is "
                 "used."
+            ),
+        ),
+        ProviderProfile(
+            key="openai-codex-astra",
+            label="OpenAI GPT-6 Astra via Codex Subscription",
+            provider_id="openai",
+            provider_type=ProviderType.OPENAI,
+            model="gpt-6-astra",
+            api_key_env="",
+            auth_mode=ProviderAuthMode.CODEX_SUBSCRIPTION,
+            api="openai-chatgpt-responses",
+            input_modalities=("text", "image"),
+            context_window=1_050_000,
+            max_tokens=128_000,
+            reasoning=True,
+            reasoning_effort="low",
+            agent_runtime="openclaw",
+            notes=(
+                "GPT-6 Astra with low reasoning effort through local ChatGPT/Codex "
+                "OAuth allowance. OpenClaw owns image interpretation; no Platform "
+                "API key or Codex agent runtime is used."
             ),
         ),
         ProviderProfile(
@@ -226,6 +249,8 @@ def build_openclaw_config(
     Secrets are represented as OpenClaw SecretRef objects so generated config
     can remain shareable while values live in the local environment/.env file.
     """
+    if profile.reasoning_effort not in {"", "low", "medium", "high"}:
+        raise ValueError("reasoning_effort must be empty, low, medium, or high")
     provider_timeout_sec, agent_timeout_sec = derive_openclaw_timeout_budget(
         inference_timeout_sec
     )
@@ -299,6 +324,11 @@ def build_openclaw_config(
                 },
                 "imageMaxDimensionPx": image_max_dimension_px,
                 "timeoutSeconds": agent_timeout_sec,
+                **(
+                    {"thinkingDefault": profile.reasoning_effort}
+                    if profile.reasoning_effort
+                    else {}
+                ),
             },
         },
         "tools": build_analysis_tool_policy(["dicom_bbox_validate"]),
@@ -326,6 +356,9 @@ def merge_openclaw_config(
     result = dict(existing)
     for key in ("gateway", "models", "agents"):
         result[key] = _deep_merge(result.get(key, {}), managed.get(key, {}))
+    managed_defaults = managed.get("agents", {}).get("defaults", {})
+    if "thinkingDefault" not in managed_defaults:
+        result.get("agents", {}).get("defaults", {}).pop("thinkingDefault", None)
     managed_providers = managed.get("models", {}).get("providers", {})
     if isinstance(managed_providers, dict):
         result_providers = result.setdefault("models", {}).setdefault("providers", {})

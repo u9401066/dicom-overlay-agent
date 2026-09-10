@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -66,6 +67,13 @@ def ensure_openclaw_subscription_auth(
     if not uses_codex_subscription_transport(config_path):
         return {"status": "not_required"}
     _verify_source_auth(source_codex_home)
+    native_auth = _read_json(source_codex_home / "auth.json")
+    # Snapshot the OAuth credential once. Never copy a Platform key or unrelated
+    # native settings, and bind the receipt to exactly what was imported.
+    source_auth = {"auth_mode": "chatgpt", "tokens": native_auth["tokens"]}
+    source_auth_sha256 = hashlib.sha256(
+        json.dumps(source_auth, sort_keys=True).encode("utf-8")
+    ).hexdigest()
     _verify_migration_plugin(plugin_path)
     state_home.mkdir(parents=True, exist_ok=True)
     env = dict(environment or os.environ)
@@ -80,7 +88,15 @@ def ensure_openclaw_subscription_auth(
             "USERPROFILE": str(state_home),
         }
     )
-    if _auth_profile_is_ready(
+    previous_audit = _read_json(audit_path)
+    source_unchanged = (
+        previous_audit.get("schema_version") == 2
+        and previous_audit.get("status") == "ready"
+        and previous_audit.get("source_auth_sha256") == source_auth_sha256
+    )
+    # Listing a profile proves its existence, not that its refresh token is
+    # current. Native Codex can rotate it while the desktop app is not running.
+    if source_unchanged and _auth_profile_is_ready(
         node_executable=node_executable,
         openclaw_cli=openclaw_cli,
         config_path=config_path,
@@ -91,6 +107,7 @@ def ensure_openclaw_subscription_auth(
             status="ready",
             reused=True,
             platform_key_was_present=platform_key_was_present,
+            source_auth_sha256=source_auth_sha256,
         )
         _write_json_atomic(audit_path, audit)
         return audit
@@ -104,9 +121,7 @@ def ensure_openclaw_subscription_auth(
             dir=state_home,
         ) as source_text:
             sanitized_source = Path(source_text)
-            shutil.copy2(
-                source_codex_home / "auth.json", sanitized_source / "auth.json"
-            )
+            _write_json_atomic(sanitized_source / "auth.json", source_auth)
             models_cache = source_codex_home / "models_cache.json"
             if models_cache.is_file():
                 shutil.copy2(models_cache, sanitized_source / "models_cache.json")
@@ -163,6 +178,7 @@ def ensure_openclaw_subscription_auth(
         platform_key_was_present=platform_key_was_present,
         migration_exit=migration_exit,
         diagnostic=migration_diagnostic,
+        source_auth_sha256=source_auth_sha256,
     )
     _write_json_atomic(audit_path, audit)
     if not ready:
@@ -343,14 +359,16 @@ def _auth_audit(
     status: str,
     reused: bool,
     platform_key_was_present: bool,
+    source_auth_sha256: str,
     migration_exit: int | None = None,
     diagnostic: str = "",
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": status,
         "checked_at": datetime.now(UTC).isoformat(),
         "source_scope": "auth_and_model_cache_only",
+        "source_auth_sha256": source_auth_sha256,
         "provider": "openai",
         "auth_mode": "oauth",
         "billing_route": "chatgpt_codex_subscription",

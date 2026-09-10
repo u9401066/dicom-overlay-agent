@@ -1,0 +1,4 @@
+# Historical local Gateway token, no longer present in active config/.env or
+# current documentation (verified 2026-09-10). Exact finding only: new commits,
+# files, or leaked credentials remain blocked. See SECURITY.md.
+08581ba084318d97853be499e989fa8d780cb274:memory-bank/activeContext.md:generic-api-key:33

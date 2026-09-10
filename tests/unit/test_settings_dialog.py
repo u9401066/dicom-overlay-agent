@@ -15,6 +15,7 @@ def test_settings_dialog_lists_desktop_provider_profiles(qtbot, tmp_path):
     assert "OpenAI Subscription via OpenClaw" in labels
     assert "OpenAI GPT-5.4 Mini Vision" in labels
     assert "OpenAI GPT-5.6 Luna via Codex Subscription" in labels
+    assert "OpenAI GPT-6 Astra via Codex Subscription" in labels
     assert "OpenAI GPT-5.6 Luna Vision (API key)" in labels
     assert "OpenRouter" in labels
     assert "GitHub Copilot CLI BYOK-compatible" in labels
@@ -72,6 +73,25 @@ def test_settings_dialog_updates_fields_when_provider_changes(qtbot, tmp_path):
     assert dialog._api_key_env_edit.text() == "OPENROUTER_API_KEY"
 
 
+def test_settings_dialog_subscription_comparison_presets(qtbot, tmp_path):
+    dialog = SettingsDialog(repo_root=tmp_path)
+    qtbot.addWidget(dialog)
+    for key, model, effort in (
+        ("openai-codex-luna", "gpt-5.6-luna", "high"),
+        ("openai-codex-astra", "gpt-6-astra", "low"),
+    ):
+        index = next(
+            i
+            for i in range(dialog._provider_combo.count())
+            if dialog._provider_combo.itemData(i).key == key
+        )
+        dialog._provider_combo.setCurrentIndex(index)
+        assert dialog.selected_profile().model == model
+        assert dialog.selected_profile().reasoning_effort == effort
+        assert dialog._reasoning_effort_label.text() == effort
+        assert not dialog._api_key_edit.isEnabled()
+
+
 def test_settings_dialog_disables_api_transport_for_codex_subscription(qtbot, tmp_path):
     dialog = SettingsDialog(repo_root=tmp_path)
     qtbot.addWidget(dialog)
@@ -89,8 +109,7 @@ def test_settings_dialog_disables_api_transport_for_codex_subscription(qtbot, tm
     assert dialog._api_key_edit.isEnabled() is False
     assert dialog._api_key_edit.placeholderText() == "Uses local Codex sign-in"
     assert (
-        dialog._inference_route.text()
-        == "OpenClaw agent | ChatGPT subscription OAuth"
+        dialog._inference_route.text() == "OpenClaw agent | ChatGPT subscription OAuth"
     )
 
 

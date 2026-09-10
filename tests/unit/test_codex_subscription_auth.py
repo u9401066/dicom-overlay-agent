@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from dicom_overlay.infrastructure.codex_subscription_auth import (
@@ -55,7 +56,11 @@ def test_auth_import_uses_plugin_only_for_migration(monkeypatch, tmp_path) -> No
     _write_json(config, _subscription_config())
     _write_json(
         source / "auth.json",
-        {"auth_mode": "chatgpt", "tokens": {"access_token": "never-log-me"}},
+        {
+            "auth_mode": "chatgpt",
+            "tokens": {"access_token": "never-log-me"},
+            "OPENAI_API_KEY": "never-copy-me",
+        },
     )
     _write_json(
         plugin / "package.json",
@@ -83,6 +88,11 @@ def test_auth_import_uses_plugin_only_for_migration(monkeypatch, tmp_path) -> No
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs["env"]), int(kwargs["timeout"])))
         if "migrate" in command:
+            sanitized_source = command[command.index("--from") + 1]
+            copied_auth = json.loads(
+                (Path(sanitized_source) / "auth.json").read_text(encoding="utf-8")
+            )
+            assert set(copied_auth) == {"auth_mode", "tokens"}
             payload = json.loads(config.read_text(encoding="utf-8"))
             payload["auth"] = {
                 "profiles": {
@@ -115,21 +125,22 @@ def test_auth_import_uses_plugin_only_for_migration(monkeypatch, tmp_path) -> No
 
     monkeypatch.setattr("subprocess.run", fake_run)
 
-    result = ensure_openclaw_subscription_auth(
-        node_executable="node",
-        openclaw_cli=cli,
-        config_path=config,
-        state_home=state,
-        source_codex_home=source,
-        plugin_path=plugin,
-        working_directory=tmp_path,
-        audit_path=audit,
-        environment={
+    import_args = {
+        "node_executable": "node",
+        "openclaw_cli": cli,
+        "config_path": config,
+        "state_home": state,
+        "source_codex_home": source,
+        "plugin_path": plugin,
+        "working_directory": tmp_path,
+        "audit_path": audit,
+        "environment": {
             "OPENAI_API_KEY": "must-not-leak",
             "CODEX_HOME": "must-not-leak",
             "PATH": "test-path",
         },
-    )
+    }
+    result = ensure_openclaw_subscription_auth(**import_args)
 
     assert result["status"] == "ready"
     commands = [command for command, _env, _timeout in calls]
@@ -148,3 +159,20 @@ def test_auth_import_uses_plugin_only_for_migration(monkeypatch, tmp_path) -> No
     assert "must-not-leak" not in audit_text
     assert 'codex_agent_runtime_enabled": false' in audit_text
     assert 'temporary_migration_plugin_config_removed": true' in audit_text
+
+    # Unchanged native credentials can reuse OpenClaw's own refreshed profile.
+    second = ensure_openclaw_subscription_auth(**import_args)
+    assert second["reused_existing_profile"] is True
+    assert sum("migrate" in command for command, _, _ in calls) == 1
+
+    # A native rotation must re-import even when `models auth list` still sees
+    # the old profile; that public command does not validate refresh-token age.
+    _write_json(
+        source / "auth.json",
+        {"auth_mode": "chatgpt", "tokens": {"access_token": "rotated-private"}},
+    )
+    third = ensure_openclaw_subscription_auth(**import_args)
+    assert third["reused_existing_profile"] is False
+    assert third["source_auth_sha256"] != second["source_auth_sha256"]
+    assert sum("migrate" in command for command, _, _ in calls) == 2
+    assert "rotated-private" not in audit.read_text(encoding="utf-8")

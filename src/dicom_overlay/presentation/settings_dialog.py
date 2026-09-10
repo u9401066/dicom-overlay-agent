@@ -138,6 +138,9 @@ class SettingsDialog(QDialog):
         self._model_edit = QLineEdit()
         form.addRow("Model", self._model_edit)
 
+        self._reasoning_effort_label = QLabel()
+        form.addRow("Reasoning effort", self._reasoning_effort_label)
+
         self._base_url_edit = QLineEdit()
         form.addRow("Base URL", self._base_url_edit)
 
@@ -258,6 +261,9 @@ class SettingsDialog(QDialog):
 
     def _load_profile_fields(self, profile: ProviderProfile) -> None:
         self._model_edit.setText(profile.model)
+        self._reasoning_effort_label.setText(
+            profile.reasoning_effort or "Provider default"
+        )
         self._base_url_edit.setText(profile.base_url)
         self._api_key_env_edit.setText(profile.api_key_env)
         self._profile_notes.setText(profile.notes)
