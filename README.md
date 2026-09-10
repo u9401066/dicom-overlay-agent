@@ -13,6 +13,13 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 The active desktop acceptance target is **GPT-6 Astra low**, selected through
 Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
+As of September 10, 13:43 UTC, **70 distinct cases** had verified real
+QFileDialog → Analyze → Export, source-image identity, and Astra-low runtime
+receipts. The 128-case batch is still running; clinical scoring is deferred.
+Guard-stopped attempts remain in the ledger and do not count as successes.
+This is not a completed 100-case clinical acceptance result.
+
+Earlier pilot evidence:
 Real GUI captures reached the subscription transport with observed
 `gpt-6-astra / low`: the first calibration export timed out at finalization
 (179.252 s); a second completed finalization (165.043 s), but still required
@@ -74,17 +81,19 @@ accuracy, latency acceptance, or release readiness.
   binding PID, port, token SHA-256, launch owner, and one canonical absolute bbox
   audit path. A healthy listener without that exact receipt is refused, not
   adopted or killed.
-- The latest complete clean bundle remains the historical 2026-08-09 build:
-  7.05 MiB launcher, 94.74 MiB App+Python/Qt, and 368.01 MiB full bundle. Current
-  `dist/` is runtime-polluted and is not release evidence. Implemented safe
-  staging reductions and further candidates still require a clean measured
-  rebuild; OpenClaw internal `dist`, provider, Playwright, QuickJS, TypeScript,
-  and Node payloads are not candidates for unsupported pruning.
+- The isolated `f184258` candidate clean build passes static verification and
+  19 frozen packaging smoke checks: launcher 4.46 MiB, App/Python/Qt 53.84 MiB,
+  full folder 336.43 MiB, local distribution ZIP 141.14 MiB. All archived files
+  round-trip by SHA-256. This is not a published binary; real candidate
+  GUI/OAuth/clinical, rollback and PyQt distribution-license gates remain open.
+  OpenClaw internal `dist` chunks remain intact. See the
+  [measured package audit](memory-bank/package-audit-2026-09-10.md).
 - Latest candidate OpenClaw `2026.9.3` passed isolated public protocol 4,
   exact synthetic PNG transport, final-event, and generated Astra-config checks.
-  Core size is 175.683 MiB; OAuth-only staging, relocated templates, native bbox
-  tools, state rollback, and a clean bundle still need proof. The active cohort
-  keeps the existing pin. See the [September 10 audit](docs/openclaw-upgrade-audit-2026-09-10.md).
+  Slim native bbox receipts, fabricated OAuth-only migration and actual frozen
+  loopback image smoke now pass. Real subscription/clinical and rollback gates
+  remain open. The active cohort keeps the existing pin. See the
+  [September 10 audit](docs/openclaw-upgrade-audit-2026-09-10.md).
 
 The earlier frozen 32-case pair, 8-case unseen engineering gate, and incomplete
 9,922-case paired run remain historical evidence in the
@@ -106,7 +115,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MB; the last complete 2026-08-09 build was 7.05 MiB) plus a verified portable bundle with pinned Node/OpenClaw |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MiB; measured candidate 4.46 MiB) plus a portable bundle with pinned Node/OpenClaw and explicit release gates |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -537,28 +546,28 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 
 | Artifact | Budget | Verified measurement |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **7.05 MiB** in the last complete 2026-08-09 build |
-| App + Python/Qt layer | < 100 MiB | **94.74 MiB** in the last complete 2026-08-09 build |
-| Unreleased staged OpenClaw runtime | < 500 MiB | **165.162 MiB** |
-| Conservative staging reduction | - | **19.804 MiB** |
-| Portable Node.js `v24.18.0` | - | **88.25 MiB** |
-| Last complete zero-install bundle (2026-08-09) | < 650 MiB | **368.01 MiB** |
-| Unreleased full zero-install bundle | < 650 MiB | **Pending clean rebuild; no estimate** |
+| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **4.46 MiB** |
+| App + Python/Qt layer | < 100 MiB | **53.84 MiB** |
+| OpenClaw 2026.9.3 in bundle | < 500 MiB | **260.17 MiB** |
+| Portable Node.js `v24.18.0`, UPX | - | **22.43 MiB** |
+| Unreleased zero-install folder | < 650 MiB | **336.43 MiB** |
+| Local ZIP, Deflate 9 | Distribution only | **141.14 MiB** |
 
-The historical clean manifest records 7,397,370 B for the launcher, 99,338,066 B
-for App+Python/Qt, 194,011,520 B for OpenClaw, 92,534,088 B for Node, and
-385,883,674 B total. Current `dist/` is 378.18 MiB but includes 10.156 MiB of
-runtime residue, so it is not release evidence.
+These September 10 measurements are from isolated candidate `f184258`, not
+the historical `dist/` directory or a release. The archived 18,721 files each
+pass decompressed SHA-256 verification; ZIP compression does not reduce the
+installed footprint. Native source audit approves 89 files, and all 52
+UPX-marked payloads pass `upx -t`. Both notice inventories preserve upstream
+licenses. PyQt's GPL/commercial distribution decision remains open; the App's
+Apache-2.0 license alone does not authorize a bundled binary release.
 
-The verified Unreleased stage is 165.162 MiB and keeps required templates, `dist`,
-and plugin surfaces intact on purpose. Pruning internal `dist` chunks would
-couple the app to OpenClaw internals and break **Core 3** across releases, so
-implemented safe reductions trim PDB/tree-sitter headers (19.804 MiB), foreign
-native payloads (0.642 MiB), and Pillow AVIF (7.471 MiB) around the runtime.
-The resulting ~340.3 MiB arithmetic is not a measured build. Next gated
-candidates are win32ui/MFC (6.41 MiB while preserving pythoncom/win32com SAPI),
-unused Qt plugins (~3.87 MiB), and unused Pillow codecs (~0.70 MiB). A new total
-will be published only after a clean rebuild and packaged verification.
+The slim stage is 280.77 MiB before executable compression. Required templates,
+internal `dist`, provider and plugin surfaces remain intact. Pruning internal
+chunks would couple the App to OpenClaw internals and break **Core 3**.
+Historical measurements and failed builds are retained in the
+[package audit](memory-bank/package-audit-2026-09-10.md). Further Qt/Pillow/native
+removals require a dependency audit and actual packaged codec/GUI checks; old
+uncompressed estimates must not be subtracted from this compressed build.
 
 ## 📋 Documentation
 

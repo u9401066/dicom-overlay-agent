@@ -5,6 +5,33 @@ The isolated candidate branch now pins **2026.9.3**. The real Astra-low GUI
 cohort continues unchanged on **2026.7.1-2** in the primary worktree. This is a
 measured adoption audit, not a released binary or clinical-pass claim.
 
+## Corrected packaged App — f184258
+
+The isolated Windows EXE now passes all **19 packaging smoke checks**: explicit
+random loopback port, public Gateway authentication, exact synthetic PNG at
+the local fake provider, four persistent workspace files, no Codex runtime
+plugin loading, and owned shutdown with no residual listener. It keeps all five
+upstream template assets; BOOTSTRAP is a one-time ritual, not a required
+persistent file in the App's pre-seeded workspace. The pinned Gateway sanitizes
+raw provider error markers, so the test checks its exact public fixed-model
+401 event plus independent HTTP image proof.
+
+Earlier attempts exposed a real missing `--port` CLI override, default bundled
+Codex plugin activation despite allowlist removal, and the two smoke assumptions
+above. Failures remain recorded; the corrected build is a new artifact. Both
+normal managed startup and post-migration state now explicitly disable Codex.
+Fabricated App OAuth import/reuse still passes (16.765 / 3.024 s).
+
+Static bundle verification and 52 UPX integrity checks pass. The complete
+folder is **336.43 MiB** (App layer 53.84; launcher 4.46), while a local Deflate-9
+ZIP is **141.14 MiB**; every one of 18,721 extracted files matches its source
+SHA-256. No internal upstream chunks were pruned. CI 34483865336 and Secret scan
+34483602372 pass. See the [full measured audit](../memory-bank/package-audit-2026-09-10.md).
+
+No real subscription/model request was made in those candidate checks, and no
+binary was published. Candidate real GUI/OAuth/clinical/rollback, incomplete-ECG
+and DPI acceptance plus PyQt distribution-license gates remain open.
+
 ## Verified candidate boundary
 
 An isolated installation, disposable state/config, and the existing portable
@@ -97,8 +124,8 @@ rule. All source notice files are now preserved byte-for-byte. Node's official
 archive checksum is verified, its LICENSE retained, and the Python/bootloader/
 runtime notices have a separate manifest. This is a preservation check, not
 license clearance; the PyQt distribution decision remains open in
-[Third-Party Notices](../THIRD_PARTY_NOTICES.md). No final 9.3 EXE measurement
-is claimed by these staging sizes.
+[Third-Party Notices](../THIRD_PARTY_NOTICES.md). Those staging sizes are not
+EXE measurements; the later corrected packaged result is recorded above.
 
 The raw dependency tree contains 35,246 files. Installation used exact
 `openclaw@2026.9.3` and `@openclaw/codex@2026.9.3` with lifecycle scripts
@@ -108,8 +135,8 @@ Node 24.18.0**, not that host runtime. Subsequently the candidate worktree ran
 the full `npm ci` lifecycle under portable Node 24.18.0 successfully. The
 installer now puts portable Node on its process-local PATH so lifecycle scripts
 do not accidentally use host Node 25. The production install audited 335
-packages with zero advisory matches. Final packaging still requires a fresh
-stage without probe artifacts and actual EXE checks.
+packages with zero advisory matches. The later f184258 package used a fresh
+stage without probe artifacts and passed actual EXE checks as recorded above.
 
 Compared with the historical pinned core measurement of 83.43 MiB, candidate
 core growth is about **92.25 MiB**. Adding that difference to the historical

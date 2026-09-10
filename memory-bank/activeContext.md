@@ -2,6 +2,12 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- English/Traditional-Chinese READMEs, maintenance size charter and the upgrade
+  audit now report the verified f184258 package/ZIP measurements, with explicit
+  pending real candidate and distribution-license gates. The dated GUI progress
+  note is 70 distinct successes at 13:43 UTC, not clinical passes. Historical
+  pilot/failed-build evidence remains available rather than silently replaced.
+
 - f184258 rebuild is now verified: static bundle checks pass; **19/19 actual
   frozen packaging smoke checks pass**, including random-port public connect,
   exact synthetic PNG at the loopback provider, four persistent workspace files,

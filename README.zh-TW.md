@@ -12,7 +12,12 @@
 ## 開發證據 — 2026-09-10（尚未發布）
 
 目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
-`openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由，
+`openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由。
+截至 9 月 10 日 13:43 UTC，**70 個不重複案例**已驗證真實開檔 → Analyze →
+Export、來源影像身分與 Astra low runtime。128-case 批次仍在進行，尚未做臨床
+評分；被保護機制攔下的嘗試保留為失敗，不算成功。這不是百例臨床驗收通過。
+
+較早的 pilot 證據：
 runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整合階段逾時
 （179.252 秒），第二次完成整合（165.043 秒），但仍需複核。另一個不同案例在
 140.481 秒完成四個影像階段，來源 ROI 與 Astra low runtime 已核對，臨床評分待做；
@@ -64,14 +69,16 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
 - Managed Gateway 只有在原子、無 secret 的 ownership receipt 同時綁定 PID、port、
   token SHA-256、launch owner 與唯一 canonical absolute bbox audit path 時才可重用；
   健康但 receipt 不符的 listener 會被拒絕，不會被接管或終止。
-- 最近一次完整乾淨 bundle 仍是 2026-08-09 的歷史 build：launcher 7.05 MiB、
-  App+Python/Qt 94.74 MiB、full bundle 368.01 MiB。目前 `dist/` 受 runtime residue
-  污染，不是 release evidence；已實作的安全 staging 減量與後續候選仍須乾淨實測。
-  不會用刪除 OpenClaw `dist`、provider、Playwright、QuickJS、TypeScript 或 Node 的
-  方式製造不可靠的小數字。
+- 隔離候選 `f184258` 的乾淨 build 已通過 static verifier 與 19 項真實 EXE
+  packaging smoke：launcher 4.46 MiB、App/Python/Qt 53.84 MiB、完整資料夾
+  336.43 MiB、本機 ZIP 141.14 MiB。每個解壓檔案的 SHA-256 均一致。
+  尚未發布 binary；候選 GUI／真實 OAuth／臨床、rollback 與 PyQt 發佈授權
+  gates 仍未完成。OpenClaw 內部 `dist` 保持完整，詳見
+  [實測封裝稽核](memory-bank/package-audit-2026-09-10.md)。
 - 最新候選 OpenClaw `2026.9.3` 已通過隔離 protocol 4、合成 PNG 完整傳輸、
-  final event 與 App 產生的 Astra 設定驗證。核心量測 175.683 MiB；OAuth-only
-  staging、模板搬移、原生 bbox 工具、state rollback 與乾淨封裝仍須驗證。
+  final event 與 App 產生的 Astra 設定驗證；slim native bbox receipts、假憑證
+  OAuth-only migration 與真實 EXE loopback 圖片 smoke 也已通過。
+  真實訂閱、臨床與 state rollback gates 仍未完成。
   進行中的實機批次保持原 pin。詳見
   [9 月 10 日升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md)。
 
@@ -216,7 +223,7 @@ Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲�
 | 1 | **影像判讀圖層互動**（位置 + 內容） | AI 發現出現在正確的 *位置*（bbox/region 疊在原圖上），並提供可讀的 *內容*（checklist + 追問 chat） |
 | 2 | **OpenClaw 判讀完整 harness** | 一個可執行、CI 可驗證的合約，證明截圖 → 分析 → 疊加的迴圈確實可用 |
 | 3 | **OpenClaw plugin 兼容性** | 只透過穩定的公開 Gateway 協定溝通，能跨 OpenClaw 版本存活 |
-| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB；最近一次 2026-08-09 完整 build 為 7.05 MiB）加上含固定 Node/OpenClaw 的已驗證可攜 bundle |
+| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB；候選實測 4.46 MiB）加上固定 Node/OpenClaw 的可攜 bundle 與明確發布 gates |
 
 每個核心詳見下方 [核心詳解](#-核心詳解)。
 
@@ -409,25 +416,24 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 | 產物 | 預算 | 已驗證數字 |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | 最近一次 2026-08-09 完整 build 為 **7.05 MiB** |
-| App + Python/Qt 層 | < 100 MiB | 最近一次 2026-08-09 完整 build 為 **94.74 MiB** |
-| Unreleased staged OpenClaw runtime | < 500 MiB | **165.162 MiB** |
-| 保守 staging 減量 | - | **19.804 MiB** |
-| 可攜 Node.js `v24.18.0` | - | **88.25 MiB** |
-| 最近一次完整零安裝 bundle（2026-08-09） | < 650 MiB | **368.01 MiB** |
-| Unreleased 完整零安裝 bundle | < 650 MiB | **待乾淨重建；不預估** |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **4.46 MiB** |
+| App + Python/Qt 層 | < 100 MiB | **53.84 MiB** |
+| Bundle 內 OpenClaw 2026.9.3 | < 500 MiB | **260.17 MiB** |
+| 可攜 Node.js `v24.18.0`，UPX | - | **22.43 MiB** |
+| Unreleased 完整零安裝資料夾 | < 650 MiB | **336.43 MiB** |
+| 本機 ZIP，Deflate 9 | 僅傳輸封裝 | **141.14 MiB** |
 
-歷史 clean manifest 記錄 launcher 7,397,370 B、App+Python/Qt 99,338,066 B、
-OpenClaw 194,011,520 B、Node 92,534,088 B、總計 385,883,674 B。目前 `dist/`
-是 378.18 MiB，但含 10.156 MiB runtime residue，因此不是 release evidence。
+這是 9 月 10 日隔離候選 `f184258` 的實測，不是歷史 `dist/` 或正式 release。
+ZIP 的 18,721 個檔案均通過解壓 SHA-256 核對，但不會減少安裝後占用。
+89 個 native source 均通過來源稽核，52 個 UPX payload 通過 `upx -t`。
+兩份 notice inventories 保留上游授權；PyQt GPL／商業發佈方式仍待確認，
+App 的 Apache-2.0 授權本身不代表可直接發佈依賴的 binary。
 
-已驗證的 Unreleased stage 為 165.162 MiB，必要 templates、`dist` 與 plugin
-surfaces 都保持完整。修剪內部 `dist` chunks 會讓 app 耦合 OpenClaw 內部並
-跨版本破壞 **核心 3**。已實作的安全候選為 PDB/tree-sitter headers（19.804 MiB）、
-foreign-native payload（0.642 MiB）與 Pillow AVIF（7.471 MiB）；約 340.3 MiB
-只是算術推估，不是實測 bundle。下一批 gated 候選是 win32ui/MFC（6.41 MiB，
-保留 pythoncom/win32com SAPI）、未用 Qt plugins（約 3.87 MiB）及未用 Pillow
-codecs（約 0.70 MiB）。新數字只會在 clean rebuild 與 packaged verifier 通過後發布。
+可執行檔壓縮前 slim stage 為 280.77 MiB。必要模板、內部 `dist`、provider 與
+plugin surfaces 保持完整；裁剪內部 chunks 會破壞 **核心 3**。
+歷史量測與失敗保留在[封裝稽核](memory-bank/package-audit-2026-09-10.md)。
+若再移除 Qt／Pillow／native 元件，必須先稽核依賴並重做封裝 codec／GUI 測試；
+不能把舊版未壓縮的估計值直接從這次已壓縮的量測扣除。
 
 ## 📋 文檔
 
