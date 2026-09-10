@@ -109,3 +109,16 @@ payload-tree SHA-256 is `315b5495c3f87c07c06ea14fdef1a924a9da4dfc300ac3a295f1715
 The verifier report is outside the bundle. This is not a published release, a
 real-model check or clinical acceptance. It contains plugin 1.5.8 and does not
 cover the later [bbox producer correction](bbox-receipt-canonicalization.md).
+
+## Corrected-receipt packaged checkpoint
+
+Clean source `c3532d73c9f564a6fa9b6f90a625392b68a2bfb6` includes plugin 1.5.9 and
+the shared exact coordinate canonicalizer. Static/runtime verification passes;
+20 actual frozen packaging checks pass in 103.22 s. Launcher: 4,902,108 bytes
+(4.68 MiB); App: 57,060,583 bytes (54.42 MiB); folder: 353,381,486 bytes
+(337.01 MiB), 18,771 files. All 90 native dependency sources are approved.
+Source SHA-256: `38d62c0ac15e95d3bba3df89340aad0b16b6eba9485f28ff4d4d8caef500a427`.
+Payload SHA-256: `0ea7cf8b1c55652717858d5bb676156d20a6e07efe2bb0801e37c8d39859545b`.
+Push CI 34501374911 and PR CI 34501380408, plus both secret scans, pass.
+The verified bundle is preserved separately from any writable live-test copy.
+This does not close the GUI/OAuth/clinical or distribution-license gates.

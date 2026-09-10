@@ -1,5 +1,26 @@
 # Active Context
 
+## 2026-09-11 Post-seal usage and corrected package verification
+
+- Read-only usage supplement v2 binds all 460 public sessions to Astra low:
+  446 original stages plus 14 nested attempts. Thirteen synthetic binding checks
+  cover exact/masked identity ambiguity; two masked identifiers never suffice.
+  Seal verified unchanged, no inference or rescoring. Failed attempts without
+  exported identity remain unknown; no complete billing or monetary claim.
+  Supplement SHA 0684cbfb65d0bb7fcba56d46821d38c34220728b184bb278f415f4e26c45a045.
+- Cumulative exposure denylist now has 1,358 identities, conservatively including
+  all 128 selected cases. New blind selections must exclude them. Original
+  selection, gold, exports and failed baseline are unchanged.
+- Captured seven-box tool replay accepts all seven and matches the exact draft
+  digest under plugin 1.5.9. Zero model requests; not clinical validation.
+- c3532d7 clean-source static/runtime package verification passes; 20 frozen
+  smoke checks pass (103.22 s), 90 native sources approved. Launcher 4.68 MiB,
+  App 54.42 MiB, folder 337.01 MiB. Source and payload hashes are recorded in
+  docs/direct-harness-integration.md. CI push 34501374911 and PR 34501380408
+  pass on Windows/Ubuntu; secret scans pass. Immutable bundle retained; actual
+  candidate GUI/OAuth/model checks will use a separate writable copy.
+  No binary publication or license decision; failed clinical acceptance stays open.
+
 ## 2026-09-11 Bbox receipt defect and direct-model package checkpoint
 
 - Primary real-GUI cohort is complete and sealed: 121 distinct successes,

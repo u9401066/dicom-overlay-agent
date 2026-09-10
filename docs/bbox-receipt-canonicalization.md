@@ -57,7 +57,19 @@ patched or rescored with this correction. A fresh candidate GUI/model run must
 establish whether it reduces retries and end-to-end latency. Neither synthetic
 parity nor replaying captured tool arguments is clinical validation.
 
+An offline replay of the seven original tool arguments now accepts all seven,
+rejects none, and matches the exact retained-draft digest
+`162223f460e16205818fcdee726e418350625c2816438275124aeb30f23ac23b`.
+It uses zero model requests, mutates no source results and performs no clinical
+rescoring. The captured diagnostic audit SHA-256 is
+`55621debc931e419d3123e2996b2555cc29595aa1375b990e1c7069713ca63e9`.
+
 The separately preserved `7abc364` package still contains plugin 1.5.8. Its
 static verification and 20 actual frozen smoke checks pass, but those receipts
 do not cover this later correction. Distribution and actual clinical acceptance
 gates remain open.
+
+Clean source c3532d7's separate package includes both producer and consumer fixes.
+Its static/runtime verifier and 20 frozen packaging smoke checks pass (103.22 s).
+Both push and PR CI pass on Ubuntu and Windows, including four compatibility
+jobs. These remain engineering gates; actual candidate GUI/model testing is next.

@@ -15,8 +15,9 @@ The active desktop acceptance target is **GPT-6 Astra low**, selected through
 Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
 The primary real-desktop baseline is complete and sealed: **121 distinct cases**,
 six retained technical failures, with six earlier pilots excluded. There are
-446 recorded stage sessions with observed Astra-low runtime and public usage
-snapshots (not a complete billing ledger). Preliminary automated scoring does
+446 original stage snapshots; a separate post-seal supplement binds 460 sessions
+including nested attempts to observed Astra-low runtime and public usage
+(not a complete billing ledger). Preliminary automated scoring does
 **not meet acceptance**: strict match 0/46 complete-reference cases; annotated
 urgent concerns caught 2/21. Specialist adjudication is pending. Mean completed
 analysis time is 136.662 s. See the [sealed baseline and limitations](docs/evaluation-desktop-astra-2026-09-11.md).

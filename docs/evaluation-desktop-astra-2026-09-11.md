@@ -78,10 +78,26 @@ not represented in those 446 stage snapshots. Missing or aborted usage is not
 zero consumption. No currency charge, priority service tier or complete token
 total is inferred from these receipts.
 
+A separate, read-only post-seal supplement includes 14 nested rejected attempts:
+**460 unique sessions have public usage fields and bound Astra-low observations**.
+It makes no model requests and verifies the primary seal before and after.
+Binding requires both exact run/session identities, or one exact identity plus
+one uniquely matching masked identity with at least 16 visible prefix characters;
+two masked identities are rejected. Thirteen synthetic binding checks pass.
+Supplement SHA-256:
+`0684cbfb65d0bb7fcba56d46821d38c34220728b184bb278f415f4e26c45a045`.
+This does not replace the 446 original stage snapshots. Failed attempts without
+an exported identity, including the initial timeout, remain unbound and unknown.
+
+The entire 128-case selected cohort is now conservatively excluded from future
+blind selection. The cumulative exposure denylist contains **1,358 identities**,
+SHA-256 `8f9b67034a2d577ecad8cab80d32d6551a2e26fd39f1fce3a7c82cb76cd212ad`.
+Subsequent work on these cases is exposed development, not a new blind benchmark.
+
 ## Next acceptance work
 
-1. Preserve this baseline and mark its now-reviewed references as exposed for
-   future blind evaluation. Do not rewrite the baseline with current rules.
+1. Preserve this baseline and enforce the new exposure denylist for future blind
+   evaluation. Do not rewrite the baseline with current rules.
 2. Validate plugin 1.5.9's producer/consumer rounding correction in a new actual
    GUI/model candidate; establish retry and timing changes, not just unit passes.
 3. Review source readability, lead/layout grounding, diagnostic omissions,
