@@ -245,6 +245,11 @@ The Luna observations below are historical, not the current model target.
 - [x] Probe OpenClaw `2026.8.2` in isolation: public Gateway contract works, but
   unpacked core grows 83.43→196.68 MiB and migration/rollback gates remain open.
   Defer adoption and keep `2026.7.1-2` pinned.
+- [x] Recheck latest upstream on September 10: `2026.9.3` passes isolated
+  protocol 4, exact synthetic PNG transport, final events, and generated Astra
+  config validation. Core 175.683 MiB; see the dated upgrade audit.
+- [ ] Complete 2026.9.3 migration-only staging, relocated template, native bbox,
+  state rollback, real App, and clean portable-size gates before adoption.
 - [ ] Run and record a fresh unseen canary from the final frozen release source.
 - [ ] Perform the clean full Unreleased `0.4.7` bundle rebuild, packaged verification, size
   measurement and hash capture; do not estimate these values in advance.

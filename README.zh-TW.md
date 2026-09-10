@@ -69,10 +69,11 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
   污染，不是 release evidence；已實作的安全 staging 減量與後續候選仍須乾淨實測。
   不會用刪除 OpenClaw `dist`、provider、Playwright、QuickJS、TypeScript 或 Node 的
   方式製造不可靠的小數字。
-- OpenClaw `2026.8.2` 已通過隔離的公開 `connect`/`chat.send` protocol 檢查，仍
-  暫緩全面升級：auth/config migration、state rollback，以及 core unpacked size
-  由 83.43 增到 196.68 MiB 尚未解決。詳見
-  [2.x 決策紀錄](docs/openclaw-2x-decision-2026-09-02.md)。
+- 最新候選 OpenClaw `2026.9.3` 已通過隔離 protocol 4、合成 PNG 完整傳輸、
+  final event 與 App 產生的 Astra 設定驗證。核心量測 175.683 MiB；OAuth-only
+  staging、模板搬移、原生 bbox 工具、state rollback 與乾淨封裝仍須驗證。
+  進行中的實機批次保持原 pin。詳見
+  [9 月 10 日升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md)。
 
 較早的 32-case frozen pair、8-case unseen engineering gate 與尚未完成的
 9,922-case paired run 保留為歷史證據，詳見
@@ -367,8 +368,8 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   V5 導程被安全閘門排除；有效結果都明確標記為未校準的 supporting evidence。
 - **規則：** 升級 OpenClaw 前先確認 `connect` / `chat.send` schema、image
   attachment、OAuth/config migration、state rollback 與 clean package size。
-  `2026.8.2` 的隔離 protocol probe 已通過，但 core unpacked size 由 83.43 增至
-  196.68 MiB，其他 gate 未閉合，因此 audited pin 仍是 `2026.7.1-2`。
+  最新 `2026.9.3` 已通過隔離 protocol/config 檢查，但 migration-only staging、
+  原生臨床工具與其他 gate 尚未閉合，實機批次 pin 仍是 `2026.7.1-2`。
 
 ### 核心 4 — 最小化執行檔封裝
 
@@ -436,6 +437,7 @@ codecs（約 0.70 MiB）。新數字只會在 clean rebuild 與 packaged verifie
 - [2026-09-02 驗證紀錄](docs/verification-2026-09-02.md) - 當前證據、失敗與未完成 gates
 - [Evaluation cohorts](docs/evaluation-cohorts.md) - 9,922／128／partial corpus 身分與宣稱邊界
 - [OpenClaw 2.x 決策](docs/openclaw-2x-decision-2026-09-02.md) - 2026.8.2 隔離證據與暫緩升級 gates
+- [最新 OpenClaw 升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md) - 2026.9.3 協定／設定實證與量測
 - [Clinical knowledge governance](clinical_knowledge/README.md) - Canonical YAML、人／agent 步驟與 SQLite parity
 - [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
 - [影像 agent harness 參考稽核](docs/harness-reference-review-2026-08-28.md) - 採用公開設計模式但不增加封裝 runtime 依賴

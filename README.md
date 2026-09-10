@@ -80,10 +80,11 @@ accuracy, latency acceptance, or release readiness.
   staging reductions and further candidates still require a clean measured
   rebuild; OpenClaw internal `dist`, provider, Playwright, QuickJS, TypeScript,
   and Node payloads are not candidates for unsupported pruning.
-- OpenClaw `2026.8.2` passed an isolated public `connect`/`chat.send` protocol
-  check, but the upgrade is deferred: auth/config migration, state rollback,
-  and a core unpacked-size increase from 83.43 to 196.68 MiB remain unresolved.
-  See the [2.x decision record](docs/openclaw-2x-decision-2026-09-02.md).
+- Latest candidate OpenClaw `2026.9.3` passed isolated public protocol 4,
+  exact synthetic PNG transport, final-event, and generated Astra-config checks.
+  Core size is 175.683 MiB; OAuth-only staging, relocated templates, native bbox
+  tools, state rollback, and a clean bundle still need proof. The active cohort
+  keeps the existing pin. See the [September 10 audit](docs/openclaw-upgrade-audit-2026-09-10.md).
 
 The earlier frozen 32-case pair, 8-case unseen engineering gate, and incomplete
 9,922-case paired run remain historical evidence in the
@@ -429,9 +430,9 @@ portable across OpenClaw releases.
   deployment calibration.
 - **Rule:** before bumping OpenClaw, confirm the `connect` / `chat.send` schema,
   image attachment, OAuth/config migration, state rollback, and clean packaged
-  size. The isolated `2026.8.2` protocol probe passed, but its measured core
-  unpacked size grew from 83.43 to 196.68 MiB and the remaining gates are open;
-  the audited pin therefore stays `2026.7.1-2`.
+  size. The latest `2026.9.3` candidate passes the isolated protocol/config
+  checks, but migration-only staging, native clinical tools, and the other gates
+  remain open; the active pin stays `2026.7.1-2`.
 - The desktop Settings dialog exposes AI Provider profiles and selects the
   model and transport currently active in OpenClaw. The release-default
   `openai-vision` profile uses a Platform API key; **OpenAI Subscription via
@@ -566,6 +567,7 @@ will be published only after a clean rebuild and packaged verification.
 - [2026-09-02 Verification Record](docs/verification-2026-09-02.md) - Current evidence, failures, and unfinished gates
 - [Evaluation Cohorts](docs/evaluation-cohorts.md) - 9,922/128/partial corpus identities and claim boundaries
 - [OpenClaw 2.x Decision](docs/openclaw-2x-decision-2026-09-02.md) - Isolated 2026.8.2 evidence and deferred-upgrade gates
+- [Latest OpenClaw Audit](docs/openclaw-upgrade-audit-2026-09-10.md) - 2026.9.3 protocol/config proof and measured adoption work
 - [Clinical Knowledge Governance](clinical_knowledge/README.md) - Canonical YAML, human/agent steps, and SQLite parity
 - [AGENTS.md](AGENTS.md) - AI maintenance guardrails for the four cores
 - [Image-agent harness reference review](docs/harness-reference-review-2026-08-28.md) - Public patterns adopted without adding a packaged runtime dependency

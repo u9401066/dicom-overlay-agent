@@ -2,6 +2,19 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Latest upstream candidate is **2026.9.3**. Isolated supported-Node probe
+  negotiated protocol 4, sent a synthetic PNG through the existing public frame,
+  verified exact image hash at a loopback fake provider, and received correlated
+  final events. No paid model call. Public config validation accepted the App's
+  generated Astra profile. Core measured 175.683 MiB; full raw dependency tree
+  799.055 MiB includes 377.406 MiB of Codex runtime dependencies that must not ship.
+  HEARTBEAT template relocation and migration-only staging remain concrete gates.
+  See `docs/openclaw-upgrade-audit-2026-09-10.md`; active pin remains unchanged.
+- UI repair is isolated in worktree `data/tmp/astra-ui-worktree-20260910`, branch
+  `agent/astra-ui-report-20260910`, to preserve the running cohort fingerprint.
+  It fixes clipped wrapped labels, improves text contrast/priority, preserves full
+  review reasons behind a compact navigation alert, and clears stale warnings.
+  Real native panel preview inspected; not merged or counted as a new model case.
 - Public Pages deployment `34467904677` succeeded on `2fd0fec`; real Edge/
   Playwright checks passed on the public URL at 1440×1000 and 390×844, including
   navigation, mobile menu/Escape/focus, no overflow, and no console errors.
