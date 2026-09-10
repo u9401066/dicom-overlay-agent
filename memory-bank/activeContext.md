@@ -2,6 +2,17 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Public Pages deployment `34467904677` succeeded on `2fd0fec`; real Edge/
+  Playwright checks passed on the public URL at 1440×1000 and 390×844, including
+  navigation, mobile menu/Escape/focus, no overflow, and no console errors.
+  The previous Qt-plugin failure is repaired. PR #6 workflow-marker changes
+  passed CI and merged as `58af7a5`; full local suite 1293 passed, 4 skipped.
+  No clinical/binary release or tag is claimed.
+- The UI-only cohort now verifies the actual Viewer client screenshot against
+  all 128 answer-free source thumbnails BEFORE Analyze, then separately verifies
+  the exported ROI and every recorded model/effort receipt. File-dialog UIA
+  races are boundedly retried before analysis; Analyze is never blindly retried.
+  Source/clinical/workspace fingerprints must stay frozen during the batch.
 - User now requests **GPT-6 Astra low only**; Luna high comparison is dropped.
   Exact model ID is `gpt-6-astra`, routed through OpenClaw's
   `openai-chatgpt-responses` subscription transport, not a Codex agent runtime.
@@ -126,7 +137,7 @@
   public Pages deployment changes; tagging the feature branch alone will not
   deploy it.
 
-> Current state is the 2026-08-28 section above. Earlier dated session updates
+> Current state is the 2026-09-10 section above. Earlier dated session updates
 > are historical snapshots and intentionally retain their then-valid blockers,
 > versions and run states.
 

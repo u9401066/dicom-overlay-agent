@@ -7,7 +7,7 @@
 🌐 [English](README.md)
 
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
-（公開部署目前落後此 branch，尚不可作 release evidence）。
+（9 月 10 日已公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
 
 ## 開發證據 — 2026-09-10（尚未發布）
 
