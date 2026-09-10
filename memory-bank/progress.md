@@ -5,6 +5,23 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Immutable primary GUI scoring tool added, with pre-gold evidence validation,
+  frozen reference digest, paired image/order checks, retained failed attempts,
+  no guardrail replay and separate descriptive denominators/intervals. Thirty
+  synthetic new cases plus existing rebuild checks pass (38 targeted); full
+  regression is 1437 passed / 5 explicit skips (205.01 s). No real gold has been
+  scored yet. Actual GUI count at 15:06 UTC: 95 primary plus six earlier pilots.
+
+- Integrated candidate `f7e3347` merges crop-scope and client containment into
+  draft PR #13 only. CI 34489747248 / Secret 34489747329 pass. Its clean UPX
+  rebuild passes static verification, 89 native-source checks, 52 UPX tests,
+  and 19 actual EXE packaging smoke tests (120.60 s). Folder 336.43 MiB, launcher
+  4.47 MiB; local ZIP 141.13 MiB with all 18,720 decompressed hashes verified.
+  No published binary or real candidate model/clinical acceptance is implied.
+- Primary UI cohort at 14:52 UTC has 89 distinct completed cases, plus six
+  earlier pilots to be scored separately. All model receipts are Astra low;
+  clinical accuracy is unscored. Main runtime remains frozen on 7.1-2.
+
 - Isolated-PATH UPX package passed 84-file native provenance audit and frozen
   checks; 239.03 MiB total / 53.41 MiB App layer. Compressed Node HTTPS request
   succeeded. Main full regression 1305 passed, 4 opt-in skips. No binary release.

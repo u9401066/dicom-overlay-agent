@@ -20,6 +20,9 @@ if not exist "openclaw\package.json" (
 for /f "delims=" %%p in ('where npm.cmd') do if not defined NPM_CMD_PATH set "NPM_CMD_PATH=%%p"
 for %%p in ("!NPM_CMD_PATH!") do set "NPM_ROOT=%%~dpp"
 set "NPM_CLI_JS=!NPM_ROOT!node_modules\npm\bin\npm-cli.js"
+rem npm lifecycle scripts spawn `node` themselves; bind those subprocesses to
+rem the same portable interpreter instead of the host PATH's unrelated Node.
+if exist "node\node.exe" set "PATH=%REPO_ROOT%node;!PATH!"
 if not exist "openclaw-home" mkdir "openclaw-home"
 if not exist "openclaw-home\.openclaw" mkdir "openclaw-home\.openclaw"
 if not exist "openclaw-home\.openclaw\workspace" mkdir "openclaw-home\.openclaw\workspace"

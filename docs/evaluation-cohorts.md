@@ -8,7 +8,7 @@
 | Cohort | Cases | Purpose | Current state | Valid claim |
 | --- | ---: | --- | --- | --- |
 | `full-9922` | 9,922 | MEETI ordered full-cohort paired evaluation | manifests/tooling exist; authoritative new pair not complete | evaluation capacity only; historical partial/paired results remain dated |
-| `important-multi-128-v1` | 128 | gold-enriched important multi-diagnosis stress cohort | frozen and exposure-reserved; first case attempted three times, full real App run not done | deterministic selection/coverage only |
+| `important-multi-128-v1` | 128 | gold-enriched important multi-diagnosis stress cohort | Astra-low real GUI primary batch in progress; 95 primary + six separate earlier pilots at September 10 15:06 UTC, unscored | verified GUI/export/source/runtime completion only, not clinical accuracy |
 | `incomplete-ecg-20260902-v2` | 8 | deliberately incomplete/cropped/low-resolution ECG behavior | 8/8 mock plumbing; real App not run | input/hash/schema/bbox/partial plumbing only |
 | 10,001-identity scale fixture | 10,001 identities | atomic resume/checkpoint set behavior | source smoke complete | resumability scale, not 10,001 medical images |
 | Historical 32/8 sets | 32 paired + 8 unseen | 2026-08-09 engineering evidence | complete under their recorded protocol | only the dated metrics in their evidence record |
@@ -115,6 +115,48 @@ only the configured ROI, and verify:
 - real viewer+overlay screenshots and export audits are saved for all eight cases.
 
 ## Scoring and reporting rules
+
+### Sealed desktop export scoring
+
+`scripts/score-desktop-cohort.py` scores existing real-UI export files without
+calling an analyzer or applying current production guardrails. It requires a
+complete primary hash inventory with at least 100 distinct planned cases, excludes
+earlier pilots, and verifies every recorded artifact and the original append-only
+ledger before opening gold. Recovered usage receipts remain separate files and
+must bind the exact source and observed Astra-low turns. The original failed
+attempts remain in the derived report; they are not additional patients.
+
+The active primary run plans indices 7..127 (121 cases); the six earlier pilots
+are intentionally separate because they have different implementation provenance.
+Only after that primary run is complete and its source/GUI/model receipts are
+sealed may the following post-hoc command be used (paths are local, not public
+artifacts):
+
+```powershell
+uv run python scripts/score-desktop-cohort.py `
+  --workspace <evidence-workspace> `
+  --seal <completed-primary-seal.json> `
+  --inference <important-multi-128-v1.inference.json> `
+  --gold <important-multi-128-v1.gold.json> `
+  --gold-sha256 10be5cf206fdfe097b757c0754f17356932992e144b230bfe05d0784bd077cf1 `
+  --output <new-scorecard.json>
+```
+
+The gold digest must be the value recorded before inference. Pair id, case order,
+source paths and sealed image hashes must agree. Existing output paths are refused;
+source/gold hashes are checked again after scoring. Original exports are not
+rewritten to resemble eval-runner artifacts. The scorecard records its scorer
+hash, source seal, separate complete/weak-label denominators, all cannot-miss and
+urgent-concern outcomes, and descriptive case-level Wilson intervals. The boundary
+case of zero or all successes has an exact 0 or 1 interval endpoint.
+
+Neither these intervals nor bbox containment establish population accuracy,
+clinical localization accuracy, patient-level independence or release readiness.
+Concurrent engineering work also prevents a controlled runtime-speed comparison.
+Synthetic regression covers incomplete cohorts before gold access, wrong/changed
+gold, duplicate cases, mismatched source/model/effort, missing evidence, negative
+attempt indices, traversal paths, post-score mutation and overwrite protection.
+No real primary clinical score has been produced as of this checkpoint.
 
 - Schema, bbox in-bounds, tool receipt, coordinate projection, latency, strict
   score, partial credit, normal specificity, urgent recall, and cannot-miss recall

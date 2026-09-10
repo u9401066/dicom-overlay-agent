@@ -1,10 +1,57 @@
 # OpenClaw upgrade audit — 2026-09-10
 
 The current candidate is **2026.9.3**, not the September 2 candidate 2026.8.2.
-The product remains pinned to **2026.7.1-2** while the real Astra-low GUI cohort
-runs. This is a measured adoption audit, not an upgrade or clinical-pass claim.
+The isolated candidate branch now pins **2026.9.3**. The real Astra-low GUI
+cohort continues unchanged on **2026.7.1-2** in the primary worktree. This is a
+measured adoption audit, not a released binary or clinical-pass claim.
 
-## Isolated implementation update
+## Integrated packaged App — f7e3347
+
+Crop-note scope and Viewer client-boundary fixes (PRs #15 and #16) are merged
+into the isolated candidate, not main. A clean rebuild at `f7e3347` passes
+static verification and **19 actual EXE packaging smoke tests** (120.60 s).
+The fake-provider image exchange proves transport, not real subscription or
+clinical behavior. CI 34489747248 and Secret scan 34489747329 pass.
+
+Measured launcher: **4.47 MiB**; App/Python/Qt: **53.84 MiB**; complete folder:
+**336.43 MiB**. All 89 native sources are approved and all 52 UPX-marked
+payloads pass integrity testing. The local Deflate-9 ZIP is **141.13 MiB**;
+all 18,720 decompressed file hashes match. Its local verifier report stays
+outside the bundle and archive. The [package audit](../memory-bank/package-audit-2026-09-10.md)
+records exact bytes and provenance. No candidate real-GUI/model, partial-ECG,
+DPI, rollback or distribution-license gate is closed by these package tests.
+
+## Earlier corrected packaged App — f184258
+
+The isolated Windows EXE now passes all **19 packaging smoke checks**: explicit
+random loopback port, public Gateway authentication, exact synthetic PNG at
+the local fake provider, four persistent workspace files, no Codex runtime
+plugin loading, and owned shutdown with no residual listener. It keeps all five
+upstream template assets; BOOTSTRAP is a one-time ritual, not a required
+persistent file in the App's pre-seeded workspace. The pinned Gateway sanitizes
+raw provider error markers, so the test checks its exact public fixed-model
+401 event plus independent HTTP image proof.
+
+Earlier attempts exposed a real missing `--port` CLI override, default bundled
+Codex plugin activation despite allowlist removal, and the two smoke assumptions
+above. Failures remain recorded; the corrected build is a new artifact. Both
+normal managed startup and post-migration state now explicitly disable Codex.
+Fabricated App OAuth import/reuse still passes (16.765 / 3.024 s).
+
+Static bundle verification and 52 UPX integrity checks pass. The complete
+folder is **336.43 MiB** (App layer 53.84; launcher 4.46), while a local Deflate-9
+ZIP is **141.14 MiB**; every one of 18,721 extracted files matches its source
+SHA-256. No internal upstream chunks were pruned. CI 34483865336 and Secret scan
+34483602372 pass. See the [full measured audit](../memory-bank/package-audit-2026-09-10.md).
+
+No real subscription/model request was made in those candidate checks, and no
+binary was published. Candidate real GUI/OAuth/clinical/rollback, incomplete-ECG
+and DPI acceptance plus PyQt distribution-license gates remain open.
+
+## Earlier isolated implementation checkpoint — bfd7426 / 4b039df
+
+This checkpoint predates the corrected f184258 EXE results above. Its then-open
+package gates are historical, not a replacement for the latest measured status.
 
 [Draft PR #13](https://github.com/u9401066/dicom-overlay-agent/pull/13) now pins
 the candidate core and OAuth-only provider to 2026.9.3 in a separate worktree.
@@ -82,8 +129,23 @@ Two further isolated checks now have concrete receipts:
   dependency; **that is not a full-plugin loading pass**. The migration-only
   capability was tested independently and succeeded without a Codex executable.
 
+Both contracts were repeated against the **slim staged** 9.3 runtime, with the
+native probe plugin resolved beneath that staged tree rather than the raw
+installation. Native run `73d056b102e249a38eef9b5d5c82aa30` passed image/nonce/
+tool-call/accepted-box audit checks. A fresh workspace materialized exactly five
+templates: AGENTS, BOOTSTRAP, IDENTITY, SOUL and USER. HEARTBEAT is retired;
+local tool notes belong in AGENTS. The App explicitly binds its workspace to
+the directory where it synchronizes skills/plugins.
+
+The actual App `ensure_openclaw_subscription_auth` helper also passed against
+the slim runtime: fabricated OAuth import **8.440 s**, reuse **2.739 s**.
+Temporary auth source and plugin activation were removed; Astra selection and
+OpenClaw runtime ownership stayed unchanged. Public binary override points to
+a missing owned temporary file, preventing optional Codex inventory discovery
+from invoking a host-installed Codex runtime. No real auth was accessed.
+
 These tests do not establish real subscription authentication, clinical accuracy,
-state rollback, graceful shutdown, or readiness of a slim candidate bundle.
+state rollback, graceful shutdown, or readiness of a packaged candidate EXE.
 
 Private receipts remain under `data/tmp/openclaw-upgrade-research-20260910/`.
 Probe run ID: `661ed7803578461eac4f665aa533e378`. No private evaluation images,
@@ -102,13 +164,29 @@ metadata before use. Extracted size agrees exactly with npm's declared
 | Core docs | 12.063 MiB | Some templates are runtime-required |
 | Raw candidate dependency installation | 799.055 MiB | Includes full migration-provider dependency closure; not a shippable bundle |
 | Raw `@openai` scope | 377.406 MiB | Codex runtime/platform dependencies; must not ship or be enabled for this app |
+| Slim staged candidate | 280.62 MiB / 18,533 files | Flat frozen dependency tree; internal `dist` preserved |
+| Staged OAuth-only provider | 2.50 MiB | Included in the slim size; five hoisted helpers retained, no Codex executable |
+| Slim stage with restored notices | 280.77 MiB / 18,581 files | Retains all 324 published npm notice files and their hash inventory |
+
+An initial candidate EXE build was intentionally stopped after the notice
+audit found 47 `.md`/`.txt` notices (72,988 B) omitted by the historical slimming
+rule. All source notice files are now preserved byte-for-byte. Node's official
+archive checksum is verified, its LICENSE retained, and the Python/bootloader/
+runtime notices have a separate manifest. This is a preservation check, not
+license clearance; the PyQt distribution decision remains open in
+[Third-Party Notices](../THIRD_PARTY_NOTICES.md). Those staging sizes are not
+EXE measurements; the later corrected packaged result is recorded above.
 
 The raw dependency tree contains 35,246 files. Installation used exact
 `openclaw@2026.9.3` and `@openclaw/codex@2026.9.3` with lifecycle scripts
 disabled for initial inspection. npm ran under the host Node 25.6.1 and emitted
 an engine warning; **all candidate CLI/Gateway checks used supported portable
-Node 24.18.0**, not that host runtime. A production build must use the supported
-Node/npm route and complete the upstream-supported install lifecycle.
+Node 24.18.0**, not that host runtime. Subsequently the candidate worktree ran
+the full `npm ci` lifecycle under portable Node 24.18.0 successfully. The
+installer now puts portable Node on its process-local PATH so lifecycle scripts
+do not accidentally use host Node 25. The production install audited 335
+packages with zero advisory matches. The later f184258 package used a fresh
+stage without probe artifacts and passed actual EXE checks as recorded above.
 
 Compared with the historical pinned core measurement of 83.43 MiB, candidate
 core growth is about **92.25 MiB**. Adding that difference to the historical
@@ -116,8 +194,10 @@ core growth is about **92.25 MiB**. Adding that difference to the historical
 Subtracting the Codex scope from the raw installation also does not establish
 a working slim runtime. A clean staged bundle and actual EXE tests are required.
 
-Candidate dependency lock SHA-256:
+Initial research dependency lock SHA-256:
 `e3daab9858ddaccbbc1c664510eb7c6a5baf3fdf6367dde6850afe6e77bb118b`.
+Candidate repository production lock SHA-256:
+`b39410201107a1e4f3d5c2b07fd1d1bf19bdcf79b6959059b94bccf012b2cfd0`.
 
 ## Dependency security release gate
 
@@ -171,21 +251,14 @@ Re-audit the final candidate lock and shipped package inventory before release.
 
 ## Concrete upgrade work still required
 
-1. **Published layout changes:** the candidate provides the historical HEARTBEAT
-   document under `docs/reference/templates/`, not `src/agents/templates/`.
-   Verify which current templates fresh workspace startup actually requires;
-   do not simply skip the old check. npm now installs the core's dependencies
-   beside `openclaw`, not nested inside it. Staging only the core directory would
-   omit the dependency closure. Preserve the frozen flat tree and slim around
-   it without pruning internal `dist` chunks.
-2. **OAuth-only migration packaging:** the new migration plugin has a different
-   dependency graph and requires its matching host API. The current staging
-   script intentionally rejects any identity other than 2026.7.1-1. Validate a
-   new exact, minimal migration-only staging recipe. The fabricated-auth probe
-   above proves the public capability can work without Codex binaries; repeat
-   against the final slim package and actual App. Use exact `auth:openai` item
-   selection, disable supervision/catalog discovery, and never substitute a full
-   Codex runtime or Platform key to satisfy the inspector.
+1. **Published layout changes implemented in candidate:** preserve the flat
+   locked dependency tree and five observed fresh-workspace templates. Real
+   staged `agents add` and Gateway bootstrap pass; repeat after packaging.
+2. **OAuth-only migration staged and App helper checked:** exact matching
+   `@openclaw/codex@2026.9.3`, public `auth:openai` selection, disabled supervision/
+   catalog/discovery and no Codex binary. Repeat with real subscription auth and
+   the packaged App; never substitute a full Codex runtime or Platform key to
+   satisfy the full-runtime inspector.
 3. **Native clinical harness:** the basic native bbox/image/nonce/digest/absolute
    audit contract now passes. Final reconciliation, timeout/cancel paths and
    real clinical turns still require validation against the new Gateway.
@@ -213,3 +286,7 @@ historical [September 2 decision](openclaw-2x-decision-2026-09-02.md).
   — read-only validation surface used above.
 - [Official installation documentation](https://docs.openclaw.ai/install)
   — supported Node versions and package lifecycle requirements.
+- [Public migration CLI](https://docs.openclaw.ai/cli/migrate)
+  — exact-item plan/apply capability.
+- [OpenAI provider](https://docs.openclaw.ai/providers/openai)
+  — explicit OpenClaw agent runtime preserves native ChatGPT OAuth transport.

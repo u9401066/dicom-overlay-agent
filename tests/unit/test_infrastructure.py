@@ -233,7 +233,7 @@ class TestOpenClawSettings:
         assert merged["plugins"]["entries"]["dicom-overlay-agent-harness"] == {
             "enabled": True
         }
-        assert "codex" not in merged["plugins"]["entries"]
+        assert merged["plugins"]["entries"]["codex"] == {"enabled": False}
         assert merged["plugins"]["load"]["paths"] == [
             "C:/workspace/dicom-overlay-agent-harness"
         ]
@@ -411,14 +411,14 @@ class TestOpenClawRuntimeCompatibility:
 
     def test_gateway_hello_receipt_accepts_only_advertised_protocol_range(self):
         assert (MIN_GATEWAY_PROTOCOL, MAX_GATEWAY_PROTOCOL) == (3, 4)
-        assert PINNED_OPENCLAW_VERSION == "2026.7.1-2"
+        assert PINNED_OPENCLAW_VERSION == "2026.9.3"
         assert parse_gateway_hello(
             {
                 "type": "hello-ok",
                 "protocol": 4,
-                "server": {"version": "2026.7.1-2"},
+                "server": {"version": PINNED_OPENCLAW_VERSION},
             }
-        ) == (4, "2026.7.1-2")
+        ) == (4, PINNED_OPENCLAW_VERSION)
 
         with pytest.raises(OpenClawRuntimeError, match="not hello-ok"):
             parse_gateway_hello({"status": "connected"})
@@ -701,6 +701,9 @@ class TestOpenClawRuntimeCompatibility:
 
         payload = json.loads(path.read_text(encoding="utf-8"))
         assert payload["gateway"]["mode"] == "local"
+        assert payload["agents"]["defaults"]["workspace"] == str(
+            (tmp_path / "openclaw-home/.openclaw/workspace").resolve()
+        )
         assert "auth" not in payload["gateway"]
         assert payload["agents"]["defaults"]["model"]["primary"] == (
             "openai/gpt-5.4-mini"

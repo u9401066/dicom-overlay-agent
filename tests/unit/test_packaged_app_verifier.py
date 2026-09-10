@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -33,11 +34,82 @@ def _load_build_receipt_module():
     return module
 
 
+def _write_notice_fixture(root: Path) -> dict:
+    root.mkdir(parents=True, exist_ok=True)
+    content = b"Synthetic upstream license notice\n"
+    (root / "LICENSE.txt").write_bytes(content)
+    record = {
+        "path": "LICENSE.txt",
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    inventory = {"schema_version": 1, "files": [record]}
+    (root / "notice-inventory.json").write_text(json.dumps(inventory), encoding="utf-8")
+    return inventory
+
+
+def test_notice_inventory_preserves_exact_upstream_bytes(tmp_path):
+    module = _load_module()
+    _write_notice_fixture(tmp_path)
+    assert module._inspect_notice_inventory(tmp_path)["ok"] is True
+    (tmp_path / "LICENSE.txt").write_bytes(b"changed")
+    assert module._inspect_notice_inventory(tmp_path)["ok"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "empty",
+        "escape",
+        "absolute",
+        "drive",
+        "backslash",
+        "duplicate",
+        "zero",
+        "boolean",
+        "bad_hash",
+        "non_notice",
+        "non_record",
+    ],
+)
+def test_notice_inventory_rejects_missing_unsafe_or_invalid_entries(tmp_path, mutation):
+    module = _load_module()
+    inventory = _write_notice_fixture(tmp_path)
+    record = inventory["files"][0]
+    if mutation == "missing":
+        (tmp_path / "LICENSE.txt").unlink()
+    elif mutation == "empty":
+        inventory["files"] = []
+    elif mutation in {"escape", "absolute", "drive", "backslash", "non_notice"}:
+        record["path"] = {
+            "escape": "../LICENSE.txt",
+            "absolute": "/LICENSE.txt",
+            "drive": "C:/LICENSE.txt",
+            "backslash": "x\\LICENSE.txt",
+            "non_notice": "config.json",
+        }[mutation]
+    elif mutation == "duplicate":
+        inventory["files"].append(dict(record))
+    elif mutation in {"zero", "boolean"}:
+        record["bytes"] = 0 if mutation == "zero" else True
+    elif mutation == "bad_hash":
+        record["sha256"] = "0" * 64
+    else:
+        inventory["files"] = [None]
+    (tmp_path / "notice-inventory.json").write_text(
+        json.dumps(inventory), encoding="utf-8"
+    )
+    assert module._inspect_notice_inventory(tmp_path)["ok"] is False
+
+
 def _write_required_bundle(root: Path, module) -> str:
     for relative in module.REQUIRED_FILES:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"placeholder")
+    for notice_root in (root / "openclaw", root / "third-party-notices"):
+        _write_notice_fixture(notice_root)
     clinical_root = root / "clinical_knowledge"
     source_clinical = Path(__file__).resolve().parents[2] / "clinical_knowledge"
     for source in source_clinical.rglob("*"):
@@ -60,9 +132,7 @@ def _write_required_bundle(root: Path, module) -> str:
     (clinical_root / "generated" / "human-catalogue.md").write_text(
         human, encoding="utf-8"
     )
-    (clinical_root / "generated" / "agent-steps.md").write_text(
-        agent, encoding="utf-8"
-    )
+    (clinical_root / "generated" / "agent-steps.md").write_text(agent, encoding="utf-8")
     clinical_db = clinical_root / "clinical-knowledge.sqlite"
     clinical_db.unlink(missing_ok=True)
     sqlite_builder.build_quick_lookup_db(
@@ -100,7 +170,7 @@ def _write_required_bundle(root: Path, module) -> str:
         encoding="utf-8",
     )
     package = root / "openclaw/node_modules/openclaw/package.json"
-    package.write_text(json.dumps({"version": "2026.7.1-2"}), encoding="utf-8")
+    package.write_text(json.dumps({"version": "2026.9.3"}), encoding="utf-8")
     manifest = (
         root / "openclaw/workspace/plugins/dicom-overlay-agent-harness/manifest.json"
     )
@@ -156,7 +226,7 @@ def _write_required_bundle(root: Path, module) -> str:
     package_root = root / "openclaw/node_modules/openclaw"
     codex_migration = package_root / "dist/extensions/codex"
     (codex_migration / "package.json").write_text(
-        json.dumps({"name": "@openclaw/codex", "version": "2026.7.1-1"}),
+        json.dumps({"name": "@openclaw/codex", "version": "2026.9.3"}),
         encoding="utf-8",
     )
     (codex_migration / "openclaw.plugin.json").write_text(
@@ -201,13 +271,13 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert report["status"] == "ok"
     assert report["missing_files"] == []
     assert report["banned_components"] == []
-    assert report["versions"]["openclaw"] == "2026.7.1-2"
+    assert report["versions"]["openclaw"] == "2026.9.3"
     assert len(report["integrity"]["launcher_sha256"]) == 64
     assert len(report["integrity"]["payload_tree_sha256"]) == 64
     assert len(report["source_provenance"]["source_tree_sha256"]) == 64
     assert report["codex_migration_bundle_check"]["ok"] is True
     assert report["workspace_templates"]["ok"] is True
-    assert report["workspace_templates"]["ready_count"] == 7
+    assert report["workspace_templates"]["ready_count"] == 5
     clinical = report["clinical_knowledge"]
     assert clinical["ok"] is True
     assert clinical["registry_sha256"] == clinical_digest
@@ -225,7 +295,7 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert report["package_build"]["ok"] is True
     assert report["package_build"]["toolchain"]["python"] == "3.13.12"
     assert report["package_build"]["compression"]["mode"] == "no_upx_baseline"
-    assert report["component_counts"]["workspace_templates"] == 7
+    assert report["component_counts"]["workspace_templates"] == 5
     assert (
         report["codex_migration_bundle_check"][
             "codex_agent_runtime_dependencies_bundled"
@@ -286,9 +356,10 @@ def test_inspect_bundle_recomputes_packaged_yaml_and_checks_every_sqlite_table(
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
     assert report["status"] == "failed"
-    assert "does not match packaged canonical inputs" in report[
-        "clinical_knowledge"
-    ]["error"]
+    assert (
+        "does not match packaged canonical inputs"
+        in report["clinical_knowledge"]["error"]
+    )
 
     _write_required_bundle(tmp_path, module)
     database = tmp_path / "clinical_knowledge/clinical-knowledge.sqlite"
@@ -299,9 +370,10 @@ def test_inspect_bundle_recomputes_packaged_yaml_and_checks_every_sqlite_table(
         )
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
     assert report["status"] == "failed"
-    assert "quick-lookup table diverged: agent_steps" in report[
-        "clinical_knowledge"
-    ]["error"]
+    assert (
+        "quick-lookup table diverged: agent_steps"
+        in report["clinical_knowledge"]["error"]
+    )
 
 
 def test_inspect_bundle_rejects_empty_or_wrong_version_clinical_schema(
@@ -326,9 +398,10 @@ def test_inspect_bundle_rejects_empty_or_wrong_version_clinical_schema(
     schema_path.write_text(json.dumps(schema), encoding="utf-8")
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
     assert report["status"] == "failed"
-    assert "clinical rule schema version must be 1" in report[
-        "clinical_knowledge"
-    ]["error"]
+    assert (
+        "clinical rule schema version must be 1"
+        in report["clinical_knowledge"]["error"]
+    )
 
 
 def test_inspect_bundle_rejects_false_upx_or_wrong_architecture_receipt(
@@ -377,9 +450,9 @@ def test_inspect_bundle_accepts_upx_only_with_observed_app_pe_marker(
     report = module.inspect_bundle(tmp_path, run_selfcheck=False)
 
     assert report["status"] == "ok"
-    assert report["package_build"]["compression"][
-        "observed_upx_payloads"
-    ] == ["DICOMOverlayAgent.exe"]
+    assert report["package_build"]["compression"]["observed_upx_payloads"] == [
+        "DICOMOverlayAgent.exe"
+    ]
 
 
 def test_build_receipt_records_explicit_no_upx_baseline(monkeypatch) -> None:
@@ -466,7 +539,7 @@ def test_inspect_bundle_rejects_missing_or_empty_openclaw_templates(
     assert report["status"] == "failed"
     assert missing_relative in report["missing_files"]
     assert report["workspace_templates"]["ok"] is False
-    assert report["workspace_templates"]["ready_count"] == 5
+    assert report["workspace_templates"]["ready_count"] == 3
     assert "missing:" in report["workspace_templates"]["error"]
     assert "empty:" in report["workspace_templates"]["error"]
     assert "workspace templates" in " ".join(report["failures"])
@@ -477,7 +550,7 @@ def test_inspect_bundle_rejects_debug_build_and_foreign_native_payloads(
 ) -> None:
     module = _load_module()
     _write_required_bundle(tmp_path, module)
-    runtime = tmp_path / "openclaw/node_modules/openclaw/node_modules"
+    runtime = tmp_path / "openclaw/node_modules"
     banned_paths = (
         runtime / "@lydell/node-pty-win32-x64/prebuilds/win32-x64/conpty.pdb",
         runtime / "tree-sitter-bash/src/parser.c",
@@ -554,9 +627,7 @@ def test_inspect_bundle_rejects_environment_files(tmp_path: Path, monkeypatch) -
     module = _load_module()
     _write_required_bundle(tmp_path, module)
     monkeypatch.setattr(module, "_read_version", lambda _command, **_kwargs: "v24.18.0")
-    environment_file = (
-        tmp_path / "openclaw/node_modules/openclaw/node_modules/example/.env.production"
-    )
+    environment_file = tmp_path / "openclaw/node_modules/example/.env.production"
     environment_file.parent.mkdir(parents=True)
     environment_file.write_text("API_KEY=must-not-ship\n", encoding="utf-8")
 
@@ -732,3 +803,86 @@ def test_inspect_bundle_rejects_codex_agent_runtime_dependency(tmp_path: Path) -
 
     assert report["status"] == "failed"
     assert "OAuth-only Codex migration provider" in " ".join(report["failures"])
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "extra_item",
+        "apply_error",
+        "api_key",
+        "runtime_drift",
+        "malformed_profile",
+    ],
+)
+def test_migration_verifier_requires_exact_oauth_capability_and_runtime(
+    tmp_path: Path, monkeypatch, fault: str | None
+) -> None:
+    module = _load_module()
+    calls = []
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-reach-fixture")
+    monkeypatch.setenv("CODEX_HOME", "must-not-reach-fixture")
+
+    def fake_process(command, **kwargs):
+        calls.append(command)
+        env = kwargs["env"]
+        assert "OPENAI_API_KEY" not in env and "CODEX_HOME" not in env
+        assert not Path(env["OPENCLAW_CODEX_APP_SERVER_BIN"]).exists()
+        config_path = Path(env["OPENCLAW_CONFIG_PATH"])
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if "migrate" in command:
+            assert command[command.index("--item") + 1] == "auth:openai"
+            assert (
+                config["plugins"]["entries"]["codex"]["config"]["supervision"][
+                    "enabled"
+                ]
+                is False
+            )
+            action = command[command.index("migrate") + 1]
+            if fault == "apply_error" and action == "apply":
+                return {"exit_code": 1, "stdout": "", "stderr": "fixture failure"}
+            if fault == "runtime_drift" and action == "apply":
+                config["agents"]["defaults"]["models"]["openai/gpt-6-astra"][
+                    "agentRuntime"
+                ] = {"id": "codex"}
+                config_path.write_text(json.dumps(config), encoding="utf-8")
+            items = [
+                {
+                    "id": "auth:openai",
+                    "kind": "auth",
+                    "status": "planned" if action == "plan" else "migrated",
+                }
+            ]
+            if fault == "extra_item":
+                items.append(
+                    {"id": "unrequested-skill", "kind": "skill", "status": "planned"}
+                )
+            payload = {"providerId": "codex", "items": items, "summary": {"errors": 0}}
+        else:
+            assert config["plugins"]["entries"]["codex"]["enabled"] is False
+            profile = {
+                "provider": "openai",
+                "type": "api_key" if fault == "api_key" else "oauth",
+            }
+            payload = {"profiles": [None if fault == "malformed_profile" else profile]}
+        return {"exit_code": 0, "stdout": json.dumps(payload), "stderr": ""}
+
+    monkeypatch.setattr(module, "_run_process", fake_process)
+    report = module._inspect_codex_migration_runtime(tmp_path / "bundle")
+    assert report["ok"] is (fault is None)
+    assert "must-not-reach-fixture" not in str(report)
+    if fault is None:
+        assert len(calls) == 3
+        assert report["model_requests"] == 0
+        assert report["codex_runtime_enabled"] is False
+
+
+def test_inspect_bundle_rejects_flat_codex_runtime_dependency(tmp_path: Path) -> None:
+    module = _load_module()
+    _write_required_bundle(tmp_path, module)
+    runtime = tmp_path / "openclaw/node_modules/@openai/codex/package.json"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("{}", encoding="utf-8")
+    report = module.inspect_bundle(tmp_path, run_selfcheck=False)
+    assert report["codex_migration_bundle_check"]["ok"] is False

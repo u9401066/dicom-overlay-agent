@@ -45,6 +45,10 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
                 confidence="low",
                 question="Is this reproducible in the source viewer?",
                 source="interactive_ai_review",
+                notes=[
+                    "[Crop-only evidence; ROI x=0.2000 y=0.2000 w=0.4000 h=0.4000] "
+                    "Comparison lead is outside this crop."
+                ],
             )
         ],
         checklist={},
@@ -113,6 +117,7 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
     assert payload["findings"][0]["confidence"] == "low"
     assert payload["findings"][0]["question"].startswith("Is this")
     assert payload["findings"][0]["source"] == "interactive_ai_review"
+    assert payload["findings"][0]["notes"] == result.findings[0].notes
     assert payload["image_quality"]["adequacy"] == "limited"
     assert payload["next_steps"] == ["Review the original study."]
     assert payload["analysis_trace"][0]["gateway_protocol_receipt"] == {

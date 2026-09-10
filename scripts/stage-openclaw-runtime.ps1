@@ -42,17 +42,14 @@ if (-not (Test-Path (Join-Path $source "openclaw.mjs"))) {
     throw "OpenClaw runtime not found. Run scripts\install-openclaw-local.bat first."
 }
 
-# OpenClaw 2026.7.1-2 still loads these files when it initializes a fresh
-# agent workspace.  The npm package publishes HEARTBEAT.md in the primary
-# template directory and the other canonical templates under docs/reference.
+# OpenClaw 2026.9.3 seeds five files in a fresh workspace. HEARTBEAT.md is
+# retired and local tool notes are now part of AGENTS.md, not TOOLS.md.
 # Validate the pinned upstream assets before copying anything: a partially
 # installed package must fail the build instead of depending on stale runtime
 # state from openclaw-home.
 $runtimeTemplateFiles = [ordered]@{
-    "src\agents\templates\HEARTBEAT.md" = "HEARTBEAT.md"
     "docs\reference\templates\AGENTS.md" = "AGENTS.md"
     "docs\reference\templates\SOUL.md" = "SOUL.md"
-    "docs\reference\templates\TOOLS.md" = "TOOLS.md"
     "docs\reference\templates\IDENTITY.md" = "IDENTITY.md"
     "docs\reference\templates\USER.md" = "USER.md"
     "docs\reference\templates\BOOTSTRAP.md" = "BOOTSTRAP.md"
@@ -93,11 +90,17 @@ if (Test-Path $OutputRoot) {
     Remove-Item -LiteralPath $resolved.Path -Recurse -Force
 }
 
-$dest = Join-Path $OutputRoot "openclaw\node_modules\openclaw"
-New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+$stagedModules = Join-Path $OutputRoot "openclaw\node_modules"
+$dest = Join-Path $stagedModules "openclaw"
+New-Item -ItemType Directory -Force -Path (Split-Path $stagedModules) | Out-Null
 
 Write-Host "[INFO] Staging slim OpenClaw runtime..."
-Copy-Item -LiteralPath $source -Destination $dest -Recurse
+# 9.3 no longer bundles dependencies beneath its own package directory.
+# Preserve the locked flat tree, including hoisted transitive dependencies.
+Copy-Item -LiteralPath (Join-Path $repo "openclaw\node_modules") -Destination $stagedModules -Recurse
+if (Test-Path -LiteralPath (Join-Path $stagedModules ".bin")) {
+    Remove-Item -LiteralPath (Join-Path $stagedModules ".bin") -Recurse -Force
+}
 
 $packageOnlyDirs = @("docs", "src", "patches", "scripts")
 foreach ($name in $packageOnlyDirs) {
@@ -107,7 +110,7 @@ foreach ($name in $packageOnlyDirs) {
     }
 }
 
-# Restore only the seven upstream template assets used by
+# Restore only the five upstream template assets used by
 # ensureAgentWorkspace().  They are copied byte-for-byte from the pinned npm
 # package and keep their published relative paths; no repo-owned fallback or
 # generated template may silently mask an incomplete OpenClaw install.
@@ -130,7 +133,7 @@ foreach ($name in $packageOnlyFiles) {
 
 # npm packages occasionally publish local development environment files. They
 # are not required at runtime and portable builds must never carry .env data.
-Get-ChildItem -LiteralPath $dest -Recurse -Force -File |
+Get-ChildItem -LiteralPath $stagedModules -Recurse -Force -File |
     Where-Object {
         $_.Name -ieq ".env" -or
         $_.Name.StartsWith(".env.", [System.StringComparison]::OrdinalIgnoreCase)
@@ -143,7 +146,7 @@ $nonRuntimeExtensions = @(
     ".nycrc", ".proto", ".rs"
 )
 $bundledSkills = Join-Path $dest "skills"
-Get-ChildItem -Recurse -File $dest |
+Get-ChildItem -Recurse -File $stagedModules |
     Where-Object {
         $underPreservedMarkdownRoot = $_.FullName.StartsWith(
             "$bundledSkills\",
@@ -161,7 +164,7 @@ Get-ChildItem -Recurse -File $dest |
 
 # DICOM Overlay Agent runs on Windows x64. Remove platform-native payloads for
 # other OS/CPU targets; these dominate the npm package size and slow PyInstaller.
-$nodeModules = Join-Path $dest "node_modules"
+$nodeModules = $stagedModules
 $nativePruneDirs = @()
 if (Test-Path (Join-Path $nodeModules "@napi-rs")) {
     $nativePruneDirs += Get-ChildItem (Join-Path $nodeModules "@napi-rs") -Directory |
@@ -217,6 +220,39 @@ if (Test-Path -LiteralPath $treeSitterSource) {
 # bundled plugin public surfaces at runtime; pruning dist/extensions,
 # dist/plugins, or dist/plugin-sdk can pass ``gateway --help`` yet fail only
 # when the first image-analysis agent run starts.
+
+# Restore upstream copyright/license notices even when their extension or
+# containing documentation directory is otherwise pruned. These are not
+# optional development assets. Keep source-relative paths and exact bytes.
+$sourceModules = (Resolve-Path (Join-Path $repo "openclaw\node_modules")).Path
+$noticeRecords = @(
+    Get-ChildItem -LiteralPath $sourceModules -Recurse -File |
+        Where-Object { $_.Name -match '^(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT)([.-].*)?$' } |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relative = $_.FullName.Substring($sourceModules.Length + 1)
+            $noticeTarget = Join-Path $stagedModules $relative
+            New-Item -ItemType Directory -Force -Path (Split-Path $noticeTarget) | Out-Null
+            Copy-Item -LiteralPath $_.FullName -Destination $noticeTarget -Force
+            $hasher = [Security.Cryptography.SHA256]::Create()
+            $noticeStream = [IO.File]::OpenRead($_.FullName)
+            try {
+                $noticeHash = [BitConverter]::ToString($hasher.ComputeHash($noticeStream)).Replace('-', '').ToLowerInvariant()
+            } finally {
+                $noticeStream.Dispose()
+                $hasher.Dispose()
+            }
+            [ordered]@{
+                path = ("node_modules/" + $relative.Replace('\', '/'))
+                bytes = $_.Length
+                sha256 = $noticeHash
+            }
+        }
+)
+if ($noticeRecords.Count -eq 0) { throw "Upstream notice inventory is empty." }
+[ordered]@{ schema_version = 1; files = $noticeRecords } |
+    ConvertTo-Json -Depth 5 |
+    Set-Content -LiteralPath (Join-Path $OutputRoot "openclaw\notice-inventory.json") -Encoding utf8
 
 $sum = Get-ChildItem -Recurse -File $OutputRoot | Measure-Object Length -Sum
 $mb = [Math]::Round($sum.Sum / 1MB, 2)

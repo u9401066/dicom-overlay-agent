@@ -19,6 +19,7 @@ def optional_file(source: str, target: str):
 datas = [
     ("config.yaml", "."),
     ("THIRD_PARTY_NOTICES.md", "."),
+    *optional_tree("build/package-notices", "third-party-notices"),
     *optional_file("build/package-build-receipt.json", "."),
     *optional_tree("clinical_rules", "clinical_rules"),
     *optional_tree("clinical_knowledge", "clinical_knowledge"),

@@ -2,6 +2,195 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- New `scripts/score-desktop-cohort.py` verifies a complete >=100-case primary
+  hash seal before opening the pre-digested paired gold, then scores immutable
+  GUI exports with the existing scorer and no guardrail replay. Pilots stay
+  separate; original technical failures remain in the report. Source/usage/model
+  binding, pairing, changed evidence/gold, traversal, duplicate/negative indices,
+  overwrite protection and descriptive Wilson endpoints have synthetic checks.
+  New plus existing rebuild regressions: 38 passed; full unit/smoke/mock-integration
+  suite: 1437 passed, 5 explicit opt-in/local-artifact skips (205.01 s); Ruff passed. Initial test
+  exposed a floating-point nonzero lower endpoint at 0/100; fixed explicitly.
+  This is tooling, not a real clinical score. Main at 15:06 UTC: 95 primary
+  successes + six earlier pilots = 101 distinct actual UI cases.
+- Direct independent-harness integration is being developed in a new isolated
+  worktree based on bf28d82, pinning public harness 9d24e28. It does not merge
+  old PR #4 compatibility exports, change the frozen main cohort, or modify the
+  verified f7e3347 package. No full-extraction or canonical export claim yet.
+
+- Integrated candidate is now `f7e3347`: PR #16 merged into #15, then #15
+  merged into #13's branch; #13 remains draft and main stays on the frozen
+  7.1-2 cohort implementation. CI 34489747248 and Secret 34489747329 pass.
+  Clean isolated-PATH rebuild includes both crop-scope and client-boundary
+  fixes: static verifier passes, 89 native sources approved, 52 UPX integrity
+  checks pass, and 19 actual frozen packaging smoke tests pass (120.60 s).
+  Owned test Gateway shuts down with no residual listener; no real model/auth.
+  Launcher 4.47 MiB, App 53.84 MiB, folder 336.43 MiB; local Deflate-9 ZIP
+  141.13 MiB, all 18,720 decompressed hashes match. Verifier report stays outside
+  the archive. Historical f184258 and failed fe0a612 artifacts remain untouched.
+- At 14:52 UTC, 89 primary distinct GUI successes plus six earlier pilots = 95.
+  Primary planned indices 7..127 continue; clinical scoring has not run and
+  pilots will stay separate. Main source/runtime are unchanged. No binary
+  publication; real candidate GUI/OAuth/model, partial-ECG/DPI/rollback and PyQt
+  distribution-license decision remain open. Old extraction PR #4 retains
+  compatibility exports, contrary to the user's requested direct separation;
+  it is not an integrated independent-harness implementation.
+- Diagnostic-only Qt PE import audit found Qt6Network.dll is imported by
+  qtuiotouchplugin.dll, and Qt6Svg.dll by SVG icon/image plugins. No extra
+  payload was removed: static imports alone do not prove safe removal of a
+  dynamically loaded plugin or establish a startup/GUI improvement.
+
+- Capture client guard pushed as draft stacked PR #16 (`69ac5c9`); CI
+  34488167020 and Secret scans 34488169068 / 34488160587 pass. No main runtime
+  change or binary release. The original 9.3 packaged f184258 artifact is not
+  evidence for these later crop/client changes.
+- Main cohort case 85 completed actual GUI inference/export but its diagnostic
+  usage collector failed: Gateway log masking shortened one UUID to a prefix
+  plus `***`. Public session metadata and the exact session id still bound the
+  four actual Astra-low turns. Helper now requires matching public session id,
+  provider/model, >=16-character masked-run prefix and one unique log match;
+  14 synthetic positive/negative binding checks pass. Original failed receipt
+  and export remain unchanged; separate `usage-receipt.recovered.json` plus an
+  append-only recovery row record the repair, with no new model request.
+  Batch resumed at index 86. At 14:27 UTC, primary 79 distinct successes plus
+  six early pilots = 85; four primary technical-failure rows remain retained.
+  Primary seal preflight verifies 1301 artifact hashes, excludes pilots, and
+  will refuse sealing before planned indices 7..127 are complete. Gold scoring
+  has not run. Diagnostic helper changes do not alter the frozen main runtime.
+
+- Separate stacked `agent/capture-client-boundary-20260910` branch adds
+  fail-closed native client-area containment before/after screenshot capture.
+  Proportional window-margin scaling can enter a fixed-height titlebar after
+  a resize; no automatic ROI intersection/expansion is allowed. Ten regression
+  failures reproduced first, then 98 capture/agent/ROI tests pass. Read-only
+  native check against Viewer PID 26088 at 150% DPI accepted the current safe
+  ROI and rejected all four one-pixel chrome crossings; no screenshot or model
+  calls. Full unit/smoke/mock-integration regression: 1406 passed, 6 explicit
+  opt-in/local-artifact skips (166.24 s); Ruff passes. Actual resize/DPI and
+  model cases remain pending. See `docs/viewer-client-capture-boundary.md`.
+- Crop-scope fix is pushed as draft stacked PR #15 (`e583a92`); CI 34487320267
+  and Secret scans 34487320261 / 34487314337 pass. Candidate #13 is clean after
+  isolated merge `8c3fb6e`; CI 34486122894 and Secret scan 34486038887 pass.
+
+- Separate `agent/crop-provenance-20260910` worktree addresses unscoped crop
+  notes observed in the real UI cohort. Crop notes/rationale now carry the
+  orchestrator-owned normalized ROI bounds; original notes, diagnosis, bbox
+  mapping, prompts and request count remain unchanged. Synthetic scope
+  regression reproduced nine failures first; 149 scope/multi-pass tests pass
+  after the fix. Full unit/smoke/mock-integration: 1393 passed, 6 explicit
+  opt-in/local-artifact skips (171.93 s). Five initial native-plugin failures
+  were ERR_MODULE_NOT_FOUND in the new worktree; installing the locked 9.3
+  runtime under Node 24.18 resolved them without skips. Qt scope/wrapping and
+  JSON export checks pass; a synthetic offscreen report was visually reviewed
+  after explicitly loading Windows fonts (initial preview had missing glyphs).
+  See `docs/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
+  remains pending; main cohort untouched, 80 distinct UI successes at 14:08 UTC.
+
+- English/Traditional-Chinese READMEs, maintenance size charter and the upgrade
+  audit now report the verified f184258 package/ZIP measurements, with explicit
+  pending real candidate and distribution-license gates. The dated GUI progress
+  note is 70 distinct successes at 13:43 UTC, not clinical passes. Historical
+  pilot/failed-build evidence remains available rather than silently replaced.
+
+- f184258 rebuild is now verified: static bundle checks pass; **19/19 actual
+  frozen packaging smoke checks pass**, including random-port public connect,
+  exact synthetic PNG at the loopback provider, four persistent workspace files,
+  no Codex plugin load/command, and no residual Gateway listener/process. The
+  previous failed candidate remains preserved separately. No real OAuth/model
+  or clinical acceptance is implied. 52 compressed payloads pass `upx -t`.
+  Local unit/smoke 1327 passed / 5 explicit skips plus 55 mock integration
+  tests passed; CI 34483865336 passed (1379 / 8 platform/opt-in skips), Secret
+  scan 34483602372 passed. All code/contract changes are on draft PR #13.
+- Distribution ZIP benchmark on the verified f184258 tree: Deflate 1 gives
+  154.44 MiB in 9.140 s; Deflate 9 gives **141.14 MiB in 23.529 s**. All 18,721
+  decompressed entries match the source SHA-256, with no source mutation.
+  Installed size remains 336.43 MiB; ZIP size is not an EXE/installed-size claim.
+  Artifacts remain local; PyQt distribution-license decision, real candidate
+  GUI/OAuth/clinical/rollback and image-edge gates remain open.
+- The 24 redacted vendor-scan matches were verified byte-identical to the
+  locked installed packages. Classified as JS symbols, translation/schema text,
+  database record names, public OAuth client ids, WebSocket fixture values,
+  and one upstream embedded TTS shared service constant. This is not a claim
+  that upstream constants are risk-free, nor a binary/archive secret scan.
+
+- Candidate fe0a612 full regression passed (1362 tests, 5 explicit skips).
+  Its UPX build/verifier passed: 336.43 MiB total, 53.84 MiB App layer, 89
+  approved native sources; 52 UPX-marked payloads pass integrity testing.
+  **Actual packaged Gateway smoke failed**: the manager's configured port
+  was not passed to `gateway run`, so the child attempted the occupied default
+  port. It exited without stopping the ongoing cohort Gateway. Follow-up now
+  pins public `--port` / `--bind loopback` and rejects invalid port types/ranges.
+  Real source-App probe reached a local 401 image endpoint on the chosen port.
+  It exposed two more smoke assumptions: public 9.3 error events sanitize the
+  provider marker, and one-time BOOTSTRAP.md is not guaranteed in the App's
+  pre-seeded workspace. Require the exact fixed-model public auth error, an
+  accepted run id, four persistent workspace files, and independent exact-PNG
+  provider proof; keep all five upstream templates packaged. Fresh EXE rerun
+  remains pending. Unit/smoke regression: 1326 passed, 5 opt-in skips; final
+  persistent-template adjustment separately passes 84 tests, 3 opt-in skips.
+- Runtime Codex exclusion is now explicit `entries.codex.enabled=false` in
+  managed Gateway config and after OAuth migration/settings cleanup. Real
+  source-App startup confirmed no Codex plugin loading/command registration,
+  while native harness loaded. Fabricated App OAuth import/reuse still passes
+  (16.765/3.024 s); no real credentials or paid model requests in that probe.
+- Full vendor text secret scan now removes Gitleaks' default node_modules
+  path exclusion: 235.97 MB scanned vs the earlier 0.51 MB. It reported 24
+  vendor findings requiring classification, not zero findings. Binary/archive
+  coverage is not claimed; no new broad allowlist has been added.
+- Main GUI cohort paused at case 64 when switching the docs merge checkout
+  changed raw CRLF bytes. Read-only audit verified all 88 implementation files
+  equal frozen 58af7a5 Git content after CRLF normalization. The affected
+  receipt remains a failure; GUI rerun succeeded under a new raw fingerprint.
+  Another pre-send Viewer stale-image guard stopped case 67; GUI driver now
+  waits at most five seconds for a matching actual repaint, then boundedly
+  reopens via QFileDialog. Identity threshold unchanged; no inference sent on
+  the stale image. Do not switch the main worktree while this batch is active.
+  66 distinct pilot/main UI successes observed before case 67 restart; clinical
+  accuracy remains unevaluated. Public Pages PR #14 merged as 01c5c4d; deploy
+  34481931670 and real Edge desktop/mobile QA passed, including menu focus.
+
+- Candidate bfd7426 pushed as draft PR #13; CI 34478247522 and both Secret scans
+  passed. Initial UPX build was deliberately stopped (owned PyInstaller process)
+  after audit found 47 upstream notice files omitted by extension slimming.
+  That interrupted build has no completed size. Fix restores 324 exact npm
+  notices (562,442 B); refreshed slim stage is 280.77 MiB / 18,581 files.
+  Python/runtime closure, bootloader, Python, Node and App add 21 notices;
+  both inventories verify SHA-256 and safe paths. Node download now checks
+  official SHA-256 and extracts only binary/LICENSE without recursive temp
+  deletion. 106 targeted tests pass. Maintainer asked non-blockingly about
+  PyQt GPL-compatible vs commercial distribution; do not change source license
+  or publish binary before that decision and other release gates.
+- Follow-up smoke exposed unavailable `Get-FileHash` in pytest-spawned Windows
+  PowerShell; staging/downloader use streaming .NET SHA-256 instead. Real
+  staging/bootstrap smoke now passes (2 tests, 113.60 s). Separate HTTP sidecar
+  regression reproduced WinError 10053 on repeated unauthorized POSTs: unread
+  request bodies caused early socket-close races. Rejection now discards only
+  a known <=16 KiB body within a total one-second deadline, never parses it or
+  invokes inference. Thirty real 401 exchanges plus bounded/chunked/invalid/
+  trickling-body regressions pass (23 sidecar tests); fe0a612 full suite passed.
+
+- Isolated candidate branch `agent/openclaw-2026-9-3-20260910` now pins core and
+  OAuth-only migration provider 2026.9.3, with full npm lifecycle under portable
+  Node 24.18.0 (335-package audit: zero matches). Slim staging: 280.62 MiB,
+  18,533 files, five actual bootstrap templates, flat dependencies, no Codex
+  binaries. Native bbox + fabricated OAuth probes pass against slim tree;
+  actual App helper import/reuse passed in 8.440/2.739 s. Main cohort remains
+  frozen, not switched to this candidate. New EXE and real auth gates pending.
+- Initial managed Gateway/client port wiring passed unit tests, but did not
+  propagate to the child CLI (see actual failure/fix above). Bundle smoke chooses a
+  temporary port and supports `DICOM_TEST_BUNDLE`; it must not interfere with
+  the ongoing real cohort. 120 targeted tests passed, 3 packaged opt-in skips.
+- Candidate full non-GUI/non-slow regression: 1333 passed, 5 explicit local/
+  packaged/rendered opt-in skips (168.79 s). Final migration self-check pin/flat
+  Codex-ban regression separately passed with the auth module's 3 tests. Ruff
+  passed. Fresh default 9.3 stage restored with no native-probe plugin residue;
+  historical 7.1-2 stage preserved as `build/openclaw-runtime-baseline-7`.
+- Synced the already-published PR #14 website into the isolated candidate;
+  retained both the dated initial website evidence and subsequent package
+  corrections. No checkout or source mutation in the running main cohort.
+
+### Earlier PR #14 website checkpoint (superseded where updated above)
+
 - Website upgrade copy now distinguishes the frozen 7.1-2 Astra GUI cohort
   from isolated 9.3 PR #13: slim native bbox/template/fabricated App-auth checks
   passed, real auth/clinical/package/license gates remain open. Candidate first

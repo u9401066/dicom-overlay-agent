@@ -222,8 +222,9 @@ class TestOverlayAgent:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("blocked_check", [1, 2])
+    @pytest.mark.parametrize("reason", ["viewer_roi_obstructed", "roi_outside_viewer_client"])
     async def test_capture_obstruction_before_or_after_screenshot_never_sends(
-        self, agent, agent_deps, monkeypatch, blocked_check,
+        self, agent, agent_deps, monkeypatch, blocked_check, reason,
     ):
         from dicom_overlay.domain.services import CaptureBlockedError
 
@@ -237,7 +238,7 @@ class TestOverlayAgent:
         def verify(rect):
             checks.append(rect)
             if len(checks) == blocked_check:
-                raise CaptureBlockedError("viewer_roi_obstructed")
+                raise CaptureBlockedError(reason)
 
         monkeypatch.setattr(monitor, "verify_capture_target", verify)
         await agent.trigger_manual()
@@ -247,6 +248,8 @@ class TestOverlayAgent:
         assert agent.state is AgentState.ERROR
         assert agent.review_snapshot is None
         assert errors and "未送出影像" in errors[0]
+        if reason == "roi_outside_viewer_client":
+            assert "標題列或邊框" in errors[0]
 
     def test_reviewer_confirmed_delta_updates_result_and_trace(self, agent):
         original = Finding(

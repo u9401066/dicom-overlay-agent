@@ -286,8 +286,86 @@ def test_gateway_image_smoke_rejects_real_credentials_and_non_loopback_config(
 def _built_exe() -> Path | None:
     if sys.platform != "win32":
         return None
-    exe = _REPO_ROOT / "dist" / "DICOMOverlayAgent" / "DICOMOverlayAgent.exe"
+    bundle = Path(
+        os.environ.get("DICOM_TEST_BUNDLE", str(_REPO_ROOT / "dist/DICOMOverlayAgent"))
+    ).resolve()
+    exe = bundle / "DICOMOverlayAgent.exe"
     return exe if exe.exists() else None
+
+
+@pytest.mark.parametrize(
+    "error_text,run_id,templates,expected",
+    [
+        ("expected", "synthetic-run", True, 0),
+        ("expected", "synthetic-run", "without-bootstrap", 0),
+        ("expected", "", True, 1),
+        ("expected", "synthetic-run", False, 1),
+        ("HTTP 401", "synthetic-run", True, 1),
+        ("PACKAGED_SMOKE_EXPECTED_AUTH_FAILURE", "synthetic-run", True, 1),
+        ("Authentication failed for a different provider", "synthetic-run", True, 1),
+        ("Missing bootstrap template", "synthetic-run", True, 1),
+        ("", "synthetic-run", True, 1),
+        (None, "synthetic-run", True, 1),
+    ],
+)
+def test_gateway_smoke_requires_exact_public_auth_error_and_run_receipts(
+    tmp_path, monkeypatch, error_text, run_id, templates, expected
+):
+    from dicom_overlay import __main__ as app
+    from dicom_overlay.domain.entities import AppConfig
+
+    events = []
+
+    class Gateway:
+        def start(self):
+            events.append("start")
+
+        async def wait_ready(self):
+            return True
+
+        def stop(self):
+            events.append("stop")
+
+    class Client:
+        async def connect(self):
+            events.append("connect")
+
+        async def chat_about_image(self, _prompt, *, image_base64):
+            assert image_base64 == app._PACKAGING_SMOKE_PNG_BASE64
+            if error_text is not None:
+                raise RuntimeError(
+                    app._PACKAGING_SMOKE_AUTH_ERROR
+                    if error_text == "expected"
+                    else error_text
+                )
+            return "unexpected successful inference"
+
+        async def disconnect(self):
+            events.append("disconnect")
+
+        def last_run_trace(self):
+            return {"run_id": run_id}
+
+    monkeypatch.setattr(app, "_packaging_smoke_configuration_error", lambda _: "")
+    monkeypatch.setattr(
+        app.DesktopSettingsStore,
+        "ensure_gateway_token",
+        lambda _: "synthetic-gateway-token",
+    )
+    monkeypatch.setattr(app, "_configured_gateway", lambda *_: Gateway())
+    monkeypatch.setattr(app, "OpenClawClient", lambda **_: Client())
+    if templates:
+        workspace = tmp_path / "openclaw-home/.openclaw/workspace"
+        workspace.mkdir(parents=True)
+        for name in app._OPENCLAW_RUNTIME_TEMPLATE_PATHS:
+            if templates == "without-bootstrap" and name == "BOOTSTRAP.md":
+                continue
+            (workspace / name).write_text("Synthetic bootstrap", encoding="utf-8")
+    assert (
+        app._run_gateway_smoke(tmp_path, tmp_path / "config.yaml", AppConfig())
+        == expected
+    )
+    assert events == ["start", "connect", "disconnect", "stop"]
 
 
 @pytest.mark.skipif(
@@ -361,9 +439,15 @@ def test_built_bundle_package_runtime_smoke_exits_zero():
 def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
     exe = _built_exe()
     assert exe is not None
-    assert not _port_open(18789)
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        gateway_port = reservation.getsockname()[1]
     isolated = shutil.copytree(exe.parent, tmp_path / "DICOMOverlayAgent")
     isolated_exe = isolated / exe.name
+    config_path = isolated / "config.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["openclaw"]["gateway_url"] = f"ws://127.0.0.1:{gateway_port}"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     env = os.environ.copy()
     for name in (
         "OPENCLAW_GATEWAY_TOKEN",
@@ -408,16 +492,27 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
         request["authorization"] == "Bearer invalid-packaging-smoke-key"
         for request in provider_requests
     )
-    assert any(
-        b"input_image" in request["body"]
-        and b"data:image/png;base64," in request["body"]
+    from dicom_overlay.__main__ import _PACKAGING_SMOKE_PNG_BASE64
+
+    expected_image = "data:image/png;base64," + _PACKAGING_SMOKE_PNG_BASE64
+    images = [
+        part["image_url"]
         for request in provider_requests
-    ), "loopback provider request did not contain the PNG image attachment"
+        for message in json.loads(request["body"])["input"]
+        for part in message.get("content", [])
+        if isinstance(part, dict) and part.get("type") == "input_image"
+    ]
+    assert images and all(image == expected_image for image in images), (
+        "loopback provider request did not contain the exact synthetic PNG"
+    )
+    assert "Registered plugin command: /codex" not in gateway_log
+    assert "[plugins] loading codex " not in gateway_log
     app_log = (isolated / "overlay_agent.log").read_text(
         encoding="utf-8", errors="replace"
     )
     assert "packaged_gateway_image_turn_smoke" in app_log
-    assert "template_count=7" in app_log
+    assert "template_count=4" in app_log
+    assert "packaged_template_count=5" in app_log
     assert "image_attachment=True" in app_log
     workspace = isolated / "openclaw-home" / ".openclaw" / "workspace"
     assert all(
@@ -425,17 +520,16 @@ def test_built_bundle_gateway_smoke_isolated(tmp_path: Path):
         for name in (
             "AGENTS.md",
             "SOUL.md",
-            "TOOLS.md",
             "IDENTITY.md",
             "USER.md",
-            "HEARTBEAT.md",
-            "BOOTSTRAP.md",
         )
     )
     deadline = time.monotonic() + 15
-    while _port_open(18789) and time.monotonic() < deadline:
+    while _port_open(gateway_port) and time.monotonic() < deadline:
         time.sleep(0.25)
-    assert not _port_open(18789), "packaged Gateway process remained after smoke exit"
+    assert not _port_open(gateway_port), (
+        "packaged Gateway process remained after smoke exit"
+    )
 
 
 def _port_open(port: int) -> bool:

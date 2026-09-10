@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 
 import pytest
 
@@ -10,8 +11,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel
 
+from dicom_overlay.application.multi_pass import (
+    RefinementAction,
+    RefinementDelta,
+    apply_refinement_delta,
+)
 from dicom_overlay.domain.entities import (
     AnalysisResult,
     ChecklistItem,
@@ -191,6 +197,174 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     assert "rate=102.0 bpm" in refined.text()
     assert "regularity=irregular" in refined.text()
     assert "rhythm diagnosis not inferred" in refined.text()
+    panel.close()
+
+
+def test_report_prioritizes_findings_without_mutating_source(
+    qt_app: QApplication,
+) -> None:
+    result = _result()
+    result.findings.extend(
+        [
+            Finding(
+                id="urgent",
+                regions=[],
+                label="Urgent finding",
+                detail="Urgent detail",
+                severity=Severity.CRITICAL,
+            ),
+            Finding(
+                id="other",
+                regions=[],
+                label="Other info",
+                detail="Other detail",
+                severity=Severity.INFO,
+            ),
+        ]
+    )
+    original_ids = [finding.id for finding in result.findings]
+    panel = SummaryPanel()
+    panel.update_result(result)
+    labels = [panel._findings_layout.itemAt(i).widget() for i in range(3)]
+    assert "Urgent finding" in labels[0].text()
+    assert "Uncertain ST-T change" in labels[1].text()
+    assert "Other info" in labels[2].text()
+    assert "#c8ced9" in labels[1].styleSheet()
+    assert [finding.id for finding in result.findings] == original_ids
+    panel.close()
+
+
+def test_review_alert_navigates_to_unabridged_reasons(qt_app: QApplication) -> None:
+    result = _result()
+    result.review_required = True
+    result.review_reasons = [
+        f"Review reason {i}: preserve complete source and citation." for i in range(16)
+    ]
+    panel = SummaryPanel()
+    panel.resize(430, 600)
+    panel.update_result(result)
+    panel.show()
+    qt_app.processEvents()
+    assert panel._report_layout.indexOf(
+        panel._review_button
+    ) < panel._report_layout.indexOf(panel._findings_layout)
+    assert panel._report_layout.indexOf(
+        panel._review_label
+    ) > panel._report_layout.indexOf(panel._findings_layout)
+    assert "16 項" in panel._review_button.text()
+    assert all(reason in panel._review_label.text() for reason in result.review_reasons)
+    panel._review_button.setFocus()
+    QTest.keyClick(panel._review_button, Qt.Key.Key_Space)
+    qt_app.processEvents()
+    assert panel._report_scroll.verticalScrollBar().value() > 0
+    assert panel._report_scroll.verticalScrollBar().value() == min(
+        panel._review_label.y(), panel._report_scroll.verticalScrollBar().maximum()
+    )
+    panel.update_result(_result())
+    qt_app.processEvents()
+    assert panel._review_button.isHidden()
+    assert panel._review_label.text() == ""
+    assert panel._report_scroll.verticalScrollBar().value() == 0
+    panel.close()
+
+
+def test_report_clear_removes_all_stale_safety_messages(qt_app: QApplication) -> None:
+    result = _result()
+    result.review_required = True
+    result.review_reasons = []
+    result.incomplete = True
+    result.incomplete_reasons = ["Missing lead"]
+    result.zoom_hints = ["Zoom source"]
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert "0 項" not in panel._review_button.text()
+    assert not panel._review_button.isHidden()
+    panel.clear()
+    for widget in (
+        panel._review_button,
+        panel._review_label,
+        panel._incomplete_label,
+        panel._zoom_hint_label,
+    ):
+        assert widget.isHidden()
+        assert widget.text() == ""
+    assert panel._findings_layout.count() == 0
+    panel.close()
+
+
+def test_wrapped_report_text_is_not_compressed_below_its_rendered_height(
+    qt_app: QApplication,
+) -> None:
+    result = _result()
+    result.findings[0] = replace(
+        result.findings[0],
+        detail="Long wrapped finding detail requiring full review. " * 18,
+        notes=["Preserve every note without clipping. " * 10],
+    )
+    result.review_required = True
+    result.review_reasons = [
+        "Complete clinical limitation with guideline reference. " * 20
+    ]
+    panel = SummaryPanel()
+    panel.resize(430, 500)
+    panel.update_result(result)
+    panel.show()
+    qt_app.processEvents()
+    for tab in range(panel._tabs.count()):
+        panel._tabs.setCurrentIndex(tab)
+        qt_app.processEvents()
+        page = panel._tabs.widget(tab)
+        for label in page.findChildren(QLabel):
+            if label.wordWrap() and not label.isHidden():
+                assert label.height() >= label.heightForWidth(label.width())
+    panel._tabs.setCurrentIndex(0)
+    finding = panel._findings_layout.itemAt(0).widget()
+    old_height = finding.minimumHeight()
+    font = finding.font()
+    font.setPointSize(font.pointSize() + 3)
+    finding.setFont(font)
+    qt_app.processEvents()
+    assert finding.minimumHeight() > old_height
+    assert finding.height() >= finding.heightForWidth(finding.width())
+    panel.close()
+
+
+def test_report_keeps_crop_scope_next_to_the_limited_observation(
+    qt_app: QApplication,
+) -> None:
+    result = _result()
+    original = replace(result.findings[0], notes=["Original ROI includes labeled V1."])
+    crop_finding = replace(
+        original,
+        notes=["V1 is absent; V2 and V6 are truncated."],
+        bboxes=[RegionRect(0.1, 0.2, 0.2, 0.3)],
+    )
+    result.findings = apply_refinement_delta(
+        [original],
+        RefinementDelta(
+            RefinementAction.CONFIRM,
+            target_id=original.id,
+            finding=crop_finding,
+            rationale="Limb-lead comparison is unavailable.",
+        ),
+        crop_region=RegionRect(0.25, 0.5, 0.5, 0.25),
+        expected_target_id=original.id,
+    )
+    panel = SummaryPanel()
+    panel.resize(430, 700)
+    panel.update_result(result)
+    panel.show()
+    qt_app.processEvents()
+    label = panel._findings_layout.itemAt(0).widget()
+    assert isinstance(label, QLabel)
+    assert label.textFormat() is Qt.TextFormat.PlainText
+    assert "Note: Original ROI includes labeled V1." in label.text()
+    assert (
+        "Note: [Crop-only evidence; ROI x=0.2500 y=0.5000 w=0.5000 h=0.2500] "
+        "V1 is absent; V2 and V6 are truncated."
+    ) in label.text()
+    assert "Note: V1 is absent" not in label.text()
+    assert label.height() >= label.heightForWidth(label.width())
     panel.close()
 
 

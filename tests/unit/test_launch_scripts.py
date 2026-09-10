@@ -1045,6 +1045,7 @@ def test_build_script_forces_locked_openclaw_and_verifies_bundle() -> None:
     assert "npm ci --prefix openclaw --omit=dev" in installer
     assert "does not match lock target" in installer
     assert '"node\\node.exe" "!NPM_CLI_JS!"' in installer
+    assert 'set "PATH=%REPO_ROOT%node;!PATH!"' in installer
     assert "scripts\\check-openclaw-version.cjs" in installer
 
     migration_stage = Path(

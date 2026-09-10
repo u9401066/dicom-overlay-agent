@@ -255,6 +255,27 @@ class ScreenMonitor(ScreenMonitorService):
                 or rect.right > right or rect.bottom > bottom
             ):
                 raise CaptureBlockedError("roi_outside_viewer")
+            # Outer-window containment is insufficient: proportional ROI
+            # scaling can enter a fixed-size titlebar after a viewer resize.
+            # ClientToScreen returns device coordinates, including negatives;
+            # do not multiply them by Qt's device-pixel ratio again.
+            client_left, client_top, client_right, client_bottom = gui.GetClientRect(hwnd)
+            client_left, client_top = gui.ClientToScreen(hwnd, (client_left, client_top))
+            client_right, client_bottom = gui.ClientToScreen(
+                hwnd, (client_right, client_bottom)
+            )
+            if (
+                client_right <= client_left or client_bottom <= client_top
+                or client_left < left or client_top < top
+                or client_right > right or client_bottom > bottom
+            ):
+                raise CaptureBlockedError("viewer_client_geometry_invalid")
+            if (
+                rect.left < client_left or rect.top < client_top
+                or rect.right > client_right or rect.bottom > client_bottom
+            ):
+                # Never silently intersect, move, or expand the selected ROI.
+                raise CaptureBlockedError("roi_outside_viewer_client")
             visited = {hwnd}
             for _ in range(2048):
                 hwnd = gui.GetWindow(hwnd, 3)  # GW_HWNDPREV
