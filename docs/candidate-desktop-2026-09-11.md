@@ -141,7 +141,33 @@ claim. Five projected boxes have maximum edge drift 0.744 physical pixels, not
 clinical localization accuracy. There is no general speedup claim (this partial
 run is slower than c3532d7's failed-contract run).
 
-Further partial-ECG variants, hidden-label grounding,
+## Fully hidden lead labels — actual same-EXE challenge
+
+The real Set ROI dialog contracts the previous safe capture horizontally to
+`(150,81,1370,708)`, removing all left-side lead labels without enlarging the ROI.
+The actual Viewer file dialog, Analyze and Export workflow completes in 85.872 s
+(92.356 s GUI wall); four Astra-low sessions bind to public usage with no parse
+retries. An idle Gateway connection breaks before request acceptance, then the
+App reconnects and replays once with the same idempotency key. This transport
+event remains recorded rather than counted as another independent case.
+
+All eight rows declare `name=unknown`, `label_visible=false`, with partial
+layout. No named leads are accepted; both crop lead maps and all final finding
+region lists are empty. The report describes unlabeled waveform rows and
+image-grounded possibilities without inventing lead identities. It remains
+incomplete/review-required with three findings. Source and review render were
+visually inspected: all labels are absent. This passes one exposed
+**hidden-label non-fabrication challenge**, not clinical accuracy or localization;
+one retained box is explicitly marked low-signal by the exported audit.
+
+Source SHA-256:
+`cce82cb830055010eed9296e5c4cb7146e9b46ac2658c2e4ccf7603adc6f8e94`.
+Result SHA-256:
+`f3a60f45ea7be00913d8d2a050be581bf3d66acc1a4477ff8b52fa3233379ecd`.
+The validator's combined “malformed or hidden” warning still groups valid hidden
+declarations with malformed ones, a remaining presentation/diagnostic distinction.
+
+Further partial-ECG variants and broader hidden-label grounding,
 display-scale transitions, canvas/layer interactions and broader candidate model
 validation remain separate gates. Binary distribution licensing and specialist
 adjudication of the failed clinical baseline stay open.
