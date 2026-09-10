@@ -2,6 +2,28 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Integrated candidate is now `f7e3347`: PR #16 merged into #15, then #15
+  merged into #13's branch; #13 remains draft and main stays on the frozen
+  7.1-2 cohort implementation. CI 34489747248 and Secret 34489747329 pass.
+  Clean isolated-PATH rebuild includes both crop-scope and client-boundary
+  fixes: static verifier passes, 89 native sources approved, 52 UPX integrity
+  checks pass, and 19 actual frozen packaging smoke tests pass (120.60 s).
+  Owned test Gateway shuts down with no residual listener; no real model/auth.
+  Launcher 4.47 MiB, App 53.84 MiB, folder 336.43 MiB; local Deflate-9 ZIP
+  141.13 MiB, all 18,720 decompressed hashes match. Verifier report stays outside
+  the archive. Historical f184258 and failed fe0a612 artifacts remain untouched.
+- At 14:52 UTC, 89 primary distinct GUI successes plus six earlier pilots = 95.
+  Primary planned indices 7..127 continue; clinical scoring has not run and
+  pilots will stay separate. Main source/runtime are unchanged. No binary
+  publication; real candidate GUI/OAuth/model, partial-ECG/DPI/rollback and PyQt
+  distribution-license decision remain open. Old extraction PR #4 retains
+  compatibility exports, contrary to the user's requested direct separation;
+  it is not an integrated independent-harness implementation.
+- Diagnostic-only Qt PE import audit found Qt6Network.dll is imported by
+  qtuiotouchplugin.dll, and Qt6Svg.dll by SVG icon/image plugins. No extra
+  payload was removed: static imports alone do not prove safe removal of a
+  dynamically loaded plugin or establish a startup/GUI improvement.
+
 - Capture client guard pushed as draft stacked PR #16 (`69ac5c9`); CI
   34488167020 and Secret scans 34488169068 / 34488160587 pass. No main runtime
   change or binary release. The original 9.3 packaged f184258 artifact is not

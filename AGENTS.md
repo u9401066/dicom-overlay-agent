@@ -72,9 +72,9 @@ call it out and propose mitigation before proceeding.
   minimal. `scripts/fetch-node.ps1` provides the opt-in portable `node\node.exe`
   that `gateway_manager._find_node()` prefers for zero-install. `pywin32` stays a
   Windows-only conditional dependency.
-- **Measured budget:** launcher `.exe` < 50 MiB (candidate 4.46 MiB); app +
+- **Measured budget:** launcher `.exe` < 50 MiB (candidate 4.47 MiB); app +
   Python/Qt layer < 100 MiB (candidate 53.84 MiB); full zero-install folder
-  including pinned Node/OpenClaw is 336.43 MiB at f184258 (local ZIP 141.14 MiB).
+  including pinned Node/OpenClaw is 336.43 MiB at f7e3347 (local ZIP 141.13 MiB).
   These pass package smoke, not real candidate GUI/OAuth/clinical or license
   release gates. Do NOT prune OpenClaw's internal `dist`
   chunks to hit a smaller number — that couples to OpenClaw internals and breaks

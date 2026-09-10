@@ -5,7 +5,23 @@ The isolated candidate branch now pins **2026.9.3**. The real Astra-low GUI
 cohort continues unchanged on **2026.7.1-2** in the primary worktree. This is a
 measured adoption audit, not a released binary or clinical-pass claim.
 
-## Corrected packaged App — f184258
+## Integrated packaged App — f7e3347
+
+Crop-note scope and Viewer client-boundary fixes (PRs #15 and #16) are merged
+into the isolated candidate, not main. A clean rebuild at `f7e3347` passes
+static verification and **19 actual EXE packaging smoke tests** (120.60 s).
+The fake-provider image exchange proves transport, not real subscription or
+clinical behavior. CI 34489747248 and Secret scan 34489747329 pass.
+
+Measured launcher: **4.47 MiB**; App/Python/Qt: **53.84 MiB**; complete folder:
+**336.43 MiB**. All 89 native sources are approved and all 52 UPX-marked
+payloads pass integrity testing. The local Deflate-9 ZIP is **141.13 MiB**;
+all 18,720 decompressed file hashes match. Its local verifier report stays
+outside the bundle and archive. The [package audit](../memory-bank/package-audit-2026-09-10.md)
+records exact bytes and provenance. No candidate real-GUI/model, partial-ECG,
+DPI, rollback or distribution-license gate is closed by these package tests.
+
+## Earlier corrected packaged App — f184258
 
 The isolated Windows EXE now passes all **19 packaging smoke checks**: explicit
 random loopback port, public Gateway authentication, exact synthetic PNG at

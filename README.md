@@ -13,7 +13,8 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 The active desktop acceptance target is **GPT-6 Astra low**, selected through
 Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
-As of September 10, 13:43 UTC, **70 distinct cases** had verified real
+As of September 10, 14:52 UTC, **95 distinct cases** (89 primary, six earlier
+pilots kept separate for scoring) had verified real
 QFileDialog → Analyze → Export, source-image identity, and Astra-low runtime
 receipts. The 128-case batch is still running; clinical scoring is deferred.
 Guard-stopped attempts remain in the ledger and do not count as successes.
@@ -81,9 +82,10 @@ accuracy, latency acceptance, or release readiness.
   binding PID, port, token SHA-256, launch owner, and one canonical absolute bbox
   audit path. A healthy listener without that exact receipt is refused, not
   adopted or killed.
-- The isolated `f184258` candidate clean build passes static verification and
-  19 frozen packaging smoke checks: launcher 4.46 MiB, App/Python/Qt 53.84 MiB,
-  full folder 336.43 MiB, local distribution ZIP 141.14 MiB. All archived files
+- The isolated `f7e3347` candidate clean build, including crop-scope and Viewer
+  client-boundary fixes, passes static verification and 19 frozen packaging
+  smoke checks: launcher 4.47 MiB, App/Python/Qt 53.84 MiB,
+  full folder 336.43 MiB, local distribution ZIP 141.13 MiB. All archived files
   round-trip by SHA-256. This is not a published binary; real candidate
   GUI/OAuth/clinical, rollback and PyQt distribution-license gates remain open.
   OpenClaw internal `dist` chunks remain intact. See the
@@ -115,7 +117,7 @@ keep these aligned (see [AGENTS.md](AGENTS.md) for the maintenance guardrails).
 | 1 | **Image-reading overlay interaction** (position + content) | AI findings land in the right *position* (bbox/region over the original image) with readable *content* (checklist + chat follow-up) |
 | 2 | **Complete OpenClaw interpretation harness** | An executable, CI-verifiable contract proving the screenshot → analysis → overlay loop actually works |
 | 3 | **OpenClaw plugin compatibility** | Talks to OpenClaw only through the stable public Gateway protocol, so it survives across OpenClaw releases |
-| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MiB; measured candidate 4.46 MiB) plus a portable bundle with pinned Node/OpenClaw and explicit release gates |
+| 4 | **Minimal packaged executable** | A tiny `.exe` launcher (<50 MiB; measured candidate 4.47 MiB) plus a portable bundle with pinned Node/OpenClaw and explicit release gates |
 
 Each core is detailed in the [Core Details](#-core-details) section below.
 
@@ -546,17 +548,18 @@ stick. The bundle is built with [`scripts/build-exe.bat`](scripts/build-exe.bat)
 
 | Artifact | Budget | Verified measurement |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **4.46 MiB** |
+| `DICOMOverlayAgent.exe` launcher | < 50 MiB | **4.47 MiB** |
 | App + Python/Qt layer | < 100 MiB | **53.84 MiB** |
 | OpenClaw 2026.9.3 in bundle | < 500 MiB | **260.17 MiB** |
 | Portable Node.js `v24.18.0`, UPX | - | **22.43 MiB** |
 | Unreleased zero-install folder | < 650 MiB | **336.43 MiB** |
-| Local ZIP, Deflate 9 | Distribution only | **141.14 MiB** |
+| Local ZIP, Deflate 9 | Distribution only | **141.13 MiB** |
 
-These September 10 measurements are from isolated candidate `f184258`, not
-the historical `dist/` directory or a release. The archived 18,721 files each
+These September 10 measurements are from isolated candidate `f7e3347`, not
+the historical `dist/` directory or a release. The archived 18,720 files each
 pass decompressed SHA-256 verification; ZIP compression does not reduce the
-installed footprint. Native source audit approves 89 files, and all 52
+installed footprint. The local verifier report stays outside the archive.
+Native source audit approves 89 files, and all 52
 UPX-marked payloads pass `upx -t`. Both notice inventories preserve upstream
 licenses. PyQt's GPL/commercial distribution decision remains open; the App's
 Apache-2.0 license alone does not authorize a bundled binary release.

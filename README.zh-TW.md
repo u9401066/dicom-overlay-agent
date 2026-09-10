@@ -13,7 +13,8 @@
 
 目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
 `openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由。
-截至 9 月 10 日 13:43 UTC，**70 個不重複案例**已驗證真實開檔 → Analyze →
+截至 9 月 10 日 14:52 UTC，**95 個不重複案例**（主批次 89 例、較早 pilot
+6 例，評分時分開）已驗證真實開檔 → Analyze →
 Export、來源影像身分與 Astra low runtime。128-case 批次仍在進行，尚未做臨床
 評分；被保護機制攔下的嘗試保留為失敗，不算成功。這不是百例臨床驗收通過。
 
@@ -69,9 +70,10 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
 - Managed Gateway 只有在原子、無 secret 的 ownership receipt 同時綁定 PID、port、
   token SHA-256、launch owner 與唯一 canonical absolute bbox audit path 時才可重用；
   健康但 receipt 不符的 listener 會被拒絕，不會被接管或終止。
-- 隔離候選 `f184258` 的乾淨 build 已通過 static verifier 與 19 項真實 EXE
-  packaging smoke：launcher 4.46 MiB、App/Python/Qt 53.84 MiB、完整資料夾
-  336.43 MiB、本機 ZIP 141.14 MiB。每個解壓檔案的 SHA-256 均一致。
+- 隔離候選 `f7e3347`（包含裁圖註記範圍及 Viewer client 邊界修正）的乾淨
+  build 已通過 static verifier 與 19 項真實 EXE packaging smoke：launcher
+  4.47 MiB、App/Python/Qt 53.84 MiB、完整資料夾 336.43 MiB、本機 ZIP
+  141.13 MiB。每個解壓檔案的 SHA-256 均一致。
   尚未發布 binary；候選 GUI／真實 OAuth／臨床、rollback 與 PyQt 發佈授權
   gates 仍未完成。OpenClaw 內部 `dist` 保持完整，詳見
   [實測封裝稽核](memory-bank/package-audit-2026-09-10.md)。
@@ -223,7 +225,7 @@ Agent 不取代醫師，而是作為系統性的 *second-check*，降低因疲�
 | 1 | **影像判讀圖層互動**（位置 + 內容） | AI 發現出現在正確的 *位置*（bbox/region 疊在原圖上），並提供可讀的 *內容*（checklist + 追問 chat） |
 | 2 | **OpenClaw 判讀完整 harness** | 一個可執行、CI 可驗證的合約，證明截圖 → 分析 → 疊加的迴圈確實可用 |
 | 3 | **OpenClaw plugin 兼容性** | 只透過穩定的公開 Gateway 協定溝通，能跨 OpenClaw 版本存活 |
-| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB；候選實測 4.46 MiB）加上固定 Node/OpenClaw 的可攜 bundle 與明確發布 gates |
+| 4 | **最小化執行檔封裝** | 小型 `.exe` 啟動器（<50 MiB；候選實測 4.47 MiB）加上固定 Node/OpenClaw 的可攜 bundle 與明確發布 gates |
 
 每個核心詳見下方 [核心詳解](#-核心詳解)。
 
@@ -416,15 +418,16 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
 
 | 產物 | 預算 | 已驗證數字 |
 | --- | --- | --- |
-| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **4.46 MiB** |
+| `DICOMOverlayAgent.exe` 啟動器 | < 50 MiB | **4.47 MiB** |
 | App + Python/Qt 層 | < 100 MiB | **53.84 MiB** |
 | Bundle 內 OpenClaw 2026.9.3 | < 500 MiB | **260.17 MiB** |
 | 可攜 Node.js `v24.18.0`，UPX | - | **22.43 MiB** |
 | Unreleased 完整零安裝資料夾 | < 650 MiB | **336.43 MiB** |
-| 本機 ZIP，Deflate 9 | 僅傳輸封裝 | **141.14 MiB** |
+| 本機 ZIP，Deflate 9 | 僅傳輸封裝 | **141.13 MiB** |
 
-這是 9 月 10 日隔離候選 `f184258` 的實測，不是歷史 `dist/` 或正式 release。
-ZIP 的 18,721 個檔案均通過解壓 SHA-256 核對，但不會減少安裝後占用。
+這是 9 月 10 日隔離候選 `f7e3347` 的實測，不是歷史 `dist/` 或正式 release。
+ZIP 的 18,720 個檔案均通過解壓 SHA-256 核對，但不會減少安裝後占用。
+含本機路徑的 verifier 報告留在封裝目錄外，不放進 ZIP。
 89 個 native source 均通過來源稽核，52 個 UPX payload 通過 `upx -t`。
 兩份 notice inventories 保留上游授權；PyQt GPL／商業發佈方式仍待確認，
 App 的 Apache-2.0 授權本身不代表可直接發佈依賴的 binary。

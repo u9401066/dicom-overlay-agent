@@ -2,6 +2,46 @@
 
 ## Measured comparisons, not release approval
 
+### Latest integrated candidate, f7e3347
+
+PRs #15/#16 are merged into isolated candidate #13, not main. A new clean
+build includes crop-note scope and Viewer client-boundary guards without
+modifying the ongoing GUI cohort. Static verifier passes; all 89 native
+sources are approved and all 52 UPX-marked payloads pass `upx -t` unchanged.
+Actual EXE packaging smoke: **19 passed in 120.60 s**, including public
+Gateway image transport to a local fake provider, Codex runtime exclusion,
+and owned shutdown. CI 34489747248 / Secret scan 34489747329 pass.
+
+| Artifact | Bytes | MiB |
+| --- | ---: | ---: |
+| Launcher | 4,682,302 | 4.47 |
+| App / Python / Qt | 56,454,788 | 53.84 |
+| OpenClaw | 272,804,661 | 260.17 |
+| Node | 23,515,464 | 22.43 |
+| Complete folder, 18,720 files | 352,774,913 | 336.43 |
+| Local Deflate-9 ZIP | 147,990,011 | 141.13 |
+
+The launcher is included in the App layer, not an extra total component.
+ZIP creation took 25.462 s; every entry's decompressed SHA-256 matches the
+unchanged source. Unlike the older local f184258 archive, the verifier report
+(which includes local paths) stays outside the bundle and ZIP.
+
+- Clean source commit: `f7e334706f78df16750554aa5680d738845eab93`.
+- Source inventory: 157 files, SHA-256
+  `b83d25df79e561b0239b41cb248d81b35eb09da74872a99b51c4fa330bb6bc62`.
+- Launcher SHA-256:
+  `bec5cffbd52095547e18cbd514e391716f215441e43ff2e53d9692ff49d2fb5c`.
+- Bundle tree SHA-256:
+  `73b6d9f1902f9976369e4d5bef0a5182b7bd89f7a8b07ea618ceb2c74b176ffb`.
+- Local ZIP SHA-256:
+  `2b5e5864ad18e770d5c40981cadb5ba5006464cc7ffe0a98357a8a69b60a00b1`.
+
+These checks do not use real OAuth or a model. Candidate real GUI/clinical,
+partial-ECG/DPI, rollback and PyQt distribution-license gates remain open.
+No binary is published. Earlier builds below remain historical evidence.
+
+### Earlier compression comparison, ea6601e
+
 Both builds used clean UI repair revision `ea6601e`, CPython 3.13.12,
 PyInstaller 6.19.0, Pillow 12.1.1, Qt 6.10.2, pinned OpenClaw 2026.7.1-2 and
 portable Node 24.18.0. Separate output directories preserve both baselines.
