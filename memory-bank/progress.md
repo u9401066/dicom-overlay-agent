@@ -5,6 +5,13 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Fresh pinned lock npm audit: 11 affected production package entries, 7 high
+  and 4 moderate; all found at the same versions in slim staging. Candidate
+  2026.9.3 raw lock: zero. Reachability not established; old-pin rebuilt binaries
+  are blocked from publication, not from isolated size/function comparison.
+- Latest public Pages `242f7f4` deployment succeeded (`34472693765`) and passed
+  real Edge desktop/mobile interaction QA with zero console errors/overflow.
+
 - Latest-candidate audit merged through PR #8 as `8883360` after CI/Secret scan
   passed. Site copy now links the public 2026.9.3 audit; it still identifies the
   active 2026.7.1-2 pin and unclosed clinical-tool/migration/bundle gates.

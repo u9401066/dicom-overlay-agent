@@ -2,6 +2,16 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- New binary-release blocker: pinned production npm lock audit reports 11
+  affected package entries (7 high / 4 moderate); all exact versions are present
+  in the freshly staged slim runtime. Candidate 2026.9.3 lock audit reports zero,
+  not a safety guarantee. Old-pin build is size/function baseline only; no
+  force-fix of the running cohort. SECURITY.md and the dated upgrade audit list
+  the evidence and remaining migration/tool/real-App gates.
+- Public Pages latest deployment `34472693765` on `242f7f4` passed actual Edge
+  desktop/mobile URL, navigation, menu keyboard/focus, overflow and console QA.
+  Native mobile screenshot inspected. No binary/clinical release is implied.
+
 - Latest upstream candidate is **2026.9.3**. Isolated supported-Node probe
   negotiated protocol 4, sent a synthetic PNG through the existing public frame,
   verified exact image hash at a loopback fake provider, and received correlated
