@@ -2,6 +2,14 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Package comparisons on clean UI repair source: no-UPX 337.77 MiB vs UPX 5.2.1
+  241.29 MiB; existing frozen checks passed. TOC audit revealed ambient MiKTeX /
+  TortoiseGit DLL sources, so these are not approved hermetic builds. New build
+  wrapper isolates PATH and audits every native source. Isolated-PATH UPX rebuild
+  passed with 84 approved native sources, 239.03 MiB total, 53.41 MiB App layer;
+  compressed Node HTTPS smoke passed. Full regression 1305 passed, 4 opt-in skips.
+  See `memory-bank/package-audit-2026-09-10.md` for evidence and release blockers.
+
 - New binary-release blocker: pinned production npm lock audit reports 11
   affected package entries (7 high / 4 moderate); all exact versions are present
   in the freshly staged slim runtime. Candidate 2026.9.3 lock audit reports zero,

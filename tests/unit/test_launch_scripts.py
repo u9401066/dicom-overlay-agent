@@ -1027,7 +1027,7 @@ def test_build_script_forces_locked_openclaw_and_verifies_bundle() -> None:
         "--frozen --no-dev --extra build"
     ) in script
     assert (
-        '"%DICOM_OVERLAY_BUILD_ENV%\\Scripts\\python.exe" -m PyInstaller'
+        '"%DICOM_OVERLAY_BUILD_ENV%\\Scripts\\python.exe" scripts\\build-windows-package.py'
         in script
     )
     assert "uv sync --extra build" not in script
