@@ -65,6 +65,8 @@ REQUIRED_FILES = (
     "DICOMOverlayAgent.exe",
     "config.yaml",
     "THIRD_PARTY_NOTICES.md",
+    "openclaw/notice-inventory.json",
+    "third-party-notices/notice-inventory.json",
     "node/node.exe",
     "openclaw/node_modules/openclaw/openclaw.mjs",
     "openclaw/node_modules/openclaw/package.json",
@@ -236,6 +238,10 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
     workspace_templates = _inspect_workspace_templates(bundle)
     clinical_knowledge = _inspect_clinical_knowledge(bundle)
     package_build = _inspect_package_build(bundle)
+    notices = {
+        name: _inspect_notice_inventory(bundle / name)
+        for name in ("openclaw", "third-party-notices")
+    }
     component_counts = _component_counts(bundle)
     selfcheck = _run_selfcheck(exe) if run_selfcheck and exe.is_file() else None
     package_runtime_smoke = (
@@ -345,6 +351,9 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
             "package build/toolchain receipt is invalid: "
             + str(package_build.get("error") or "unknown error")
         )
+    for name, receipt in notices.items():
+        if not receipt["ok"]:
+            failures.append(f"{name} notice inventory failed: {receipt['error']}")
     for component, count in component_counts.items():
         if count == 0:
             failures.append(f"bundled OpenClaw component is empty: {component}")
@@ -385,6 +394,7 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         "workspace_templates": workspace_templates,
         "clinical_knowledge": clinical_knowledge,
         "package_build": package_build,
+        "third_party_notices": notices,
         "sizes": {
             "file_count": file_count,
             "launcher_bytes": launcher_bytes,
@@ -412,6 +422,61 @@ def inspect_bundle(bundle: Path, *, run_selfcheck: bool = True) -> dict[str, Any
         "codex_migration_runtime_check": codex_migration_runtime,
         "failures": failures,
     }
+
+
+def _inspect_notice_inventory(root: Path) -> dict[str, Any]:
+    inventory = _read_json(root / "notice-inventory.json")
+    records = inventory.get("files")
+    if (
+        type(inventory.get("schema_version")) is not int
+        or inventory.get("schema_version") != 1
+        or not isinstance(records, list)
+        or not records
+    ):
+        return {"ok": False, "file_count": 0, "error": "missing or invalid inventory"}
+    errors = []
+    seen: set[str] = set()
+    root = root.resolve()
+    for record in records:
+        if not isinstance(record, dict):
+            errors.append("invalid notice record")
+            continue
+        relative = record.get("path")
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or any(ord(character) < 32 for character in relative)
+            or "\\" in relative
+            or ":" in relative
+            or Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+            or re.fullmatch(
+                r"(?i)(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT)([.-].*)?",
+                Path(relative).name,
+            )
+            is None
+        ):
+            errors.append("unsafe or non-notice path")
+            continue
+        if relative.casefold() in seen:
+            errors.append("duplicate notice path")
+            continue
+        seen.add(relative.casefold())
+        path = (root / relative).resolve()
+        expected_size, expected_hash = record.get("bytes"), record.get("sha256")
+        if (
+            not path.is_relative_to(root)
+            or not path.is_file()
+            or isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or expected_size <= 0
+            or path.stat().st_size != expected_size
+            or not isinstance(expected_hash, str)
+            or re.fullmatch(r"[a-f0-9]{64}", expected_hash) is None
+            or _sha256_file(path) != expected_hash
+        ):
+            errors.append(f"missing or modified notice: {relative}")
+    return {"ok": not errors, "file_count": len(records), "error": "; ".join(errors)}
 
 
 def _read_openclaw_version(bundle: Path) -> str:

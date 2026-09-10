@@ -221,6 +221,39 @@ if (Test-Path -LiteralPath $treeSitterSource) {
 # dist/plugins, or dist/plugin-sdk can pass ``gateway --help`` yet fail only
 # when the first image-analysis agent run starts.
 
+# Restore upstream copyright/license notices even when their extension or
+# containing documentation directory is otherwise pruned. These are not
+# optional development assets. Keep source-relative paths and exact bytes.
+$sourceModules = (Resolve-Path (Join-Path $repo "openclaw\node_modules")).Path
+$noticeRecords = @(
+    Get-ChildItem -LiteralPath $sourceModules -Recurse -File |
+        Where-Object { $_.Name -match '^(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT)([.-].*)?$' } |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relative = $_.FullName.Substring($sourceModules.Length + 1)
+            $noticeTarget = Join-Path $stagedModules $relative
+            New-Item -ItemType Directory -Force -Path (Split-Path $noticeTarget) | Out-Null
+            Copy-Item -LiteralPath $_.FullName -Destination $noticeTarget -Force
+            $hasher = [Security.Cryptography.SHA256]::Create()
+            $noticeStream = [IO.File]::OpenRead($_.FullName)
+            try {
+                $noticeHash = [BitConverter]::ToString($hasher.ComputeHash($noticeStream)).Replace('-', '').ToLowerInvariant()
+            } finally {
+                $noticeStream.Dispose()
+                $hasher.Dispose()
+            }
+            [ordered]@{
+                path = ("node_modules/" + $relative.Replace('\', '/'))
+                bytes = $_.Length
+                sha256 = $noticeHash
+            }
+        }
+)
+if ($noticeRecords.Count -eq 0) { throw "Upstream notice inventory is empty." }
+[ordered]@{ schema_version = 1; files = $noticeRecords } |
+    ConvertTo-Json -Depth 5 |
+    Set-Content -LiteralPath (Join-Path $OutputRoot "openclaw\notice-inventory.json") -Encoding utf8
+
 $sum = Get-ChildItem -Recurse -File $OutputRoot | Measure-Object Length -Sum
 $mb = [Math]::Round($sum.Sum / 1MB, 2)
 if ($sum.Sum -gt ($MaxRuntimeMB * 1MB)) {

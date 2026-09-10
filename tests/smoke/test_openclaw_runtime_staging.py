@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -43,7 +45,7 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
 
     output_root = repo_staging_output
     relative_output = output_root.relative_to(_REPO_ROOT)
-    subprocess.run(
+    staging = subprocess.run(
         [
             "powershell",
             "-NoProfile",
@@ -55,12 +57,14 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
             str(relative_output),
         ],
         cwd=tmp_path,
-        check=True,
+        check=False,
         text=True,
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        timeout=240,
     )
+    assert staging.returncode == 0, f"Staging failed:\n{staging.stdout}\n{staging.stderr}"
 
     modules_root = output_root / "openclaw" / "node_modules"
     package_root = modules_root / "openclaw"
@@ -80,6 +84,19 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
         path.is_file() and path.read_text(encoding="utf-8-sig").strip()
         for path in runtime_templates.values()
     )
+    inventory = json.loads(
+        (output_root / "openclaw/notice-inventory.json").read_text(encoding="utf-8-sig")
+    )
+    assert inventory["schema_version"] == 1 and inventory["files"]
+    for record in inventory["files"]:
+        staged_notice = output_root / "openclaw" / record["path"]
+        source_notice = _REPO_ROOT / "openclaw" / record["path"]
+        assert staged_notice.read_bytes() == source_notice.read_bytes()
+        assert (
+            hashlib.sha256(staged_notice.read_bytes()).hexdigest() == record["sha256"]
+        )
+    assert any(record["path"].endswith("LICENSE.md") for record in inventory["files"])
+    assert any(record["path"].endswith("LICENSE.txt") for record in inventory["files"])
     assert not [
         path
         for path in modules_root.rglob("*")
@@ -93,18 +110,16 @@ def test_stage_openclaw_runtime_is_slim_and_gateway_help_runs(
         for path in tree_sitter_source.rglob("*")
         if path.is_file() and path.suffix.casefold() in {".c", ".h"}
     ]
-    assert [
-        path.name for path in (modules_root / "@lydell").glob("node-pty-*")
-    ] == ["node-pty-win32-x64"]
+    assert [path.name for path in (modules_root / "@lydell").glob("node-pty-*")] == [
+        "node-pty-win32-x64"
+    ]
     assert [
         path.name
         for path in (modules_root / "tree-sitter-bash/prebuilds").iterdir()
         if path.is_dir()
     ] == ["win32-x64"]
     assert sorted(
-        path.name
-        for path in modules_root.glob("sqlite-vec-*")
-        if path.is_dir()
+        path.name for path in modules_root.glob("sqlite-vec-*") if path.is_dir()
     ) == ["sqlite-vec-windows-x64"]
     pi_tui_native = modules_root / "@earendil-works/pi-tui/native"
     assert sorted(path.name for path in pi_tui_native.iterdir() if path.is_dir()) == [

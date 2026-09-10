@@ -131,6 +131,14 @@ def main() -> int:
         mode = os.environ.get("DICOM_OVERLAY_UPX_ENABLED", "1")
         if mode not in {"0", "1"}:
             raise ValueError("DICOM_OVERLAY_UPX_ENABLED must be 0 or 1")
+        notices = subprocess.run(
+            [sys.executable, str(repo / "scripts/stage-package-notices.py")],
+            cwd=repo,
+            env=env,
+            check=False,
+        )
+        if notices.returncode:
+            return notices.returncode
         command = [
             sys.executable,
             "-m",

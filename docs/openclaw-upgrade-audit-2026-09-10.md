@@ -89,6 +89,16 @@ metadata before use. Extracted size agrees exactly with npm's declared
 | Raw `@openai` scope | 377.406 MiB | Codex runtime/platform dependencies; must not ship or be enabled for this app |
 | Slim staged candidate | 280.62 MiB / 18,533 files | Flat frozen dependency tree; internal `dist` preserved |
 | Staged OAuth-only provider | 2.50 MiB | Included in the slim size; five hoisted helpers retained, no Codex executable |
+| Slim stage with restored notices | 280.77 MiB / 18,581 files | Retains all 324 published npm notice files and their hash inventory |
+
+An initial candidate EXE build was intentionally stopped after the notice
+audit found 47 `.md`/`.txt` notices (72,988 B) omitted by the historical slimming
+rule. All source notice files are now preserved byte-for-byte. Node's official
+archive checksum is verified, its LICENSE retained, and the Python/bootloader/
+runtime notices have a separate manifest. This is a preservation check, not
+license clearance; the PyQt distribution decision remains open in
+[Third-Party Notices](../THIRD_PARTY_NOTICES.md). No final 9.3 EXE measurement
+is claimed by these staging sizes.
 
 The raw dependency tree contains 35,246 files. Installation used exact
 `openclaw@2026.9.3` and `@openclaw/codex@2026.9.3` with lifecycle scripts

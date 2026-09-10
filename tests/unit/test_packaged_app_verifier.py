@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -33,11 +34,82 @@ def _load_build_receipt_module():
     return module
 
 
+def _write_notice_fixture(root: Path) -> dict:
+    root.mkdir(parents=True, exist_ok=True)
+    content = b"Synthetic upstream license notice\n"
+    (root / "LICENSE.txt").write_bytes(content)
+    record = {
+        "path": "LICENSE.txt",
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    inventory = {"schema_version": 1, "files": [record]}
+    (root / "notice-inventory.json").write_text(json.dumps(inventory), encoding="utf-8")
+    return inventory
+
+
+def test_notice_inventory_preserves_exact_upstream_bytes(tmp_path):
+    module = _load_module()
+    _write_notice_fixture(tmp_path)
+    assert module._inspect_notice_inventory(tmp_path)["ok"] is True
+    (tmp_path / "LICENSE.txt").write_bytes(b"changed")
+    assert module._inspect_notice_inventory(tmp_path)["ok"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "empty",
+        "escape",
+        "absolute",
+        "drive",
+        "backslash",
+        "duplicate",
+        "zero",
+        "boolean",
+        "bad_hash",
+        "non_notice",
+        "non_record",
+    ],
+)
+def test_notice_inventory_rejects_missing_unsafe_or_invalid_entries(tmp_path, mutation):
+    module = _load_module()
+    inventory = _write_notice_fixture(tmp_path)
+    record = inventory["files"][0]
+    if mutation == "missing":
+        (tmp_path / "LICENSE.txt").unlink()
+    elif mutation == "empty":
+        inventory["files"] = []
+    elif mutation in {"escape", "absolute", "drive", "backslash", "non_notice"}:
+        record["path"] = {
+            "escape": "../LICENSE.txt",
+            "absolute": "/LICENSE.txt",
+            "drive": "C:/LICENSE.txt",
+            "backslash": "x\\LICENSE.txt",
+            "non_notice": "config.json",
+        }[mutation]
+    elif mutation == "duplicate":
+        inventory["files"].append(dict(record))
+    elif mutation in {"zero", "boolean"}:
+        record["bytes"] = 0 if mutation == "zero" else True
+    elif mutation == "bad_hash":
+        record["sha256"] = "0" * 64
+    else:
+        inventory["files"] = [None]
+    (tmp_path / "notice-inventory.json").write_text(
+        json.dumps(inventory), encoding="utf-8"
+    )
+    assert module._inspect_notice_inventory(tmp_path)["ok"] is False
+
+
 def _write_required_bundle(root: Path, module) -> str:
     for relative in module.REQUIRED_FILES:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"placeholder")
+    for notice_root in (root / "openclaw", root / "third-party-notices"):
+        _write_notice_fixture(notice_root)
     clinical_root = root / "clinical_knowledge"
     source_clinical = Path(__file__).resolve().parents[2] / "clinical_knowledge"
     for source in source_clinical.rglob("*"):
