@@ -18,13 +18,6 @@ from dicom_overlay.domain.clinical_rules import (
     default_engine,
     group_by_modality,
 )
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    Severity,
-)
 from dicom_overlay.domain.hooks import AnalyzeRequest
 from dicom_overlay.infrastructure.clinical_rule_loader import (
     build_clinical_engine,
@@ -33,6 +26,13 @@ from dicom_overlay.infrastructure.clinical_rule_loader import (
 )
 from dicom_overlay.infrastructure.hooks.clinical_consistency import (
     ClinicalConsistencyHook,
+)
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    Severity,
 )
 
 

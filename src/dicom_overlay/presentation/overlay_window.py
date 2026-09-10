@@ -22,15 +22,14 @@ from PyQt6.QtWidgets import (
 from dicom_overlay.presentation.capture_safety import protect_widget_from_capture
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import (
+    from dicom_overlay.domain.entities import DisplayFrame, WindowRect
+    from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
+    from medical_image_harness.models import (
         AnalysisResult,
         ChecklistItem,
-        DisplayFrame,
         RegionRect,
         UserRegionAnnotation,
-        WindowRect,
     )
-    from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
 
 logger = structlog.get_logger(__name__)
 
@@ -320,8 +319,8 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
     def update_result(self, result: AnalysisResult) -> None:
         """Update panel with new analysis result."""
         from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
-        from dicom_overlay.domain.entities import Severity
         from dicom_overlay.domain.modality_profile import get_active_registry
+        from medical_image_harness.models import Severity
 
         profile = get_active_registry().resolve(result.modality.value)
         self._title_label.setText(
@@ -1076,7 +1075,7 @@ class OverlayWindow(QWidget):
 
     @property
     def user_region_annotations(self) -> list[UserRegionAnnotation]:
-        from dicom_overlay.domain.entities import RegionRect, UserRegionAnnotation
+        from medical_image_harness.models import RegionRect, UserRegionAnnotation
 
         annotations: list[UserRegionAnnotation] = []
         for values in self._user_regions:

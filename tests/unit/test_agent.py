@@ -9,17 +9,11 @@ import pytest
 
 from dicom_overlay.domain.entities import (
     AgentState,
-    AnalysisResult,
     AppConfig,
-    ChecklistItem,
     DisplayFrame,
-    Finding,
     FindingDelta,
     FindingOp,
-    Modality,
-    RegionRect,
     ROICrop,
-    Severity,
     TriggerMode,
     WindowRect,
 )
@@ -28,6 +22,14 @@ from dicom_overlay.domain.services import (
     RegionMapperService,
     ScreenMonitorService,
     VisionAnalyzerService,
+)
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
 )
 
 # --- Mock implementations ---

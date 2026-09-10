@@ -40,7 +40,6 @@ from dicom_overlay.application.multi_pass import (
     DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
 )
 from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
-from dicom_overlay.domain.entities import AnalysisResult, Modality, Severity
 from dicom_overlay.domain.hooks import AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import get_active_registry
 from dicom_overlay.infrastructure.ecg_variant_corpus import (
@@ -51,6 +50,7 @@ from dicom_overlay.infrastructure.ecg_variant_corpus import (
 )
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.openclaw_client import _bbox_coordinates_digest
+from medical_image_harness.models import AnalysisResult, Modality, Severity
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

@@ -21,14 +21,10 @@ from dicom_overlay.application.review_chat import (
     parse_region_review_response,
     summarize_regional_refinement,
 )
-from dicom_overlay.domain.entities import (
-    Finding,
-    FindingOp,
-    RegionRect,
-    Severity,
-)
+from dicom_overlay.domain.entities import FindingOp
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
+from medical_image_harness.models import Finding, RegionRect, Severity
 
 
 def _finding(

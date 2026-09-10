@@ -10,13 +10,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import (
-        AnalysisResult,
-        DisplayFrame,
-        Modality,
-        RegionRect,
-        WindowRect,
-    )
+    from dicom_overlay.domain.entities import DisplayFrame, WindowRect
+    from medical_image_harness.models import AnalysisResult, Modality, RegionRect
 
 
 class CaptureBlockedError(RuntimeError):

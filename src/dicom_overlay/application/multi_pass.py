@@ -40,7 +40,9 @@ from dicom_overlay.domain.ekg_layout import (
     parse_ekg_lead_inventory,
     parse_normalized_region,
 )
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.modality_profile import get_active_registry
+from dicom_overlay.domain.services import VisionAnalyzerService
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,
@@ -48,8 +50,6 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.modality_profile import get_active_registry
-from dicom_overlay.domain.services import VisionAnalyzerService
 
 logger = structlog.get_logger(__name__)
 

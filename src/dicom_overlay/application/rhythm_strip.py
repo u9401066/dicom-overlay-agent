@@ -37,14 +37,14 @@ from dicom_overlay.application.multi_pass import (
     remap_bbox,
 )
 from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.services import VisionAnalyzerService
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.services import VisionAnalyzerService
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

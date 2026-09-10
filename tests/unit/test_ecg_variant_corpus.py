@@ -11,7 +11,6 @@ from dicom_overlay.application.interpretation_harness import (
     PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
     build_coarse_analysis_prompt,
 )
-from dicom_overlay.domain.entities import Modality
 from dicom_overlay.infrastructure.ecg_variant_corpus import (
     EKG_CHECKLIST_AXES,
     EKG_NAMED_REGIONS,
@@ -23,6 +22,7 @@ from dicom_overlay.infrastructure.ecg_variant_corpus import (
     sha256_bytes,
     verify_variant_corpus,
 )
+from medical_image_harness.models import Modality
 
 if TYPE_CHECKING:
     from pathlib import Path

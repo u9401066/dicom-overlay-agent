@@ -13,7 +13,7 @@ from dicom_overlay.domain.modality_profile import (
 )
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult
+    from medical_image_harness.models import AnalysisResult
 
 logger = structlog.get_logger(__name__)
 

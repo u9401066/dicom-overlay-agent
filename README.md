@@ -9,16 +9,25 @@
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 (published and browser-verified on September 10; development evidence, not a clinical release).
 
-## Development evidence — 2026-09-10 (not a release)
+## Development evidence — 2026-09-11 (not a release)
 
 The active desktop acceptance target is **GPT-6 Astra low**, selected through
 Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
-As of September 10, 14:52 UTC, **95 distinct cases** (89 primary, six earlier
-pilots kept separate for scoring) had verified real
-QFileDialog → Analyze → Export, source-image identity, and Astra-low runtime
-receipts. The 128-case batch is still running; clinical scoring is deferred.
-Guard-stopped attempts remain in the ledger and do not count as successes.
-This is not a completed 100-case clinical acceptance result.
+The primary real-desktop baseline is complete and sealed: **121 distinct cases**,
+six retained technical failures, with six earlier pilots excluded. There are
+446 original stage snapshots; a separate post-seal supplement binds 460 sessions
+including nested attempts to observed Astra-low runtime and public usage
+(not a complete billing ledger). Preliminary automated scoring does
+**not meet acceptance**: strict match 0/46 complete-reference cases; annotated
+urgent concerns caught 2/21. Specialist adjudication is pending. Mean completed
+analysis time is 136.662 s. See the [sealed baseline and limitations](docs/evaluation-desktop-astra-2026-09-11.md).
+
+The separate c3532d7 EXE now has an actual OAuth/Astra-low case (113.735 s,
+no finalization retry) and a pre-send resize guard check. An intentional missing-
+lead capture exposed a structured-layout failure. Corrected 0e55a61 EXE reruns
+the identical ROI in 96.990 s with valid declarations and crop mapping, but
+still requires review; visible-label and clinical accuracy are not adjudicated.
+[Candidate evidence and open gates](docs/candidate-desktop-2026-09-11.md).
 
 Earlier pilot evidence:
 Real GUI captures reached the subscription transport with observed
@@ -33,7 +42,7 @@ across 103 attempts; all 60 exported source images matched their intended
 cases, which is identity evidence, not diagnostic accuracy.
 See the [September 10 evidence update](docs/verification-2026-09-10.md).
 
-The working tree identifies itself as `0.4.7` and the harness/plugin as `1.5.8`,
+The working tree identifies itself as `0.4.7` and the harness/plugin as `1.5.9`,
 but this repository currently has **no Git tag and no GitHub Release**. Treat all
 `0.4.7` entries as Unreleased until a clean build, the required live runs, CI,
 tag, and release artifacts have passed.
@@ -146,10 +155,16 @@ dicom-overlay-agent/
 
 ## 🚀 Quick Start
 
+This integration branch directly consumes the pinned public harness model types;
+it does not retain the old App model imports. Full engine extraction and canonical
+evidence assembly are still in progress. See the
+[integration scope and verification boundary](docs/direct-harness-integration.md).
+
 ### Run from source (Windows)
 
 ```powershell
 # 1. Sync the Python environment (uv-first)
+git submodule update --init --recursive
 uv sync --all-extras
 
 # 2. Install the repo-local OpenClaw runtime once

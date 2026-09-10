@@ -18,19 +18,19 @@ from dicom_overlay.application.multi_pass import (
     RefinementDelta,
     apply_refinement_delta,
 )
-from dicom_overlay.domain.entities import (
+from dicom_overlay.presentation.control_bar import ControlBarWindow
+from dicom_overlay.presentation.overlay_window import (
+    ChatPanel,
+    OverlayWindow,
+    SummaryPanel,
+)
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,
     Modality,
     RegionRect,
     Severity,
-)
-from dicom_overlay.presentation.control_bar import ControlBarWindow
-from dicom_overlay.presentation.overlay_window import (
-    ChatPanel,
-    OverlayWindow,
-    SummaryPanel,
 )
 
 

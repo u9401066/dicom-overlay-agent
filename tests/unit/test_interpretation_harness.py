@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+import copy
+import json
+from pathlib import Path
+
+import pytest
+from jsonschema import Draft202012Validator
+
 from dicom_overlay.application.interpretation_harness import (
+    EKG_LAYOUT_OUTPUT_GUIDANCE,
+    EKG_PARTIAL_LAYOUT_EXAMPLE,
     InterpretationContext,
     build_coarse_analysis_prompt,
     build_followup_prompt,
@@ -8,7 +17,8 @@ from dicom_overlay.application.interpretation_harness import (
     build_minimal_control_prompt,
     summarize_result_for_followup,
 )
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,
@@ -150,6 +160,60 @@ def test_non_ekg_coarse_prompt_omits_lvh_balance_contract() -> None:
 
     assert "Possible LVH-compatible pattern" not in prompt
     assert "calibration pulse prevents a definite LVH claim" not in prompt
+    assert EKG_LAYOUT_OUTPUT_GUIDANCE not in prompt
+
+
+def test_noncompact_layout_example_obeys_the_real_schema_and_parser() -> None:
+    schema = json.loads(Path(
+        "openclaw/workspace/skills/dicom-ekg-analysis/schema.json"
+    ).read_text(encoding="utf-8"))["properties"]["layout"]
+    example = json.loads(EKG_PARTIAL_LAYOUT_EXAMPLE)
+    Draft202012Validator(schema).validate(example)
+    inventory = parse_ekg_lead_inventory(example)
+    assert len(inventory.leads) == 1
+    assert inventory.leads[0].name == "lead_V1"
+    assert not inventory.complete
+    assert inventory.malformed_entries == 0
+    prompt = build_coarse_analysis_prompt(
+        modality=Modality.EKG, valid_regions=["lead_V1"]
+    )
+    assert EKG_LAYOUT_OUTPUT_GUIDANCE in prompt
+    assert "take precedence over the character target" in prompt
+    assert "not image evidence" in prompt
+
+
+@pytest.mark.parametrize("count", [1, 3, 6, 8])
+def test_synthetic_partial_inventories_preserve_missing_leads(count: int) -> None:
+    names = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2"][:count]
+    layout = json.loads(EKG_PARTIAL_LAYOUT_EXAMPLE)
+    layout["leads"] = [
+        {"name": name, "label_visible": True, "bbox": [0, i / count, 1, 1 / count]}
+        for i, name in enumerate(names)
+    ]
+    inventory = parse_ekg_lead_inventory(layout)
+    assert len(inventory.leads) == count
+    assert len(inventory.missing_names) == 12 - count
+    assert "lead_V3" in inventory.missing_names
+    assert not inventory.complete
+
+
+@pytest.mark.parametrize("defect", ["lead_alias", "missing_visibility", "invented_format"])
+def test_partial_inventory_drift_stays_invalid_without_compatibility_aliases(
+    defect: str,
+) -> None:
+    schema = json.loads(Path(
+        "openclaw/workspace/skills/dicom-ekg-analysis/schema.json"
+    ).read_text(encoding="utf-8"))["properties"]["layout"]
+    bad = copy.deepcopy(json.loads(EKG_PARTIAL_LAYOUT_EXAMPLE))
+    if defect == "lead_alias":
+        bad["leads"][0]["lead"] = bad["leads"][0].pop("name")
+        assert parse_ekg_lead_inventory(bad).malformed_entries == 1
+    elif defect == "missing_visibility":
+        del bad["leads"][0]["label_visible"]
+        assert parse_ekg_lead_inventory(bad).malformed_entries == 1
+    else:
+        bad["format"] = "partial_stacked"
+    assert list(Draft202012Validator(schema).iter_errors(bad))
 
 
 def test_minimal_control_prompt_keeps_only_json_envelope_and_single_look() -> None:

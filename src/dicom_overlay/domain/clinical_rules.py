@@ -40,8 +40,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from dicom_overlay.domain.entities import AnalysisResult, Severity
 from dicom_overlay.domain.generated_clinical_rules import BUILTIN_RULE_SPECS
+from medical_image_harness.models import AnalysisResult, Severity
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping

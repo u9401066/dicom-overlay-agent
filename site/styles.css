@@ -1493,17 +1493,19 @@ h1 {
 }
 
 .evidence-four {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   background: var(--paper);
 }
 
 .evidence-four div {
+  min-width: 0;
   padding: 24px 18px;
 }
 
 .evidence-four dt {
   font-size: clamp(20px, 2vw, 29px);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .cohort-row {

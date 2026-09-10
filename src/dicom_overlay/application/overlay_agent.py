@@ -23,18 +23,20 @@ from dicom_overlay.application.multi_pass import (
 from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
 from dicom_overlay.domain.entities import (
     AgentState,
-    AnalysisResult,
     DisplayFrame,
-    Finding,
     FindingDelta,
     FindingOp,
-    Modality,
-    RegionRect,
-    Severity,
     TriggerMode,
     WindowRect,
 )
 from dicom_overlay.domain.services import CaptureBlockedError
+from medical_image_harness.models import (
+    AnalysisResult,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import AppConfig, ROICrop

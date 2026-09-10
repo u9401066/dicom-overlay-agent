@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from dicom_overlay.domain.entities import RegionRect, ROICrop, WindowRect
+from dicom_overlay.domain.entities import ROICrop, WindowRect
 from dicom_overlay.infrastructure.overlay_geometry import (
     LogicalRect,
     OverlayCoordinateFrame,
     project_bbox_to_overlay_highlight,
 )
+from medical_image_harness.models import RegionRect
 
 
 def test_project_bbox_uses_edge_rounding_and_reports_small_drift() -> None:

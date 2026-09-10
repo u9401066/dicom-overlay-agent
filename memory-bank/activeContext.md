@@ -1,6 +1,175 @@
 # Active Context
 
+## 2026-09-11 Public Pages deployed and browser-verified
+
+- Docs-only PR #18 passed CI 34508568445 and both secret scans, merged as
+  1c531a5f6160546e9dee1038a0fe33774ca11f75. Pages deployment 34508937809 and
+  main secret scan 34508937893 passed. No candidate code or binary was merged.
+  Main worktree fast-forwarded only these docs/site files; original user dirt
+  remains unchanged. Repository description/homepage/topics already suitable;
+  PR #18 labeled documentation/evaluation.
+- Actual public URL https://u9401066.github.io/dicom-overlay-agent/ passed
+  existing Playwright/Edge at 1440x1000, 390x844 and 320x700: identity, meaningful
+  content, no error overlay, no console warnings/errors, no page/cell overflow,
+  evidence link -> docs harness, mobile menu Escape/focus. Public desktop and
+  mobile screenshots visually inspected. External evidence/script are under
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-pages-qa-20260911/public-v2/.
+  Frontend-testing skill found and fixed long-statistic overlap that a page-wide
+  overflow assertion missed. No clinical claims follow. Main post-merge CI and
+  later candidate docs CI were still running at this checkpoint.
+
+## 2026-09-11 Corrected partial EXE and public evidence refresh
+
+- Same frozen EXE also completes real hidden-label crop (150,81,1370,708) in
+  85.872 s, four bound Astra-low sessions, zero parse retries. All eight rows
+  correctly declare unknown/false; no named crop/finding regions. Schema-valid
+  non-fabrication check passes; clinical accuracy remains null. Source/review
+  visually inspected, no labels present; one low-signal box retained in audit.
+  Idle transport breaks before acceptance; same-idempotency-key replay succeeds.
+  Original raw/usage receipts retained. Combined malformed-or-hidden warning and
+  fixed 12-Lead title remain presentation edges. App 27896 remains in manual
+  mode with this narrower ROI; Viewer 26088 unchanged. Public docs-only PR #18
+  adds both partial trials without main source/runtime changes; CI rerunning.
+
+- Clean 0e55a61 package passes static verifier, 20 frozen smoke tests (100.62 s),
+  90 native-source checks, CI and secret scans. 337.01 MiB folder / 54.42 MiB
+  App / 4.68 MiB launcher; all 18,771 live-copy hashes match; preserved build
+  unchanged. Exact provenance is in docs/direct-harness-integration.md.
+- Actual new EXE PID 27896 / owned Gateway 15000 / port 18792: real Settings
+  Astra OAuth import, file dialog, Analyze, Export. Partial case 119 repeats
+  identical source SHA 00294b0b...1270 in 96.990 s (103.286 s GUI wall), four
+  verified Astra-low sessions, zero retries, valid eight-lead declarations and
+  both crop mappings; V3-V6 remain absent. Raw result SHA 46223416...ac07 and
+  separate read-only audit/usage receipts retained. Not label-visibility or
+  clinical acceptance, not general speedup. Review required; actual widget and
+  ROI render inspected at 150% DPI. Fixed 12-Lead title on partial input remains
+  a presentation edge; hidden-label grounding is another separate gate.
+- Pages update now states failed sealed 121-case baseline, exact denominators,
+  exposed rerun scope, measured candidates and unresolved distribution license.
+  Frontend testing skill / Browser unavailable -> existing Playwright + Edge.
+  Real screenshot caught long statistic overlap; wrapping fixed and own-cell
+  bounds added. Local 1440x1000, 390x844, 320x700 navigation/menu/Escape/focus,
+  console/overflow checks pass; 14 static site tests pass. Public deploy pending.
+
+## 2026-09-11 Actual corrected EXE and first resize guard
+
+- c3532d7 ZIP is 148,419,324 bytes (141.54 MiB), SHA
+  f07c63a9c4463819a47c1c168c167429f68e565451d14b8881dc23bb24216a9f.
+  All 18,771 entries roundtrip/hash-match; separate live copy matches; 53 UPX
+  native payload tests pass. Original package preserved, no binary publication.
+- Old App/Gateway closed normally via Quit. Live candidate EXE PID 33640 uses
+  port 18791 and its own state. Real Settings selects Astra low; official pinned
+  OAuth migration succeeds, Codex runtime/API key disabled. A known failed case
+  now completes four verified Astra-low stages in 113.735 s (old 175.805 s with
+  final timeout). Exact same captured source hash, finalization 40.400 s, zero
+  parse retries, seven receipt-bound boxes. Still incomplete/review-required;
+  not general speed/accuracy or blind acceptance. Summary widget visually checked.
+- Actual Viewer shrink 1522x1136 -> 1200x850 + Analyze fails closed before sending
+  with roi_outside_viewer_client; restored geometry and unchanged ROI. Retained
+  startup/config convergence, GUI focus and local evidence-formatting failures
+  are documented in docs/candidate-desktop-2026-09-11.md.
+- Separate deliberate partial ROI selected through actual Set ROI dragging,
+  inside the original safe region: actual 1484x708 source matches the Viewer
+  subrectangle pixel-for-pixel. Four Astra-low stages finish in 91.436 s and
+  prose identifies V3-V6 absent, but structured layout FAILS (lead instead of
+  name, missing label_visible, unsupported partial_stacked). Eight malformed
+  entries, zero valid mapped leads; raw output and separate one-pixel driver
+  expectation/recovery receipts preserved. No rerun or baseline rescoring.
+- Actual triage prompt now states exact canonical partial shape and prioritizes
+  fields over character count. Parser requires boolean visible=true; missing,
+  string/numeric visibility is not accepted or filled by row normalization.
+  No lead/name alias, new clinical rule or model change. New + related target
+  regression 224 pass; Ruff pass. This is source-only pending new EXE/model QA;
+  preserved c3532d7 binaries do not contain it. See candidate desktop report.
+
+## 2026-09-11 Post-seal usage and corrected package verification
+
+- Read-only usage supplement v2 binds all 460 public sessions to Astra low:
+  446 original stages plus 14 nested attempts. Thirteen synthetic binding checks
+  cover exact/masked identity ambiguity; two masked identifiers never suffice.
+  Seal verified unchanged, no inference or rescoring. Failed attempts without
+  exported identity remain unknown; no complete billing or monetary claim.
+  Supplement SHA 0684cbfb65d0bb7fcba56d46821d38c34220728b184bb278f415f4e26c45a045.
+- Cumulative exposure denylist now has 1,358 identities, conservatively including
+  all 128 selected cases. New blind selections must exclude them. Original
+  selection, gold, exports and failed baseline are unchanged.
+- Captured seven-box tool replay accepts all seven and matches the exact draft
+  digest under plugin 1.5.9. Zero model requests; not clinical validation.
+- c3532d7 clean-source static/runtime package verification passes; 20 frozen
+  smoke checks pass (103.22 s), 90 native sources approved. Launcher 4.68 MiB,
+  App 54.42 MiB, folder 337.01 MiB. Source and payload hashes are recorded in
+  docs/direct-harness-integration.md. CI push 34501374911 and PR 34501380408
+  pass on Windows/Ubuntu; secret scans pass. Immutable bundle retained; actual
+  candidate GUI/OAuth/model checks will use a separate writable copy.
+  No binary publication or license decision; failed clinical acceptance stays open.
+
+## 2026-09-11 Bbox receipt defect and direct-model package checkpoint
+
+- Primary real-GUI cohort is complete and sealed: 121 distinct successes,
+  six retained technical failures, 1,991 inventoried files; six pilots excluded.
+  Seal `data/tmp/desktop-astra-ui-20260910-main/primary-seal-20260910-1613.json`
+  SHA 2de49ad479ddeef43b4e47fb1539e78161d4c4654d4ffc13c37ea63fb5e43657.
+  First paired-gold score uses candidate a7d8fb4's recorded scorer, not the new
+  coordinate correction: strict 0/46 complete-label cases; urgent concerns 2/21;
+  exact severity 8/121; schema 113/121. All 121 results incomplete/review-required;
+  109 finalizations complete, 12 timeout after a mismatched-receipt retry.
+  Mean completed-case latency 136.662 s. This is a failed preliminary automatic
+  acceptance result, not clinical sensitivity/specificity or release approval.
+  Raw evidence is unchanged; see the separate dated evaluation report.
+- Further synthetic origin half-tie tests found two Python rounding failures.
+  App and artifact validator now share fractional-part rounding matching native
+  Math.round. All 30,000 scalar half-tie/adjacent-float vectors match; expanded
+  targeted suite 128 passed; full regression 1516 passed / five explicit skips
+  (205.70 s). PR CI 34500348053 then exposed another existing 40 ms Windows
+  stream-test race before acceptance. The mock now supplies its known-run ack
+  immediately, uses a 200 ms test deadline and has a 1 s outer bound against
+  endless deadline renewal. Production timeout/abort behavior is unchanged.
+
+- Read-only public Gateway history on an original failed GUI finalization
+  identified native `(origin + extent) - origin` cancellation on unclipped
+  boxes. Synthetic cross-language parity first reproduced 23 failures / 13
+  passes; plugin 1.5.9 preserves untouched extents and rejects rounded ROI
+  overflow, without relaxing exact digest or image/turn binding. New + existing
+  native/Gateway checks: 94 passed; full regression 1505 passed / five explicit
+  skips (210.59 s), Ruff passed. Actual new-model latency/accuracy is not yet
+  measured. See `docs/bbox-receipt-canonicalization.md`.
+- PR #17 direct-model branch merged the candidate scorer; head 7abc364 retains
+  pinned public harness efeff23. Push CI 34498083016 passed; parallel PR CI
+  34498089534 found a Windows 20 ms scheduling-test race (1458 pass / 6 skip).
+  That policy test now uses its existing injected clock; 139 multi-pass checks
+  pass locally, with no production SLA or timeout-test change.
+- Separate clean-source 7abc364 local package: static verifier passes, 90 native
+  dependency sources approved, 20 actual frozen packaging checks pass (126.76 s).
+  Launcher 4.67 MiB, App layer 54.42 MiB, full folder 337.01 MiB. This artifact
+  retains plugin 1.5.8 and does not cover the later receipt correction; older
+  f7e3347 bundle is unchanged. No binary publication/license change.
+- Frozen main cohort at 16:01 UTC has 118 primary distinct GUI successes; index
+  118 initial timeout remains, and index 126 was blocked pre-send by ROI
+  obstruction while packaged tests were also active. Six technical failures
+  are retained. Packaged tests ended; real Viewer rerun 126..127 is in progress,
+  then 118 must be retried before sealing. No gold scoring has run.
+
 ## 2026-09-10 Current acceptance target and runtime fixes
+
+- Separate `agent/direct-harness-models-20260910` worktree consumes public
+  harness efeff23 directly for seven shared model types; duplicate App classes
+  and all old caller imports are removed, with no compatibility exports.
+  CI/Pages initialize the submodule and use the frozen uv source map. Schema
+  resources are required by packaging and tested offline. Extra schema dependency
+  installed non-pyc footprint is 1.43 MiB, not a measured EXE/ZIP increase.
+  1127 existing checks passed; new boundary/package-verifier 56 passed; public
+  harness own environment 222 passed plus public/agent-method and built-package
+  integrity checks. Public PR #1 supplies missing py.typed metadata only; CI
+  passed and the direct App's three targeted mypy modules pass without ignores.
+  Full App run exposed one fresh-install OpenClaw staging failure (1420 passed,
+  six explicit skips). Public CLI preparation now runs before OAuth-only
+  migration relocation/pruning, with isolated state and a cleared child
+  environment. Another cold locked install passes 9 helper/staging checks;
+  full App regression passes 1429 / six explicit skips (186.95 s). Main runtime
+  and the earlier accepted bundle remain unchanged. The candidate's isolated
+  preparation fix a7d8fb4 passes CI 34496955373 and secret scans.
+  See `docs/direct-harness-integration.md`. Full engine extraction, canonical
+  host assembly and actual candidate GUI/model/packaging remain pending.
 
 - New `scripts/score-desktop-cohort.py` verifies a complete >=100-case primary
   hash seal before opening the pre-digested paired gold, then scores immutable
@@ -13,10 +182,6 @@
   exposed a floating-point nonzero lower endpoint at 0/100; fixed explicitly.
   This is tooling, not a real clinical score. Main at 15:06 UTC: 95 primary
   successes + six earlier pilots = 101 distinct actual UI cases.
-- Direct independent-harness integration is being developed in a new isolated
-  worktree based on bf28d82, pinning public harness 9d24e28. It does not merge
-  old PR #4 compatibility exports, change the frozen main cohort, or modify the
-  verified f7e3347 package. No full-extraction or canonical export claim yet.
 
 - Integrated candidate is now `f7e3347`: PR #16 merged into #15, then #15
   merged into #13's branch; #13 remains draft and main stays on the frozen

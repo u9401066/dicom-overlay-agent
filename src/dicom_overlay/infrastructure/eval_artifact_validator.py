@@ -1097,6 +1097,8 @@ def _verify_results(
 
 
 def _bbox_payload_digest(findings: list[object]) -> tuple[str, int]:
+    from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
+
     coordinates: list[list[str]] = []
     for finding in findings:
         if not isinstance(finding, dict):
@@ -1109,12 +1111,12 @@ def _bbox_payload_digest(findings: list[object]) -> tuple[str, int]:
                 continue
             try:
                 values = [
-                    math.floor(float(box[key]) * 10_000 + 0.5) / 10_000
+                    canonical_bbox_coordinate(float(box[key]))
                     for key in ("x", "y", "w", "h")
                 ]
             except (KeyError, TypeError, ValueError):
                 continue
-            coordinates.append([f"{value:.4f}" for value in values])
+            coordinates.append(values)
     coordinates.sort()
     encoded = json.dumps(coordinates, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest(), len(coordinates)

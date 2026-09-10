@@ -46,7 +46,9 @@ from dicom_overlay.application.multi_pass import (
     select_hypothesis_crop_region,
     select_zoom_targets,
 )
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.modality_profile import get_active_registry
+from dicom_overlay.domain.services import VisionAnalyzerService
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,
@@ -54,8 +56,6 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.modality_profile import get_active_registry
-from dicom_overlay.domain.services import VisionAnalyzerService
 
 
 def _result(findings: list[Finding]) -> AnalysisResult:
@@ -1793,14 +1793,17 @@ class TestMultiPassInterpreter:
     async def test_observed_crop_duration_reserves_time_for_finalization(
         self, monkeypatch
     ):
+        # Test scheduling policy with the injected clock, not a 20 ms Windows
+        # timer race. Real timeout/cancellation behavior has separate tests.
+        observed_time = [0.0]
         monkeypatch.setattr(
             "dicom_overlay.application.multi_pass._SLA_RETURN_BUFFER_SEC",
-            0.001,
+            0.1,
         )
 
         class SlowFinalizingAnalyzer(_FinalizingAnalyzer):
             async def refine(self, *args, **kwargs):
-                await asyncio.sleep(0.03)
+                observed_time[0] += 3.0
                 return await super().refine(*args, **kwargs)
 
         coarse = _result(
@@ -1818,11 +1821,12 @@ class TestMultiPassInterpreter:
             analyzer,
             _RecordingCropper(),
             max_zoom_targets=2,
-            initial_response_sla_sec=0.02,
-            first_refinement_sla_sec=0.06,
-            total_analysis_sla_sec=0.15,
-            finalization_reserve_sec=0.10,
-            min_followup_budget_sec=0.001,
+            initial_response_sla_sec=2.0,
+            first_refinement_sla_sec=6.0,
+            total_analysis_sla_sec=15.0,
+            finalization_reserve_sec=10.0,
+            min_followup_budget_sec=0.1,
+            clock=lambda: observed_time[0],
         )
 
         result = await interpreter.interpret("img", Modality.CXR, [])
@@ -1834,8 +1838,8 @@ class TestMultiPassInterpreter:
             for event in result.analysis_trace
             if event.get("status") == "total_deadline_reserve_reached"
         )
-        assert skipped["previous_refinement_sec"] >= 0.025
-        assert skipped["minimum_start_budget_sec"] >= 0.031
+        assert skipped["previous_refinement_sec"] == 3.0
+        assert skipped["minimum_start_budget_sec"] == 3.75
 
     async def test_prefers_compact_coarse_capability_when_available(self):
         analyzer = _CoarseAwareAnalyzer([_result([])])

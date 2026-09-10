@@ -17,7 +17,7 @@ from dicom_overlay.infrastructure.annotation_exporter import (
 )
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import (
+    from medical_image_harness.models import (
         AnalysisResult,
         RegionRect,
         UserRegionAnnotation,

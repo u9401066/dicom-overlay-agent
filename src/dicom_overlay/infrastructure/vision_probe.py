@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from dicom_overlay.domain.entities import Modality
+from medical_image_harness.models import Modality
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.services import VisionAnalyzerService

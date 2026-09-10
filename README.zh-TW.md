@@ -9,14 +9,21 @@
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 （9 月 10 日已公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
 
-## 開發證據 — 2026-09-10（尚未發布）
+## 開發證據 — 2026-09-11（尚未發布）
 
 目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
 `openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由。
-截至 9 月 10 日 14:52 UTC，**95 個不重複案例**（主批次 89 例、較早 pilot
-6 例，評分時分開）已驗證真實開檔 → Analyze →
-Export、來源影像身分與 Astra low runtime。128-case 批次仍在進行，尚未做臨床
-評分；被保護機制攔下的嘗試保留為失敗，不算成功。這不是百例臨床驗收通過。
+主要實機基準已完成並封存：**121 個不重複案例**、六次保留的技術失敗，
+另六個早期 pilot 不納入評分。原有 446 個階段快照；另行封存後補查含內部重試
+共 460 個 session，均有 Astra low runtime 與公開用量紀錄（不是完整帳務）。
+初步自動評分**未達驗收**：完整標註案例
+嚴格符合 0/46、緊急疑慮辨識 2/21，仍待專科複核。完成案例平均分析時間
+136.662 秒。詳見[封存基準、分母與限制](docs/evaluation-desktop-astra-2026-09-11.md)。
+
+獨立 c3532d7 EXE 已完成真實 OAuth／Astra low 單例（113.735 秒、整合無重試）
+與縮窗後的送出前阻擋檢查。刻意缺導程截圖另外抓到結構化導程欄位錯誤；
+新版 0e55a61 EXE 已在 96.990 秒完成相同 ROI，導程欄位與裁切對應有效，但仍須
+複核，尚未證明標籤可讀性與診斷正確。[新版實機證據與未完成門檻](docs/candidate-desktop-2026-09-11.md)。
 
 較早的 pilot 證據：
 runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整合階段逾時
@@ -27,7 +34,7 @@ runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整�
 60 份來源影像均匹配預定案例，這只證明影像身分，並非診斷正確率。
 詳見[9 月 10 日證據更新](docs/verification-2026-09-10.md)。
 
-目前 working tree 的產品 metadata 是 `0.4.7`、harness/plugin 是 `1.5.8`，但
+目前 working tree 的產品 metadata 是 `0.4.7`、harness/plugin 是 `1.5.9`，但
 repository **沒有任何 Git tag，也沒有 GitHub Release**。在乾淨封裝、指定實機
 批次、CI、tag 與 release artifacts 全部通過以前，所有 `0.4.7` 內容都屬於
 Unreleased。
@@ -254,10 +261,15 @@ dicom-overlay-agent/
 
 ## 🚀 快速開始
 
+此整合分支直接使用固定版本的公開 harness 資料模型，不保留 App 舊型別匯入
+的相容層。完整判讀引擎拆分與 canonical 證據組裝仍在進行，詳見
+[整合範圍與驗證邊界](docs/direct-harness-integration.md)。
+
 ### 從原始碼執行（Windows）
 
 ```powershell
 # 1. 同步 Python 環境（uv 優先）
+git submodule update --init --recursive
 uv sync --all-extras
 
 # 2. 安裝 repo 本地 OpenClaw runtime（只需一次）

@@ -11,17 +11,17 @@ from typing import TYPE_CHECKING
 import structlog
 from PIL import Image, ImageFont
 
-from dicom_overlay.domain.entities import (
+from dicom_overlay.infrastructure.desktop_review_exporter import (
+    export_desktop_review,
+)
+from dicom_overlay.infrastructure.logging_config import setup_logging
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.infrastructure.desktop_review_exporter import (
-    export_desktop_review,
-)
-from dicom_overlay.infrastructure.logging_config import setup_logging
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -120,12 +120,25 @@ def run_package_runtime_smoke(work_dir: Path) -> dict[str, object]:
         if not (review_path.parent / "bbox-audit.json").is_file():
             raise RuntimeError("review coordinate audit was not written")
 
+    def harness_contract_smoke() -> None:
+        from medical_image_harness.resources import load_skill
+        from medical_image_harness.schema import load_schema, validation_errors
+
+        if not load_skill().strip():
+            raise RuntimeError("public harness method resource is empty")
+        schema = load_schema()
+        if "input_provenance" not in schema.get("required", []):
+            raise RuntimeError("canonical harness contract lacks provenance gate")
+        if not validation_errors({}):
+            raise RuntimeError("canonical harness validator accepted an empty draft")
+
     try:
         check("logging_init", logging_smoke)
         check("png_encode_decode", png_smoke)
         check("jpeg_decode", jpeg_smoke)
         check("font_render", font_smoke)
         check("review_export", review_smoke)
+        check("harness_contract", harness_contract_smoke)
     finally:
         for handler in list(root_logger.handlers):
             root_logger.removeHandler(handler)

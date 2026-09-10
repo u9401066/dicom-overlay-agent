@@ -14,7 +14,7 @@ import pytest
 import yaml
 from PIL import Image
 
-from dicom_overlay.domain.entities import Modality, ROICrop, TriggerMode, WindowRect
+from dicom_overlay.domain.entities import ROICrop, TriggerMode, WindowRect
 from dicom_overlay.infrastructure.app_paths import resolve_app_base_dir
 from dicom_overlay.infrastructure.config_loader import load_config, save_roi_config
 from dicom_overlay.infrastructure.desktop_settings_store import DesktopSettingsStore
@@ -45,6 +45,7 @@ from dicom_overlay.infrastructure.openclaw_settings import (
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.infrastructure.screen_monitor import ScreenMonitor
 from dicom_overlay.infrastructure.vision_probe import VisionSmokeTester
+from medical_image_harness.models import Modality
 from tests.unit.test_agent import MockVisionAnalyzer
 
 
@@ -346,7 +347,7 @@ class TestOpenClawRuntimeCompatibility:
         manifest = build_harness_manifest()
 
         assert manifest["name"] == "dicom-overlay-agent-harness"
-        assert manifest["version"] == "1.5.8"
+        assert manifest["version"] == "1.5.9"
         assert manifest["compatibility"]["minimumOpenClaw"] == "2026.4.22"
         assert manifest["compatibility"]["gatewayProtocol"]["methods"] == [
             "connect",
@@ -1308,7 +1309,7 @@ class TestRegionMapper:
         assert rect is None
 
     def test_to_screen_rect(self, mapper: RegionMapper):
-        from dicom_overlay.domain.entities import RegionRect
+        from medical_image_harness.models import RegionRect
 
         region = RegionRect(x=0.0, y=0.0, w=0.25, h=0.27)
         window = WindowRect(left=100, top=200, width=1000, height=800)

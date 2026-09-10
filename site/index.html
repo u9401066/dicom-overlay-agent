@@ -173,24 +173,25 @@
         <div class="evidence-layout">
           <div>
             <dl class="evidence-rail evidence-four">
-              <div><dt>2026-09-10</dt><dd>evidence snapshot · 10:22 UTC</dd></div>
-              <div><dt>3 ROI exports</dt><dd>2 distinct Astra cases</dd></div>
+              <div><dt>2026-09-11</dt><dd>sealed baseline + candidate checks</dd></div>
+              <div><dt>121 primary cases</dt><dd>6 pilots excluded</dd></div>
               <div><dt>GPT-6 Astra</dt><dd>low reasoning · subscription</dd></div>
-              <div><dt>Not validated</dt><dd>clinical accuracy remains open</dd></div>
+              <div><dt>Acceptance failed</dt><dd>strict 0/46 · urgent 2/21</dd></div>
             </dl>
             <div class="cohort-row">
               <strong>128 important multi-diagnosis cases</strong>
-              <span>Frozen from 9,922 canonical MEETI images · full Astra cohort pending</span>
+              <span>Frozen from 9,922 canonical MEETI images · 121 primary cases scored</span>
             </div>
           </div>
           <aside class="accuracy-warning" aria-labelledby="accuracy-warning-title">
             <h3 id="accuracy-warning-title">No new accuracy pass</h3>
             <p>
-              Two Astra calibration attempts used the same first case, not two
-              independent cases. A second case completed all four turns in 140.481 s;
-              its clinical scoring is pending. An obstructed capture is excluded.
+              The sealed primary cohort failed strict agreement (0/46 complete
+              references) and urgent detection (2/21). All 121 results require review.
+              Bounding boxes within the image do not establish correct localization.
             </p>
-            <p>Engineering evidence only. No clinical-accuracy or performance claim.</p>
+            <p>Six pilots and retained technical failures are separate. Candidate reruns are exposed development checks, not new blind accuracy evidence.</p>
+            <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/evaluation-desktop-astra-2026-09-11.md">Read denominators, uncertainty and limitations</a>
           </aside>
         </div>
         <div class="evidence-ledger">
@@ -211,6 +212,21 @@
                 </tr>
               </thead>
               <tbody>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-11">2026-09-11</time><br>sealed primary cohort</th>
+                  <td>121 distinct cases · mean analysis 136.662 s · 460 bound session snapshots</td>
+                  <td>Strict 0/46; urgent 2/21; schema 113/121. No normal controls. Timings exclude failed attempts and file/export overhead; usage is not a complete billing ledger.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-11">2026-09-11</time><br>c3532d7 candidate EXE</th>
+                  <td>Full ROI 113.735 s · partial ROI 91.436 s</td>
+                  <td>Known bbox failure now finalizes; still incomplete. Eight-row ECG crop recognized in prose but failed the structured lead contract. Single exposed case, not a general speed or accuracy gain.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-11">2026-09-11</time><br>0e55a61 corrected EXE</th>
+                  <td>Same partial ROI · 96.990 s · 4 bound Astra-low turns</td>
+                  <td>Eight valid lead declarations now reach crop mapping; V3–V6 remain missing. Incomplete and review required. Label visibility and clinical accuracy are not adjudicated.</td>
+                </tr>
                 <tr>
                   <th scope="row"><time datetime="2026-09-10">2026-09-10</time><br><code>desktop-20260910-102218-658881</code></th>
                   <td>Astra low · 140.481 s · 4 observed turns</td>
@@ -257,14 +273,14 @@
         </div>
         <div class="status-grid" aria-label="Readiness ledger">
           <article>
-            <span class="status-label status-frozen">Frozen · Astra pending</span>
+            <span class="status-label status-frozen">Sealed · acceptance failed</span>
             <h3>Important multi-128 v1</h3>
-            <p>128 unique multi-diagnosis cases are frozen. No complete real-App cohort result exists yet.</p>
+            <p>121 primary cases completed the real App route; six pilots are excluded. The whole 128-case cohort is conservatively denied future blind selection.</p>
           </article>
           <article>
-            <span class="status-label status-mock">Mock plumbing only</span>
+            <span class="status-label status-mock">Mock checks + actual failure</span>
             <h3>Incomplete ECG partial-v2</h3>
-            <p>Eight crop, missing-lead, mask, band, and resolution variants passed mock schema/bbox plumbing. This is not a clinical pass.</p>
+            <p>Eight synthetic variants passed mock plumbing. Actual c3532d7 failed its lead schema; corrected 0e55a61 repeats the same ROI with valid declarations/crop mapping. This is not a clinical pass.</p>
           </article>
           <article>
             <span class="status-label status-auditable">Auditable source</span>
@@ -274,7 +290,7 @@
           <article>
             <span class="status-label status-deferred">Candidate under verification</span>
             <h3>OpenClaw 2.x candidate</h3>
-            <p>Latest candidate 2026.9.3 passes slim-runtime protocol, native bbox and fabricated OAuth migration checks. The running cohort stays pinned to 2026.7.1-2; real subscription, clinical and packaged-app release gates remain open.</p>
+            <p>Candidate 2026.9.3 now runs in the actual EXE with subscription OAuth and observed Astra low. The sealed baseline used 2026.7.1-2. Clinical, broader UI and binary-license release gates remain open.</p>
           </article>
         </div>
         <p class="evidence-footnote">
@@ -324,7 +340,7 @@
           <li>
             <span>1</span>
             <h3>Clone and build</h3>
-            <p>The repository is public. No GitHub Release is published as of 2026-09-10, so build the current source.</p>
+            <p>The repository is public. No GitHub Release is published as of 2026-09-11. Source builds remain development software.</p>
             <code>scripts\build-exe.bat</code>
           </li>
           <li>
@@ -349,7 +365,7 @@
         <div class="install-actions">
           <a class="button button-primary" href="docs.html">Read the setup guide</a>
           <a class="button button-secondary" href="https://github.com/u9401066/dicom-overlay-agent">Browse the public repository</a>
-          <p>A clean, remeasured portable bundle and first GitHub Release are pending.</p>
+          <p>Verified candidate: 4.68 MiB launcher, 54.42 MiB App layer, 337.01 MiB portable folder. Binary publication awaits licensing and release gates.</p>
         </div>
       </section>
     </main>

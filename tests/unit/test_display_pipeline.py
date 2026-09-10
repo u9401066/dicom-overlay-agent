@@ -14,18 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from dicom_overlay.domain.entities import (
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-    WindowRect,
-)
+from dicom_overlay.domain.entities import WindowRect
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
 from dicom_overlay.presentation.overlay_window import (
     _humanize_checklist_key,
     _humanize_checklist_value,
 )
+from medical_image_harness.models import Finding, Modality, RegionRect, Severity
 
 # ── RegionMapper.to_screen_rect edge cases ──
 
@@ -309,7 +304,7 @@ class TestSmartDisplayPartition:
 
     def test_all_normal_shows_collapsed(self):
         """All 16 normal items should yield 0 abnormal + 1 collapsed line."""
-        from dicom_overlay.domain.entities import ChecklistItem, Severity
+        from medical_image_harness.models import ChecklistItem, Severity
 
         checklist = {
             k: ChecklistItem(value="normal", status=Severity.NORMAL)
@@ -347,7 +342,7 @@ class TestSmartDisplayPartition:
 
     def test_mixed_partition(self):
         """Critical/warning items should be separated from normal/info."""
-        from dicom_overlay.domain.entities import ChecklistItem, Severity
+        from medical_image_harness.models import ChecklistItem, Severity
 
         checklist = {
             "heart_rate": ChecklistItem(value="tachycardia", status=Severity.WARNING),

@@ -12,14 +12,6 @@ from PIL import Image
 if TYPE_CHECKING:
     from pathlib import Path
 
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
 from dicom_overlay.infrastructure.ecg_variant_corpus import (
     EKG_CHECKLIST_AXES,
     VARIANT_NAMES,
@@ -37,6 +29,14 @@ from dicom_overlay.infrastructure.eval_harness import (
     score_case,
 )
 from dicom_overlay.infrastructure.openclaw_client import _bbox_coordinates_digest
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
 
 
 def _case(

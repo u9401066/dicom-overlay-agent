@@ -16,12 +16,12 @@ from dicom_overlay.domain.ekg_layout import (
     parse_ekg_lead_inventory,
     parse_normalized_region,
 )
-from dicom_overlay.domain.entities import AnalysisResult, RegionRect, Severity
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
 )
+from medical_image_harness.models import AnalysisResult, RegionRect, Severity
 
 logger = structlog.get_logger(__name__)
 

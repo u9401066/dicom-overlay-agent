@@ -11,12 +11,12 @@ from pathlib import Path
 
 
 async def main():
-    from dicom_overlay.domain.entities import Modality
     from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
     from dicom_overlay.presentation.overlay_window import (
         _humanize_checklist_key,
         _humanize_checklist_value,
     )
+    from medical_image_harness.models import Modality
 
     img_path = Path(__file__).parent / "ecg_sample.jpg"
     with img_path.open("rb") as f:

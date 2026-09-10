@@ -6,17 +6,14 @@ from typing import Any, cast
 
 import pytest
 
-from dicom_overlay.domain.entities import (
-    AgentState,
+from dicom_overlay.domain.entities import AgentState, AppConfig, ROICrop, WindowRect
+from medical_image_harness.models import (
     AnalysisResult,
-    AppConfig,
     ChecklistItem,
     Finding,
     Modality,
     RegionRect,
-    ROICrop,
     Severity,
-    WindowRect,
 )
 
 

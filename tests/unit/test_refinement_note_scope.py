@@ -12,7 +12,7 @@ from dicom_overlay.application.multi_pass import (
     apply_refinement_delta,
     remap_bbox,
 )
-from dicom_overlay.domain.entities import Finding, RegionRect, Severity
+from medical_image_harness.models import Finding, RegionRect, Severity
 
 _CROP = RegionRect(0.25, 0.5, 0.5, 0.25)
 _SCOPE = "[Crop-only evidence; ROI x=0.2500 y=0.5000 w=0.5000 h=0.2500] "
