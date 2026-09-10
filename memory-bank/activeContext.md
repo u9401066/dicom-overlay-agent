@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-11 Public Pages deployed and browser-verified
+
+- Docs-only PR #18 passed CI 34508568445 and both secret scans, merged as
+  1c531a5f6160546e9dee1038a0fe33774ca11f75. Pages deployment 34508937809 and
+  main secret scan 34508937893 passed. No candidate code or binary was merged.
+  Main worktree fast-forwarded only these docs/site files; original user dirt
+  remains unchanged. Repository description/homepage/topics already suitable;
+  PR #18 labeled documentation/evaluation.
+- Actual public URL https://u9401066.github.io/dicom-overlay-agent/ passed
+  existing Playwright/Edge at 1440x1000, 390x844 and 320x700: identity, meaningful
+  content, no error overlay, no console warnings/errors, no page/cell overflow,
+  evidence link -> docs harness, mobile menu Escape/focus. Public desktop and
+  mobile screenshots visually inspected. External evidence/script are under
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-pages-qa-20260911/public-v2/.
+  Frontend-testing skill found and fixed long-statistic overlap that a page-wide
+  overflow assertion missed. No clinical claims follow. Main post-merge CI and
+  later candidate docs CI were still running at this checkpoint.
+
 ## 2026-09-11 Corrected partial EXE and public evidence refresh
 
 - Same frozen EXE also completes real hidden-label crop (150,81,1370,708) in
