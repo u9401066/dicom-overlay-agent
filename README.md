@@ -9,17 +9,25 @@
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 (published and browser-verified on September 10; development evidence, not a clinical release).
 
-## Development evidence — 2026-09-10 (not a release)
+## Development evidence — 2026-09-11 (not a release)
 
 The active desktop acceptance target is **GPT-6 Astra low**, selected through
 Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
-Real GUI captures reached the subscription transport with observed
-`gpt-6-astra / low`: the first calibration export timed out at finalization
-(179.252 s); a second completed finalization (165.043 s), but still required
-review. These are two attempts on one case. A second distinct case completed
-all four image turns in 140.481 s with verified clean ROI and Astra low runtime
-receipts; clinical scoring is pending. The next pilot case hit the 60 s initial
-response deadline. This is not a completed 100-case cohort.
+The sealed real-desktop baseline contains **121 distinct primary cases**, with
+six pilots excluded and six technical failures retained. Preliminary automated
+scoring **failed acceptance**: strict match 0/46 complete references; urgent
+concerns caught 2/21. All results require review; specialist adjudication remains
+open. Mean analysis time is 136.662 s, excluding failed attempts and GUI/export
+overhead. A read-only supplement binds 460 identified sessions to Astra low and
+public usage; it is not a complete billing ledger.
+See the [sealed baseline and limitations](docs/evaluation-desktop-astra-2026-09-11.md).
+
+Separate candidate EXEs use OpenClaw 2026.9.3/plugin 1.5.9. A known finalization
+failure now completes; an actual partial ECG exposed a lead-schema bug. Corrected
+0e55a61 repeats that exact ROI in 96.990 s with eight valid declarations and crop
+mapping, still incomplete. This is not blind clinical or label-visibility
+validation. Candidate code is **not merged into main by this documentation
+update**. [Actual candidate evidence](docs/candidate-desktop-2026-09-11.md).
 The historical September 2-3 Luna batch produced 60 exports and 43 timeouts
 across 103 attempts; all 60 exported source images matched their intended
 cases, which is identity evidence, not diagnostic accuracy.
@@ -58,8 +66,9 @@ accuracy, latency acceptance, or release readiness.
 - A purposefully gold-enriched, blinded pair of **128 unique multi-diagnosis
   ECGs** is frozen (seed `1946247532`, 24 critical/104 warning, 48 asserted/80
   partially uncertain, at least three canonical diagnoses each; pair id
-  `7bdc87f6…8a46e0`). It has **not** completed the required real App run and is
-  not prevalence-weighted population evidence.
+  `7bdc87f6…8a46e0`). The primary 121-case real-App baseline is now sealed; the
+  whole 128-case selection is excluded from future blind testing. It is not
+  prevalence-weighted population evidence.
 - The partial-ECG v2 corpus contains eight deterministic variants (edge crops,
   central/narrow bands, hidden lead labels, and 48 px downsampling). Its 8/8
   result is **mock schema/bbox/partial-input plumbing only**; no real Luna
@@ -74,17 +83,16 @@ accuracy, latency acceptance, or release readiness.
   binding PID, port, token SHA-256, launch owner, and one canonical absolute bbox
   audit path. A healthy listener without that exact receipt is refused, not
   adopted or killed.
-- The latest complete clean bundle remains the historical 2026-08-09 build:
-  7.05 MiB launcher, 94.74 MiB App+Python/Qt, and 368.01 MiB full bundle. Current
-  `dist/` is runtime-polluted and is not release evidence. Implemented safe
-  staging reductions and further candidates still require a clean measured
-  rebuild; OpenClaw internal `dist`, provider, Playwright, QuickJS, TypeScript,
-  and Node payloads are not candidates for unsupported pruning.
-- Latest candidate OpenClaw `2026.9.3` passed isolated public protocol 4,
-  exact synthetic PNG transport, final-event, and generated Astra-config checks.
-  Core size is 175.683 MiB; OAuth-only staging, relocated templates, native bbox
-  tools, state rollback, and a clean bundle still need proof. The active cohort
-  keeps the existing pin. See the [September 10 audit](docs/openclaw-upgrade-audit-2026-09-10.md).
+- Clean 0e55a61 candidate: launcher 4.68 MiB, App layer 54.42 MiB, full folder
+  337.01 MiB; static/runtime verifier and 20 frozen smoke checks pass. The earlier
+  c3532d7 ZIP is 141.54 MiB with all 18,771 decompressed file hashes verified.
+  Original packages stay separate from private live copies; no binary is
+  published. PyQt6 distribution licensing and clinical/UI gates remain open.
+  [Package hashes and extraction boundary](docs/direct-harness-integration.md).
+- Candidate OpenClaw `2026.9.3` now has actual EXE OAuth/Astra-low observations
+  using public protocol 4, in addition to synthetic transport/tool checks. Main
+  and its sealed baseline retain the old pin; this site/docs update does not
+  upgrade runtime code. Internal OpenClaw `dist` chunks are not pruned.
 
 The earlier frozen 32-case pair, 8-case unseen engineering gate, and incomplete
 9,922-case paired run remain historical evidence in the

@@ -9,14 +9,21 @@
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 （9 月 10 日已公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
 
-## 開發證據 — 2026-09-10（尚未發布）
+## 開發證據 — 2026-09-11（尚未發布）
 
 目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
 `openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由，
-runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整合階段逾時
-（179.252 秒），第二次完成整合（165.043 秒），但仍需複核。另一個不同案例在
-140.481 秒完成四個影像階段，來源 ROI 與 Astra low runtime 已核對，臨床評分待做；
-下一個 pilot 案例碰到首階段 60 秒逾時。這些不是已完成百例驗收。
+已封存 **121 個不重複主要實機案例**，排除六個 pilot，另保留六次技術失敗。
+初步自動評分**未達驗收**：完整參考嚴格符合 0/46、緊急疑慮辨識 2/21；全部仍須
+複核，待專科審查。平均分析 136.662 秒，不含失敗嘗試與 GUI／匯出時間。
+封存後唯讀補查共 460 個已識別 session，均綁定 Astra low 與公開用量，但不是完整
+帳務。詳見[封存基準、分母與限制](docs/evaluation-desktop-astra-2026-09-11.md)。
+
+獨立候選 EXE 使用 OpenClaw 2026.9.3／plugin 1.5.9，已完成真實訂閱連線。
+實際缺導程截圖抓到欄位錯誤後，新版 0e55a61 在 96.990 秒重跑相同 ROI，八個導程
+宣告與裁切對應有效，仍不完整；這不是盲測、臨床或標籤可讀性驗收。
+**本次文件更新不會把候選程式合併至 main**。
+[候選實機證據](docs/candidate-desktop-2026-09-11.md)。
 另已核對 9 月 2–3 日的歷史 Luna 批次：103 次嘗試、60 份匯出、43 次逾時。
 60 份來源影像均匹配預定案例，這只證明影像身分，並非診斷正確率。
 詳見[9 月 10 日證據更新](docs/verification-2026-09-10.md)。
@@ -51,8 +58,8 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
 
 - 已凍結一組刻意 gold-enriched、答案隔離的 **128 張唯一多重診斷 ECG**（seed
   `1946247532`；24 critical/104 warning；48 asserted/80 partially uncertain；
-  每例至少三個 canonical diagnoses；pair id `7bdc87f6…8a46e0`）。尚未完成指定的
-  真實 App 批次，而且不是 prevalence-weighted 的母群準確率樣本。
+  每例至少三個 canonical diagnoses；pair id `7bdc87f6…8a46e0`）。主要 121 例實機
+  基準已封存，完整 128 例排除於未來盲測；不是母群準確率樣本。
 - Partial-ECG v2 有八種 deterministic 變體（四邊裁切、中央／窄帶、遮住導極
   label、短邊 48 px）。目前 8/8 只證明 mock schema/bbox/partial-input plumbing；
   尚無真實 Luna 診斷分數。
@@ -64,16 +71,14 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
 - Managed Gateway 只有在原子、無 secret 的 ownership receipt 同時綁定 PID、port、
   token SHA-256、launch owner 與唯一 canonical absolute bbox audit path 時才可重用；
   健康但 receipt 不符的 listener 會被拒絕，不會被接管或終止。
-- 最近一次完整乾淨 bundle 仍是 2026-08-09 的歷史 build：launcher 7.05 MiB、
-  App+Python/Qt 94.74 MiB、full bundle 368.01 MiB。目前 `dist/` 受 runtime residue
-  污染，不是 release evidence；已實作的安全 staging 減量與後續候選仍須乾淨實測。
-  不會用刪除 OpenClaw `dist`、provider、Playwright、QuickJS、TypeScript 或 Node 的
-  方式製造不可靠的小數字。
-- 最新候選 OpenClaw `2026.9.3` 已通過隔離 protocol 4、合成 PNG 完整傳輸、
-  final event 與 App 產生的 Astra 設定驗證。核心量測 175.683 MiB；OAuth-only
-  staging、模板搬移、原生 bbox 工具、state rollback 與乾淨封裝仍須驗證。
-  進行中的實機批次保持原 pin。詳見
-  [9 月 10 日升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md)。
+- 乾淨 0e55a61 候選 launcher 4.68 MiB、App 層 54.42 MiB、完整目錄 337.01 MiB；
+  靜態／runtime verifier 與 20 個 frozen smoke 通過。較早 c3532d7 ZIP 141.54 MiB，
+  18,771 檔解壓雜湊全數核對。原套件與私人實機副本分開保留，未發布 binary；
+  PyQt6 發行授權、臨床與更多 UI 驗收仍未完成。
+  [封裝雜湊與拆分邊界](docs/direct-harness-integration.md)。
+- 候選 OpenClaw `2026.9.3` 除合成傳輸／工具檢查，已有真實 EXE OAuth／Astra low
+  與 public protocol 4 紀錄。main 與已封存基準保留舊 pin，本次網站／文件更新不
+  升級 runtime code；不刪除 OpenClaw 內部 `dist` chunks。
 
 較早的 32-case frozen pair、8-case unseen engineering gate 與尚未完成的
 9,922-case paired run 保留為歷史證據，詳見
