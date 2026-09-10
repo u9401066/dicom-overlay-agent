@@ -2,6 +2,20 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Separate stacked `agent/capture-client-boundary-20260910` branch adds
+  fail-closed native client-area containment before/after screenshot capture.
+  Proportional window-margin scaling can enter a fixed-height titlebar after
+  a resize; no automatic ROI intersection/expansion is allowed. Ten regression
+  failures reproduced first, then 98 capture/agent/ROI tests pass. Read-only
+  native check against Viewer PID 26088 at 150% DPI accepted the current safe
+  ROI and rejected all four one-pixel chrome crossings; no screenshot or model
+  calls. Full unit/smoke/mock-integration regression: 1406 passed, 6 explicit
+  opt-in/local-artifact skips (166.24 s); Ruff passes. Actual resize/DPI and
+  model cases remain pending. See `docs/viewer-client-capture-boundary.md`.
+- Crop-scope fix is pushed as draft stacked PR #15 (`e583a92`); CI 34487320267
+  and Secret scans 34487320261 / 34487314337 pass. Candidate #13 is clean after
+  isolated merge `8c3fb6e`; CI 34486122894 and Secret scan 34486038887 pass.
+
 - Separate `agent/crop-provenance-20260910` worktree addresses unscoped crop
   notes observed in the real UI cohort. Crop notes/rationale now carry the
   orchestrator-owned normalized ROI bounds; original notes, diagnosis, bbox
