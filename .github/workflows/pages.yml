@@ -38,7 +38,8 @@ jobs:
         with:
           enable-cache: true
       - name: Validate Pages source
-        run: uv run --frozen python -m pytest -q tests/smoke/test_github_pages_site.py
+        # Static HTML/CSS checks do not need the desktop Qt plugin or libEGL.
+        run: uv run --frozen python -m pytest -q tests/smoke/test_github_pages_site.py -p no:pytest-qt
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload site
