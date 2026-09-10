@@ -5,6 +5,13 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- Immutable primary GUI scoring tool added, with pre-gold evidence validation,
+  frozen reference digest, paired image/order checks, retained failed attempts,
+  no guardrail replay and separate descriptive denominators/intervals. Thirty
+  synthetic new cases plus existing rebuild checks pass (38 targeted); full
+  regression is 1437 passed / 5 explicit skips (205.01 s). No real gold has been
+  scored yet. Actual GUI count at 15:06 UTC: 95 primary plus six earlier pilots.
+
 - Integrated candidate `f7e3347` merges crop-scope and client containment into
   draft PR #13 only. CI 34489747248 / Secret 34489747329 pass. Its clean UPX
   rebuild passes static verification, 89 native-source checks, 52 UPX tests,
