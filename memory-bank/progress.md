@@ -5,6 +5,18 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- September 10 isolated OpenClaw **2026.9.3** audit passed public protocol 4,
+  unchanged image attachment + fastMode acceptance, exact synthetic source hash
+  at a local fixture provider, correlated final events, and public validation of
+  generated Astra subscription config. Zero paid calls; no auth-import or native
+  clinical-tool proof yet. Core 175.683 MiB, raw dependencies 799.055 MiB including
+  non-shippable Codex runtime. Product pin and active GUI cohort remain unchanged.
+- Source-only main publications: PR #5 merged `2fd0fec`, PR #6 `58af7a5`,
+  PR #7 `77affe0`, each after passing CI and Secret scan. No release tag/binary.
+- Report readability repair lives on a separate worktree/branch while real UI
+  batch runs. Native preview confirmed and fixed long-label clipping; full
+  source and caution text retained. See its dedicated Memory Bank record after
+  branch promotion. Do not merge source into the active frozen cohort midway.
 - Public Pages deployed successfully at `2fd0fec` (run 34467904677) and passed
   actual public-URL desktop/mobile browser QA. PR #5 fixes only static-site Qt
   plugin loading. PR #6 workflow-marker fix passed CI and merged as `58af7a5`.
