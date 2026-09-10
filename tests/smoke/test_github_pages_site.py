@@ -19,9 +19,7 @@ class _SiteParser(HTMLParser):
         self.h1_text: list[str] = []
         self._in_h1 = False
 
-    def handle_starttag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         if tag in {"a", "link"} and values.get("href"):
             self.references.append(values["href"] or "")
@@ -125,11 +123,23 @@ def test_pages_site_labels_frozen_mock_and_governance_status_truthfully() -> Non
         "This is not a clinical pass.",
         "Canonical 7-rule registry",
         "OpenClaw 2.x candidate",
-        "Upgrade deferred",
+        "Candidate under verification",
         "stays pinned to 2026.7.1-2",
         "Latest candidate 2026.9.3",
+        "fabricated OAuth migration checks",
     ):
         assert evidence in index
+
+
+def test_pages_separates_candidate_contract_checks_from_release_evidence() -> None:
+    docs = (SITE_ROOT / "docs.html").read_text(encoding="utf-8")
+    visible_copy = " ".join(docs.split())
+    assert "including the App's own auth helper" in visible_copy
+    assert (
+        "do not prove real subscription authentication or clinical accuracy"
+        in visible_copy
+    )
+    assert "No candidate binary is released" in visible_copy
 
 
 def test_pages_site_reports_public_repository_and_absent_release() -> None:
@@ -156,7 +166,7 @@ def test_pages_public_setup_uses_real_subscription_and_harness_commands() -> Non
     assert "run-image-harness-smoke.py" in docs
     assert "OpenClaw owns every image-analysis turn" in docs
     assert "openclaw-upgrade-audit-2026-09-10.md" in docs
-    assert "No paid model was used" in docs
+    assert "These checks made no paid model requests" in docs
 
 
 def test_pages_docs_explain_canonical_rules_sqlite_and_package_status() -> None:
@@ -175,7 +185,7 @@ def test_pages_docs_explain_canonical_rules_sqlite_and_package_status() -> None:
         "94.74 MiB app + Python/Qt",
         "368.01 MiB full zero-install bundle",
         "Pending release gate",
-        "OpenClaw 2.x upgrade status: deferred.",
+        "OpenClaw 2.x upgrade status: isolated candidate validation.",
     ):
         assert evidence in docs
 
@@ -211,7 +221,7 @@ def test_mobile_menu_is_progressive_and_keyboard_dismissible() -> None:
     styles = (SITE_ROOT / "styles.css").read_text(encoding="utf-8")
 
     assert '<nav id="site-navigation" class="site-navigation"' in index
-    assert "document.documentElement.classList.add(\"js\")" in script
+    assert 'document.documentElement.classList.add("js")' in script
     assert ".js .site-navigation" in styles
     assert ".js .site-navigation.is-open" in styles
     assert 'event.key === "Escape"' in script
@@ -239,7 +249,9 @@ def test_pages_workflow_uses_current_official_action_majors() -> None:
 
     commands = [step.get("run", "") for step in steps]
     validation_index = next(
-        index for index, step in enumerate(steps) if step.get("name") == "Validate Pages source"
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Validate Pages source"
     )
     upload_index = next(
         index for index, step in enumerate(steps) if step.get("name") == "Upload site"
