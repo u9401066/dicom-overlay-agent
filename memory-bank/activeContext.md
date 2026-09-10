@@ -1,5 +1,22 @@
 # Active Context
 
+## 2026-09-11 Public evidence checkpoint (docs/site only)
+
+- Publish sealed 121-case failed Astra-low baseline: strict 0/46 complete labels,
+  urgent 2/21, all review-required; six pilots excluded. 460 identified public
+  usage sessions verified separately; not a billing ledger. No raw images,
+  credentials or evaluation identities are added to public media.
+- Candidate 0e55a61 actual EXE partial ROI: 96.990 s, four Astra-low turns, valid
+  eight-lead declaration/crop mapping; V3-V6 absent. Clinical and label visibility
+  remain unadjudicated. Main code/pin is unchanged; full engine extraction is
+  incomplete. Package provenance and candidate failure history are published as
+  reports, not a binary release. PyQt6 distribution licensing remains open.
+- Browser plugin unavailable; existing Playwright/Edge tested 1440x1000,
+  390x844, 320x700, actual navigation and mobile Escape/focus, console and
+  overflow. Screenshot review caught evidence-heading overlap; grid wrapping
+  and own-cell overflow check fix it. Static Pages checks: 14 passed.
+  Public deployment and public URL recheck pending this docs-only commit.
+
 ## 2026-09-10 Current acceptance target and runtime fixes
 
 - Website upgrade copy now distinguishes the frozen 7.1-2 Astra GUI cohort

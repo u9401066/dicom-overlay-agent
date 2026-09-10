@@ -88,7 +88,9 @@ def test_pages_site_separates_historical_and_current_failure_evidence() -> None:
     for evidence in (
         "GPT-5.6 Luna",
         "GPT-6 Astra low",
-        "2 distinct Astra cases",
+        "121 primary cases",
+        "strict 0/46 · urgent 2/21",
+        "460 bound session snapshots",
         "desktop-20260910-102218-658881",
         "140.481 s",
         "desktop-20260910-095926-407907",
@@ -118,15 +120,15 @@ def test_pages_site_labels_frozen_mock_and_governance_status_truthfully() -> Non
 
     for evidence in (
         "128 important multi-diagnosis cases",
-        "Frozen from 9,922 canonical MEETI images · full Astra cohort pending",
-        "Mock plumbing only",
+        "Frozen from 9,922 canonical MEETI images · 121 primary cases scored",
+        "Mock checks + actual failure",
         "This is not a clinical pass.",
         "Canonical 7-rule registry",
         "OpenClaw 2.x candidate",
         "Candidate under verification",
-        "stays pinned to 2026.7.1-2",
-        "Latest candidate 2026.9.3",
-        "fabricated OAuth migration checks",
+        "baseline used 2026.7.1-2",
+        "Candidate 2026.9.3",
+        "actual EXE with subscription OAuth",
     ):
         assert evidence in index
 
@@ -136,7 +138,7 @@ def test_pages_separates_candidate_contract_checks_from_release_evidence() -> No
     visible_copy = " ".join(docs.split())
     assert "including the App's own auth helper" in visible_copy
     assert (
-        "do not prove real subscription authentication or clinical accuracy"
+        "did not prove real subscription authentication or clinical accuracy"
         in visible_copy
     )
     assert "No candidate binary is released" in visible_copy
@@ -149,7 +151,7 @@ def test_pages_site_reports_public_repository_and_absent_release() -> None:
     )
 
     assert "https://github.com/u9401066/dicom-overlay-agent" in pages
-    assert "No GitHub Release is published as of 2026-09-10" in pages
+    assert "No GitHub Release is published as of 2026-09-11" in pages
     assert "repository is private" not in pages
 
 
@@ -184,10 +186,31 @@ def test_pages_docs_explain_canonical_rules_sqlite_and_package_status() -> None:
         "7.05 MiB launcher",
         "94.74 MiB app + Python/Qt",
         "368.01 MiB full zero-install bundle",
+        "Verified candidate · 0e55a61",
+        "54.42 MiB App layer",
+        "141.54 MiB DEFLATE ZIP",
+        "PyQt6 distribution licensing",
         "Pending release gate",
         "OpenClaw 2.x upgrade status: isolated candidate validation.",
     ):
         assert evidence in docs
+
+
+def test_pages_does_not_promote_geometry_or_development_reruns_to_accuracy() -> None:
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    assert "clinical acceptance failed" in docs
+    assert "0/46 complete references" in docs
+    assert "2/21 (2.7–28.9%)" in docs
+    assert "no normal controls" in docs
+    assert "in-bounds geometry is not clinical localization" in docs
+    assert "Development reruns never replace sealed predictions" in docs
+    assert "complete scientific engine and canonical study ledger are not yet extracted" in docs
+
+
+def test_evidence_statistics_can_wrap_within_their_own_grid_cells() -> None:
+    styles = (SITE_ROOT / "styles.css").read_text("utf-8")
+    assert re.search(r"\.evidence-four\s*\{[^}]*minmax\(0, 1fr\)", styles, re.S)
+    assert re.search(r"\.evidence-four dt\s*\{[^}]*white-space: normal", styles, re.S)
 
 
 def _relative_luminance(hex_color: str) -> float:

@@ -82,7 +82,7 @@
             <h2>Run from source</h2>
             <p>
               The <a href="https://github.com/u9401066/dicom-overlay-agent">source repository</a>
-              is public. No GitHub Release exists as of 2026-09-10, so repository
+              is public. No GitHub Release exists as of 2026-09-11, so repository
               archives must not be treated as verified portable bundles.
             </p>
             <p>All dependencies stay inside the project environment and repo-local runtime.</p>
@@ -127,15 +127,19 @@ start.bat</code></pre>
             <div class="docs-callout docs-callout-neutral">
               <strong>OpenClaw 2.x upgrade status: isolated candidate validation.</strong>
               <p>
-                The running Astra cohort remains pinned to <code>2026.7.1-2</code>.
-                The isolated <code>2026.9.3</code> candidate passed slim-runtime
+                The sealed Astra baseline used <code>2026.7.1-2</code>.
+                The isolated <code>2026.9.3</code> candidate first passed slim-runtime
                 protocol 4, exact synthetic PNG transport, native bbox/nonce receipts,
                 five-template startup, and fabricated OAuth-only migration, including
                 the App's own auth helper. These checks made no paid model requests
-                and do not prove real subscription authentication or clinical accuracy.
-                Clean packaged-app, rollback, clinical and distribution-license gates
-                remain open. No candidate binary is released.
+                and did not prove real subscription authentication or clinical accuracy.
+                Later clean candidate EXEs passed package checks and actual local
+                subscription import; observed image turns bind to Astra low and
+                public session usage. These engineering checks do not establish
+                clinical accuracy. Broader UI, clinical and distribution-license
+                gates remain open. No candidate binary is released.
                 <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/openclaw-upgrade-audit-2026-09-10.md">Read the measured September 10 audit.</a>
+                <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/candidate-desktop-2026-09-11.md">Read the actual candidate desktop checkpoint.</a>
               </p>
             </div>
           </section>
@@ -211,6 +215,21 @@ uv run python scripts\build-clinical-knowledge-sqlite.py ^
 
           <section id="harness">
             <h2>Verify the image harness</h2>
+            <div class="docs-callout">
+              <strong>September 11: clinical acceptance failed.</strong>
+              <p>The sealed real-App baseline contains 121 distinct primary cases,
+                excluding six pilots: strict agreement 0/46 complete references
+                (95% Wilson interval 0–7.7%), urgent detection 2/21 (2.7–28.9%),
+                schema 113/121. All 121 require review. There are no normal controls;
+                in-bounds geometry is not clinical localization. The mean 136.662 s
+                analysis time excludes failed attempts and file/export overhead.</p>
+              <p>All 460 identified stage/attempt sessions bind to public usage and
+                observed Astra low. Missing aborted usage remains unknown; this
+                is not a billing ledger. The full 128-case selection is excluded
+                from future blind evaluation. Development reruns never replace
+                sealed predictions or become new independent cases.</p>
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/evaluation-desktop-astra-2026-09-11.md">Read the complete baseline and limitations.</a>
+            </div>
             <p>
               The smoke produces a synthetic ECG, takes a non-zero ROI crop, sends one
               PNG attachment through the Gateway frame, and writes redacted evidence.
@@ -254,9 +273,14 @@ uv run python scripts\verify-packaged-app.py ^
             </div>
             <dl class="docs-facts">
               <div><dt>Historical actual · 2026-08-09</dt><dd>7.05 MiB launcher; 94.74 MiB app + Python/Qt; 368.01 MiB full zero-install bundle.</dd></div>
-              <div><dt>Current source status</dt><dd>Size budgets, slim staging, dependency exclusions, and package self-checks are enforced; these numbers have not been relabeled as a September rebuild.</dd></div>
-              <div><dt>Pending release gate</dt><dd>Produce a clean build from the current revision, remeasure every layer, run the packaged verifier, and publish hashes before calling it a current bundle.</dd></div>
+              <div><dt>Verified candidate · 0e55a61</dt><dd>4.68 MiB launcher; 54.42 MiB App layer; 337.01 MiB full folder. Clean source, static verifier and 20 frozen packaging smoke checks passed.</dd></div>
+              <div><dt>Transfer experiment · c3532d7</dt><dd>141.54 MiB DEFLATE ZIP; 18,771 decompressed file hashes match the preserved bundle. The writable live copy contains private local state and must not be distributed.</dd></div>
+              <div><dt>Pending release gate</dt><dd>PyQt6 distribution licensing, broader desktop validation and clinical acceptance remain open. The source is Apache-2.0; this does not grant a PyQt6 commercial license or resolve GPL obligations.</dd></div>
             </dl>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/direct-harness-integration.md">Inspect package provenance and the direct-model extraction boundary.</a>
+              Seven public domain models have one owner; the complete scientific
+              engine and canonical study ledger are not yet extracted. No compatibility
+              alias is presented as completed separation.</p>
           </section>
 
           <section id="evidence">
