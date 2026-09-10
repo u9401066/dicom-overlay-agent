@@ -92,6 +92,7 @@ from dicom_overlay.infrastructure.tts_speaker import speak_error, speak_result
 from dicom_overlay.infrastructure.vision_probe import VisionSmokeTester
 from dicom_overlay.presentation.control_bar import ControlBarWindow
 from dicom_overlay.presentation.overlay_window import OverlayWindow
+from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
 
@@ -1125,6 +1126,17 @@ def main() -> None:
         except Exception:
             logger.exception("Desktop review export failed")
             control_bar.set_status("Export failed")
+            return
+        try:
+            capture_review_widgets(
+                review_path.parent,
+                summary_panel=overlay.summary_panel,
+                control_bar=control_bar,
+                overlay_layer=overlay,
+            )
+        except Exception:
+            logger.exception("Review exported, but app widget capture failed")
+            control_bar.set_status("Review exported; UI capture failed")
             return
         control_bar.set_status(f"Exported: {review_path.parent.name}")
 

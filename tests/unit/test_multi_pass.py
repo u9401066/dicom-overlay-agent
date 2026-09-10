@@ -22,6 +22,7 @@ from dicom_overlay.application.multi_pass import (
     _bounded_operation_timeout_sec,
     apply_critical_triage_guard,
     apply_ekg_overlay_bbox_guard,
+    apply_ekg_ventricular_run_evidence_guard,
     apply_ekg_waveform_rhythm_conflict_guard,
     apply_refinement_delta,
     apply_unlocalized_ekg_grounding_guard,
@@ -315,6 +316,87 @@ class TestCoveringRegion:
 
         assert (selected.x, selected.y, selected.w, selected.h) == pytest.approx(
             (0.32, 0.0, 0.18, 1.0)
+        )
+
+    def test_row_strip_full_width_evidence_never_manufactures_central_time_crop(
+        self,
+    ):
+        full_lead = RegionRect(0.0, 1 / 12, 1.0, 1 / 12)
+        finding = Finding(
+            id="possible_demand_pacing",
+            regions=["lead_II"],
+            label="Possible demand-paced rhythm",
+            detail="Intermittent synchronized wide complexes require review.",
+            severity=Severity.WARNING,
+            bboxes=[full_lead],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert selected == full_lead
+        assert selected != RegionRect(0.325, 0.0, 0.35, 1.0)
+
+    def test_row_strip_broad_unlocalized_box_retains_its_horizontal_context(self):
+        broad_context = RegionRect(0.1, 0.0, 0.8, 0.25)
+        finding = Finding(
+            id="possible_pacing",
+            regions=["lead_I", "lead_II", "lead_III"],
+            label="Possible demand pacing",
+            detail="Synchronized wide complexes need mechanism review.",
+            severity=Severity.WARNING,
+            bboxes=[broad_context],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        selected = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert selected == broad_context
+
+    def test_row_strip_local_event_crop_tracks_horizontal_shift_metamorphically(
+        self,
+    ):
+        shift = 0.45
+        left_box = RegionRect(0.12, 0.08, 0.06, 0.05)
+        right_box = dataclasses.replace(left_box, x=left_box.x + shift)
+
+        def route(box: RegionRect) -> RegionRect:
+            finding = Finding(
+                id="intermittent_wide_qrs",
+                regions=["lead_I", "lead_II", "lead_III"],
+                label="Intermittent wide QRS with possible pacing",
+                detail="Synchronized event across stacked leads.",
+                severity=Severity.WARNING,
+                bboxes=[box],
+            )
+            result = _ekg_row_layout_result([finding])
+            result.layout["format"] = "12lead_12x1"
+            return select_hypothesis_crop_region(
+                finding,
+                modality=Modality.EKG,
+                layout=result.layout,
+            )
+
+        left_crop = route(left_box)
+        right_crop = route(right_box)
+
+        assert right_crop.x - left_crop.x == pytest.approx(shift)
+        assert right_crop.w == pytest.approx(left_crop.w)
+        assert left_crop.x + left_crop.w / 2 == pytest.approx(
+            left_box.x + left_box.w / 2
+        )
+        assert right_crop.x + right_crop.w / 2 == pytest.approx(
+            right_box.x + right_box.w / 2
         )
 
     def test_standard_grid_wide_complex_does_not_assume_shared_time_axis(self):
@@ -744,10 +826,172 @@ class TestEkgWaveformRhythmConflictGuard:
         assert apply_ekg_waveform_rhythm_conflict_guard(candidate) is candidate
 
 
+class TestEkgVentricularRunEvidenceGuard:
+    @pytest.mark.parametrize(
+        "detail",
+        [
+            "Two separate early broad complexes; intervening intrinsic beats "
+            "exclude a consecutive ventricular run.",
+            "No ventricular tachycardia is visible.",
+            "Without evidence of ventricular tachycardia.",
+            "Ventricular tachycardia is absent.",
+            "VT was not observed.",
+            "Ventricular run excluded by intervening intrinsic beats.",
+            "Cannot exclude ventricular tachycardia.",
+        ],
+    )
+    def test_negated_or_uncertain_run_is_not_promoted_to_new_candidate(self, detail):
+        finding = _finding(
+            "ectopy",
+            Severity.WARNING,
+            RegionRect(0.2, 0.1, 0.05, 0.04),
+            label="Intermittent abnormal broad complexes",
+            detail=detail,
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        assert apply_ekg_ventricular_run_evidence_guard(result) is result
+
+    @pytest.mark.parametrize(
+        "detail",
+        [
+            "No ectopy. Ventricular tachycardia is present.",
+            "No atrial fibrillation, but ventricular tachycardia is present.",
+            "VT excluded in the first segment; ventricular run in the second.",
+        ],
+    )
+    def test_negation_does_not_hide_a_separate_positive_assertion(self, detail):
+        finding = _finding(
+            "rhythm",
+            Severity.CRITICAL,
+            RegionRect(0.2, 0.1, 0.05, 0.04),
+            label="Wide-complex rhythm",
+            detail=detail,
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        guarded = apply_ekg_ventricular_run_evidence_guard(result)
+
+        assert guarded.findings[0].label.startswith("Unresolved")
+        assert guarded.findings[0].severity is Severity.CRITICAL
+
+    def test_same_synchronized_event_across_leads_counts_once_and_qualifies_claim(
+        self,
+    ):
+        boxes = [
+            RegionRect(0.20, 0.02, 0.04, 0.04),
+            RegionRect(0.20, 0.18, 0.04, 0.04),
+            RegionRect(0.205, 0.52, 0.04, 0.04),
+        ]
+        finding = Finding(
+            id="vt",
+            regions=["lead_I", "lead_III", "lead_V1"],
+            label="Ventricular tachycardia",
+            detail="Synchronized wide-complex run.",
+            severity=Severity.CRITICAL,
+            bboxes=boxes,
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+        result.summary = "Ventricular tachycardia."
+        result.severity = Severity.CRITICAL
+        result.checklist["rhythm"] = ChecklistItem(
+            value="ventricular tachycardia",
+            status=Severity.CRITICAL,
+        )
+
+        guarded = apply_ekg_ventricular_run_evidence_guard(result)
+
+        guarded_finding = guarded.findings[0]
+        assert guarded_finding.label == (
+            "Unresolved potentially time-critical ventricular rhythm candidate"
+        )
+        assert guarded_finding.bboxes == boxes
+        assert guarded_finding.severity is Severity.CRITICAL
+        assert guarded.severity is Severity.CRITICAL
+        assert "ventricular tachycardia." not in guarded.summary.casefold()
+        assert "unresolved ventricular rhythm candidate" in (
+            guarded.checklist["rhythm"].value
+        )
+        assert guarded.incomplete is True
+        assert guarded.review_required is True
+        event = guarded.analysis_trace[-1]
+        assert event["unique_timestamp_count"] == 1
+        assert event["required_timestamp_count"] == 3
+        assert event["study_severity_preserved"] == "critical"
+        assert event["diagnosis_forced"] is False
+
+    def test_three_distinct_tight_timestamps_do_not_trigger_minimum_count_guard(self):
+        finding = Finding(
+            id="vt",
+            regions=["lead_II"],
+            label="Ventricular tachycardia",
+            detail="Three localized wide-complex events.",
+            severity=Severity.CRITICAL,
+            bboxes=[
+                RegionRect(0.10, 0.09, 0.04, 0.04),
+                RegionRect(0.35, 0.09, 0.04, 0.04),
+                RegionRect(0.60, 0.09, 0.04, 0.04),
+            ],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        assert apply_ekg_ventricular_run_evidence_guard(result) is result
+
+    def test_broad_context_boxes_never_count_as_timed_events(self):
+        finding = Finding(
+            id="run",
+            regions=["lead_II", "lead_V1"],
+            label="VT",
+            detail="Wide-complex run.",
+            severity=Severity.CRITICAL,
+            bboxes=[
+                RegionRect(0.0, 0.08, 1.0, 0.08),
+                RegionRect(0.0, 0.50, 1.0, 0.08),
+            ],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        guarded = apply_ekg_ventricular_run_evidence_guard(result)
+
+        assert guarded.analysis_trace[-1]["unique_timestamp_count"] == 0
+        assert guarded.findings[0].label.startswith("Unresolved")
+
+
 # ── select_zoom_targets ──────────────────────────────────────────────
 
 
 class TestSelectZoomTargets:
+    def test_separate_broad_events_keep_intervening_beats_and_all_leads(self):
+        finding = Finding(
+            id="events",
+            label="Intermittent abnormal broad complexes",
+            detail="Two separate abnormal complexes with intervening intrinsic beats.",
+            severity=Severity.WARNING,
+            regions=["lead_II", "lead_V2"],
+            bboxes=[
+                RegionRect(0.07, 0.09, 0.06, 0.07),
+                RegionRect(0.62, 0.59, 0.06, 0.08),
+            ],
+        )
+        result = _ekg_row_layout_result([finding])
+        result.layout["format"] = "12lead_12x1"
+
+        crop = select_hypothesis_crop_region(
+            finding,
+            modality=Modality.EKG,
+            layout=result.layout,
+        )
+
+        assert crop.x <= 0.07
+        assert crop.x + crop.w >= 0.68
+        assert crop.y == 0.0
+        assert crop.h == 1.0
+
     def test_skips_normal_but_includes_info_after_abnormal(self):
         box = RegionRect(x=0.1, y=0.1, w=0.1, h=0.1)
         res = _result(
@@ -939,6 +1183,84 @@ class TestCriticalTriagePlanning:
         assert event["status"] == "deferred_axes_resumed_on_original_study"
         assert event["unresolved_axes"] == []
         assert event["clinical_status_inferred"] is False
+        assert guarded.incomplete is False
+        assert guarded.incomplete_reasons == []
+        assert guarded.review_required is False
+        assert guarded.review_reasons == []
+
+    def test_unresolved_axes_suppress_broad_normal_claim_with_retained_critical(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.1, 0.2, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        result = _ekg_row_layout_result([critical])
+        result.severity = Severity.CRITICAL
+        result.summary = "Normal ECG with no acute abnormality."
+        result.checklist = _complete_ekg_checklist()
+        result.checklist["axis"] = ChecklistItem(
+            value="not_assessed_due_to_critical_triage; otherwise WNL",
+            status=Severity.INFO,
+        )
+
+        guarded = apply_critical_triage_guard(
+            result,
+            [critical],
+            phase="final_output",
+        )
+
+        assert guarded.summary == (
+            "At least one critical finding remains, but deferred ECG checklist axes "
+            "remain unassessed on the original study."
+        )
+        assert guarded.checklist["axis"] == ChecklistItem(
+            value="not_assessed_due_to_critical_triage",
+            status=Severity.INFO,
+        )
+        repair = next(
+            event
+            for event in guarded.analysis_trace
+            if event.get("stage") == "critical_triage_cross_field_guard"
+        )
+        assert repair["retained_critical_ids"] == ["vt"]
+        assert {item["field"] for item in repair["repairs"]} == {
+            "summary",
+            "checklist.axis",
+        }
+
+    def test_resumed_axes_clear_only_triage_limitation_not_other_review_reason(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.1, 0.2, 0.05),
+            label="Possible ventricular tachycardia",
+            detail="Synchronized wide-complex candidate.",
+        )
+        draft = apply_critical_triage_guard(
+            _ekg_row_layout_result([critical]),
+            [critical],
+            phase="before_finalization",
+        )
+        other_reason = "Image calibration remains unavailable."
+        final = dataclasses.replace(
+            draft,
+            checklist=_complete_ekg_checklist(),
+            incomplete_reasons=[*draft.incomplete_reasons, other_reason],
+            review_reasons=[*draft.review_reasons, other_reason],
+        )
+
+        guarded = apply_critical_triage_guard(
+            final,
+            [critical],
+            phase="final_output",
+        )
+
+        assert guarded.incomplete is True
+        assert guarded.incomplete_reasons == [other_reason]
+        assert guarded.review_required is True
+        assert guarded.review_reasons == [other_reason]
 
     def test_final_guard_flags_unresolved_deferred_axes_without_diagnosis(self):
         critical = _finding(
@@ -972,6 +1294,58 @@ class TestCriticalTriagePlanning:
         assert event["unresolved_axes"]
         assert event["clinical_severity_changed"] is False
         assert event["diagnosis_forced"] is False
+
+    def test_retracted_critical_cannot_close_unassessed_axes_as_normal_or_absent(self):
+        critical = _finding(
+            "vt",
+            Severity.CRITICAL,
+            RegionRect(0.1, 0.1, 0.2, 0.05),
+            label="Ventricular tachycardia",
+            detail="Possible synchronized wide-complex run.",
+        )
+        draft = apply_critical_triage_guard(
+            _ekg_row_layout_result([critical]),
+            [critical],
+            phase="before_finalization",
+        )
+        contradictory_checklist = dict(draft.checklist)
+        contradictory_checklist["axis"] = ChecklistItem(
+            value="not_assessed_due_to_critical_triage; otherwise WNL and absent",
+            status=Severity.INFO,
+        )
+        retracted = dataclasses.replace(
+            draft,
+            summary="Normal ECG; all findings absent.",
+            severity=Severity.INFO,
+            findings=[],
+            checklist=contradictory_checklist,
+        )
+
+        guarded = apply_critical_triage_guard(
+            retracted,
+            [critical],
+            phase="final_output",
+        )
+
+        assert guarded.summary == (
+            "The critical candidate was not retained; deferred ECG checklist axes "
+            "remain unassessed on the original study."
+        )
+        assert guarded.checklist["axis"] == ChecklistItem(
+            value="not_assessed_due_to_critical_triage",
+            status=Severity.INFO,
+        )
+        repair = next(
+            event
+            for event in guarded.analysis_trace
+            if event.get("stage") == "critical_triage_cross_field_guard"
+        )
+        assert repair["status"] == "contradictory_negative_claims_suppressed"
+        assert {item["field"] for item in repair["repairs"]} == {
+            "summary",
+            "checklist.axis",
+        }
+        assert repair["clinical_status_inferred"] is False
 
     @pytest.mark.parametrize(
         "value",
@@ -1028,6 +1402,42 @@ class TestRefinementDeltaContract:
             expected_target_id=None,
         )
         assert out == []
+
+    def test_model_note_cannot_authorize_an_unlocalized_addition(self):
+        finding = Finding(
+            id="new",
+            regions=["right_lung"],
+            label="Semantic concern",
+            detail="Model supplied no usable geometry.",
+            severity=Severity.INFO,
+            bboxes=[],
+            notes=[
+                "Semantic-only refinement retained because no image/turn-bound "
+                "bbox validation receipt was observed."
+            ],
+        )
+
+        out = apply_refinement_delta(
+            [],
+            RefinementDelta(RefinementAction.ADD, finding=finding),
+            crop_region=RegionRect(0.1, 0.1, 0.4, 0.4),
+            expected_target_id=None,
+        )
+
+        assert out == []
+
+    @pytest.mark.parametrize("indexes", [(-1,), (1,), (0, 0), (True,)])
+    def test_unlocalized_provenance_rejects_invalid_delta_indexes(self, indexes):
+        delta = RefinementDelta(
+            RefinementAction.ADD,
+            finding=_finding("new", Severity.INFO, None),
+        )
+
+        with pytest.raises(ValueError, match="invalid unlocalized"):
+            RefinementResult(
+                (delta,),
+                unlocalized_missing_receipt_delta_indexes=indexes,
+            )
 
     def test_overflowing_child_is_clamped_inside_crop_and_roi(self):
         finding = _finding(
@@ -2325,8 +2735,10 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         )
         assert resume["status"] == "deferred_axes_resumed_on_original_study"
         assert resume["unresolved_axes"] == []
-        assert result.incomplete is True
-        assert result.review_required is True
+        assert result.incomplete is False
+        assert result.incomplete_reasons == []
+        assert result.review_required is False
+        assert result.review_reasons == []
 
     async def test_finalizer_downgrade_keeps_unresolved_axes_explicit(self):
         box = RegionRect(0.2, 0.1, 0.1, 0.05)
@@ -2743,7 +3155,8 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
             ],
         )
         coarse = _ekg_row_layout_result([finding])
-        analyzer = _HypothesisAwareAnalyzer(
+        final = _ekg_row_layout_result([finding])
+        analyzer = _FinalizingAnalyzer(
             coarse,
             [
                 RefinementResult(
@@ -2756,6 +3169,7 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
                     )
                 )
             ],
+            final,
         )
         cropper = _RecordingCropper()
         interp = MultiPassInterpreter(
@@ -2777,6 +3191,204 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         )
         assert guard["tool"] == "crop_coverage_guard"
         assert guard["uncovered_bbox_count"] == 1
+        assert guard["blocked_action"] == "retract"
+        assert guard["decision_applied"] is False
+        assert guard["evidence_interpretation"] == (
+            "inconclusive_partial_crop_coverage"
+        )
+        final_trace = analyzer.finalize_calls[0]["refinement_trace"]
+        carried = next(
+            event
+            for event in final_trace
+            if event.get("status") == "partial_crop_retraction_blocked"
+        )
+        assert carried["target_id"] == "multi-site"
+        assert carried["decision_applied"] is False
+
+    @pytest.mark.parametrize(
+        ("action", "expected_status"),
+        [
+            (RefinementAction.REVISE, "partial_crop_revision_blocked"),
+            (RefinementAction.CONFIRM, "partial_crop_confirmation_blocked"),
+        ],
+    )
+    async def test_partial_crop_cannot_rebind_disjoint_coarse_evidence(
+        self,
+        action,
+        expected_status,
+    ):
+        finding = Finding(
+            id="multi-site",
+            regions=["lead_I", "lead_V6"],
+            label="Two-site signal anomaly",
+            detail="Separate visible candidates require independent review",
+            severity=Severity.WARNING,
+            bboxes=[
+                RegionRect(0.05, 0.05, 0.20, 0.10),
+                RegionRect(0.70, 0.78, 0.10, 0.08),
+            ],
+        )
+        proposed = Finding(
+            id="ignored-payload-id",
+            regions=["lead_I"],
+            label="Rebound local diagnosis",
+            detail="The selected crop alone changes the whole hypothesis.",
+            severity=Severity.INFO,
+            bboxes=[RegionRect(0.1, 0.1, 0.4, 0.4)],
+        )
+        coarse = _ekg_row_layout_result([finding])
+        # The top-level coarse urgency may reflect image-wide context outside
+        # the selected local crop. A blocked local mutation cannot lower it.
+        coarse.severity = Severity.CRITICAL
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [
+                RefinementResult(
+                    (
+                        RefinementDelta(
+                            action,
+                            target_id="multi-site",
+                            finding=proposed,
+                            rationale="Only the selected local crop was reviewed.",
+                        ),
+                    )
+                )
+            ],
+        )
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            zoom_padding=0.0,
+            max_zoom_targets=1,
+            max_ekg_systematic_probes=0,
+        )
+
+        out = await interp.interpret("img", Modality.EKG, [])
+
+        assert out.findings == [finding]
+        assert out.severity is Severity.CRITICAL
+        guard = next(
+            event
+            for event in out.analysis_trace
+            if event.get("status") == expected_status
+        )
+        assert guard["blocked_action"] == action.value
+        assert guard["uncovered_bbox_count"] == 1
+        assert guard["decision_applied"] is False
+        assert guard["severity_downgrade_authorized"] is False
+
+    async def test_local_candidate_cannot_retract_bboxless_coarse_hypothesis(self):
+        finding = _finding(
+            "unlocalized",
+            Severity.WARNING,
+            None,
+            label="Unlocalized opacity concern",
+            detail="The coarse pass could not localize the concern.",
+        )
+        coarse = _result([finding])
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [
+                RefinementResult(
+                    (
+                        RefinementDelta(
+                            RefinementAction.RETRACT,
+                            target_id="unlocalized",
+                            rationale="The local candidate crop was normal.",
+                        ),
+                    )
+                )
+            ],
+        )
+        candidate = RegionRect(0.2, 0.2, 0.3, 0.3)
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            zoom_padding=0.0,
+            max_zoom_targets=1,
+        )
+
+        out = await interp.interpret(
+            "img",
+            Modality.CXR,
+            [],
+            local_candidate_regions=[candidate],
+        )
+
+        assert out.findings == [finding]
+        assert out.severity is Severity.WARNING
+        guard = next(
+            event
+            for event in out.analysis_trace
+            if event.get("status") == "partial_crop_retraction_blocked"
+        )
+        assert guard["source_bbox_count"] == 0
+        assert guard["source_was_unlocalized"] is True
+        assert guard["uncovered_bbox_count"] == 0
+        assert guard["decision_applied"] is False
+
+    @pytest.mark.parametrize(
+        "action",
+        [RefinementAction.REVISE, RefinementAction.CONFIRM],
+    )
+    async def test_semantic_only_targeted_delta_preserves_coarse_geometry_contract(
+        self,
+        action,
+    ):
+        box = RegionRect(0.2, 0.2, 0.3, 0.3)
+        coarse_finding = _finding(
+            "f1",
+            Severity.WARNING,
+            box,
+            label="Coarse opacity concern",
+            detail="Coarse semantics remain bound to this box.",
+        )
+        proposed = _finding(
+            "ignored-payload-id",
+            Severity.INFO,
+            None,
+            label="Different semantic conclusion",
+            detail="No verified coordinates accompanied this mutation.",
+        )
+        coarse = _result([coarse_finding])
+        analyzer = _HypothesisAwareAnalyzer(
+            coarse,
+            [
+                RefinementResult(
+                    (
+                        RefinementDelta(
+                            action,
+                            target_id="f1",
+                            finding=proposed,
+                            rationale="Semantic-only refinement.",
+                        ),
+                    ),
+                    unlocalized_missing_receipt_delta_indexes=(0,),
+                )
+            ],
+        )
+        interp = MultiPassInterpreter(
+            analyzer,
+            _RecordingCropper(),
+            zoom_padding=0.0,
+            max_zoom_targets=1,
+        )
+
+        out = await interp.interpret("img", Modality.CXR, [])
+
+        assert out.findings == [coarse_finding]
+        assert out.severity is Severity.WARNING
+        assert out.incomplete is True
+        assert out.review_required is True
+        guard = next(
+            event
+            for event in out.analysis_trace
+            if event.get("stage") == "bbox_receipt_guardrail"
+        )
+        assert guard["action"] == action.value
+        assert guard["decision_applied"] is False
+        assert guard["coarse_finding_preserved"] is True
+        assert guard["overlay_coordinates_asserted"] is False
 
     async def test_delta_cannot_revise_a_different_coarse_finding(self):
         box = RegionRect(x=0.3, y=0.3, w=0.3, h=0.3)

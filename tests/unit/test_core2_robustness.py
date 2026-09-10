@@ -390,6 +390,9 @@ class TestHypothesisAwareRefinement:
         assert "three broad QRS complexes across multiple leads" in prompt
         assert "NSVT/VT versus artifact" in prompt
         assert "Do not finalize sinus from regular timing alone" in prompt
+        assert "Serialize compact JSON without indentation" in prompt
+        assert "Return layout={} in this final turn" in prompt
+        assert "never omit an axis" in prompt
         assert "High voltage alone cannot establish definite LVH" in prompt
         assert "missing calibration pulse prevents a definite LVH claim" in prompt
         assert "more than one qualifying lead group" in prompt

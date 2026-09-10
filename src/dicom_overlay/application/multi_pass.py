@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import re
 import time
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol, TypeVar
@@ -262,6 +263,8 @@ _EKG_MULTI_LEAD_CONTEXT_TERMS: tuple[str, ...] = (
     "strain",
 )
 _EKG_SYNCHRONIZED_EVENT_TERMS: tuple[str, ...] = (
+    "broad complex",
+    "broad-complex",
     "paced",
     "pacing",
     "pacemaker",
@@ -348,6 +351,51 @@ _CRITICAL_TRIAGE_UNRESOLVED_VALUE_MARKERS = (
     "unknown",
     "deferred",
 )
+_CRITICAL_TRIAGE_BROAD_NEGATIVE_SUMMARY_MARKERS = (
+    "normal ecg",
+    "normal ekg",
+    "normal study",
+    "normal tracing",
+    "within normal limits",
+    "no acute abnormality",
+    "no acute abnormalities",
+    "no significant abnormality",
+    "no significant abnormalities",
+    "no abnormality",
+    "no abnormalities",
+    "all findings absent",
+    "abnormalities absent",
+    "unremarkable study",
+    "unremarkable ecg",
+    "unremarkable ekg",
+)
+_EKG_VENTRICULAR_RUN_CLAIM_MARKERS = (
+    "ventricular tachycardia",
+    "ventricular run",
+    "nonsustained vt",
+    "non sustained vt",
+    "nsvt",
+    "vt",
+)
+_EKG_NONASSERTIVE_CLAIM_MARKERS = (
+    "possible",
+    "possibly",
+    "suspected",
+    "suspicious for",
+    "candidate",
+    "concern for",
+    "cannot exclude",
+    "not excluded",
+    "consider",
+    "versus",
+    " vs ",
+    "insufficient",
+    "unresolved",
+    "not confirmed",
+    "no confirmed",
+    "cannot establish",
+)
+_EKG_MIN_VENTRICULAR_RUN_TIMESTAMPS = 3
 
 
 class ImageCropper(Protocol):
@@ -425,9 +473,25 @@ class RefinementDelta:
 
 @dataclasses.dataclass(frozen=True)
 class RefinementResult:
-    """Structured output of one hypothesis-aware crop refinement turn."""
+    """Structured output of one hypothesis-aware crop refinement turn.
+
+    ``unlocalized_missing_receipt_delta_indexes`` is non-model provenance.  The
+    infrastructure client may populate it only after a parsed turn returned
+    useful semantics but no bbox-validator receipt at all.  Unknown fields in
+    model JSON are never mapped into this attribute, so model-authored notes
+    cannot opt an ungrounded finding into the merge path.
+    """
 
     deltas: tuple[RefinementDelta, ...] = ()
+    unlocalized_missing_receipt_delta_indexes: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        indexes = self.unlocalized_missing_receipt_delta_indexes
+        if any(
+            type(index) is not int or index < 0 or index >= len(self.deltas)
+            for index in indexes
+        ) or len(set(indexes)) != len(indexes):
+            raise ValueError("invalid unlocalized refinement delta indexes")
 
 
 class RefinementAnalyzer(Protocol):
@@ -738,6 +802,19 @@ def _bounded_ekg_context_region(region: RegionRect) -> bool:
     )
 
 
+def _trustworthy_ekg_horizontal_event_region(region: RegionRect) -> bool:
+    """Return whether a box localizes an event in time, not only a lead row.
+
+    A full-width lead or lead-group rectangle is valid spatial context, but it
+    contains no evidence for choosing one horizontal time column.  In
+    particular, layout routing can synthesize such a rectangle for an
+    otherwise unlocalized hypothesis.  Treating that synthetic rectangle as a
+    timed event on the next routing pass manufactured a fixed central crop.
+    """
+
+    return region.w <= _MAX_EKG_FINDING_BOX_WIDTH + 1e-9
+
+
 def _ekg_contextual_crop_strategy(
     finding: Finding,
     layout: object,
@@ -759,12 +836,28 @@ def _ekg_contextual_crop_strategy(
         and any(term in text for term in _EKG_SYNCHRONIZED_EVENT_TERMS)
         and finding.bboxes
     ):
-        valid_boxes = [
+        all_valid_boxes = [
             region
             for item in finding.bboxes
             if (region := _clamp_region(item)) is not None
         ]
+        valid_boxes = [
+            region
+            for region in all_valid_boxes
+            if _trustworthy_ekg_horizontal_event_region(region)
+        ]
         if valid_boxes:
+            event_span = covering_region(valid_boxes)
+            if _unique_ekg_event_timestamp_count(valid_boxes) > 1:
+                # Preserve all distinct event times and the beats between them.
+                # A single-event crop cannot test a multi-event rhythm claim.
+                width = min(1.0, max(_EKG_ROW_EVENT_MIN_WIDTH, event_span.w + 0.08))
+                center_x = event_span.x + event_span.w / 2.0
+                x = min(max(0.0, center_x - width / 2.0), 1.0 - width)
+                return (
+                    RegionRect(x=x, y=0.0, w=width, h=1.0),
+                    "row_strip_multi_event_temporal_context",
+                )
             focus = max(valid_boxes, key=lambda region: (region.w * region.h, region.w))
             width = min(
                 _EKG_ROW_EVENT_MAX_WIDTH,
@@ -775,6 +868,14 @@ def _ekg_contextual_crop_strategy(
             return (
                 RegionRect(x=x, y=0.0, w=width, h=1.0),
                 "row_strip_cross_lead_temporal_context",
+            )
+        if all_valid_boxes:
+            # The evidence says which lead row/group to inspect but does not
+            # identify an event time.  Keep that horizontal context intact;
+            # choosing its midpoint would be fabricated localization.
+            return (
+                covering_region(all_valid_boxes),
+                "row_strip_unlocalized_full_width_context",
             )
 
     if any(term in text for term in _EKG_TEMPORAL_CONTEXT_TERMS):
@@ -1245,6 +1346,42 @@ def _uncovered_hypothesis_regions(
     return uncovered
 
 
+def _crop_covers_entire_roi(crop_region: RegionRect) -> bool:
+    """Return whether a crop can adjudicate an otherwise unlocalized finding."""
+
+    tolerance = 1e-6
+    return (
+        crop_region.x <= tolerance
+        and crop_region.y <= tolerance
+        and crop_region.x + crop_region.w >= 1.0 - tolerance
+        and crop_region.y + crop_region.h >= 1.0 - tolerance
+    )
+
+
+def _target_crop_coverage(
+    crop_region: RegionRect,
+    hypothesis: Finding,
+) -> tuple[bool, list[RegionRect], int]:
+    """Return coverage proof for a targeted mutation of a coarse hypothesis.
+
+    A bounded local candidate may be attached to a bbox-less finding purely to
+    route a closer look.  That synthetic rectangle is not evidence that the
+    crop covers the whole coarse hypothesis.  Such a finding can be mutated
+    only after an original-ROI turn; localized hypotheses require every coarse
+    bbox to be inside the crop.
+    """
+
+    source_regions = [
+        region
+        for raw_region in hypothesis.bboxes
+        if (region := _clamp_region(raw_region)) is not None
+    ]
+    if not source_regions:
+        return _crop_covers_entire_roi(crop_region), [], 0
+    uncovered = _uncovered_hypothesis_regions(crop_region, hypothesis)
+    return not uncovered, uncovered, len(source_regions)
+
+
 def _meaningful_local_regions(
     local_candidate_regions: list[RegionRect],
     *,
@@ -1539,6 +1676,7 @@ def apply_refinement_delta(
     *,
     crop_region: RegionRect,
     expected_target_id: str | None,
+    allow_unlocalized_add: bool = False,
 ) -> list[Finding]:
     """Apply one crop-local delta within its target's mutation boundary."""
     if delta.action is not RefinementAction.ADD and (
@@ -1560,7 +1698,7 @@ def apply_refinement_delta(
         if payload is None or payload.severity is Severity.NORMAL:
             return findings
         mapped = _remap_finding_boxes(payload, crop_region)
-        if not mapped.bboxes:
+        if not mapped.bboxes and not allow_unlocalized_add:
             logger.warning(
                 "Ignoring added refinement finding without a valid bbox",
                 finding_id=payload.id,
@@ -2284,6 +2422,216 @@ def _critical_triage_axis_is_unresolved(item: ChecklistItem | None) -> bool:
     )
 
 
+def _normalized_clinical_claim_text(value: str) -> str:
+    return " ".join(
+        "".join(character if character.isalnum() else " " for character in value)
+        .casefold()
+        .split()
+    )
+
+
+def _contains_broad_normal_or_absent_summary_claim(value: str) -> bool:
+    """Detect an overall negative conclusion unsafe with deferred ECG axes."""
+
+    normalized = _normalized_clinical_claim_text(value)
+    if normalized in {"normal", "wnl", "absent", "unremarkable"}:
+        return True
+    padded = f" {normalized} "
+    return any(
+        f" {marker} " in padded
+        for marker in _CRITICAL_TRIAGE_BROAD_NEGATIVE_SUMMARY_MARKERS
+    )
+
+
+def _contains_unassessed_axis_normal_claim(value: str) -> bool:
+    """Detect a normal/absent assertion embedded in an unassessed axis value."""
+
+    normalized = _normalized_clinical_claim_text(value)
+    padded = f" {normalized} "
+    return (
+        " within normal limits " in padded
+        or " wnl " in padded
+        or " normal " in padded
+        or " absent " in padded
+        or " no abnormality " in padded
+        or " no abnormalities " in padded
+    )
+
+
+def _contains_asserted_ventricular_run_claim(value: str) -> bool:
+    """Return whether text makes an unqualified ventricular-run assertion."""
+
+    # Negation is scoped to a mention, not the whole report. In particular,
+    # "intervening beats exclude a consecutive ventricular run" is NOT an
+    # assertion to relabel as a time-critical candidate (real desktop failure).
+    for clause in re.split(r"[.;\n]+|\b(?:but|however|whereas)\b", value, flags=re.I):
+        padded = f" {_normalized_clinical_claim_text(clause)} "
+        if any(marker in padded for marker in _EKG_NONASSERTIVE_CLAIM_MARKERS):
+            continue
+        for marker in _EKG_VENTRICULAR_RUN_CLAIM_MARKERS:
+            for mention in re.finditer(rf"\b{re.escape(marker)}\b", padded):
+                prefix = padded[: mention.start()]
+                suffix = padded[mention.end() :]
+                negated_before = re.search(
+                    r"\b(?:no|without|not|exclud(?:e|es|ed|ing))\s+"
+                    r"(?:(?:a|an|the|any|clear|definite|evidence|of|consecutive|"
+                    r"sustained|nonsustained)\s+)*$",
+                    prefix,
+                )
+                negated_after = re.match(
+                    r"\s+(?:(?:is|was|are|were)\s+)?"
+                    r"(?:absent|excluded|not (?:present|seen|observed|demonstrated))\b",
+                    suffix,
+                )
+                if not negated_before and not negated_after:
+                    return True
+    return False
+
+
+def _unique_ekg_event_timestamp_count(boxes: list[RegionRect]) -> int:
+    """Count clearly distinct horizontal EKG event intervals conservatively.
+
+    Stacked 12-lead rows repeat one simultaneous cardiac event vertically.  A
+    bbox contributes at most one timestamp, and horizontally overlapping boxes
+    are one event regardless of how many lead rows repeat it. Broad context
+    rectangles are excluded because they do not localize an event in time.
+    """
+
+    intervals = sorted(
+        (
+            (region.x, region.x + region.w)
+            for raw_box in boxes
+            if (region := _clamp_region(raw_box)) is not None
+            and region.w <= _MAX_EKG_FINDING_BOX_WIDTH
+            and region.h <= _MAX_EKG_FINDING_BOX_HEIGHT
+            and region.w * region.h <= _MAX_EKG_FINDING_BOX_AREA
+        ),
+        key=lambda interval: (interval[0], interval[1]),
+    )
+    groups: list[tuple[float, float]] = []
+    horizontal_tolerance = 0.005
+    for start, end in intervals:
+        if groups and start <= groups[-1][1] + horizontal_tolerance:
+            previous_start, previous_end = groups[-1]
+            groups[-1] = (previous_start, max(previous_end, end))
+        else:
+            groups.append((start, end))
+    return len(groups)
+
+
+def apply_ekg_ventricular_run_evidence_guard(
+    result: AnalysisResult,
+) -> AnalysisResult:
+    """Qualify an asserted VT/run label when geometry shows fewer than 3 events.
+
+    This is deliberately not a rhythm classifier. It neither declares artifact
+    nor lowers study urgency. It only prevents one or two synchronized boxes
+    (or a broad lead/context box) from being displayed as proof of a ventricular
+    run, because the same timestamp repeated across leads is still one beat.
+    """
+
+    if result.modality is not Modality.EKG:
+        return result
+    layout_format = str(result.layout.get("format") or "").strip().casefold()
+    if layout_format not in {"12lead_12x1", "12lead_rows"}:
+        return result
+
+    findings: list[Finding] = []
+    events: list[dict[str, object]] = []
+    for finding in result.findings:
+        if not (
+            _contains_asserted_ventricular_run_claim(finding.label)
+            or _contains_asserted_ventricular_run_claim(finding.detail)
+        ):
+            findings.append(finding)
+            continue
+        unique_timestamps = _unique_ekg_event_timestamp_count(finding.bboxes)
+        if unique_timestamps >= _EKG_MIN_VENTRICULAR_RUN_TIMESTAMPS:
+            findings.append(finding)
+            continue
+
+        qualification = (
+            f"Only {unique_timestamps} unique horizontal event timestamp(s) are "
+            "localized; fewer than three cannot establish a ventricular run or "
+            "ventricular tachycardia from bbox geometry alone."
+        )
+        original_claim = (
+            "Original model claim retained for audit but not accepted as a "
+            f"diagnosis: {finding.label} — {finding.detail}"
+        )
+        findings.append(
+            dataclasses.replace(
+                finding,
+                label="Unresolved potentially time-critical ventricular rhythm candidate",
+                detail=qualification,
+                confidence="low",
+                question=(
+                    "Does the native ECG show at least three consecutive, unique "
+                    "wide-complex event timestamps, and what is their mechanism?"
+                ),
+                notes=list(dict.fromkeys([*finding.notes, original_claim])),
+            )
+        )
+        events.append(
+            {
+                "stage": "ekg_ventricular_run_guardrail",
+                "status": "assertion_qualified_for_insufficient_unique_timestamps",
+                "tool": "deterministic_bbox_timestamp_counter",
+                "finding_id": finding.id,
+                "unique_timestamp_count": unique_timestamps,
+                "required_timestamp_count": _EKG_MIN_VENTRICULAR_RUN_TIMESTAMPS,
+                "study_severity_preserved": result.severity.value,
+                "finding_severity_preserved": finding.severity.value,
+                "coordinates_moved": False,
+                "diagnosis_forced": False,
+            }
+        )
+    if not events:
+        return result
+
+    summary = result.summary
+    if _contains_asserted_ventricular_run_claim(summary):
+        summary = (
+            "A potentially time-critical ventricular rhythm candidate remains "
+            "unresolved because fewer than three unique event timestamps are "
+            "localized; review the native ECG."
+        )
+    checklist = dict(result.checklist)
+    for key, item in result.checklist.items():
+        if _contains_asserted_ventricular_run_claim(item.value):
+            checklist[key] = ChecklistItem(
+                value=(
+                    "unresolved ventricular rhythm candidate; fewer than three "
+                    "unique event timestamps localized"
+                ),
+                status=item.status,
+            )
+    reason = (
+        "An asserted ventricular run/VT had fewer than three uniquely localized "
+        "horizontal event timestamps; synchronized lead repetitions were counted "
+        "once and broad context boxes were not treated as timed events."
+    )
+    return dataclasses.replace(
+        result,
+        summary=summary,
+        findings=findings,
+        checklist=checklist,
+        incomplete=True,
+        incomplete_reasons=list(dict.fromkeys([*result.incomplete_reasons, reason])),
+        review_required=True,
+        review_reasons=list(dict.fromkeys([*result.review_reasons, reason])),
+        analysis_trace=[*result.analysis_trace, *events],
+        next_steps=list(
+            dict.fromkeys(
+                [
+                    *result.next_steps,
+                    "Confirm unique wide-complex event count and mechanism on the native ECG.",
+                ]
+            )
+        ),
+    )
+
+
 def apply_critical_triage_guard(
     result: AnalysisResult,
     critical_findings: list[Finding],
@@ -2317,6 +2665,7 @@ def apply_critical_triage_guard(
             changed_axes.append(key)
 
     analysis_trace = list(result.analysis_trace)
+    summary = result.summary
     if changed_axes:
         analysis_trace.append(
             {
@@ -2332,12 +2681,11 @@ def apply_critical_triage_guard(
                 "diagnosis_forced": False,
             }
         )
-    incomplete_reasons = list(
-        dict.fromkeys([*result.incomplete_reasons, _CRITICAL_TRIAGE_REASON])
-    )
-    review_reasons = list(
-        dict.fromkeys([*result.review_reasons, _CRITICAL_TRIAGE_REASON])
-    )
+    incomplete_reasons = list(result.incomplete_reasons)
+    review_reasons = list(result.review_reasons)
+    incomplete = result.incomplete
+    review_required = result.review_required
+    deferred_review_resolved = False
     if phase == "final_output" and deferred_axes:
         unresolved_axes = [
             key
@@ -2351,6 +2699,38 @@ def apply_critical_triage_guard(
             if finding.id in {item.id for item in critical_findings}
             and finding.severity is Severity.CRITICAL
         )
+        cross_field_repairs: list[dict[str, str]] = []
+        if unresolved_axes:
+            if _contains_broad_normal_or_absent_summary_claim(summary):
+                cross_field_repairs.append(
+                    {
+                        "field": "summary",
+                        "reason": "broad_negative_claim_with_unassessed_axes",
+                    }
+                )
+                summary = (
+                    "At least one critical finding remains, but deferred ECG checklist "
+                    "axes remain unassessed on the original study."
+                    if retained_critical_ids
+                    else "The critical candidate was not retained; deferred ECG "
+                    "checklist axes remain unassessed on the original study."
+                )
+            for key in unresolved_axes:
+                item = checklist.get(key)
+                if item is None or not _contains_unassessed_axis_normal_claim(
+                    item.value
+                ):
+                    continue
+                checklist[key] = ChecklistItem(
+                    value=_CRITICAL_TRIAGE_UNASSESSED,
+                    status=Severity.INFO,
+                )
+                cross_field_repairs.append(
+                    {
+                        "field": f"checklist.{key}",
+                        "reason": "normal_or_absent_claim_inside_unassessed_axis",
+                    }
+                )
         if unresolved_axes:
             # Clinical severity is never raised solely because a workflow axis
             # remains unassessed.  The explicit sentinel plus incomplete/review
@@ -2361,6 +2741,52 @@ def apply_critical_triage_guard(
             )
             review_reasons = list(
                 dict.fromkeys([*review_reasons, _CRITICAL_TRIAGE_UNRESOLVED_REASON])
+            )
+            incomplete = True
+            review_required = True
+        else:
+            # The original-ROI final turn is the only stage allowed to close
+            # axes skipped by critical-first crop planning.  Once it explicitly
+            # assessed every deferred axis, remove the workflow-only limitation
+            # instead of leaving a permanently incomplete otherwise-clean case.
+            triage_reasons = {
+                _CRITICAL_TRIAGE_REASON,
+                _CRITICAL_TRIAGE_UNRESOLVED_REASON,
+            }
+            had_triage_incomplete_reason = any(
+                reason in triage_reasons for reason in incomplete_reasons
+            )
+            had_triage_review_reason = any(
+                reason in triage_reasons for reason in review_reasons
+            )
+            incomplete_reasons = [
+                reason for reason in incomplete_reasons if reason not in triage_reasons
+            ]
+            review_reasons = [
+                reason for reason in review_reasons if reason not in triage_reasons
+            ]
+            incomplete = bool(incomplete_reasons or result.validation_warnings) or (
+                result.incomplete and not had_triage_incomplete_reason
+            )
+            review_required = (
+                bool(review_reasons)
+                or incomplete
+                or (result.review_required and not had_triage_review_reason)
+            )
+            deferred_review_resolved = True
+        if cross_field_repairs:
+            analysis_trace.append(
+                {
+                    "stage": "critical_triage_cross_field_guard",
+                    "status": "contradictory_negative_claims_suppressed",
+                    "tool": "critical_first_cross_field_contract",
+                    "repairs": cross_field_repairs,
+                    "unresolved_axes": unresolved_axes,
+                    "retained_critical_ids": retained_critical_ids,
+                    "clinical_severity_changed": False,
+                    "clinical_status_inferred": False,
+                    "diagnosis_forced": False,
+                }
             )
         analysis_trace.append(
             {
@@ -2380,12 +2806,20 @@ def apply_critical_triage_guard(
                 "diagnosis_forced": False,
             }
         )
+    if not deferred_review_resolved:
+        incomplete_reasons = list(
+            dict.fromkeys([*incomplete_reasons, _CRITICAL_TRIAGE_REASON])
+        )
+        review_reasons = list(dict.fromkeys([*review_reasons, _CRITICAL_TRIAGE_REASON]))
+        incomplete = True
+        review_required = True
     return dataclasses.replace(
         result,
+        summary=summary,
         checklist=checklist,
-        incomplete=True,
+        incomplete=incomplete,
         incomplete_reasons=incomplete_reasons,
-        review_required=True,
+        review_required=review_required,
         review_reasons=review_reasons,
         analysis_trace=analysis_trace,
     )
@@ -3246,7 +3680,12 @@ class MultiPassInterpreter:
         refinement_trace = [
             event
             for event in trace
-            if event.get("stage") == "refine" and event.get("status") == "completed"
+            if (event.get("stage") == "refine" and event.get("status") == "completed")
+            or (
+                event.get("stage") == "refinement_guardrail"
+                and event.get("tool") == "crop_coverage_guard"
+                and event.get("decision_applied") is False
+            )
         ]
         turn_started_ms = deadline.elapsed_ms()
         turn_budget_ms = max(
@@ -3365,6 +3804,7 @@ class MultiPassInterpreter:
         degradation_reasons: list[str],
     ) -> AnalysisResult:
         result = apply_ekg_waveform_rhythm_conflict_guard(result)
+        result = apply_ekg_ventricular_run_evidence_guard(result)
         result = reconcile_unavailable_ekg_rhythm_regions(result)
         result = apply_ekg_overlay_bbox_guard(result)
         result = qualify_boxed_info_findings(result)
@@ -3534,39 +3974,112 @@ class MultiPassInterpreter:
         merged = list(coarse.findings)
         trace = list(coarse.analysis_trace)
         allow_downgrade = False
+        unlocalized_finding_ids: list[str] = []
+        coarse_by_id = {finding.id: finding for finding in coarse.findings}
         for target, crop_region, refinement in refinements:
             expected_target_id = (
                 target.hypothesis.id if target.hypothesis is not None else None
             )
-            for raw_delta in refinement.deltas:
+            unlocalized_indexes = set(
+                refinement.unlocalized_missing_receipt_delta_indexes
+            )
+            for delta_index, raw_delta in enumerate(refinement.deltas):
                 delta = (
                     _normalize_discovery_delta(raw_delta)
                     if expected_target_id is None
                     or target.key.startswith("ekg_systematic_")
                     else raw_delta
                 )
-                if (
-                    delta.action is RefinementAction.RETRACT
+                semantic_only_missing_receipt = bool(
+                    delta_index in unlocalized_indexes
+                    and delta.finding is not None
+                    and not delta.finding.bboxes
+                )
+                unlocalized_add = bool(
+                    semantic_only_missing_receipt
+                    and delta.action is RefinementAction.ADD
+                )
+                targeted_action = delta.action in {
+                    RefinementAction.CONFIRM,
+                    RefinementAction.REVISE,
+                    RefinementAction.RETRACT,
+                }
+                targets_expected_hypothesis = bool(
+                    targeted_action
                     and target.hypothesis is not None
+                    and expected_target_id is not None
                     and delta.target_id == expected_target_id
+                )
+                if (
+                    semantic_only_missing_receipt
+                    and targets_expected_hypothesis
+                    and delta.action
+                    in {RefinementAction.CONFIRM, RefinementAction.REVISE}
                 ):
-                    uncovered = _uncovered_hypothesis_regions(
-                        crop_region,
+                    # A targeted semantic payload with stripped coordinates
+                    # cannot safely inherit the coarse boxes: those boxes refer
+                    # to the old label/detail, while the new semantics have no
+                    # turn-bound localization proof.  Keep the coarse finding
+                    # byte-for-byte intact and expose the failed mutation only
+                    # as audit/review state.
+                    if any(item.id == delta.target_id for item in merged):
+                        unlocalized_finding_ids.append(delta.target_id)
+                        trace.append(
+                            {
+                                "stage": "bbox_receipt_guardrail",
+                                "status": "semantic_only_missing_receipt",
+                                "tool": "bound_bbox_grounding_contract",
+                                "target_id": target.key,
+                                "finding_id": delta.target_id,
+                                "action": delta.action.value,
+                                "decision_applied": False,
+                                "coarse_finding_preserved": True,
+                                "overlay_coordinates_asserted": False,
+                                "diagnosis_forced": False,
+                            }
+                        )
+                    continue
+
+                target_has_complete_coverage = False
+                if targets_expected_hypothesis:
+                    source_hypothesis = coarse_by_id.get(
+                        expected_target_id,
                         target.hypothesis,
                     )
-                    if uncovered:
+                    (
+                        target_has_complete_coverage,
+                        uncovered,
+                        source_bbox_count,
+                    ) = _target_crop_coverage(crop_region, source_hypothesis)
+                    if not target_has_complete_coverage:
+                        status = {
+                            RefinementAction.RETRACT: (
+                                "partial_crop_retraction_blocked"
+                            ),
+                            RefinementAction.REVISE: "partial_crop_revision_blocked",
+                            RefinementAction.CONFIRM: (
+                                "partial_crop_confirmation_blocked"
+                            ),
+                        }[delta.action]
                         trace.append(
                             {
                                 "stage": "refinement_guardrail",
-                                "status": "partial_crop_retraction_blocked",
+                                "status": status,
                                 "tool": "crop_coverage_guard",
                                 "target_id": target.key,
                                 "crop_region": _region_payload(crop_region),
-                                "source_bbox_count": len(target.hypothesis.bboxes),
+                                "source_bbox_count": source_bbox_count,
                                 "uncovered_bbox_count": len(uncovered),
                                 "uncovered_bboxes": [
                                     _region_payload(region) for region in uncovered
                                 ],
+                                "source_was_unlocalized": source_bbox_count == 0,
+                                "blocked_action": delta.action.value,
+                                "decision_applied": False,
+                                "severity_downgrade_authorized": False,
+                                "evidence_interpretation": (
+                                    "inconclusive_partial_crop_coverage"
+                                ),
                             }
                         )
                         continue
@@ -3582,19 +4095,44 @@ class MultiPassInterpreter:
                             "severity_after": delta.finding.severity.value,
                         }
                     )
-                if (
-                    delta.action in {RefinementAction.REVISE, RefinementAction.RETRACT}
-                    and expected_target_id is not None
-                    and delta.target_id == expected_target_id
-                ):
-                    allow_downgrade = True
+                before_count = len(merged)
+                target_was_present = bool(
+                    targets_expected_hypothesis
+                    and any(item.id == delta.target_id for item in merged)
+                )
                 merged = apply_refinement_delta(
                     merged,
                     delta,
                     crop_region=crop_region,
                     expected_target_id=expected_target_id,
+                    allow_unlocalized_add=unlocalized_add,
                 )
-        return dataclasses.replace(
+                if (
+                    target_was_present
+                    and target_has_complete_coverage
+                    and delta.action
+                    in {RefinementAction.REVISE, RefinementAction.RETRACT}
+                ):
+                    allow_downgrade = True
+                retained_id = ""
+                if unlocalized_add and len(merged) > before_count:
+                    retained_id = merged[-1].id
+                if retained_id:
+                    unlocalized_finding_ids.append(retained_id)
+                    trace.append(
+                        {
+                            "stage": "bbox_receipt_guardrail",
+                            "status": "semantic_only_missing_receipt",
+                            "tool": "bound_bbox_grounding_contract",
+                            "target_id": target.key,
+                            "finding_id": retained_id,
+                            "action": delta.action.value,
+                            "decision_applied": True,
+                            "overlay_coordinates_asserted": False,
+                            "diagnosis_forced": False,
+                        }
+                    )
+        merged_result = dataclasses.replace(
             coarse,
             findings=merged,
             severity=_merged_severity(
@@ -3604,6 +4142,22 @@ class MultiPassInterpreter:
             ),
             zoom_hints=[*coarse.zoom_hints, *zoom_hints],
             analysis_trace=trace,
+        )
+        if not unlocalized_finding_ids:
+            return merged_result
+        reason = (
+            "A parsed crop refinement lacked an image/turn-bound bbox receipt; "
+            "unlocalized additions remain coordinate-free and targeted mutations "
+            "were not applied. Confirm localization on the native study."
+        )
+        return dataclasses.replace(
+            merged_result,
+            incomplete=True,
+            incomplete_reasons=list(
+                dict.fromkeys([*merged_result.incomplete_reasons, reason])
+            ),
+            review_required=True,
+            review_reasons=list(dict.fromkeys([*merged_result.review_reasons, reason])),
         )
 
 

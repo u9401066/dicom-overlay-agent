@@ -16,6 +16,16 @@ from dicom_overlay.infrastructure.real_model_readiness import (
 )
 
 
+def _gateway_protocol_receipt() -> dict[str, object]:
+    return {
+        "verified": True,
+        "advertised_min_protocol": 3,
+        "advertised_max_protocol": 4,
+        "negotiated_protocol": 4,
+        "server_version": "2026.7.1-2",
+    }
+
+
 def _write_manifest(path: Path, count: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     images = path.parent / "images"
@@ -150,6 +160,7 @@ def _write_eval_artifacts(eval_dir: Path, manifest_path: Path, count: int) -> No
                     "image": f"images/{i:04d}.png",
                     "protocol_digest": protocol_digest,
                     "source_image_sha256": image_hashes[f"meeti_{i:04d}"],
+                    "gateway_protocol_receipt": _gateway_protocol_receipt(),
                     "findings": [],
                     "local_image_quality": {"low_signal": False},
                     "local_signal_candidates": {
@@ -164,9 +175,7 @@ def _write_eval_artifacts(eval_dir: Path, manifest_path: Path, count: int) -> No
     review.mkdir()
     (review / "index.html").write_text("<html></html>", encoding="utf-8")
     for i in range(count):
-        Image.new("RGB", (40, 20), "white").save(
-            review / f"meeti_{i:04d}.review.png"
-        )
+        Image.new("RGB", (40, 20), "white").save(review / f"meeti_{i:04d}.review.png")
     (review / "bbox-audit.jsonl").write_text(
         "\n".join(
             json.dumps(
@@ -236,9 +245,7 @@ def test_readiness_accepts_complete_artifacts_and_present_provider_key(
         "minimum_strict_pass_rate": 0.75,
         "minimum_mean_partial_credit": 0.85,
     }
-    assert "projection_audit_artifacts" in payload["evidence"][
-        "eval_passed_checks"
-    ]
+    assert "projection_audit_artifacts" in payload["evidence"]["eval_passed_checks"]
     assert "sk-secret" not in json.dumps(payload)
     assert "scripts\\run-meeti-openclaw-experiment.cmd" in payload["next_commands"][0]
     assert "--model-id openrouter/minimax/minimax-m3" in payload["next_commands"][0]

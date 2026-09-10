@@ -14,6 +14,16 @@ from dicom_overlay.infrastructure.eval_artifact_validator import (
 )
 
 
+def _gateway_protocol_receipt() -> dict[str, object]:
+    return {
+        "verified": True,
+        "advertised_min_protocol": 3,
+        "advertised_max_protocol": 4,
+        "negotiated_protocol": 4,
+        "server_version": "2026.7.1-2",
+    }
+
+
 def _write_manifest(path: Path, count: int) -> None:
     image_dir = path.parent / "cxr"
     image_dir.mkdir(parents=True, exist_ok=True)
@@ -149,6 +159,7 @@ def _write_scorecard(eval_dir: Path, count: int, **overrides: object) -> None:
                     "image": f"{i:04d}.png",
                     "protocol_digest": protocol_digest,
                     "source_image_sha256": image_sha256,
+                    "gateway_protocol_receipt": _gateway_protocol_receipt(),
                     "findings": [],
                     "local_image_quality": {"low_signal": False},
                     "local_signal_candidates": {

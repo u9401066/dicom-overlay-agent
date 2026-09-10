@@ -5,6 +5,25 @@
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
+- First Astra low real-UI export: `desktop-20260910-094636-035106`, original
+  ROI 1499 x 1079, verified protocol 4. Coarse 40.967 s, first crop 68.548 s,
+  total 179.252 s. The second crop and final reconciliation hit deadlines;
+  this is an incomplete result, not a passed case. Back-projection drift was
+  below 0.67 physical pixels, which alone does not establish correct anatomy.
+- Real output revealed a local negation bug: "exclude a consecutive ventricular
+  run" incorrectly became an unresolved VT candidate. Added scoped negation and
+  positive-contrast regression cases. Multi-event crops now preserve all timed
+  events plus intervening beats rather than selecting only one event.
+- Final output is requested as compact JSON with short values and no regenerated
+  layout geometry (the existing reconciliation already preserves draft layout).
+  Clinical axes and bound bbox validation are unchanged. Speed benefit remains
+  unmeasured until the next real run.
+- Explicit Export now also renders app-owned summary/control/overlay widgets;
+  this avoids black Windows capture-exclusion screenshots without disabling
+  exclusion or copying desktop/background pixels.
+- Full suite before these last refinements: 1243 passed, 4 opt-in skips in
+  206.12 s. Latest targeted multi-pass/Core 2/GUI-export checks: 219 passed.
+
 - Active target changed to Astra low only; historical Luna is not an acceptance
   result. GUI provider selection and Gateway restart observed
   `openai/gpt-6-astra`, `thinking=low`, native subscription transport, and a

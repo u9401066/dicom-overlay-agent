@@ -66,8 +66,7 @@ def ensure_openclaw_subscription_auth(
     """Import only OAuth state through the pinned official migration provider."""
     if not uses_codex_subscription_transport(config_path):
         return {"status": "not_required"}
-    _verify_source_auth(source_codex_home)
-    native_auth = _read_json(source_codex_home / "auth.json")
+    native_auth = _verify_source_auth(source_codex_home)
     # Snapshot the OAuth credential once. Never copy a Platform key or unrelated
     # native settings, and bind the receipt to exactly what was imported.
     source_auth = {"auth_mode": "chatgpt", "tokens": native_auth["tokens"]}
@@ -188,11 +187,12 @@ def ensure_openclaw_subscription_auth(
     return audit
 
 
-def _verify_source_auth(source_home: Path) -> None:
+def _verify_source_auth(source_home: Path) -> dict[str, Any]:
     auth_path = source_home / "auth.json"
     auth = _read_json(auth_path)
     if auth.get("auth_mode") != "chatgpt" or not isinstance(auth.get("tokens"), dict):
         raise RuntimeError("Run `codex login` with ChatGPT before using subscription")
+    return auth
 
 
 def _verify_migration_plugin(plugin_path: Path) -> None:

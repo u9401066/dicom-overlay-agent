@@ -16,6 +16,22 @@ from dicom_overlay.domain.ekg_layout import (
     parse_ekg_lead_inventory,
     parse_normalized_region,
 )
+from dicom_overlay.infrastructure.ecg_variant_corpus import (
+    PartialEcgInputContract,
+    is_partial_ecg_corpus_manifest,
+    parse_partial_ecg_input_contract,
+    partial_ecg_axis_value_is_safe,
+    partial_ecg_limitation_class_supported,
+    partial_ecg_text_claim_failures,
+    partial_ecg_text_leaves,
+    verify_variant_corpus,
+)
+from dicom_overlay.infrastructure.openclaw_runtime import (
+    MAX_GATEWAY_PROTOCOL,
+    MIN_GATEWAY_PROTOCOL,
+    OpenClawRuntimeError,
+    parse_gateway_hello,
+)
 
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
 _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
@@ -62,6 +78,7 @@ class _ExpectedCase:
     image_sha256: str
     image_size_bytes: int
     waveform_artifact_sha256: str = ""
+    partial_input: PartialEcgInputContract | None = None
 
 
 @dataclass
@@ -110,6 +127,19 @@ def verify_eval_artifacts(
     passed: list[str] = []
 
     manifest = _read_json(manifest_path, failures, label="manifest")
+    if is_partial_ecg_corpus_manifest(manifest):
+        try:
+            verified_manifest = verify_variant_corpus(manifest_path.parent)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            failures.append(f"partial_ecg_manifest_contract: {exc}")
+        else:
+            if verified_manifest != manifest:
+                failures.append(
+                    "partial_ecg_manifest_contract: validated manifest changed "
+                    "between reads"
+                )
+            else:
+                passed.append("partial_ecg_manifest_contract")
     fingerprint, expected_cases = _verify_protocol_fingerprint(
         eval_dir=eval_dir,
         manifest_path=manifest_path,
@@ -135,9 +165,7 @@ def verify_eval_artifacts(
     )
     protocol = fingerprint.get("protocol") if isinstance(fingerprint, dict) else None
     flags = protocol.get("flags") if isinstance(protocol, dict) else None
-    manifest_identity = (
-        protocol.get("manifest") if isinstance(protocol, dict) else None
-    )
+    manifest_identity = protocol.get("manifest") if isinstance(protocol, dict) else None
     paired_gold_manifest = bool(
         isinstance(flags, dict)
         and flags.get("defer_scoring") is True
@@ -184,6 +212,9 @@ def verify_eval_artifacts(
             min_mean_partial_credit=min_mean_partial_credit,
             require_schema_gate=not minimal_control,
             require_zero_safety_misses=require_zero_safety_misses,
+            expected_partial_input_count=sum(
+                case.partial_input is not None for case in expected_cases.values()
+            ),
             failures=failures,
             passed=passed,
         )
@@ -328,6 +359,32 @@ def _ecg_response_matches_receipt(
     )
 
 
+def _valid_gateway_protocol_receipt(value: object) -> bool:
+    if not isinstance(value, dict) or value.get("verified") is not True:
+        return False
+    negotiated = value.get("negotiated_protocol")
+    server_version = value.get("server_version")
+    if not (
+        value.get("advertised_min_protocol") == MIN_GATEWAY_PROTOCOL
+        and value.get("advertised_max_protocol") == MAX_GATEWAY_PROTOCOL
+        and isinstance(negotiated, int)
+        and not isinstance(negotiated, bool)
+        and isinstance(server_version, str)
+    ):
+        return False
+    try:
+        parsed_protocol, parsed_version = parse_gateway_hello(
+            {
+                "type": "hello-ok",
+                "protocol": negotiated,
+                "server": {"version": server_version},
+            }
+        )
+    except OpenClawRuntimeError:
+        return False
+    return parsed_protocol == negotiated and parsed_version == server_version.strip()
+
+
 def _ineligible_ecg_response_matches_receipt(
     response: object,
     receipt: dict[str, Any],
@@ -464,6 +521,18 @@ def _manifest_case_index(
                 f"manifest_identity: missing image for {label}: {image_path}"
             )
             continue
+        partial_input: PartialEcgInputContract | None = None
+        if "partial_input" in row:
+            try:
+                partial_input = parse_partial_ecg_input_contract(
+                    row,
+                    image_path=image_path,
+                )
+            except ValueError as exc:
+                failures.append(
+                    f"manifest_identity: invalid partial ECG contract for "
+                    f"{label}: {exc}"
+                )
         waveform_artifact_id = str(row.get("waveform_artifact_id") or "")
         index[label] = _ExpectedCase(
             label=label,
@@ -476,6 +545,7 @@ def _manifest_case_index(
                 if waveform_artifact_id
                 else ""
             ),
+            partial_input=partial_input,
         )
     return index
 
@@ -628,6 +698,7 @@ def _verify_scorecard(
     min_mean_partial_credit: float | None,
     require_schema_gate: bool,
     require_zero_safety_misses: bool,
+    expected_partial_input_count: int,
     failures: list[str],
     passed: list[str],
 ) -> None:
@@ -704,6 +775,22 @@ def _verify_scorecard(
         failures.append(
             f"bbox_gate: bbox_in_bounds_rate={scorecard.get('bbox_in_bounds_rate')}"
         )
+    if expected_partial_input_count:
+        partial_count = _int_value(scorecard.get("partial_input_case_count"))
+        partial_passes = _int_value(scorecard.get("partial_input_contract_pass_count"))
+        partial_rate = float(scorecard.get("partial_input_contract_pass_rate", 0.0))
+        if (
+            partial_count == expected_partial_input_count
+            and partial_passes == expected_partial_input_count
+            and partial_rate >= 1.0
+        ):
+            passed.append("partial_ecg_scorecard_gate")
+        else:
+            failures.append(
+                "partial_ecg_scorecard_gate: expected all "
+                f"{expected_partial_input_count} cases to pass, got "
+                f"count={partial_count}, passed={partial_passes}, rate={partial_rate}"
+            )
     misses = scorecard.get("cant_miss_missed", [])
     if not isinstance(misses, list):
         failures.append("cant_miss_metrics: cant_miss_missed is not a list")
@@ -715,9 +802,7 @@ def _verify_scorecard(
         passed.append("cant_miss_metrics_recorded")
     urgent_misses = scorecard.get("urgent_concern_missed", [])
     if not isinstance(urgent_misses, list):
-        failures.append(
-            "urgent_concern_metrics: urgent_concern_missed is not a list"
-        )
+        failures.append("urgent_concern_metrics: urgent_concern_missed is not a list")
     elif require_zero_safety_misses and urgent_misses:
         failures.append(f"urgent_concern_gate: missed={urgent_misses}")
     elif require_zero_safety_misses:
@@ -801,6 +886,9 @@ def _verify_results(
 
     missing_preflight: list[str] = []
     missing_signal_candidates: list[str] = []
+    invalid_gateway_receipts: list[str] = []
+    partial_case_count = 0
+    partial_contract_issue_count = 0
     for path in files:
         case = expected_filenames.get(path.name)
         if case is None:
@@ -859,6 +947,8 @@ def _verify_results(
                 "results_artifacts: ECGFounder evidence lacks exactly one valid "
                 f"bound ok/ineligible receipt in {path.name}"
             )
+        if not _valid_gateway_protocol_receipt(raw.get("gateway_protocol_receipt")):
+            invalid_gateway_receipts.append(path.name)
 
         findings = raw.get("findings")
         if findings is None:
@@ -896,6 +986,20 @@ def _verify_results(
                     )
         inventory.bbox_counts[case.label] = bbox_count
         final_bbox_digest, final_bbox_digest_count = _bbox_payload_digest(findings)
+        if case.partial_input is not None:
+            partial_case_count += 1
+            partial_issues = _partial_ecg_result_failures(
+                raw,
+                case,
+                findings=findings,
+                final_bbox_digest=final_bbox_digest,
+                final_bbox_count=final_bbox_digest_count,
+            )
+            partial_contract_issue_count += len(partial_issues)
+            failures.extend(
+                f"partial_ecg_contract: {case.label}: {issue}"
+                for issue in partial_issues
+            )
         source_image_sha256 = str(raw.get("source_image_sha256") or "")
         trace = raw.get("analysis_trace")
         if isinstance(trace, list):
@@ -946,8 +1050,7 @@ def _verify_results(
                             inventory.original_roi_ekg_systematic_cases.add(case.label)
                 tool_audit = event.get("tool_audit")
                 if isinstance(tool_audit, list) and any(
-                    _valid_bound_bbox_receipt(record, event)
-                    for record in tool_audit
+                    _valid_bound_bbox_receipt(record, event) for record in tool_audit
                 ):
                     inventory.refinement_bbox_tool_accepted_cases.add(case.label)
                 decisions = event.get("decisions")
@@ -979,6 +1082,15 @@ def _verify_results(
         passed.append("model_assist_artifacts")
     else:
         passed.append("control_model_assist_disabled")
+    if invalid_gateway_receipts:
+        failures.append(
+            "gateway_protocol_receipts: missing or invalid hello-ok receipt in "
+            + ", ".join(invalid_gateway_receipts[:5])
+        )
+    else:
+        passed.append("gateway_protocol_receipts")
+    if partial_case_count and partial_contract_issue_count == 0:
+        passed.append("partial_ecg_contract")
     if len(failures) == failure_count:
         passed.append("results_artifacts")
     return inventory
@@ -1006,6 +1118,174 @@ def _bbox_payload_digest(findings: list[object]) -> tuple[str, int]:
     coordinates.sort()
     encoded = json.dumps(coordinates, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest(), len(coordinates)
+
+
+_FULL_EKG_LAYOUT_FORMATS = frozenset({"12lead_3x4", "12lead_3x4_rhythm", "12lead_12x1"})
+
+
+def _partial_axis_payload_is_safe(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return partial_ecg_axis_value_is_safe(
+        value.get("value"),
+        value.get("status"),
+    )
+
+
+def _partial_result_texts(raw: dict[str, Any]) -> tuple[str, ...]:
+    findings = raw.get("findings")
+    finding_text: list[object] = []
+    if isinstance(findings, list):
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            finding_text.append(
+                [
+                    finding.get("label"),
+                    finding.get("detail"),
+                    finding.get("notes"),
+                    finding.get("confidence"),
+                    finding.get("question"),
+                ]
+            )
+    checklist = raw.get("checklist")
+    checklist_text = (
+        [item.get("value") for item in checklist.values() if isinstance(item, dict)]
+        if isinstance(checklist, dict)
+        else []
+    )
+    return partial_ecg_text_leaves(
+        raw.get("summary"),
+        finding_text,
+        checklist_text,
+        raw.get("image_quality"),
+        raw.get("next_steps"),
+        raw.get("incomplete_reasons"),
+        raw.get("review_reasons"),
+        raw.get("zoom_hints"),
+    )
+
+
+def _partial_ecg_result_failures(
+    raw: dict[str, Any],
+    case: _ExpectedCase,
+    *,
+    findings: list[object],
+    final_bbox_digest: str,
+    final_bbox_count: int,
+) -> list[str]:
+    contract = case.partial_input
+    if contract is None:
+        return []
+    failures: list[str] = []
+    if raw.get("partial_input_provenance") != contract.to_manifest_payload():
+        failures.append("persisted partial_input_provenance mismatch")
+    if raw.get("declared_valid_regions") != list(contract.claimable_regions):
+        failures.append("declared valid regions do not match visibility contract")
+    if raw.get("analysis_valid_regions") != list(contract.analysis_regions):
+        failures.append("analysis region scope does not match partial contract")
+    if raw.get("source_image_sha256") != contract.variant_sha256:
+        failures.append("source image hash does not equal variant_sha256")
+
+    reasons = raw.get("incomplete_reasons")
+    if raw.get("incomplete") is not True or not _nonempty_string_list(reasons):
+        failures.append("result is not explicitly incomplete with reasons")
+    review_reasons = raw.get("review_reasons")
+    if raw.get("review_required") is not True or not _nonempty_string_list(
+        review_reasons
+    ):
+        failures.append("result does not require human review with reasons")
+
+    claimable = set(contract.claimable_regions)
+    claimed: set[str] = set()
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        regions = finding.get("regions")
+        if isinstance(regions, list):
+            claimed.update(str(region) for region in regions)
+    invalid_claims = sorted(claimed - claimable)
+    if invalid_claims:
+        failures.append(
+            "finding claims invisible/unverified regions: " + ", ".join(invalid_claims)
+        )
+
+    layout = raw.get("layout")
+    layout = layout if isinstance(layout, dict) else {}
+    layout_claims = {name for name, _box in _ekg_layout_regions(layout)}
+    layout_format = str(layout.get("format") or "").strip()
+    invalid_layout_claims = sorted(layout_claims - claimable)
+    if layout_format in _FULL_EKG_LAYOUT_FORMATS or invalid_layout_claims:
+        detail = ", ".join(invalid_layout_claims) or layout_format
+        failures.append("layout reconstructs non-claimable leads: " + detail)
+
+    result_texts = _partial_result_texts(raw)
+    failures.extend(partial_ecg_text_claim_failures(result_texts))
+    limitation_verified = partial_ecg_limitation_class_supported(
+        contract.limitation_class,
+        result_texts,
+    )
+    if not limitation_verified:
+        failures.append(
+            "output does not identify transform-specific limitation class: "
+            + contract.limitation_class
+        )
+
+    checklist = raw.get("checklist")
+    checklist = checklist if isinstance(checklist, dict) else {}
+    for axis in contract.context_dependent_axes:
+        if not _partial_axis_payload_is_safe(checklist.get(axis)):
+            failures.append(
+                "context-dependent checklist axis is falsely assessable/normal: " + axis
+            )
+
+    receipt_match: bool | None = None
+    if final_bbox_count:
+        receipt_match = False
+        trace = raw.get("analysis_trace")
+        if isinstance(trace, list):
+            receipt_match = any(
+                isinstance(event, dict)
+                and event.get("stage") == "finalize"
+                and event.get("status") == "completed"
+                and event.get("source") == "original_roi"
+                and isinstance(event.get("tool_audit"), list)
+                and any(
+                    _valid_bound_bbox_receipt(
+                        record,
+                        event,
+                        expected_source_image_sha256=contract.variant_sha256,
+                        expected_boxes_sha256=final_bbox_digest,
+                        expected_count=final_bbox_count,
+                    )
+                    for record in event["tool_audit"]
+                )
+                for event in trace
+            )
+        if not receipt_match:
+            failures.append("final bbox receipt is not bound to variant_sha256")
+
+    score = raw.get("score")
+    score = score if isinstance(score, dict) else {}
+    if (
+        score.get("partial_input_expected") is not True
+        or score.get("partial_input_contract_ok") is not True
+        or score.get("partial_input_failures") != []
+        or score.get("partial_variant_sha256") != contract.variant_sha256
+        or score.get("bbox_receipt_matches_variant") is not receipt_match
+        or score.get("partial_limitation_class") != contract.limitation_class
+        or score.get("partial_limitation_class_verified") is not limitation_verified
+    ):
+        failures.append("persisted partial-input score receipt is inconsistent")
+    return failures
+
+
+def _nonempty_string_list(value: object) -> bool:
+    return bool(
+        isinstance(value, list)
+        and value
+        and all(isinstance(item, str) and item.strip() for item in value)
+    )
 
 
 def _valid_bound_bbox_receipt(

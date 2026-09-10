@@ -13,6 +13,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from dicom_overlay.application.interpretation_harness import (
+    PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
+)
 from dicom_overlay.application.multi_pass import RefinementResult
 from dicom_overlay.domain.entities import (
     AnalysisResult,
@@ -21,6 +24,7 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
+from dicom_overlay.infrastructure.ecg_variant_corpus import build_variant_corpus
 from dicom_overlay.infrastructure.eval_harness import EvalCase, score_case
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 
@@ -64,6 +68,99 @@ def test_load_cases_defaults_valid_regions_from_modality(tmp_path: Path) -> None
     assert "rhythm_strip" in cases[0].valid_regions
     assert "right_upper_lung" in cases[1].valid_regions
     assert "left_cp_angle" in cases[1].valid_regions
+
+
+def test_load_cases_preserves_explicit_empty_regions_without_full_lead_fallback(
+    tmp_path: Path,
+) -> None:
+    module = _load_run_eval_module()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "image": "ekg.png",
+                        "modality": "EKG",
+                        "expected_severity": "normal",
+                        "valid_regions": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    case = module._load_cases(manifest)[0]
+
+    assert case.valid_regions == ()
+    assert case.analysis_valid_regions == ()
+
+
+def test_load_partial_variant_manifest_uses_nonclinical_runtime_scope(
+    tmp_path: Path,
+) -> None:
+    module = _load_run_eval_module()
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    corpus = tmp_path / "partial"
+    build_variant_corpus([source], corpus)
+
+    cases = module._load_cases(corpus / "manifest.json")
+
+    assert len(cases) == 8
+    assert all(case.valid_regions == () for case in cases)
+    assert all(
+        case.analysis_valid_regions == (PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,)
+        for case in cases
+    )
+    assert all(case.partial_input is not None for case in cases)
+
+
+def test_partial_mock_payloads_identify_each_transform_specific_limitation(
+    tmp_path: Path,
+) -> None:
+    module = _load_run_eval_module()
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    corpus = tmp_path / "partial"
+    build_variant_corpus([source], corpus)
+    cases = module._load_cases(corpus / "manifest.json")
+    client = OpenClawClient.__new__(OpenClawClient)
+
+    scores = []
+    for case in cases:
+        payload = module._mock_payload_for(case)
+        result = client._parse_result(
+            payload, elapsed_ms=0, request_modality=case.modality
+        )
+        scores.append(score_case(case, result, latency_ms=0))
+
+    assert len({score.partial_limitation_class for score in scores}) == 8
+    assert all(score.partial_limitation_class_verified is True for score in scores)
+    assert all(score.partial_input_contract_ok is True for score in scores)
+
+
+def test_load_partial_manifest_rejects_case_allow_list_drift(tmp_path: Path) -> None:
+    module = _load_run_eval_module()
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    corpus = tmp_path / "partial"
+    manifest = build_variant_corpus([source], corpus)
+    manifest["cases"][0]["metadata"] = "unexpected"
+    digest_payload = dict(manifest)
+    digest_payload.pop("manifest_sha256")
+    manifest["manifest_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    (corpus / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"case keys.*closed allow-list"):
+        module._load_cases(corpus / "manifest.json")
 
 
 def test_mock_payload_scores_perfect_for_normal_case(tmp_path: Path) -> None:
@@ -136,21 +233,30 @@ def test_make_client_uses_eval_timeout_for_inference() -> None:
 def test_rhythm_trace_omits_wrapper_when_no_pass_ran() -> None:
     module = _load_run_eval_module()
 
-    assert module._rhythm_trace_has_activity(
-        None,
-        analyze_calls=0,
-        crop_calls=0,
-    ) is False
-    assert module._rhythm_trace_has_activity(
-        RegionRect(x=0.0, y=0.8, w=1.0, h=0.2),
-        analyze_calls=0,
-        crop_calls=0,
-    ) is True
-    assert module._rhythm_trace_has_activity(
-        None,
-        analyze_calls=1,
-        crop_calls=0,
-    ) is True
+    assert (
+        module._rhythm_trace_has_activity(
+            None,
+            analyze_calls=0,
+            crop_calls=0,
+        )
+        is False
+    )
+    assert (
+        module._rhythm_trace_has_activity(
+            RegionRect(x=0.0, y=0.8, w=1.0, h=0.2),
+            analyze_calls=0,
+            crop_calls=0,
+        )
+        is True
+    )
+    assert (
+        module._rhythm_trace_has_activity(
+            None,
+            analyze_calls=1,
+            crop_calls=0,
+        )
+        is True
+    )
 
 
 def test_waveform_evidence_requires_one_nonce_correlated_pinned_receipt() -> None:
@@ -559,9 +665,12 @@ def test_eval_analyzer_wiring_matches_app_hooks_and_bbox_calibrator() -> None:
 def test_minimal_control_declares_no_app_clinical_hooks() -> None:
     module = _load_run_eval_module()
 
-    assert module._guardrail_hook_names(
-        analysis_prompt_profile="minimal_control", multi_pass=False
-    ) == []
+    assert (
+        module._guardrail_hook_names(
+            analysis_prompt_profile="minimal_control", multi_pass=False
+        )
+        == []
+    )
     assert module._guardrail_hook_names(
         analysis_prompt_profile="clinical", multi_pass=False
     ) == [
@@ -993,9 +1102,7 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     assert protocol["source"]["worktree_file_count"] > 0
     assert "src/dicom_overlay" in protocol["source"]["scope"]
     assert "sidecars/ecgfounder" in protocol["source"]["scope"]
-    assert not any(
-        path.startswith(".github") for path in protocol["source"]["scope"]
-    )
+    assert not any(path.startswith(".github") for path in protocol["source"]["scope"])
     assert protocol["model"]["id"] == "mock-eval-gateway"
     assert protocol["model"]["openclaw"]["version"]
     assert protocol["prompts"]

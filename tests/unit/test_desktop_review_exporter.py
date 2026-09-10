@@ -55,6 +55,17 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
         },
         next_steps=["Review the original study."],
         analysis_trace=[
+            {
+                "stage": "gateway_connect",
+                "status": "verified",
+                "gateway_protocol_receipt": {
+                    "verified": True,
+                    "advertised_min_protocol": 3,
+                    "advertised_max_protocol": 4,
+                    "negotiated_protocol": 4,
+                    "server_version": "2026.7.1-2",
+                },
+            },
             {"stage": "coarse", "tools": ["dicom_bbox_validate"]},
             {
                 "stage": "refine",
@@ -104,6 +115,13 @@ def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None
     assert payload["findings"][0]["source"] == "interactive_ai_review"
     assert payload["image_quality"]["adequacy"] == "limited"
     assert payload["next_steps"] == ["Review the original study."]
+    assert payload["analysis_trace"][0]["gateway_protocol_receipt"] == {
+        "verified": True,
+        "advertised_min_protocol": 3,
+        "advertised_max_protocol": 4,
+        "negotiated_protocol": 4,
+        "server_version": "2026.7.1-2",
+    }
     assert payload["coordinate_audit"] == "bbox-audit.json"
     assert payload["crop_directory"] == "crops"
     crop_files = sorted((review_path.parent / "crops").glob("*.png"))
