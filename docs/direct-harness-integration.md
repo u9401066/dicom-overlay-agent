@@ -122,3 +122,15 @@ Payload SHA-256: `0ea7cf8b1c55652717858d5bb676156d20a6e07efe2bb0801e37c8d3985954
 Push CI 34501374911 and PR CI 34501380408, plus both secret scans, pass.
 The verified bundle is preserved separately from any writable live-test copy.
 This does not close the GUI/OAuth/clinical or distribution-license gates.
+
+The corresponding local Deflate-9 ZIP is 148,419,324 bytes (141.54 MiB), SHA-256
+`f07c63a9c4463819a47c1c168c167429f68e565451d14b8881dc23bb24216a9f`.
+All 18,771 decompressed entries and the separate live copy match the verified
+payload; 53 UPX-bearing native files pass `upx -t` without mutation. The ZIP is
+not published and contains no live auth/state or local verifier report.
+
+The separate actual EXE now imports subscription OAuth successfully through the
+pinned migration provider, with Codex agent runtime and Platform key disabled.
+Settings was selected through the real GUI. One exposed development case
+completed all four Astra-low stages under negotiated Gateway protocol 4 /
+OpenClaw 2026.9.3. See the [candidate desktop checkpoint](candidate-desktop-2026-09-11.md).

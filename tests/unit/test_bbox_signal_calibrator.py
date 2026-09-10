@@ -115,8 +115,8 @@ def test_bbox_is_constrained_to_declared_lead_layout() -> None:
     result = _result()
     result.layout = {
         "leads": [
-            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
-            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+            {"name": "V4", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "label_visible": True, "bbox": [0.0, 0.75, 1.0, 0.25]},
         ]
     }
     result.findings[0] = Finding(
@@ -155,8 +155,8 @@ def test_unpaired_bbox_conflict_records_geometry_lead_without_moving_box() -> No
     result = _result()
     result.layout = {
         "leads": [
-            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
-            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+            {"name": "V4", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "label_visible": True, "bbox": [0.0, 0.75, 1.0, 0.25]},
         ]
     }
     result.findings[0] = Finding(

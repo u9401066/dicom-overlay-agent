@@ -22,6 +22,11 @@ including nested attempts to observed Astra-low runtime and public usage
 urgent concerns caught 2/21. Specialist adjudication is pending. Mean completed
 analysis time is 136.662 s. See the [sealed baseline and limitations](docs/evaluation-desktop-astra-2026-09-11.md).
 
+The separate c3532d7 EXE now has an actual OAuth/Astra-low case (113.735 s,
+no finalization retry) and a pre-send resize guard check. An intentional missing-
+lead capture exposed a structured-layout failure; its correction still needs a
+new EXE/model run. [Candidate evidence and open gates](docs/candidate-desktop-2026-09-11.md).
+
 Earlier pilot evidence:
 Real GUI captures reached the subscription transport with observed
 `gpt-6-astra / low`: the first calibration export timed out at finalization

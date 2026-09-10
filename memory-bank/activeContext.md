@@ -1,5 +1,36 @@
 # Active Context
 
+## 2026-09-11 Actual corrected EXE and first resize guard
+
+- c3532d7 ZIP is 148,419,324 bytes (141.54 MiB), SHA
+  f07c63a9c4463819a47c1c168c167429f68e565451d14b8881dc23bb24216a9f.
+  All 18,771 entries roundtrip/hash-match; separate live copy matches; 53 UPX
+  native payload tests pass. Original package preserved, no binary publication.
+- Old App/Gateway closed normally via Quit. Live candidate EXE PID 33640 uses
+  port 18791 and its own state. Real Settings selects Astra low; official pinned
+  OAuth migration succeeds, Codex runtime/API key disabled. A known failed case
+  now completes four verified Astra-low stages in 113.735 s (old 175.805 s with
+  final timeout). Exact same captured source hash, finalization 40.400 s, zero
+  parse retries, seven receipt-bound boxes. Still incomplete/review-required;
+  not general speed/accuracy or blind acceptance. Summary widget visually checked.
+- Actual Viewer shrink 1522x1136 -> 1200x850 + Analyze fails closed before sending
+  with roi_outside_viewer_client; restored geometry and unchanged ROI. Retained
+  startup/config convergence, GUI focus and local evidence-formatting failures
+  are documented in docs/candidate-desktop-2026-09-11.md.
+- Separate deliberate partial ROI selected through actual Set ROI dragging,
+  inside the original safe region: actual 1484x708 source matches the Viewer
+  subrectangle pixel-for-pixel. Four Astra-low stages finish in 91.436 s and
+  prose identifies V3-V6 absent, but structured layout FAILS (lead instead of
+  name, missing label_visible, unsupported partial_stacked). Eight malformed
+  entries, zero valid mapped leads; raw output and separate one-pixel driver
+  expectation/recovery receipts preserved. No rerun or baseline rescoring.
+- Actual triage prompt now states exact canonical partial shape and prioritizes
+  fields over character count. Parser requires boolean visible=true; missing,
+  string/numeric visibility is not accepted or filled by row normalization.
+  No lead/name alias, new clinical rule or model change. New + related target
+  regression 224 pass; Ruff pass. This is source-only pending new EXE/model QA;
+  preserved c3532d7 binaries do not contain it. See candidate desktop report.
+
 ## 2026-09-11 Post-seal usage and corrected package verification
 
 - Read-only usage supplement v2 binds all 460 public sessions to Astra low:

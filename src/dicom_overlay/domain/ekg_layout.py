@@ -111,7 +111,7 @@ def parse_ekg_lead_inventory(layout: object) -> EkgLeadInventory:
     duplicates: set[str] = set()
     malformed = 0
     for raw in raw_leads:
-        if not isinstance(raw, dict) or raw.get("label_visible") is False:
+        if not isinstance(raw, dict) or raw.get("label_visible") is not True:
             malformed += 1
             continue
         name = canonical_ekg_lead_name(raw.get("name"))
@@ -185,6 +185,14 @@ def normalize_ekg_row_strip_layout(
         or not minimum_leads <= len(raw_leads) <= 12
     ):
         return dict(layout), False
+    # Pixel periodicity is not permission to invent a missing visibility field.
+    # Keep the explicitly declared compact lead_order path above separate.
+    if any(
+        not isinstance(raw, dict)
+        or type(raw.get("label_visible")) is not bool
+        for raw in raw_leads
+    ):
+        return dict(layout), False
     declared_names = tuple(
         name
         for raw in raw_leads
@@ -195,7 +203,7 @@ def normalize_ekg_row_strip_layout(
 
     observations: list[tuple[float, str, float, float]] = []
     for raw in raw_leads:
-        if not isinstance(raw, dict) or raw.get("label_visible") is False:
+        if not isinstance(raw, dict) or raw.get("label_visible") is not True:
             if image_confirmed:
                 continue
             return dict(layout), False

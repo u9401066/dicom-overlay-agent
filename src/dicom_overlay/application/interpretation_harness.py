@@ -16,6 +16,30 @@ if TYPE_CHECKING:
 PARTIAL_ECG_VISIBLE_PIXELS_SCOPE = "partial_ecg_visible_pixels_no_named_leads"
 PENDING_MULTIPASS_REASON = "pending_multipass_review"
 
+# This is a shape example, not a claim about any attached image's visible leads.
+EKG_PARTIAL_LAYOUT_EXAMPLE = (
+    '{"format":"partial","rhythm_strip_leads":[],"rhythm_strip_bbox":null,'
+    '"leads":[{"name":"V1","label_visible":true,"bbox":[0,0,1,0.25]}]}'
+)
+EKG_LAYOUT_OUTPUT_GUIDANCE = (
+    "For every non-compact EKG layout, each layout.leads entry must use exactly "
+    "name, label_visible, and bbox. name is the printed lead label (I, II, III, "
+    "aVR, aVL, aVF, V1-V6, or unknown); label_visible is a JSON boolean; bbox is "
+    "exactly [x,y,w,h] in this image's normalized coordinates. Do not rename name "
+    "to lead or omit label_visible. Use format partial for a cropped/missing-lead "
+    "capture, not partial_stacked or another invented format. Other supported "
+    "formats are 12lead_3x4, 12lead_3x4_rhythm, 12lead_12x1, 6lead, 3lead, "
+    "single_rhythm_strip, non_standard, and unknown. Always include "
+    "rhythm_strip_leads ([] when absent). Shape example only, not image evidence: "
+    + EKG_PARTIAL_LAYOUT_EXAMPLE
+    + ". Replace its label and coordinates with what is actually visible; never "
+    "copy V1 or its example geometry without image evidence. Include only visible "
+    "panels, mark unreadable labels unknown/label_visible=false, and never fill "
+    "missing leads from a memorized 12-lead template. Required keys and truthful "
+    "lead coverage take precedence over the character target; shorten prose, "
+    "never rename or drop schema fields.\n"
+)
+
 PROFESSIONAL_CO_READER_GUIDANCE = (
     "Act as professional image-interpretation software assisting a specialist "
     "physician. Complete the medically relevant review of the visible image; do "
@@ -266,7 +290,9 @@ def build_coarse_analysis_prompt(
             "do not output "
             "per-lead bboxes. Local pixel "
             "evidence will derive row geometry. For any other EKG layout, include "
-            "only visibly labeled leads with normalized [x,y,w,h] bboxes. Check "
+            "only visibly labeled leads with normalized [x,y,w,h] bboxes. "
+            f"{EKG_LAYOUT_OUTPUT_GUIDANCE}"
+            "Check "
             "rhythm/ectopy, conduction, high versus low voltage, Q/QS or R-wave "
             "progression, and ST-T morphology without favoring one category. "
             "Treat an isolated one-lead or non-reproducible concave/nonspecific "
@@ -353,8 +379,9 @@ def build_coarse_analysis_prompt(
         "image coverage, quality, or clinical-evidence limitations, not stage progress. "
         "severity must be "
         "exactly normal, info, warning, or critical; never emit urgent/emergent as "
-        "a severity value. Keep the entire "
-        "JSON under 2200 characters: summary <=25 words, each detail <=18 words, "
+        "a severity value. Aim to keep the entire "
+        "JSON under 2200 characters without dropping required schema fields: "
+        "summary <=25 words, each detail <=18 words, "
         "at most two next_steps, and image_quality <=8 words. Do not output markdown "
         "or hidden reasoning. Verify all delimiters before sending."
     )
