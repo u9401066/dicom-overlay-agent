@@ -4,6 +4,37 @@ The current candidate is **2026.9.3**, not the September 2 candidate 2026.8.2.
 The product remains pinned to **2026.7.1-2** while the real Astra-low GUI cohort
 runs. This is a measured adoption audit, not an upgrade or clinical-pass claim.
 
+## Isolated implementation update
+
+[Draft PR #13](https://github.com/u9401066/dicom-overlay-agent/pull/13) now pins
+the candidate core and OAuth-only provider to 2026.9.3 in a separate worktree.
+It does not replace the primary worktree's running GUI cohort. Candidate
+`bfd7426` passed GitHub CI `34478247522` and secret scanning; later follow-up
+commits must earn their own checks.
+
+- Full npm lifecycle completed under supported portable Node 24.18.0;
+  production lock audit matched zero advisories (not a safety guarantee).
+- Slim runtime passed synthetic PNG / protocol 4 / native bbox nonce and
+  accepted-box digest checks. Fresh startup materialized five actual templates:
+  AGENTS, BOOTSTRAP, IDENTITY, SOUL and USER. The App explicitly binds the
+  workspace where it synchronizes skills/plugins.
+- The actual App OAuth helper imported fabricated, non-usable auth in 8.440 s
+  and reused it in 2.739 s. Temporary auth/plugin activation was removed;
+  Astra model selection and OpenClaw image-turn ownership were preserved.
+  No real credentials or paid inference were used in these checks.
+- Notice-preserving slim staging measures 280.77 MiB / 18,581 files, including
+  324 upstream npm notice files and their hash inventory. The initial EXE build
+  was deliberately stopped when the old extension-pruning rule omitted 47
+  notices; the rebuilt candidate has no completed EXE size claim yet.
+- Real subscription, packaged startup/shutdown, partial ECG/DPI, clinical
+  scoring, rollback and the PyQt distribution-license decision remain open.
+  See the candidate's
+  [third-party notice policy](https://github.com/u9401066/dicom-overlay-agent/blob/agent/openclaw-2026-9-3-20260910/THIRD_PARTY_NOTICES.md).
+
+The sections below preserve the earlier raw-install research measurements.
+New staged contract checks close only their stated gates, not clinical or
+release acceptance. The old-pin dependency security blocker still applies.
+
 ## Verified candidate boundary
 
 An isolated installation, disposable state/config, and the existing portable

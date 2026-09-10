@@ -2,6 +2,17 @@
 
 ## 2026-09-10 Current acceptance target and runtime fixes
 
+- Website upgrade copy now distinguishes the frozen 7.1-2 Astra GUI cohort
+  from isolated 9.3 PR #13: slim native bbox/template/fabricated App-auth checks
+  passed, real auth/clinical/package/license gates remain open. Candidate first
+  CI 34478247522 green; later notice-preservation and bounded HTTP-rejection
+  changes remain independently gated. No main runtime source changed here.
+  Browser plugin unavailable; isolated Playwright/Edge passed at 1440x1000 and
+  390x844, including actual candidate-callout screenshots, menu/Escape/focus,
+  navigation, no horizontal overflow, no console warnings/errors. Both new
+  screenshots visually inspected. Website smoke: 12 passed. Public deployment
+  pending. Candidate fe0a612 full local suite separately passed 1362 / 5 skips.
+
 - Package comparisons on clean UI repair source: no-UPX 337.77 MiB vs UPX 5.2.1
   241.29 MiB; existing frozen checks passed. TOC audit revealed ambient MiKTeX /
   TortoiseGit DLL sources, so these are not approved hermetic builds. New build
