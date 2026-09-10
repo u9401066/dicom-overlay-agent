@@ -6,7 +6,6 @@ import asyncio
 import base64
 import hashlib
 import json
-import math
 import os
 import platform
 import re
@@ -3469,11 +3468,10 @@ def _retain_unlocalized_refinement_semantics(
 
 
 def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
-    def js_round(value: float) -> float:
-        return math.floor(value * 10_000 + 0.5) / 10_000
+    from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
 
     canonical = sorted(
-        [f"{js_round(value):.4f}" for value in (box.x, box.y, box.w, box.h)]
+        [canonical_bbox_coordinate(value) for value in (box.x, box.y, box.w, box.h)]
         for box in boxes
     )
     encoded = json.dumps(canonical, separators=(",", ":")).encode("utf-8")

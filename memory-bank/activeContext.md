@@ -2,6 +2,26 @@
 
 ## 2026-09-11 Bbox receipt defect and direct-model package checkpoint
 
+- Primary real-GUI cohort is complete and sealed: 121 distinct successes,
+  six retained technical failures, 1,991 inventoried files; six pilots excluded.
+  Seal `data/tmp/desktop-astra-ui-20260910-main/primary-seal-20260910-1613.json`
+  SHA 2de49ad479ddeef43b4e47fb1539e78161d4c4654d4ffc13c37ea63fb5e43657.
+  First paired-gold score uses candidate a7d8fb4's recorded scorer, not the new
+  coordinate correction: strict 0/46 complete-label cases; urgent concerns 2/21;
+  exact severity 8/121; schema 113/121. All 121 results incomplete/review-required;
+  109 finalizations complete, 12 timeout after a mismatched-receipt retry.
+  Mean completed-case latency 136.662 s. This is a failed preliminary automatic
+  acceptance result, not clinical sensitivity/specificity or release approval.
+  Raw evidence is unchanged; see the separate dated evaluation report.
+- Further synthetic origin half-tie tests found two Python rounding failures.
+  App and artifact validator now share fractional-part rounding matching native
+  Math.round. All 30,000 scalar half-tie/adjacent-float vectors match; expanded
+  targeted suite 128 passed; full regression 1516 passed / five explicit skips
+  (205.70 s). PR CI 34500348053 then exposed another existing 40 ms Windows
+  stream-test race before acceptance. The mock now supplies its known-run ack
+  immediately, uses a 200 ms test deadline and has a 1 s outer bound against
+  endless deadline renewal. Production timeout/abort behavior is unchanged.
+
 - Read-only public Gateway history on an original failed GUI finalization
   identified native `(origin + extent) - origin` cancellation on unclipped
   boxes. Synthetic cross-language parity first reproduced 23 failures / 13

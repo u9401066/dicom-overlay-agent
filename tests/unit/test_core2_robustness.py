@@ -908,7 +908,7 @@ async def test_openclaw_stream_events_do_not_reset_absolute_turn_timeout(
         base_dir=tmp_path,
         inference_timeout_sec=1,
     )
-    client._inference_timeout = 0.04
+    client._inference_timeout = 0.2
 
     class BusyWebSocket:
         def __init__(self) -> None:
@@ -919,9 +919,10 @@ async def test_openclaw_stream_events_do_not_reset_absolute_turn_timeout(
             self.sent.append(json.loads(raw))
 
         async def recv(self) -> str:
-            await asyncio.sleep(0.015)
             self.recv_count += 1
             if self.recv_count == 1:
+                # Acceptance is already available for this test's known-run
+                # abort assertion; do not race it against a Windows timer.
                 return json.dumps(
                     {
                         "type": "res",
@@ -930,6 +931,7 @@ async def test_openclaw_stream_events_do_not_reset_absolute_turn_timeout(
                         "payload": {"status": "accepted", "runId": "run-1"},
                     }
                 )
+            await asyncio.sleep(0.015)
             return json.dumps(
                 {
                     "type": "event",
@@ -943,7 +945,9 @@ async def test_openclaw_stream_events_do_not_reset_absolute_turn_timeout(
     client._begin_run_trace("analysis-sla-test")
 
     with pytest.raises(TimeoutError, match="Analysis timeout"):
-        await client._wait_for_chat_result("request-1")
+        # If stream events incorrectly renew the deadline, fail within a
+        # bounded test timeout rather than looping forever on working events.
+        await asyncio.wait_for(client._wait_for_chat_result("request-1"), timeout=1)
 
     abort = websocket.sent[-1]
     assert abort["method"] == "chat.abort"

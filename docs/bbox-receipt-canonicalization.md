@@ -28,6 +28,16 @@ expansion. Independently rounded coordinates that overflow the image are now
 explicitly rejected (`rounded_box_out_of_bounds`) rather than accepted outside
 the source. The receipt schema stays at version 2.
 
+A further near-origin edge test reproduced two host-side failures: the float
+immediately below `0.00005` is rounded differently by `floor(scaled + 0.5)`
+because the addition itself loses the distinction below the half-tie. The App
+and artifact validator now share exact fractional-part comparison matching
+JavaScript `Math.round`, without an epsilon. Native comparison covers all
+10,000 four-decimal half-ties and both adjacent floats (30,000 scalar vectors),
+plus nonfinite-input rejection. The expanded targeted suite passes 128 checks.
+This is a serialization correction, not a clinical-rule or scoring-threshold
+change; the sealed baseline was scored with its earlier, recorded scorer.
+
 ## Regression evidence and limitations
 
 - Initial synthetic parity test: 23 failures / 13 passes across 36 unclipped

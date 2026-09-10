@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
+from dicom_overlay.infrastructure.eval_artifact_validator import _bbox_payload_digest
 from dicom_overlay.infrastructure.openclaw_client import (
     BboxEvidenceError,
     OpenClawClient,
@@ -32,6 +35,14 @@ VECTORS = [
         for w, h in ((0.085, 0.07475), (0.07475, 0.085), (0.12345, 0.05675))
     )
 ]
+VECTORS.extend(
+    {"id": f"origin-half-{axis}-{index}", "x": 0.1, "y": 0.1,
+     "w": 0.01, "h": 0.01, axis: value}
+    for axis in ("x", "y")
+    for index, value in enumerate((
+        math.nextafter(0.00005, 0), 0.00005, math.nextafter(0.00005, 1),
+    ))
+)
 EDGE_VECTORS = [
     {"id": "left", "x": -0.05, "y": 0.2, "w": 0.15, "h": 0.1},
     {"id": "top", "x": 0.2, "y": -0.05, "w": 0.1, "h": 0.15},
@@ -81,6 +92,11 @@ def test_unclipped_coordinates_match_exact_python_receipt(index, native_results)
     assert result["details"]["rejected"] == []
     assert result["details"]["accepted"][0]["clipped"] is False
     assert result["digest"] == _bbox_coordinates_digest([coordinates])
+    payload_digest, count = _bbox_payload_digest([
+        {"bboxes": [{key: vector[key] for key in ("x", "y", "w", "h")}]}
+    ])
+    assert count == 1
+    assert payload_digest == result["digest"]
 
 
 @pytest.mark.parametrize("index", range(4))
@@ -129,3 +145,42 @@ def test_finalization_accepts_exact_native_receipt_without_relaxing_geometry(tmp
     client._last_tool_audit_records[0]["accepted_boxes_sha256"] = "c" * 64
     with pytest.raises(BboxEvidenceError):
         client._lock_finalization_geometry(result(original), result(accepted))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), 1e308])
+def test_nonfinite_receipt_coordinate_is_rejected(value):
+    with pytest.raises(ValueError):
+        canonical_bbox_coordinate(value)
+    _digest, count = _bbox_payload_digest([
+        {"bboxes": [{"x": value, "y": 0.1, "w": 0.1, "h": 0.1}]}
+    ])
+    assert count == 0
+
+
+def test_all_four_decimal_half_ties_and_adjacent_floats_match_javascript():
+    bundled = ROOT / "node" / ("node.exe" if sys.platform == "win32" else "node")
+    executable = str(bundled) if bundled.is_file() else shutil.which("node")
+    if executable is None:
+        pytest.skip("Native coordinate checks require Node.js")
+    values = [
+        value
+        for index in range(10_000)
+        for midpoint in [(index + 0.5) / 10_000]
+        for value in (math.nextafter(midpoint, 0), midpoint, math.nextafter(midpoint, 1))
+    ]
+    source = """
+import { readFileSync } from 'node:fs';
+const values = JSON.parse(readFileSync(0, 'utf8'));
+console.log(JSON.stringify(values.map(v => (Math.round(v * 10000) / 10000).toFixed(4))));
+"""
+    completed = subprocess.run(
+        [executable, "--input-type=module", "--eval", source],
+        input=json.dumps(values), capture_output=True, text=True, check=True, timeout=30,
+    )
+    expected = json.loads(completed.stdout)
+    mismatches = [
+        (value, native, canonical_bbox_coordinate(value))
+        for value, native in zip(values, expected, strict=True)
+        if canonical_bbox_coordinate(value) != native
+    ]
+    assert not mismatches[:5]
