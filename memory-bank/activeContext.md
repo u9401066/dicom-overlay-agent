@@ -1,5 +1,27 @@
 # Active Context
 
+## 2026-09-24 Fresh medium 120-case cohort reserved, not run
+
+- Added prospective selector reusing canonical eligibility and answer-free pairing.
+  Frozen 9,922-image source, seed 20260924, >=3 canonical diagnoses, report/image
+  uniqueness and signature cap four; excludes prior IDs and byte/report aliases.
+- Refreshed preselection union 1,366 IDs; 120 reserved (46 asserted/74 partial,
+  24 critical-concern/96 warning). No asserted acute-risk candidates remain under
+  these filters; zero cant_miss denominator, never claim confirmed urgent sensitivity.
+- Private MAIN data/eval-datasets/prospective-medium-20260924/cohort-v1 contains
+  immutable inference/gold/report. Pair e77a690a5c9cd4d72df05c7e93d877e987b0731605e62dde118d44702f81fda9.
+  Future denylist is postselection-denylist.txt with 1,486 reserved/exposed IDs.
+- Twelve new tests, combined selector/exposure tests 27 pass. Initial construction
+  pair-field mismatch fixed before outputs and covered by full construction test.
+  Full explicit unit/integration/smoke 1,736 pass / six skips, 228.33s; docs four
+  pass, Ruff/format/secret scan pass. All 120 image headers 1000x720 RGBA, not visual
+  QC. Production App unchanged. Both 613b843 CI/secrets pass.
+- NEXT: exposed calibration image, actual GUI full safe ROI setup/source verification,
+  then clean-source 120-case file-dialog/Analyze/Export run. Current prior ROI is
+  intentionally partial and MUST NOT be reused. Gold remains sealed; no model
+  calls/new GUI cases in this construction checkpoint.
+- Evidence: docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md.
+
 ## 2026-09-24 Native manual ADD, dismissal, promotion and continued QA
 
 - Clean 243f2ef actual App/Viewer, exposed partial case 119, manual safe ROI,

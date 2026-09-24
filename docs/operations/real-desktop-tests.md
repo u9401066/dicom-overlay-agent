@@ -30,6 +30,10 @@ one actual partial/hidden-label development replay is bound to four medium turns
 The [sealed 121-case low cohort](../evidence/2026-09/evaluation-desktop-astra-2026-09-11.md)
 remains failed; it is not medium coverage. The older gate state below is retained
 as dated history, not current batch coverage. No 100-case medium cohort is accepted.
+A [fresh 120-case medium cohort](../evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
+is selected/reserved, **not yet run**. First calibrate the complete safe image ROI
+through the actual App using an exposed image; do not reuse the partial interaction
+ROI or open gold during inference. Preserve every case and failure in the run ledger.
 
 ## Select a browser or another image application (development source)
 
@@ -47,8 +51,9 @@ as dated history, not current batch coverage. No 100-case medium cohort is accep
    The App must not silently switch to another matching window. Restart also
    requires explicit reselection; stored default keyword discovery is separate.
 
-Browser end-to-end acceptance is still pending at the
-[external-window checkpoint](../evidence/2026-09/external-window-selection-2026-09-24.md).
+One exposed Edge replay now covers actual selection, ROI, capture, inference and
+manual QA; see the [native follow-up](../evidence/2026-09/native-browser-selection-2026-09-24.md).
+Other browsers/DICOM applications and broad acceptance remain pending.
 
 ## Historical gate status (2026-09-02)
 

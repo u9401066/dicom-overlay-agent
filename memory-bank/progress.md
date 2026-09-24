@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Fresh medium-cohort selection
+
+- New 120-case prospective pair reserved from 9,922 usable images after excluding
+  1,366 prior IDs and exact-image/report aliases. >=3 canonical diagnoses each,
+  five important tiers, 46 asserted/74 partial. All 24 acute-risk references partial;
+  no confirmed cant_miss denominator. Future exposure union already 1,486 IDs.
+- New deterministic selector and twelve regressions; combined 27 checks pass.
+  Full unit/integration/smoke 1,736 pass / six conditional skips in 228.33s.
+  Pair contracts/hashes frozen; model execution NOT started. Old low score/current
+  cohort docs corrected. Full-image actual GUI ROI calibration is next, followed
+  by the actual desktop batch; no source-to-model shortcut or clinical claim.
+- Evidence: docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md.
+
 ## 2026-09-24 Real manual marker promotion acceptance
 
 - Actual clean 243f2ef App: manual Mark outside existing AI boxes, real ADD

@@ -23,6 +23,9 @@ See the [model transition and open integration work](docs/evidence/2026-09/astra
 and [verified shared-engine package / low replay](docs/evidence/2026-09/shared-engine-2026-09-24.md).
 Use the [documentation index](docs/README.md) and [component ownership map](docs/architecture/components.md)
 to find current guidance separately from archived evidence.
+A [fresh 120-case medium cohort](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
+is now selected/reserved from the 9,922 usable images after exposure exclusions.
+It is **not yet run**; 46 references are asserted and 74 partially uncertain.
 
 Manual Mark now covers blank areas of the authorized image ROI, not only AI
 boxes. Actual source-App tests now cover manual-region two-turn inline QA,

@@ -8,7 +8,8 @@
 | Cohort | Cases | Purpose | Current state | Valid claim |
 | --- | ---: | --- | --- | --- |
 | `full-9922` | 9,922 | MEETI ordered full-cohort paired evaluation | manifests/tooling exist; authoritative new pair not complete | evaluation capacity only; historical partial/paired results remain dated |
-| `important-multi-128-v1` | 128 | gold-enriched important multi-diagnosis stress cohort | Astra-low real GUI primary batch in progress; 95 primary + six separate earlier pilots at September 10 15:06 UTC, unscored | verified GUI/export/source/runtime completion only, not clinical accuracy |
+| `important-multi-128-v1` | 128 | historical important multi-diagnosis stress cohort | 121-case Astra-low primary sealed and scored; six earlier pilots separate | failed acceptance: strict 0/46, annotated urgent concerns 2/21; not medium coverage |
+| `prospective-desktop-important-multi-120-v1` | 120 | fresh Astra-medium GUI stress cohort | selected/reserved September 24; not run | construction only; 1,366 prior identities excluded |
 | `incomplete-ecg-20260902-v2` | 8 | deliberately incomplete/cropped/low-resolution ECG behavior | 8/8 mock plumbing; real App not run | input/hash/schema/bbox/partial plumbing only |
 | 10,001-identity scale fixture | 10,001 identities | atomic resume/checkpoint set behavior | source smoke complete | resumability scale, not 10,001 medical images |
 | Historical 32/8 sets | 32 paired + 8 unseen | 2026-08-09 engineering evidence | complete under their recorded protocol | only the dated metrics in their evidence record |
@@ -63,9 +64,13 @@ the exposure denylist before selecting a future prospective batch. Construction
 metadata originally recorded `model_execution_status=not_run`; it describes
 construction, not the current execution ledger. September 2–3 subsequently
 recorded 60 source-matched Luna exports and 43 timeouts across 103 attempts.
-The complete cohort is still unfinished. September 10 switched to Astra low;
-individual GUI calibration/pilot receipts do not imply the remaining cases ran.
-See the [current evidence update](../evidence/2026-09/verification-2026-09-10.md).
+September 10 switched to Astra low. The 121-case primary was subsequently sealed
+and scored; six earlier pilots remain separate, and the primary failed acceptance.
+See the [sealed evidence](../evidence/2026-09/evaluation-desktop-astra-2026-09-11.md).
+It does not establish the current medium model's accuracy. A new 120-case batch
+is now [selected but not run](../evidence/2026-09/prospective-medium-cohort-2026-09-24.md),
+with 46 asserted / 74 partially uncertain references and a refreshed exposure union.
+Its 24 acute-risk references are uncertain concerns, not confirmed urgent diagnoses.
 
 The full run must be performed in order through the real viewer and desktop App,
 not by replacing viewer interaction with a direct script/client call. For each
@@ -126,7 +131,7 @@ ledger before opening gold. Recovered usage receipts remain separate files and
 must bind the exact source and observed Astra-low turns. The original failed
 attempts remain in the derived report; they are not additional patients.
 
-The active primary run plans indices 7..127 (121 cases); the six earlier pilots
+The historical primary run used indices 7..127 (121 cases); the six earlier pilots
 are intentionally separate because they have different implementation provenance.
 Only after that primary run is complete and its source/GUI/model receipts are
 sealed may the following post-hoc command be used (paths are local, not public
@@ -156,7 +161,9 @@ Concurrent engineering work also prevents a controlled runtime-speed comparison.
 Synthetic regression covers incomplete cohorts before gold access, wrong/changed
 gold, duplicate cases, mismatched source/model/effort, missing evidence, negative
 attempt indices, traversal paths, post-score mutation and overwrite protection.
-No real primary clinical score has been produced as of this checkpoint.
+The historical primary score now exists and fails the gate; see the sealed evidence
+above. No fresh medium-cohort clinical score has been produced. The low-specific
+scorer must not silently relabel medium receipts as low or merge the two cohorts.
 
 - Schema, bbox in-bounds, tool receipt, coordinate projection, latency, strict
   score, partial credit, normal specificity, urgent recall, and cannot-miss recall
