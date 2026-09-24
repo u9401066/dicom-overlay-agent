@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-24 Complete-image GUI calibration and medium batch started
+
+- Actual clean 7eba45d source App (PID 3948, launcher 21292) + frameless Viewer
+  (PID 7832, launcher 26028), isolated existing runtime/18795. ACTIVE owned windows
+  while batch runs; do not launch replacements or close without checking live state.
+- Temporary C:/Users/Ericlab/AppData/Local/Temp/dicom-medium-batch-20260924/config.yaml
+  has actual GUI-set zero margins, reference1500x1080, full safe rect(30,30,1500,1080).
+  Old partial config unchanged. First Ctrl+O activation failed before inference;
+  physical owned click/native Ctrl+O fixed automation, failed receipt preserved.
+- Exposed calibration case119 actual Analyze/Export: 110.821s workflow,106.732s model,
+  source1500x1080 RGB MAE0; original-file bilinear MAE0.58394; four Astra medium stages.
+  Export desktop-20260924-144954-635855. Summary/ROI visually inspected.
+- New run root same temp directory/cohort-run-7eba45d. plan.json binds120 exact input
+  hashes, answer-free manifest, code/config/driver/helper fingerprints and PIDs.
+  run-batch.py --limit3 launched via live unified session71757; inspect session and
+  per-case receipts before any resume. Only exported_verified receipts advance;
+  failures/unresolved attempts stop and must be retained, not overwritten.
+- 14:54 UTC checkpoint: case000 meeti_42918436 exported_verified, workflow110.420s,
+  model98.593s, file-to-visible MAE0.53507, visible-to-export0, four medium stages.
+  Export desktop-20260924-145401-720536; two findings, incomplete/review true,
+  rendered summary inspected. Case001 meeti_48835021 began14:54:05; unscored.
+- Both 7eba45d CI/secrets passed. No App edits/new EXE. Gold remains sealed.
+  Evidence: docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+
 ## 2026-09-24 Fresh medium 120-case cohort reserved, not run
 
 - Added prospective selector reusing canonical eligibility and answer-free pairing.

@@ -25,7 +25,9 @@ Use the [documentation index](docs/README.md) and [component ownership map](docs
 to find current guidance separately from archived evidence.
 A [fresh 120-case medium cohort](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
 is now selected/reserved from the 9,922 usable images after exposure exclusions.
-It is **not yet run**; 46 references are asserted and 74 partially uncertain.
+Its [actual GUI run has started](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)
+after full-image ROI calibration; it is not complete/scored. Reference labels are
+46 asserted and 74 partially uncertain.
 
 Manual Mark now covers blank areas of the authorized image ROI, not only AI
 boxes. Actual source-App tests now cover manual-region two-turn inline QA,

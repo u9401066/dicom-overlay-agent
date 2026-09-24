@@ -31,7 +31,8 @@ The [sealed 121-case low cohort](../evidence/2026-09/evaluation-desktop-astra-20
 remains failed; it is not medium coverage. The older gate state below is retained
 as dated history, not current batch coverage. No 100-case medium cohort is accepted.
 A [fresh 120-case medium cohort](../evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
-is selected/reserved, **not yet run**. First calibrate the complete safe image ROI
+is selected/reserved and its [actual GUI run has started](../evidence/2026-09/medium-desktop-batch-2026-09-24.md).
+Before another run, calibrate the complete safe image ROI
 through the actual App using an exposed image; do not reuse the partial interaction
 ROI or open gold during inference. Preserve every case and failure in the run ledger.
 

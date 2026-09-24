@@ -9,7 +9,7 @@
 | --- | ---: | --- | --- | --- |
 | `full-9922` | 9,922 | MEETI ordered full-cohort paired evaluation | manifests/tooling exist; authoritative new pair not complete | evaluation capacity only; historical partial/paired results remain dated |
 | `important-multi-128-v1` | 128 | historical important multi-diagnosis stress cohort | 121-case Astra-low primary sealed and scored; six earlier pilots separate | failed acceptance: strict 0/46, annotated urgent concerns 2/21; not medium coverage |
-| `prospective-desktop-important-multi-120-v1` | 120 | fresh Astra-medium GUI stress cohort | selected/reserved September 24; not run | construction only; 1,366 prior identities excluded |
+| `prospective-desktop-important-multi-120-v1` | 120 | fresh Astra-medium GUI stress cohort | first real GUI case verified September 24 14:54 UTC; batch running, unscored | source/usage verification only; 1,366 prior identities excluded |
 | `incomplete-ecg-20260902-v2` | 8 | deliberately incomplete/cropped/low-resolution ECG behavior | 8/8 mock plumbing; real App not run | input/hash/schema/bbox/partial plumbing only |
 | 10,001-identity scale fixture | 10,001 identities | atomic resume/checkpoint set behavior | source smoke complete | resumability scale, not 10,001 medical images |
 | Historical 32/8 sets | 32 paired + 8 unseen | 2026-08-09 engineering evidence | complete under their recorded protocol | only the dated metrics in their evidence record |
@@ -68,9 +68,11 @@ September 10 switched to Astra low. The 121-case primary was subsequently sealed
 and scored; six earlier pilots remain separate, and the primary failed acceptance.
 See the [sealed evidence](../evidence/2026-09/evaluation-desktop-astra-2026-09-11.md).
 It does not establish the current medium model's accuracy. A new 120-case batch
-is now [selected but not run](../evidence/2026-09/prospective-medium-cohort-2026-09-24.md),
+has a [frozen selection](../evidence/2026-09/prospective-medium-cohort-2026-09-24.md),
 with 46 asserted / 74 partially uncertain references and a refreshed exposure union.
 Its 24 acute-risk references are uncertain concerns, not confirmed urgent diagnoses.
+The [actual medium desktop batch](../evidence/2026-09/medium-desktop-batch-2026-09-24.md)
+has now started after full-image ROI calibration; it is not sealed/scored.
 
 The full run must be performed in order through the real viewer and desktop App,
 not by replacing viewer interaction with a direct script/client call. For each

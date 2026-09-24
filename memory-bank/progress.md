@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Complete ROI calibrated; real medium cohort underway
+
+- Actual GUI zero-margin ROI rect(30,30,1500,1080) on frameless Viewer. Old partial
+  config preserved. Initial focus-only file-dialog failure retained (no model call);
+  owner-verified native click/Ctrl+O opens actual file dialog successfully.
+- Exposed full-image calibration completed110.821s; source RGB MAE0; four medium
+  stages; actual summary viewed. New case000 completed110.420s at14:54UTC with
+  source MAE0/four medium stages. Incomplete/review output retained, not clinical pass.
+- First three-case tranche remains live in session71757; check current receipts
+  before resume. Planned120, gold unopened, no direct inference/API shortcut.
+- Evidence: docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+
 ## 2026-09-24 Fresh medium-cohort selection
 
 - New 120-case prospective pair reserved from 9,922 usable images after excluding

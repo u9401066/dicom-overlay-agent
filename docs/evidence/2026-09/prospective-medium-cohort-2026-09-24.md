@@ -1,7 +1,9 @@
 # Fresh medium desktop cohort construction — 2026-09-24
 
-**Selection is complete; model execution has not started.** This is not 120 GUI
+**At construction: selection complete, model execution not started.** This is not 120 GUI
 passes, clinical accuracy evidence, or a replacement for the failed low cohort.
+Subsequent [complete-image calibration and batch execution](medium-desktop-batch-2026-09-24.md)
+are tracked separately; do not rewrite this construction receipt as an execution seal.
 
 ## Population, exposure and selection
 

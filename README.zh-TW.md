@@ -21,7 +21,8 @@
 目前操作說明與歷史證據已分開，入口為[文件導覽](docs/README.md)與
 [App／harness／plugin 責任地圖](docs/architecture/components.md)。
 新的 [120 例 medium 批次](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
-已從 9,922 張可用影像排除曝光案例後選定，**尚未實機執行**；參考標籤為
+已從 9,922 張可用影像排除曝光案例後選定；完整 ROI 校準後
+[已開始真實 GUI 執行](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)，尚未完成或評分。參考標籤為
 46 例 asserted、74 例部分不確定，不能把建檔當作驗收通過。
 
 人工 Mark 已可從已授權影像 ROI 的空白處起筆，不限於 AI 框內。真實 source App
