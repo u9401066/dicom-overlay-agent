@@ -36,6 +36,37 @@ Before another run, calibrate the complete safe image ROI
 through the actual App using an exposed image; do not reuse the partial interaction
 ROI or open gold during inference. Preserve every case and failure in the run ledger.
 
+The same batch evidence page documents `scripts/verify-desktop-batch.py`, which
+independently audits the frozen plan, original inputs, exports, pixel matching and
+runtime usage. Preserve the plan digest separately. Use `--allow-partial` only for
+an ongoing run; invalid evidence and technical failures always fail the command.
+A failed audit is not permission to restart a live App or repeat inference.
+
+## Manual Mark and per-region conversations (development source)
+
+1. After Analyze publishes a result, choose **Mark**, then drag anywhere inside
+   the authorized image ROI, including blank areas outside all AI boxes. The safe
+   image region is the boundary, not the entire desktop. Reconfigure ROI explicitly
+   if needed; never include patient identifiers just to obtain a larger canvas.
+2. Ask in the **Reviewer annotation** dialog. Continue the same region's thread
+   using the chat panel's inline entry and **Send**.
+3. Use **Inspect** and click an existing AI/manual box to open that region's own
+   history. Reopening history does not need another model request. Threads for
+   different regions must remain separate.
+4. A proposed report change is not automatically applied. **Dismiss** keeps the
+   existing report; **Apply to report** accepts the proposed change. An accepted
+   ADD promotes the manual marker to a report finding while retaining its selected
+   source rectangle and prior conversation. Continue on that promoted finding;
+   reopening or a no-change answer must not duplicate it.
+5. Export the local development draft and inspect `regional-conversations.json`,
+   report interaction audit and rendered chat/overlay images. A summary saying
+   "two findings" alone cannot prove a promotion: compare IDs, geometry and history.
+
+Real native evidence covers [blank-ROI Mark and separate threads](../evidence/2026-09/native-regional-projection-2026-09-24.md)
+and [ADD dismissal, promotion, reopening and a third turn](../evidence/2026-09/native-marker-promotion-2026-09-24.md).
+These are source-App tests, not proof that the latest preserved EXE contains all
+subsequent fixes, or that every cross-monitor/DPI and clinical scenario is complete.
+
 ## Select a browser or another image application (development source)
 
 1. Open the image in the intended application. Close menus, translation popups

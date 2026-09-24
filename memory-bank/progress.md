@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Independent native-batch audit and continued execution
+
+- First three-case tranche completed; same actual App/Viewer resumes fixed case3
+  onward, no previous-case reruns. Active session80364 at this checkpoint.
+- Six of120 independently verified at15:08UTC,114pending,24medium model stages;
+  source-to-visible RGBMAE0. No clinical scoring or universal success claim.
+- New read-only verifier recomputes source/artifact hashes and pixels, joins all
+  trace attempts to unique original Gateway observations/public usage snapshots,
+  rejects stale/missing usage, reused sessions, unsafe paths, gaps and mutations.
+  --allow-partial accepts pending, not failures. Canonical scientific ledger remains
+  separate and incomplete. Input gold unopened; no App code/new binary changes.
+- Later15:14UTC audit10/120,40stages,110pending, no invalid/technical failures.
+ 33new synthetic verifier tests; docs+target37pass; final fullsuite1769pass/6skip
+ 201.71s, Ruff/format/gitleaks pass. Owned live processes preserved.
+- Evidence: docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+
 ## 2026-09-24 Complete ROI calibrated; real medium cohort underway
 
 - Actual GUI zero-margin ROI rect(30,30,1500,1080) on frameless Viewer. Old partial

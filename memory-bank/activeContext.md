@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-24 First six GUI cases independently audited; continuation LIVE
+
+- Initial session71757 is terminal/no longer registered; case000–002 all completed.
+  Cases001/002 actual summary images inspected, incomplete/review/indeterminate.
+- Same frozen run-batch.py resumed --limit120, current unified session80364.
+  App3948/Viewer7832 unchanged; Gateway26484 parent3948 owns127.0.0.1:18795.
+  Driver launcher2760/child10104. DO NOT relaunch/restart on observation timeout.
+  No production source/config/driver/helper/collector edits during live cohort.
+- At15:08UTC six completed cases (indices0–5),114pending. New read-only repository
+  scripts/verify-desktop-batch.py independently passes these six,24model stages,
+  sourceRGBMAE0, no invalid/technical failures. Gold still unopened. No clinical pass.
+- Frozen plan SHA ba0351ab71dcf3972dd69666694c8e5ca3540fc93ba1e9aae2523386fe184fd6;
+  same outside-temp evidence root/cohort-run-7eba45d. Audit requires explicit plan
+  digest, exports root, manifest and original gateway log. --allow-partial cannot
+  suppress technical failures or invalid evidence. Runtime sessions cannot be
+  reused across inputs; original log, source pixels and artifact hashes recomputed.
+- Both44963abCI runs36016479750/36016484832 and prior secret scans passed.
+  At15:14UTC repeat independent audit10/120,40stages,110pending; real default CLI
+  exited1 for incomplete run, --allow-partial passed.33new synthetic tests and
+  docs checks37pass. Final explicit fullsuite1769pass/6skip201.71s; Ruff/format and
+  stagedgitleaks pass. No App dependency/schema change or EXE refresh.
+  This audit is not the canonical scientific ledger or independent UI event observer.
+- Evidence/usage: docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+
 ## 2026-09-24 Complete-image GUI calibration and medium batch started
 
 - Actual clean 7eba45d source App (PID 3948, launcher 21292) + frameless Viewer

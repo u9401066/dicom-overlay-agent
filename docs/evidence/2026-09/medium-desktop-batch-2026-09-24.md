@@ -84,6 +84,68 @@ It holds `config.yaml`, native calibration scripts/receipts/previews, the failed
 and `cohort-run-7eba45d/plan.json` plus per-case attempt/ROI/receipt directories.
 Raw exports remain in the isolated App's existing local export directory.
 
+### Independent audit checkpoint: September 24, 15:08 UTC
+
+The initial three-case tranche finished. Cases 1 and 2 completed in 133.349 s and
+107.969 s respectively; their actual rendered summaries were also inspected.
+Both remained INDETERMINATE/incomplete/review-required, not clinical passes.
+The same App/Viewer and frozen driver resumed from case 3 without repeating cases
+0–2. The run is ongoing; do not start replacement windows or a second driver.
+
+At this checkpoint, **6 / 120** cases (indices 0–5) independently verify, **114**
+are pending, and no completed case has a technical failure or invalid evidence.
+All 24 recorded model stages match the original Gateway log as Astra medium.
+Every exported source exactly matches the pre-analysis visible ROI (RGB MAE 0).
+File-to-screen bilinear MAE ranges from 0.50028 to 0.53508 / 255. These are pixel
+and execution checks, not evidence that any diagnosis agrees with the unopened gold.
+
+The new repository tool [verify-desktop-batch.py](../../../scripts/verify-desktop-batch.py)
+reads only the frozen inference plan, inputs, local exports, receipts and original
+Gateway log. It makes no inference, GUI, network or public-session requests, and
+does not mutate artifacts. Supply the independently preserved plan digest, not a
+fresh digest silently substituted after edits:
+
+`ba0351ab71dcf3972dd69666694c8e5ca3540fc93ba1e9aae2523386fe184fd6`.
+
+```powershell
+uv run --frozen python scripts/verify-desktop-batch.py `
+  --run PATH_TO_COHORT_RUN `
+  --manifest PATH_TO_ANSWER_FREE_INFERENCE_JSON `
+  --exports-root PATH_TO_ISOLATED_APP_EXPORTS `
+  --gateway-log PATH_TO_ORIGINAL_GATEWAY_LOG `
+  --plan-sha256 ba0351ab71dcf3972dd69666694c8e5ca3540fc93ba1e9aae2523386fe184fd6 `
+  --allow-partial
+```
+
+The tool independently hashes ordered input images and the recorded top-level
+export inventory (crop subdirectories are not sealed by this version); checks
+case/attempt identity, chronology, source geometry and pixels;
+joins every trace stage/retry to its public usage snapshot and unique original
+runtime identity; rejects cross-input session reuse and out-of-root export paths.
+It does not trust receipt success flags or recorded pixel-error values alone.
+Masked log identities require one exact identity and a unique >=16-character
+prefix for the other, never two masks. Missing/stale token counts remain unknown,
+not zero; token snapshots are not a monetary billing ledger.
+
+Default exit status is nonzero until all 120 cases verify. `--allow-partial` only
+permits pending cases, never technical failures or invalid completed evidence.
+An in-flight attempt remains pending. A concurrent/changed/unreadable receipt must
+be inspected and audited again, not treated as permission to rerun inference.
+Recorded GUI actions and source/config/process provenance are not independently
+reattested by this artifact verifier. It neither validates the canonical medical
+evidence ledger nor scores clinical accuracy. Synthetic mutation tests cover these
+boundaries without accessing private images or gold.
+
+At 15:14 UTC a repeat independent audit verified **10 / 120** cases and 40
+distinct model stages, with 110 pending and zero invalid/technical failures.
+The real CLI without `--allow-partial` correctly exited 1 for this incomplete run.
+The dedicated verifier suite has **33 synthetic tests**; together with current
+documentation-link checks, **37 passed**. These tests do not replace native cases.
+The final explicit unit/integration/smoke suite completed with **1,769 passed /
+six opt-in/private-fixture skips in 201.71 s**. Ruff, formatting and staged secret
+scan passed. This excludes frozen-binary and native-input opt-in gates; it is not
+a new packaged-executable test.
+
 No App code/dependency/schema/model-route change or EXE refresh occurred. Both
 7eba45d CI runs and secret scans passed before the new batch. Clinical gold stays
 sealed; diverse-device/legacy inputs, canonical host ledger integration, clinical
