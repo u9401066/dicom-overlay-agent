@@ -16,6 +16,7 @@ from dicom_overlay.application.annotation_accumulator import (
     AnnotationAccumulator,
     max_severity,
 )
+from dicom_overlay.application.regional_conversation import validate_review_turn_id
 from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
 from dicom_overlay.domain.entities import (
     AgentState,
@@ -411,6 +412,7 @@ class OverlayAgent:
         expected_revision: int,
         local_signal_audit: dict[str, object] | None = None,
         regional_review_trace: list[dict[str, object]] | None = None,
+        review_turn_id: str = "",
     ) -> AnalysisResult:
         """Apply a reviewer-confirmed regional proposal to the displayed result.
 
@@ -426,6 +428,7 @@ class OverlayAgent:
                 expected_revision=expected_revision,
                 local_signal_audit=local_signal_audit,
                 regional_review_trace=regional_review_trace,
+                review_turn_id=review_turn_id,
             )
 
     def _apply_finding_delta_locked(
@@ -435,6 +438,7 @@ class OverlayAgent:
         expected_revision: int,
         local_signal_audit: dict[str, object] | None,
         regional_review_trace: list[dict[str, object]] | None,
+        review_turn_id: str = "",
     ) -> AnalysisResult:
         """Apply one delta while ``_review_lock`` is held."""
 
@@ -446,6 +450,7 @@ class OverlayAgent:
             raise RuntimeError(
                 "The image result changed before this proposal was applied"
             )
+        self._check_review_turn_id(review_turn_id)
 
         current_id_list = [finding.id for finding in self._last_result.findings]
         current_ids = set(current_id_list)
@@ -552,6 +557,8 @@ class OverlayAgent:
             ],
         }
         safe_signal_audit = _safe_local_signal_audit(local_signal_audit)
+        if review_turn_id:
+            trace_entry["review_turn_id"] = review_turn_id
         if safe_signal_audit:
             trace_entry["local_signal_audit"] = safe_signal_audit
         safe_regional_turns = _safe_regional_turns(regional_review_trace)
@@ -595,6 +602,7 @@ class OverlayAgent:
         user_confirmed: bool = False,
         proposed_operation: str = "none",
         target_id: str = "",
+        review_turn_id: str = "",
     ) -> AnalysisResult:
         """Persist a crop-review turn that did not mutate report findings."""
 
@@ -613,6 +621,7 @@ class OverlayAgent:
                 raise RuntimeError(
                     "The image result changed before this review was recorded"
                 )
+            self._check_review_turn_id(review_turn_id)
 
             trace_entry: dict[str, object] = {
                 "stage": "interactive_review",
@@ -623,6 +632,8 @@ class OverlayAgent:
             }
             if target_id.strip():
                 trace_entry["target_id"] = target_id.strip()
+            if review_turn_id:
+                trace_entry["review_turn_id"] = review_turn_id
             safe_signal_audit = _safe_local_signal_audit(local_signal_audit)
             if safe_signal_audit:
                 trace_entry["local_signal_audit"] = safe_signal_audit
@@ -650,6 +661,18 @@ class OverlayAgent:
                 result_revision=self._result_revision,
             )
             return updated
+
+    def _check_review_turn_id(self, turn_id: str) -> None:
+        """Called under the review lock, before any report mutation."""
+        if not turn_id:  # Older non-conversation callers have no linked turn.
+            return
+        validate_review_turn_id(turn_id)
+        if self._last_result is not None and any(
+            entry.get("stage") == "interactive_review"
+            and entry.get("review_turn_id") == turn_id
+            for entry in self._last_result.analysis_trace
+        ):
+            raise ValueError("Review turn already has a recorded outcome")
 
     def _transition(self, new_state: AgentState) -> None:
         with self._review_lock:

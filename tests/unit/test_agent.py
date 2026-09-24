@@ -340,6 +340,7 @@ class TestOverlayAgent:
                 note="Reviewer accepted regional re-check",
             ),
             expected_revision=4,
+            review_turn_id="a" * 32,
             local_signal_audit={
                 "status": "ok",
                 "ink_pixel_ratio": 0.12,
@@ -361,6 +362,7 @@ class TestOverlayAgent:
         assert any("initial checklist" in reason for reason in updated.review_reasons)
         assert any("Reconcile" in step for step in updated.next_steps)
         assert updated.analysis_trace[-1]["stage"] == "interactive_review"
+        assert updated.analysis_trace[-1]["review_turn_id"] == "a" * 32
         assert updated.analysis_trace[-1]["user_confirmed"] is True
         assert updated.analysis_trace[-1]["bbox_source"] == (
             "selected_finding_existing_bbox"
@@ -384,7 +386,10 @@ class TestOverlayAgent:
         }
         assert agent.result_revision == 5
 
-    def test_regional_no_change_is_recorded_without_mutating_findings(self, agent):
+    @pytest.mark.parametrize("outcome", ["blocked", "no_change", "dismissed"])
+    def test_regional_no_change_is_recorded_without_mutating_findings(
+        self, agent, outcome
+    ):
         from dicom_overlay.application.overlay_agent import ReviewSnapshot
 
         finding = Finding(
@@ -414,7 +419,9 @@ class TestOverlayAgent:
 
         updated = agent.record_regional_review_outcome(
             expected_revision=8,
-            outcome="blocked",
+            outcome=outcome,
+            review_turn_id="b" * 32,
+            user_confirmed=outcome == "dismissed",
             local_signal_audit={
                 "status": "ok",
                 "low_signal": True,
@@ -433,10 +440,11 @@ class TestOverlayAgent:
         assert updated.findings == [finding]
         assert updated.analysis_trace[-1] == {
             "stage": "interactive_review",
-            "status": "blocked",
+            "status": outcome,
             "tool": "openclaw_region_followup",
             "operation": "none",
-            "user_confirmed": False,
+            "user_confirmed": outcome == "dismissed",
+            "review_turn_id": "b" * 32,
             "local_signal_audit": {"status": "ok", "low_signal": True},
             "regional_turns": [
                 {
@@ -450,6 +458,25 @@ class TestOverlayAgent:
         assert agent.review_snapshot is not None
         assert agent.review_snapshot.result is updated
         assert agent.review_snapshot.revision == 9
+
+        # Even a caller holding the new revision cannot finalize this turn twice.
+        with pytest.raises(ValueError, match="already has a recorded outcome"):
+            agent.record_regional_review_outcome(
+                expected_revision=9, outcome="no_change", review_turn_id="b" * 32
+            )
+        with pytest.raises(ValueError, match="already has a recorded outcome"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.RETRACT, finding=finding),
+                expected_revision=9,
+                review_turn_id="b" * 32,
+            )
+        for invalid in ["private free text", "A" * 32]:
+            with pytest.raises(ValueError, match="32 lowercase"):
+                agent.record_regional_review_outcome(
+                    expected_revision=9, outcome="no_change", review_turn_id=invalid
+                )
+        assert agent.last_result is updated
+        assert agent.result_revision == 9
 
     def test_reviewer_retract_records_static_region_fallback(self, agent):
         original = Finding(

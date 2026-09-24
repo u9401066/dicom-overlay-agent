@@ -36,7 +36,12 @@ def test_export_binds_complete_regional_history_to_original_pixels(tmp_path):
     store = RegionalConversations()
     store.bind(encoded)
     thread = store.thread(RegionRect(0.1, 0.2, 0.3, 0.4), "f1")
-    store.append(thread, question="Synthetic first?", answer="Synthetic answer")
+    store.append(
+        thread,
+        question="Synthetic first?",
+        answer="Synthetic answer",
+        review_turn_id="a" * 32,
+    )
     store.append(thread, question="Synthetic second?", answer="Another answer")
     result = AnalysisResult(
         modality=Modality.EKG,
@@ -44,6 +49,14 @@ def test_export_binds_complete_regional_history_to_original_pixels(tmp_path):
         severity=Severity.INFO,
         findings=[],
         checklist={},
+        analysis_trace=[
+            {
+                "stage": "interactive_review",
+                "status": "dismissed",
+                "review_turn_id": "a" * 32,
+                "user_confirmed": True,
+            }
+        ],
     )
     path = export_desktop_review(
         image_base64=encoded,
@@ -56,6 +69,9 @@ def test_export_binds_complete_regional_history_to_original_pixels(tmp_path):
     assert history["source_image_sha256"] == exported["source_image"]["sha256"]
     assert len(history["threads"][0]["turns"]) == 2
     assert history["content_role"] == "review_conversation_not_verified_findings"
+    turn = history["threads"][0]["turns"][0]
+    assert turn["review_turn_id"] == exported["analysis_trace"][0]["review_turn_id"]
+    assert exported["analysis_trace"][0]["status"] == "dismissed"
     mismatched = store.export()
     mismatched["source_image_sha256"] = "not-this-image"
     with pytest.raises(ValueError, match="different source image"):

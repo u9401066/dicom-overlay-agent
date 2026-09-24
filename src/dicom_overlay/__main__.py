@@ -163,7 +163,7 @@ class _SignalBridge(QObject):
     error_msg = pyqtSignal(str)
     prepare_capture = pyqtSignal()
     chat_done = pyqtSignal(str, str, int, int)
-    review_chat_done = pyqtSignal(str, object, int, object, object, int)
+    review_chat_done = pyqtSignal(str, object, int, object, object, int, str)
     review_apply_done = pyqtSignal(object, object)
     review_apply_failed = pyqtSignal(str)
     review_outcome_done = pyqtSignal(str)
@@ -760,7 +760,7 @@ def main() -> None:
 
     signals = _SignalBridge()
     _pending_review: list[
-        tuple[FindingDelta, int, dict[str, object], list[dict[str, object]]] | None
+        tuple[FindingDelta, int, dict[str, object], list[dict[str, object]], str] | None
     ] = [None]
     _chat_request_id = [0]
     _pending_user_region: dict[int, RegionRect] = {}
@@ -1297,6 +1297,7 @@ def main() -> None:
         current_result = snapshot.result
         revision = snapshot.revision
         request_id = _begin_chat_request()
+        review_turn_id = uuid4().hex
         regional_conversations.bind(snapshot.image_base64)
         finding_id = selected_finding.id if selected_finding is not None else ""
         regional_thread = regional_conversations.thread(selected_region, finding_id)
@@ -1414,6 +1415,7 @@ def main() -> None:
                         outcome="blocked" if response.warning else "no_change",
                         local_signal_audit=signal_audit,
                         regional_review_trace=turn_trace,
+                        review_turn_id=review_turn_id,
                     )
                     recorded_revision = agent.result_revision
                 signals.review_chat_done.emit(
@@ -1423,6 +1425,7 @@ def main() -> None:
                     signal_audit,
                     turn_trace,
                     request_id,
+                    review_turn_id,
                 )
             except Exception:
                 logger.exception("Regional review request failed")
@@ -1666,6 +1669,7 @@ def main() -> None:
         signal_audit: dict[str, object],
         review_trace: list[dict[str, object]],
         request_id: int,
+        review_turn_id: str,
     ) -> None:
         if request_id != _chat_request_id[0]:
             return
@@ -1692,6 +1696,7 @@ def main() -> None:
             question=question,
             answer=answer,
             proposal=response.proposal_summary,
+            review_turn_id=review_turn_id,
         ):
             return
 
@@ -1702,6 +1707,7 @@ def main() -> None:
                 revision,
                 signal_audit,
                 review_trace,
+                review_turn_id,
             )
             proposal_summary = response.proposal_summary
         else:
@@ -1725,7 +1731,7 @@ def main() -> None:
             overlay.clear_chat_proposal(restart_timeout=True)
             control_bar.set_status("No current report update")
             return
-        delta, revision, signal_audit, review_trace = pending
+        delta, revision, signal_audit, review_trace, review_turn_id = pending
         control_bar.set_status("Applying reviewed report update...")
 
         async def _apply():
@@ -1734,6 +1740,7 @@ def main() -> None:
                 expected_revision=revision,
                 local_signal_audit=signal_audit,
                 regional_review_trace=review_trace,
+                review_turn_id=review_turn_id,
             )
 
         future = bridge.submit(_apply())
@@ -1784,7 +1791,7 @@ def main() -> None:
         if pending is None:
             control_bar.set_status("Report unchanged")
             return
-        delta, revision, signal_audit, review_trace = pending
+        delta, revision, signal_audit, review_trace, review_turn_id = pending
         control_bar.set_status("Recording dismissed report update...")
 
         async def _record_dismissal():
@@ -1796,6 +1803,7 @@ def main() -> None:
                 user_confirmed=True,
                 proposed_operation=delta.op.value,
                 target_id=delta.finding.id,
+                review_turn_id=review_turn_id,
             )
 
         future = bridge.submit(_record_dismissal())

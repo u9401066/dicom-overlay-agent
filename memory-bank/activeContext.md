@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-24 Regional conversation/outcome identity
+
+- Host-generated review_turn_id now joins conversation export schema v2 to
+  existing interactive_review applied/dismissed/blocked/no_change trace events.
+  Promotion preserves IDs; duplicates/invalid IDs rejected before append/report
+  mutation. No matching event never implies confirmation or dismissal.
+- Actual nested callbacks plus Qt signal tested with synthetic offline responses;
+  four paths pass, plus 77 targeted state/export/writeback tests. No native GUI,
+  model request, new dependency, capture expansion or canonical-ledger claim.
+- Source only, absent from preserved bd8f303 EXE. Current source remains under
+  development; desktop preference unanswered. Canonical host assembler and
+  browser/DPI/100-current-model-GUI acceptance still pending.
+- Prior 1ab1b54 push/PR CI 35997552092/35997557335 and both secret scans pass.
+- Evidence: docs/evidence/2026-09/regional-turn-linkage-2026-09-24.md.
+- Full source suite 44703: 1,669 passed / six explicit skips in 241.12s.
+  Combined targeted suite: 81 passed. Documentation links, Ruff and staged
+  secret scan pass. Frozen/native skips are not current-build verification.
+
 ## 2026-09-24 Public website refreshed independently of App code
 
 - Website-only PR 19 merged into main as 37d6ed3eabeff74dfc5f17f67ea0a1ffafa30d93;

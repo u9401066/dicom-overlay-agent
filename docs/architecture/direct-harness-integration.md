@@ -44,6 +44,11 @@ the user's assessment scope, and incomplete-input limitations. Neither filling
 default placeholders nor replaying current guardrails over old results can close
 that gate. A model/classifier label alone is not source-coordinate evidence.
 
+The September 24 [regional turn linkage](../evidence/2026-09/regional-turn-linkage-2026-09-24.md)
+adds host-generated IDs joining conversation export v2 to completed review
+outcomes. This closes a review-process correlation gap only; it is not the
+canonical observation/evidence ledger or permission to relabel draft exports.
+
 ## Installation, CI and packaging
 
 Initialize the pinned submodule before installing with `uv`:

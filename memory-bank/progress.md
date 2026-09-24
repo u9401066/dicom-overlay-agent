@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Regional turn-to-outcome correlation
+
+- Conversation export v2 preserves host-generated turn IDs through response,
+  promotion and terminal report audit. No label/time/overlap-based matching.
+  Invalid/reused IDs cannot append history or mutate a report.
+- 77 targeted tests plus four actual callback/Qt-signal tests pass using offline
+  synthetic responses. No native desktop focus, live model call or binary release.
+  The canonical evidence-ledger gate is not closed by review-process correlation.
+- Prior 1ab1b54 push/PR CI and secrets checks all pass.
+- Full current source suite: 1,669 passed, six explicit opt-in/private skips
+  (241.12s); combined targeted suite 81 passed. Ruff/docs/secret scan pass.
+
 ## 2026-09-24 Website publication and live responsive verification
 
 - PR 19 merged website/docs only into main (37d6ed3); App code not merged.

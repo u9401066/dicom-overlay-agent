@@ -92,6 +92,39 @@ def test_no_thread_without_current_image():
         RegionalConversations().thread(RegionRect(0, 0, 1, 1))
 
 
+def test_turn_ids_are_unique_and_survive_promotion_without_entering_model_context():
+    store = RegionalConversations()
+    store.bind(_image())
+    thread = store.thread(RegionRect(0, 0, 1, 1))
+    store.append(thread, question="First", answer="Answer", review_turn_id="a" * 32)
+    store.append(thread, question="Second", answer="Answer")
+    before = store.export()
+    assert before["schema_version"] == 2
+    ids = [turn["review_turn_id"] for turn in before["threads"][0]["turns"]]
+    assert len(set(ids)) == 2 and all(len(value) == 32 for value in ids)
+    assert "review_turn_id" not in thread.context()
+    assert store.promote_manual_region(
+        thread.region, "confirmed", source_image_sha256=store.image_sha256
+    )
+    assert store.export()["threads"][0]["turns"] == before["threads"][0]["turns"]
+    other = store.thread(RegionRect(0, 0, 0.5, 0.5))
+    with pytest.raises(ValueError, match="already belongs"):
+        store.append(other, question="Duplicate", answer="No", review_turn_id=ids[0])
+    assert not other.turns
+
+
+@pytest.mark.parametrize("turn_id", ["", "private free text", "A" * 32, "g" * 32])
+def test_explicit_invalid_turn_id_does_not_append(turn_id):
+    store = RegionalConversations()
+    store.bind(_image())
+    thread = store.thread(RegionRect(0, 0, 1, 1))
+    with pytest.raises(ValueError, match="32 lowercase"):
+        store.append(
+            thread, question="Question", answer="Answer", review_turn_id=turn_id
+        )
+    assert not thread.turns
+
+
 def test_confirmed_manual_promotion_preserves_history_under_new_finding_only():
     store = RegionalConversations()
     store.bind(_image())

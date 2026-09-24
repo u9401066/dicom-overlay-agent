@@ -13,9 +13,16 @@ import math
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from medical_image_harness.models import RegionRect
+
+
+def validate_review_turn_id(turn_id: str) -> None:
+    """Accept only opaque host-generated IDs, never free-text evidence labels."""
+    if len(turn_id) != 32 or any(char not in "0123456789abcdef" for char in turn_id):
+        raise ValueError("Review turn ID must be 32 lowercase hexadecimal characters")
 
 
 @dataclass(frozen=True)
@@ -24,6 +31,7 @@ class RegionalTurn:
     answer: str
     created_at: str
     proposal: str = ""
+    review_turn_id: str = ""
 
 
 @dataclass
@@ -90,13 +98,29 @@ class RegionalConversations:
         return self._threads.setdefault(key, RegionalThread(region, finding_id))
 
     def append(
-        self, thread: RegionalThread, *, question: str, answer: str, proposal: str = ""
+        self,
+        thread: RegionalThread,
+        *,
+        question: str,
+        answer: str,
+        proposal: str = "",
+        review_turn_id: str | None = None,
     ) -> bool:
         # Detached objects from an invalidated image must never enter new history.
         if not any(current is thread for current in self._threads.values()):
             return False
+        turn_id = uuid4().hex if review_turn_id is None else review_turn_id
+        validate_review_turn_id(turn_id)
+        if any(
+            turn.review_turn_id == turn_id
+            for current in self._threads.values()
+            for turn in current.turns
+        ):
+            raise ValueError("Review turn ID already belongs to a conversation turn")
         thread.turns.append(
-            RegionalTurn(question, answer, datetime.now(UTC).isoformat(), proposal)
+            RegionalTurn(
+                question, answer, datetime.now(UTC).isoformat(), proposal, turn_id
+            )
         )
         return True
 
@@ -129,7 +153,7 @@ class RegionalConversations:
 
     def export(self) -> dict[str, object]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "source_image_sha256": self.image_sha256,
             "coordinate_space": "normalized_original_roi",
             "content_role": "review_conversation_not_verified_findings",
