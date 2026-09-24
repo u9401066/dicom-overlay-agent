@@ -1474,12 +1474,36 @@ class OpenClawClient(VisionAnalyzerService):
             ):
                 raise ValueError("gateway_evidence_identity_mismatch")
             receipt.require_model_text()
+            # Freeze local native receipts before another send resets the offset
+            # or nonce. These contain only the audited metadata whitelist, never
+            # arbitrary extra fields from a local JSONL record.
+            self._refresh_tool_audit()
+            audit_fields = {
+                "schema_version",
+                "recorded_at",
+                "tool",
+                "tool_call_id",
+                "accepted_count",
+                "rejected_count",
+                "source_image_sha256",
+                "evidence_nonce",
+                "accepted_boxes_sha256",
+                "details_sha256",
+            }
+            audits = self._last_tool_audit_records
+            if len(audits) > 16 or any(set(item) != audit_fields for item in audits):
+                raise ValueError("invalid_stage_native_audit_inventory")
+            audit_json = tuple(
+                json.dumps(item, sort_keys=True, allow_nan=False).encode("utf-8")
+                for item in audits
+            )
             return ImageEvidenceTurn(
                 source_sha,
                 hashlib.sha256(bound_prompt.encode("utf-8")).hexdigest(),
                 nonce,
                 int((time.monotonic() - started) * 1000),
                 receipt,
+                audit_json,
             )
 
     async def chat_about_image(

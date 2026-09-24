@@ -24,6 +24,10 @@ The [native partial-ECG follow-up](evidence/2026-09/native-partial-ecg-2026-09-2
 records six real exports / 23 verified stages and two pre-inference tiny-window
 blocks, plus a regression fix for negated-ST review false alarms. One source and
 six completed variants do not establish eight-case or clinical acceptance.
+The [scientific continuation checkpoint](evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)
+connects real native bbox receipts to post-blind reconciliation with explicit
+finding decisions. Its model replies are still synthetic in tests; independent
+waveform classification, targeted revisits, final assembly and App activation remain open.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its

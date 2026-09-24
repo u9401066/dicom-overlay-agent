@@ -252,6 +252,19 @@ def test_native_result_count_limit(collector):
     assert len(receipt.native_tools) == 64
 
 
+def test_bbox_start_inventory_is_bounded_without_retaining_arguments(collector):
+    observe(collector, acceptance())
+    for index in range(65):
+        frame = tool(call=f"call-{index}")
+        frame["payload"]["data"].update(phase="start", args="synthetic-secret")
+        observe(collector, frame)
+    receipt = collector.snapshot()
+    assert receipt.failure == "gateway_native_call_count_limit"
+    assert len(receipt.bbox_tool_call_ids) == 64
+    assert not receipt.native_tools
+    assert "synthetic-secret" not in repr(vars(collector))
+
+
 def test_total_byte_limit_is_bounded(collector):
     observe(collector, acceptance())
     for index in range(10):

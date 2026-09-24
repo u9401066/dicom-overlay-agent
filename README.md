@@ -56,6 +56,10 @@ completed six of eight variants (23 verified medium stages); two tiny windows
 were blocked before inference. Missing labels stayed unknown. A reproduced
 negated-ST review false alarm is fixed in YAML, with original exports preserved.
 This is one-source engineering evidence, not vendor diversity or clinical accuracy.
+An opt-in [scientific continuation](docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)
+now binds actual native bbox receipts after retained blind reading and requires
+explicit finding challenge decisions. It is not yet the desktop's active pipeline
+or an independent waveform classifier, and has no new clinical accuracy claim.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.

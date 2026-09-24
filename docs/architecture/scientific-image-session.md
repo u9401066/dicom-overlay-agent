@@ -1,9 +1,10 @@
-# Executable image intake, quality gate and blind pass
+# Executable intake, blind pass, native localization and reconciliation
 
 `infrastructure.scientific_image_session.ScientificImageSession` connects actual
 stage operations to the [execution journal](execution-journal.md),
 [Gateway image request API](gateway-evidence-capture.md) and
-[strict scientific decoder](scientific-model-draft.md). This is an **intermediate
+[strict scientific decoder](scientific-model-draft.md), then optionally continues
+through actual native geometry and explicit finding challenge turns. This is an **intermediate
 pipeline**, not a completed report, default App mode or clinical release.
 
 ## Implemented sequence
@@ -28,6 +29,40 @@ It executes the following, not synthetic completed-stage labels:
    A single CT screenshot cannot produce diagnostic hypotheses or high-confidence
    findings, including at this intermediate boundary.
 
+After successful `read_blind()`, `localize_and_reconcile()` now executes two more
+fresh source-image turns. It does not repeat blind inference or replace its draft:
+
+4. **Native source localization:** the `independent_evidence` journal stage runs
+   `dicom_bbox_validate` only. This is independent **geometry checking**, not an
+   independent diagnostic classifier. The actual Gateway tool text and local
+   audit snapshot must bind source, nonce, call ID, count and digest through the
+   native source adapter. No model-authored receipt or fallback box is accepted.
+   At most eight tool calls; every observed bbox call needs one result and one
+   audit. Other tools, unbound starts and started-but-unfinished calls reject the
+   stage. Explicit unavailable/rejected-only localization stays without boxes.
+5. **Reconciliation:** another source-image request receives the retained blind
+   draft and verified geometry catalogue. It returns agreements, conflicts,
+   unsupported claims, uninspected regions and a scientific draft, plus exactly
+   one explicit challenge decision per old/new finding. Confirm/revise retain
+   identity; retract/unevaluable remove the finding; add requires a new identity.
+   Changed clinical wording, certainty or observations cannot masquerade as an
+   unchanged confirmation. Original QC/partial-study and CT limits still apply.
+
+No tool is permitted during reconciliation. This is post-observation rejection,
+not remote execution sandboxing. The concise decision rationale is reviewable
+visible-evidence text, not hidden reasoning or a proof of medical correctness.
+The host checks decision coverage/identity and reference consistency, not the
+clinical truth or semantic completeness of the four model-authored lists.
+
+The original reconciliation envelope bytes/hash are retained separately from the
+strictly decoded nested draft (whose bytes are a canonical JSON projection).
+`localizations` and `reconciliation` return independent copies. The original
+blind response remains immutable and box-free; a later client send cannot replace
+the prior tool text/audit snapshot. Repeated/concurrent continuation, failure or
+cancellation cannot silently start a paid retry. These stages make four model
+requests total for readable inputs, before any future targeted second look;
+this is request accounting, not a measured speed or accuracy improvement.
+
 For `non_diagnostic` QC, `read_blind()` returns `None`, records an explicit skipped
 blind pass and makes **no second model request**. `quality` remains inspectable;
 this is not a normal report or a completed human handoff. Invalid QC/draft, transport
@@ -44,7 +79,7 @@ The host-created `source-frame` evidence identifies exact source pixels only.
 It has **no bbox, clinical label, lesion verification or fabricated observation**.
 Consequently the blind draft has no host-verified localization to select: its
 `bbox_evidence_ids` must remain empty. Native receipt-backed localization must be
-added in subsequent stages; the absence of blind-pass boxes is not a replacement
+added by the subsequent native stage above; the absence of blind-pass boxes is not a replacement
 for the product's annotation requirement or its existing working overlay.
 
 The prompts follow the pinned medical-image-reading skill:
@@ -76,7 +111,7 @@ provider actions. Fresh sessions and absence of host-supplied expert/label data
 do not replace live tool-event fidelity and runtime policy verification. The
 native text/source adapter and independent-tool stages remain separate work.
 
-`records`, `turns`, `quality`, `blind_draft`, `study`, `provenance` and
+`records`, `turns`, `quality`, `blind_draft`, `localizations`, `reconciliation`, `study`, `provenance` and
 `source_evidence` expose immutable receipts or independent copies. Original
 successful transport replies are kept before stage decoding, so invalid model
 JSON is retained as a failed attempt rather than replaced by a repaired result.
@@ -91,19 +126,23 @@ be supplied by the eventual host usage-receipt path. No model is substituted her
 
 ## Still required before desktop activation
 
-The journal contains only real intake/QC/blind facts. There are no invented
-independent-evidence, reconciliation, targeted second look, full validation or
-human-handoff completions. `to_contract_payload()` still rejects this unassembled
-draft. The adapter is not injected into the App's legacy hooks or exporters.
+The journal records actual intake/QC/blind operations and, when explicitly
+continued, native-geometry and reconciliation operations. It never labels these
+as independent waveform classification. There are no invented targeted second
+look, full validation or human-handoff completions. `to_contract_payload()` still
+rejects this unassembled draft. The adapter is not injected into the App's legacy
+hooks or exporters.
 
-Next integration must add native source-bound localization and optional matched
-external evidence after blind reading, explicit hypothesis reconciliation and
-targeted revisits, full public assembly, review availability and guarded App
+Next integration must add optional trusted matched external evidence, targeted
+revisits/crops, full public assembly, review availability and guarded App
 publication. Non-diagnostic QC needs a truthful quality-only review presentation.
 The current frozen cohort must remain on its original source. Actual candidate
 GUI/model, legacy/vendor/truncated ECG, DPI and current-EXE acceptance remain open.
 
 ## Verification scope
+
+Continuation checkpoint: [native localization and reconciliation evidence](../evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md).
+The following counts describe the earlier intake/QC/blind-only checkpoint.
 
 32 synthetic adapter tests exercise real client receive paths and journal callbacks,
 including all three modality schemas, no second call for non-diagnostic input,

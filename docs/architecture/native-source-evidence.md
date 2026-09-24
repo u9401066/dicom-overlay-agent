@@ -4,7 +4,10 @@
 adapter between the actual native bbox producer and the
 [scientific draft decoder](scientific-model-draft.md) /
 [host assembler](host-evidence-assembly.md). It is not connected to the desktop
-inference path yet. It does not change the ongoing frozen 120-case GUI cohort,
+inference path yet. The opt-in [scientific image session](scientific-image-session.md)
+now calls it between retained blind reading and reconciliation, with original
+Gateway tool bytes and separately collected audit snapshots. This is not live
+App activation. It does not change the sealed 120-case GUI cohort,
 default 16-key inference schema, public harness pin or OpenClaw Gateway protocol.
 
 ## What is bound

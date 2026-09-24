@@ -60,6 +60,14 @@ Body whitespace, malformed JSON and duplicate keys remain intact for the strict
 [scientific decoder](scientific-model-draft.md). Missing original text, identity
 conflicts or collection failures cannot become successful request receipts.
 
+The same lock now also freezes `native_bbox_audit_json`: at most 16 independently
+collected current-image/current-nonce audit metadata objects serialized to immutable
+bytes. These are **not** original audit-file lines. Extra metadata fields reject
+the request rather than leaking into the snapshot. The session's native source
+adapter still checks each record against the original tool text; an audit record
+alone is not proof. Missing or late receipts fail continuation, without a paid
+retry. This does not enable the API in the default desktop path.
+
 Cancellation uses the existing abort path; accepted reconnects observe the same
 run without another send. Pre-acceptance recovery may replay the exact frame once
 with the same idempotency key. Failed/nonterminal evidence stays available via
@@ -93,6 +101,11 @@ For native tools, the supported projection is an `agent` event with `stream="too
 text block in `data.result.content`. Identical call-result replay is deduplicated;
 different content for the same call is a failure. Error results fail. Unknown
 projections are not guessed, and missing expected calls fail at consumption.
+The collector also retains bounded observed bbox call IDs and boolean flags for
+unbound bbox events and non-bbox tools. The continuation stage uses these to
+reject a missing result even if another call succeeded. Arbitrary tool arguments,
+outputs and names are still not retained. This detects observed events only;
+silent provider actions cannot be attested by this collector.
 
 The public [client guidance](https://docs.openclaw.ai/gateway/clients) documents
 that `tool-events` gates delivery. The public

@@ -36,6 +36,9 @@ class GatewayTurnEvidence:
     model_text_bytes: bytes | None = field(repr=False)
     native_tools: tuple[NativeToolText, ...]
     tool_event_seen: bool = False
+    non_bbox_tool_event_seen: bool = False
+    bbox_tool_call_ids: tuple[str, ...] = ()
+    unbound_bbox_event_seen: bool = False
 
     def require_model_text(self) -> bytes:
         if self.failure or not self.terminal_seen or self.model_text_bytes is None:
@@ -64,6 +67,9 @@ class ImageEvidenceTurn:
     bbox_evidence_nonce: str
     elapsed_ms: int
     gateway: GatewayTurnEvidence
+    # Canonical metadata snapshots collected independently under the send lock;
+    # not original audit-file lines or model-supplied receipt assertions.
+    native_bbox_audit_json: tuple[bytes, ...] = field(default=(), repr=False)
 
 
 class GatewayEvidenceCollector:
@@ -83,6 +89,9 @@ class GatewayEvidenceCollector:
         self._model: bytes | None = None
         self._tools: dict[str, NativeToolText] = {}
         self._tool_event_seen = False
+        self._non_bbox_tool_event_seen = False
+        self._bbox_tool_call_ids: dict[str, None] = {}
+        self._unbound_bbox_event_seen = False
         self._bytes = 0
 
     def snapshot(self) -> GatewayTurnEvidence:
@@ -96,6 +105,9 @@ class GatewayEvidenceCollector:
             self._model,
             tuple(self._tools.values()),
             self._tool_event_seen,
+            self._non_bbox_tool_event_seen,
+            tuple(self._bbox_tool_call_ids),
+            self._unbound_bbox_event_seen,
         )
 
     def _fail(self, category: str) -> None:
@@ -200,7 +212,27 @@ class GatewayEvidenceCollector:
             # A stage can fail closed on any observed tool event without keeping
             # arbitrary tool names, arguments or outputs in its evidence receipt.
             self._tool_event_seen = True
-            self._tool(payload.get("data"))
+            data = payload.get("data")
+            if not isinstance(data, dict) or data.get("name") != "dicom_bbox_validate":
+                self._non_bbox_tool_event_seen = True
+            else:
+                call_id = data.get("toolCallId")
+                if (
+                    not isinstance(call_id, str)
+                    or not call_id.strip()
+                    or len(call_id) > 256
+                ):
+                    self._unbound_bbox_event_seen = True
+                elif call_id not in self._bbox_tool_call_ids:
+                    if len(self._bbox_tool_call_ids) >= _MAX_TOOL_RESULTS:
+                        self._fail(
+                            "gateway_native_result_count_limit"
+                            if data.get("phase") == "result"
+                            else "gateway_native_call_count_limit"
+                        )
+                    else:
+                        self._bbox_tool_call_ids[call_id] = None
+            self._tool(data)
 
     def _finish(self, model: bytes | None) -> None:
         self._terminal = True

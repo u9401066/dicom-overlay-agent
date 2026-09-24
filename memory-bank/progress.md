@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — real native geometry into scientific reconciliation
+
+- Opt-in scientific session now executes source-bound native localization and
+  explicit post-blind challenge, with actual journal callbacks and raw receipts.
+  No fabricated missing decisions/boxes, prior-draft mutation or paid parse retry.
+- Twenty challenge unit cases,15 actual native producer / synthetic Gateway smoke
+  cases and one bounded start-event test added. Focused206pass18.71s;
+  Ruff/format/targeted mypy and12 documentation checks pass. Initial fixture timeout
+  and preserved result-limit failure-category regression documented, not hidden.
+- Full2241pass7skip405.22s; staged66.49KB secret scan clean. Original120-case
+  seal/score and partial-run audit hashes verified unchanged; no new package.
+- Still no matched independent classifier, targeted second look, canonical final
+  assembly/handoff or default App activation. No paid model, GUI or EXE acceptance
+  claim from this step. Prior e213fe9 remote CI/secrets completed green.
+  See docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md.
+
 ## 2026-09-25 — actual partial-input engineering evidence
 
 - Six native GUI exports,23 verified Astra-medium stages from8 variants/ONE

@@ -1,5 +1,39 @@
 # Active Context
 
+## 2026-09-25 — scientific post-blind native localization and reconciliation
+
+- ScientificImageSession now continues read_blind with localize_and_reconcile:
+  actual separate Gateway/native geometry and challenge requests, not invented
+  journal completions. Default desktop remains legacy; no paid/GUI run this step.
+- ImageEvidenceTurn freezes whitelisted native audit JSON bytes under send lock.
+  Collector retains bounded bbox call IDs + unbound/non-bbox event flags; missing
+  tool results cannot hide behind one successful call. Native source adapter binds
+  exact pixels/nonce/call/text/count/hash; rejected-only/unavailable stays box-free.
+- New reconciliation wrapper preserves original bytes, four review lists and
+  confirm/revise/retract/add/unevaluable decisions, accounting for all old/new
+  finding IDs. Confirm cannot silently change clinical fields/observations.
+  QC/incomplete/CT scope unchanged, deep snapshots and no implicit paid retry.
+- Stage independent_evidence currently NATIVE GEOMETRY ONLY, NOT independent
+  diagnostic classification. No trusted waveform resolver/tool activation, no
+  targeted crop revisit, final canonical assembly, human handoff or App injection.
+  Model usage stays openclaw-unverified. Source/geometry validity is not accuracy.
+- Initial real-Node fixture9fail2pass: inherited1s mock timeout expired during
+  actual producer startup; fixture30s, production unchanged. Generic optional-slot
+  mypy mismatch fixed via local result. Count-limit regression retained existing
+  result-failure category and added bounded start-only category.
+- Focused206pass18.71s (15 new real native-producer/synthetic-Gateway smoke cases,
+  20 challenge cases,1 bounded collector case); Ruff/format/3-module mypy pass.
+  Docs12pass0.10s. Full2241pass7skip405.22s (39482 terminal0), staged66.49KB secret
+  scan clean. Prior partial audit7b21523e/120-case seal57aeb9d/score6532f1ec all
+  rehashed unchanged; unrelated MAIN dirt preserved. Previous e213fe9 CI and
+  secret scans ALL green (36058746707/36058741851,36058746717/36058741833).
+- Next integration must handle final-stage ordering honestly: public schema.py
+  requires contract_validation AND human_handoff completed before final validation;
+  do not solve that by injecting future completed events into the journal. Design
+  a truthful preflight/content-validation then actual review-availability sequence.
+- Evidence:docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md.
+  Prior sealed App runtimes remain stopped; original files/scorers unchanged.
+
 ## 2026-09-25 — native partial ECG batch and negated-ST rule correction
 
 - Frozen source93e0c81/publicf0f4862: six actual App exports from eight existing
