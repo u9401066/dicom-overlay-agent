@@ -1,5 +1,37 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — native source/crop evidence adapter
+
+- Isolated candidate adds infrastructure/source_evidence.py: actual native tool
+  text/audit hashes, source/nonce/call/count/digest binding, exact App crop bytes
+  and effective integer-pixel remapping into public source Evidence/transforms.
+  No invented fallback for rejected boxes; raw reasons are not promoted to claims.
+  Explicit de-identification assertion required, no wider capture or GUI action.
+- Shared strict JSON ingestion extracted from scientific_draft; native coordinate
+  digest/audit shape and App pixel bounds reused by existing callers. No runtime
+  dependency, public schema/submodule, default prompt or subscription changes.
+-53new tests invoke ACTUAL native JS producer on synthetic images, then adapter/
+  decoder/assembler. Synthetic model claims/journal remain explicitly synthetic;
+  no actual Gateway/model/GUI claim. Exact crop 151x113 -> pixel(16,19,91,78) ->
+  651x512 verified; wrong bindings, digest collisions, resource/JSON limits fail.
+ 53pass0.65s; full1955pass7skip201.18s, session56067terminal0; Ruff/format,
+  four-module focusedmypy and four documentation-link checks pass.
+- Documentation native-source-evidence.md plus crosslinks updated. Existing
+  scientific/assembly boundaries now have an independently tested source adapter,
+  NOT a live native-text collector, real canonical run journal or desktop wiring.
+  Host controlling both receipts can forge them; verified geometry != medical truth.
+  Legacy multipass remapping unchanged; no blanket DPI correction claim.
+- Original frozen actualGUI80364 remains active on7eba45d; independent audit
+ 61/120 at~16:46UTC,59pending,zero invalid/technical failures. Gold unopened;
+  no focus-stealing new windows or live
+  code/config/helper changes. Earlier actual manual promotion chat screenshot
+  re-viewed, not misrepresented as a new interaction run.
+- Previous11c8810 push/PR CI36026786773/36026784409 and secret scans all pass.
+  Latest EXE remains DIRECT3029dfb; PR20 remains draft. MAIN user dirt preserved.
+  NEXT collect exact native tool content and original model body at public Gateway
+  boundary, instrument real stage journal/intake, then wire the scientific path
+  after frozen cohort sealing. No retroactive ledger or completed stages fabricated.
+
 ## 2026-09-25 Taipei / September 24 UTC — scientific model-led draft decoder
 
 - In this isolated candidate only: infrastructure/scientific_draft.py now derives

@@ -38,6 +38,10 @@ from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
 )
+from dicom_overlay.infrastructure.bbox_receipts import (
+    bbox_coordinates_digest,
+    valid_bbox_tool_audit_record,
+)
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
@@ -1241,7 +1245,7 @@ class OpenClawClient(VisionAnalyzerService):
         ) = _read_new_tool_audit_records(
             self._tool_audit_path,
             self._tool_audit_offset,
-            _valid_bbox_tool_audit_record,
+            valid_bbox_tool_audit_record,
         )
         self._last_bbox_audit_observations.extend(
             [*bbox_records, *invalid_bbox_observations]
@@ -3266,33 +3270,6 @@ def _file_size(path: Path) -> int:
         return 0
 
 
-def _valid_bbox_tool_audit_record(value: object) -> bool:
-    if not isinstance(value, dict):
-        return False
-    digest = value.get("details_sha256")
-    accepted = value.get("accepted_count")
-    rejected = value.get("rejected_count")
-    return (
-        value.get("schema_version") == 2
-        and value.get("tool") == "dicom_bbox_validate"
-        and isinstance(value.get("tool_call_id"), str)
-        and bool(value["tool_call_id"])
-        and isinstance(accepted, int)
-        and not isinstance(accepted, bool)
-        and accepted >= 0
-        and isinstance(rejected, int)
-        and not isinstance(rejected, bool)
-        and rejected >= 0
-        and _is_sha256(value.get("source_image_sha256"))
-        and isinstance(value.get("evidence_nonce"), str)
-        and bool(re.fullmatch(r"[a-f0-9]{32}", value["evidence_nonce"]))
-        and _is_sha256(value.get("accepted_boxes_sha256"))
-        and isinstance(digest, str)
-        and len(digest) == 64
-        and all(char in "0123456789abcdef" for char in digest.lower())
-    )
-
-
 def _valid_ecg_founder_tool_audit_record(value: object) -> bool:
     if not isinstance(value, dict):
         return False
@@ -3476,14 +3453,7 @@ def _retain_unlocalized_refinement_semantics(
 
 
 def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
-    from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
-
-    canonical = sorted(
-        [canonical_bbox_coordinate(value) for value in (box.x, box.y, box.w, box.h)]
-        for box in boxes
-    )
-    encoded = json.dumps(canonical, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return bbox_coordinates_digest(boxes)
 
 
 def resolve_openclaw_gateway_token(base_dir: Path | None = None) -> str | None:

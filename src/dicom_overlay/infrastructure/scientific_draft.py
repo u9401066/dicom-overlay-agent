@@ -9,16 +9,20 @@ The legacy 16-key Gateway parser is intentionally not changed by this module.
 from __future__ import annotations
 
 import json
-import math
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 # Runtime dependency of the public harness; its wheel does not ship type stubs.
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
+from dicom_overlay.infrastructure.strict_json import (
+    MAX_JSON_BYTES,
+    StrictJSONError,
+    read_json_object,
+)
 from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
@@ -38,7 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 DRAFT_VERSION = "1"
-MAX_RESPONSE_BYTES = 512 * 1024
+MAX_RESPONSE_BYTES = MAX_JSON_BYTES
 _MODEL_FIELDS = (
     "modality",
     "summary",
@@ -137,51 +141,14 @@ def _draft_validator(modality: Modality) -> Any:
     return Draft202012Validator(schema)
 
 
-def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        _require(key not in result, "duplicate_json_key")
-        result[key] = value
-    return result
-
-
-def _reject_constant(_value: str) -> None:
-    raise ScientificDraftError("non_finite_number")
-
-
 def _read_response(raw: bytes) -> dict[str, Any]:
-    _require(
-        type(raw) is bytes and 0 < len(raw) <= MAX_RESPONSE_BYTES,
-        "response_size_or_type",
-    )
     try:
-        result = json.loads(
-            raw.decode("utf-8"),
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
+        return read_json_object(raw)
+    except StrictJSONError as exc:
+        category = (
+            "draft_must_be_object" if str(exc) == "json_must_be_object" else str(exc)
         )
-        stack = [(result, 0)]
-        nodes = 0
-        while stack:
-            item, depth = stack.pop()
-            nodes += 1
-            _require(depth <= 32 and nodes <= 50000, "response_structure_limit")
-            if isinstance(item, dict):
-                for key, value in item.items():
-                    key.encode("utf-8")
-                    stack.append((value, depth + 1))
-            elif isinstance(item, list):
-                stack.extend((value, depth + 1) for value in item)
-            elif isinstance(item, str):
-                item.encode("utf-8")
-            elif isinstance(item, float):
-                _require(math.isfinite(item), "non_finite_number")
-    except ScientificDraftError:
-        raise
-    except (UnicodeError, ValueError, RecursionError):
-        raise ScientificDraftError("invalid_json_encoding_or_structure") from None
-    _require(isinstance(result, dict), "draft_must_be_object")
-    return cast("dict[str, Any]", result)
+        raise ScientificDraftError(category) from None
 
 
 @lru_cache(maxsize=1)

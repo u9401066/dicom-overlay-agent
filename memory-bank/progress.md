@@ -3,6 +3,23 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — actual native producer/source binding
+
+- Added host adapter verifying exact native tool text/audit receipts, authorized
+  source/crop bytes and effective-pixel geometry. Public Evidence/transforms only;
+  source binding is not diagnostic truth. No desktop wiring or schema/dependency
+  changes, no synthesized model observations/workflow events.
+-53actual-native-producer synthetic checks pass0.65s. Full1955pass7skip201.18s;
+  Ruff/format/focusedmypy/docs links pass. Current skips explicit private/frozen/
+  native-GUI/portable-directory opt-ins; Node24.18 used for real producer tests.
+- Native-source architecture docs and related protocol/integration guidance
+  updated. Live tool-text collection, canonical host journal, study intake and
+  actual scientific-protocol GUI validation remain open. Latest local EXE3029dfb
+  does not include these candidate components. Previous11c8810 CI/secrets green.
+- Original realGUI batch independently61/120verified at~16:46UTC,59pending,
+  zero technical/invalid. Gold unopened and
+  live source frozen. Existing manual promotion screenshot re-inspected only.
+
 ## 2026-09-25 Taipei / September 24 UTC — versioned scientific model draft
 
 - Added schema-derived model prompt/strict ledger decoder; findings select exact

@@ -44,9 +44,10 @@ localization rather than banning every spatial tool result.
 - The caller must actually collect host inputs. Copying model output into the
   argument named `trusted_evidence` does not establish trust. This function is
   not an independent execution observer or a clinical evidence reviewer.
-- Hashing bytes/lineage does not decode images or prove a crop/resampling operation
-  produced them. The capture/crop adapter still must preserve and verify the real
-  operation, parent rectangle and source-coordinate remapping.
+- Hashing bytes/lineage alone does not decode images or prove a crop/resampling
+  operation. The separate [native source adapter](native-source-evidence.md) now
+  verifies exact App crop bytes and effective-pixel remapping; the desktop still
+  must collect the original capture/tool bytes and call that adapter.
 - The public validator checks declared event sequence, not whether a model really
   performed a blind pass. Only instrumented execution can support that claim.
 - A metadata-free study manifest and de-identification assertion do not themselves
@@ -61,7 +62,7 @@ missing ledger. The desktop entrypoint does **not** call this assembler yet.
 The separate [scientific model draft protocol](scientific-model-draft.md) now
 provides a prompt/schema and strict ledger decoder; the legacy parser rejects
 that version marker instead of dropping its observations. This does not activate
-the new protocol or supply the still-missing host journal/native receipt adapters.
+the new protocol or supply the still-missing host journal/native text collector.
 
 ## Required next integration, in order
 
@@ -73,9 +74,11 @@ the new protocol or supply the still-missing host journal/native receipt adapter
 2. Instrument actual intake, QC, blind observation, optional independent evidence,
    reconciliation/second look, validation and review availability. Record stages
    where they happen; do not reclassify an old coarse/final trace after execution.
-3. Build the host adapter from the existing exact native bbox/tool receipts and
-   immutable capture/crop bytes, with nonce/run/source checks and round-trip
-   source geometry. Clinical observation text still needs model/reader challenge.
+3. Wire the implemented native source adapter to independently collected exact
+   tool text/audit receipts and immutable capture/crop bytes. Connect observed
+   tool-call IDs to the real host run journal. Its component tests establish
+   source/nonce/call/geometry binding, not clinical correctness or desktop wiring.
+   Clinical observation text still needs model/reader challenge.
 4. Supply trusted study scope and de-identification facts from the capture workflow.
    A configured ROI alone is not a fabricated de-identification certificate.
 5. Call the assembler before making a new scientific export available; preserve the

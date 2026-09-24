@@ -43,7 +43,9 @@ explicit host bytes, source/evidence bindings and the public contract without
 inventing missing observations. The [scientific draft protocol](scientific-model-draft.md)
 adds a matching prompt/schema and decoder that retains model-led observations while
 resolving geometry from host evidence IDs. It is not activated in desktop inference;
-actual transport capture, host journal/receipt adapter and desktop wiring remain work.
+actual transport capture, host journal and desktop wiring remain work. The
+[native source adapter](native-source-evidence.md) additionally verifies exact
+tool receipts and App crop bytes; its live tool-text collector is still missing.
 They must preserve raw predictions, exact ROI/crop hashes, native receipt bindings,
 the user's assessment scope, and incomplete-input limitations. Neither filling
 default placeholders nor replaying current guardrails over old results can close
