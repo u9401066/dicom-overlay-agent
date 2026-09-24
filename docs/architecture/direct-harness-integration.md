@@ -175,3 +175,15 @@ Its separately measured Deflate-9 ZIP is 148,430,073 bytes (141.55 MiB), with
 18,771 decompressed entry hashes verified and 53 UPX payload tests passing.
 No public binary release is implied. The later source-only partial-ECG heading
 fix is not present in this preserved 128117b executable.
+
+## Current interaction package
+
+Clean source `6e6734eb33b3d6331ccf0f82476a8c5b97bfe44b` now has its own local
+verified bundle, including explicit window selection, ROI-wide Mark, retained
+regional history, manual-marker promotion and conversation-to-outcome IDs.
+Full inspection passes; 20 frozen tests pass in 120.77 seconds. The App layer is
+54.44 MiB and full folder 337.01 MiB. Exact source/payload hashes and limitations
+are in the [interaction bundle audit](../evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md).
+That audit also records a newly reproduced synthetic Viewer-translation
+projection defect. Native movement/DPI and current-model clinical acceptance
+remain open; this is not a public binary release.

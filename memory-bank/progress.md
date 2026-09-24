@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Interaction EXE checkpoint and newly found movement gap
+
+- Clean 6e6734e EXE built; eight frozen modules match source and 90 native
+  sources pass audit. Frozen smoke: 20 passed in 120.77s. Full manifest/runtime
+  verifier completed OK with clean included source roots, plugin tools loaded
+  and fabricated OAuth migration passing (zero real model calls). Launcher
+  4.70 / App 54.44 / full folder 337.01 MiB, 18,771 files, +2,135 bytes vs bd8f303.
+- Synthetic current-code diagnostic reproduces stale displayed capture geometry
+  after a same-size Viewer translation. No native desktop or model call; this
+  is a new open geometry gate, not masked by package-smoke results.
+- All 6e6734e source CI and secret scans passed. No binary release.
+
 ## 2026-09-24 Regional turn-to-outcome correlation
 
 - Conversation export v2 preserves host-generated turn IDs through response,

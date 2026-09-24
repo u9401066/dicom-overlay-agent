@@ -1,5 +1,25 @@
 # Active Context
 
+## 2026-09-24 Latest interaction EXE; geometry defect reproduced
+
+- Clean 6e6734e build completed in dist-interaction-6e6734e-upx. Eight frozen
+  modules match exact git source; 90 native sources approved. EXE SHA-256:
+  671474add1136f21da34a39cbd56568c39d2fce1fc70f44750362eb6095e1d75.
+- Frozen tests 74633 completed: 20 passed in 120.77s. Full package verifier
+  55310 completed OK, failures empty; its included source roots are clean at
+  6e6734e. Plugin tools load; fabricated OAuth-only migration passes, zero model
+  calls. 18,771 files: 4.70 MiB launcher / 54.44 MiB App / 337.01 MiB total.
+  Payload SHA: 3bedb58a1b2f88bfb5ccee542d8ae6456d8691bfa73c92f504b8949e6701b397.
+- Both 6e6734e source CI runs and both secret scans succeeded.
+- New read-only synthetic diagnostic: same-size Viewer moves x=0 to x=300,
+  agent target updates but displayed snapshot remains x=0, DISPLAYING, no
+  state event or model call. Current main tick does not reproject highlights.
+  Fix current display geometry separately from immutable acquisition provenance;
+  cover translation, resize and display/DPI changes without widening ROI.
+- This is not native reproduction and is not fixed in the preserved EXE.
+  Desktop-use question re-asked while building; unanswered, no focus taken.
+- Evidence: docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md.
+
 ## 2026-09-24 Regional conversation/outcome identity
 
 - Host-generated review_turn_id now joins conversation export schema v2 to
