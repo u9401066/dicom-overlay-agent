@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — completed real GUI cohort, sealed and scored
+
+-120/120 independently verified; 482 Astra-medium stages. Original driver exited0,
+  no successful-case repeats. All source/visible ROI pixels exact. Original source
+  remains7eba45d; no App mutation during batch.
+- Seal then score tool makes no model calls, preserves evidence/gold digests,
+  protects original trees and inventories nested crops.24new synthetic tests;
+  full2160pass7skip353.94s. Private raw results/gold stay outside public Git.
+- Clinical acceptance FAILED: strict0/46, allurgent5/24, exactseverity13/120,
+  legacy schema115/120.74partiallyuncertain separate; zero confirmed cant_miss
+  means unmeasured, not perfect sensitivity. Meananalysis93.993s/workflow106.485s,
+  no controlled speed claim. Detailed intervals/hashes/limitations in
+  docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+- READMEboth/procedure/index/Memory updated. No new binary or default scientific
+  pipeline activation. Diverse-input testing/clinical improvements remain needed.
+
 ## 2026-09-25 Taipei / September 24 UTC — executed scientific first stages
 
 - Source intake/QC/blind adapter now calls actual client/journal/strict decoder.

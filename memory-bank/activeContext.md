@@ -1,5 +1,28 @@
 # Active Context
 
+## 2026-09-25 — actual 120-case medium batch sealed; clinical acceptance failed
+
+- Original driver 80364 terminated exit 0: 117 new + three original, no reruns.
+  Final receipt 2026-09-24T18:30:30.531254Z. Independent full audit 120/120,
+  482 Astra-medium stages, zero pending/invalid/technical failures, source RGB MAE0.
+- New create-only score-verified-desktop-batch.py separates seal from gold access;
+  binds 2,519 inventory entries incl recursive crops and original log prefix,
+  verifies full audit twice and uses pre-inference gold hash. No inference/repair.
+  Seal 57aeb9d03c9d79346e09bcd65bc09d51e716ec981a77be4857bdf95a1bd346de;
+  score 6532f1ec79bd0fc95099a7014bc4ceb84e0d4bfeaea55df83b762055074f9046.
+  Private files in C:/Users/Ericlab/AppData/Local/Temp/dicom-medium-batch-20260924/.
+  Do not change sealer bytes without a new explicitly versioned seal.
+- Gold now opened AFTER seal: strict0/46, complete diagnosis recall0/46,
+  exactseverity13/120, urgent concerns5/24, schema115/120; 74partial references.
+  Cant_miss/normal/partial-input denominators zero -> unmeasured. Clinical and
+  canonical-ledger acceptance false. Five schema failures absent lead inventory.
+- Mean analysis93.993s/workflow106.485s; not matched speed/model comparison.
+  Full2160pass7skip353.94s (26602terminal0); 24new synthetic protection tests.
+  READMEboth/evidence/procedure/index updated. No App/prompt/dependency/EXE change.
+  Existing scorer Git-identical to DIRECT; rebuild file CRLF/LF differs only,
+  actual executed digest preserved. Next: adjudicate failure sources without
+  rewriting this baseline, then complete scientific stages and actual GUI tests.
+
 ## 2026-09-25 Taipei / September 24 UTC — executable intake/QC/blind adapter
 
 - ScientificImageSession now performs actual source PNG decoding/intake, a real

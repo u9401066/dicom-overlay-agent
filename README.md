@@ -25,11 +25,13 @@ Use the [documentation index](docs/README.md) and [component ownership map](docs
 to find current guidance separately from archived evidence.
 A [fresh 120-case medium cohort](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
 is now selected/reserved from the 9,922 usable images after exposure exclusions.
-Its [actual GUI run has started](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)
-after full-image ROI calibration; it is not complete/scored. Reference labels are
-46 asserted and 74 partially uncertain.
-The same evidence page documents the independent read-only batch auditor; a
-partial execution audit is not a completed cohort or a clinical accuracy score.
+Its [actual GUI run is complete and sealed](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md):
+120/120 execution checks and 482 Astra-medium stages verified. Post-seal scoring
+**does not pass clinical acceptance**: strict complete-reference pass 0/46, all
+urgent concerns caught 5/24, legacy draft schema 115/120. The 74 partially uncertain
+references remain separate. Mean analysis/workflow times were 93.993/106.485 s;
+these are not controlled speed comparisons. See the evidence page for intervals,
+hashes, limitations and the no-inference seal/score procedure.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.

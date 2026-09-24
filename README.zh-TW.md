@@ -22,8 +22,12 @@
 [App／harness／plugin 責任地圖](docs/architecture/components.md)。
 新的 [120 例 medium 批次](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
 已從 9,922 張可用影像排除曝光案例後選定；完整 ROI 校準後
-[已開始真實 GUI 執行](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)，尚未完成或評分；同頁提供獨立唯讀稽核工具，局部執行通過不等於臨床正確率。參考標籤為
-46 例 asserted、74 例部分不確定，不能把建檔當作驗收通過。
+[已完成真實 GUI 執行與封存](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)：
+120／120 例執行核驗、482 個 Astra-medium 回合均通過。但封存後評分
+**未通過臨床驗收**：完整參考答案嚴格通過 0／46、急迫疑慮全部捕捉 5／24、
+舊版草稿格式通過 115／120；74 例部分不確定答案另列。平均判讀／完整操作時間
+93.993／106.485 秒，沒有對照組，不能宣稱加速。同頁列出信賴區間、雜湊與限制；
+封存及評分均未新增模型呼叫。
 另新增 [EKG 人用／agent 共讀流程](docs/clinical/ekg-reading-workflow.md)，涵蓋十步
 與全部十六軸；目前是待專科審查的設計，不把七條一致性規則宣稱為完整判讀器。
 
