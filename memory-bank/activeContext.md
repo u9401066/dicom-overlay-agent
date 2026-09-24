@@ -1,5 +1,45 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — opt-in Gateway visible-output capture
+
+- gateway_evidence.py now collects exact decoded visible model/native bbox text
+  before legacy parsing, with request/session/run/call identity, immutable private
+  snapshots, bounded storage, duplicate replay and conflicting-result handling.
+  No JSON repair/reserialization promoted to original bytes. No raw wire transcript,
+  hidden reasoning, arbitrary tools, auth/prompts, logging or automatic disk export.
+- OpenClawClient collect_transport_evidence defaults FALSE; enabled clients declare
+  public tool-events capability and observe both actual receive loops. Reconnect
+  preserves collector: same preaccept idempotency replay, no accepted-run resend.
+  Snapshot latest send only: callers MUST retain it before next turn/outer retry.
+  Binary events buffered during handshake now decode like directly received ones.
+- Public docs + pinned2026.9.3 bundled docs confirm tool-events delivery gating and
+  result sanitization. Recognized agent/tool result nested shape is replay-tested,
+  NOT yet live accepted. Every expected native call must be retrieved and exact
+  text hash bound to independent native audit/source bytes; missing is not repaired.
+-56new collector tests plus1actual-native-producer/synthetic-Gateway smoke. Latest
+  collector+resilience99pass0.73s; pre-binary-fix full2011pass7skip196.01s. Final full
+  regression2012pass7skip194.59s, session84891terminal0. Ruff/format/focusedmypy/
+  docs links and staged gitleaks pass.
+  docs/architecture/gateway-evidence-capture.md + related architecture links updated.
+- Original frozenGUI80364 remains live on7eba45d. Independent audit~17:03UTC
+ 70/120verified,50pending,zero invalid/technical failure. Gold unopened; App/live
+  source/config/helpers unchanged. Do NOT start other GUI windows during batch.
+- Viewed actual case069 summary-panel.png from export desktop-20260924-170103-897124,
+  without gold or new GUI action. Readable but repeated BBox-expansion notes and
+  crop ROI coordinates crowd primary clinical reading. Candidate UX follow-up:
+  preserve details/audit but move technical notes to secondary inspection, without
+  changing clinical statements or live frozen App. This is a usability observation,
+  not clinical adjudication of its content.
+-780c0c6 both CI36029657370/36029648665 and secret scans36029657521/36029648434
+  completed SUCCESS. Candidate default scientific protocol still inactive; latest
+  localEXE3029dfb unchanged. PR20 remains draft; userMAIN dirt untouched.
+- NEXT actual host journal/intake + coherent scientific-protocol pipeline, then
+  exact native-event fidelity and full App acceptance after frozen cohort sealing.
+  Public trace requires ordered intake,quality_gate,blind_pass,reconcile,
+  contract_validation,human_handoff; optional independent_evidence/second_look.
+  Do not synthesize completed events from final prose or call model posthoc just
+  to manufacture a ledger. Review availability != clinician approval.
+
 ## 2026-09-25 Taipei / September 24 UTC — native source/crop evidence adapter
 
 - Isolated candidate adds infrastructure/source_evidence.py: actual native tool

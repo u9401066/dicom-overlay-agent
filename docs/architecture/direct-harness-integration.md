@@ -45,7 +45,9 @@ adds a matching prompt/schema and decoder that retains model-led observations wh
 resolving geometry from host evidence IDs. It is not activated in desktop inference;
 actual transport capture, host journal and desktop wiring remain work. The
 [native source adapter](native-source-evidence.md) additionally verifies exact
-tool receipts and App crop bytes; its live tool-text collector is still missing.
+tool receipts and App crop bytes. The opt-in
+[Gateway collector](gateway-evidence-capture.md) preserves visible text at the
+receive boundary, pending default pipeline integration and live acceptance.
 They must preserve raw predictions, exact ROI/crop hashes, native receipt bindings,
 the user's assessment scope, and incomplete-input limitations. Neither filling
 default placeholders nor replaying current guardrails over old results can close

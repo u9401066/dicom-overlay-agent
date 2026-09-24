@@ -43,6 +43,10 @@ from dicom_overlay.infrastructure.bbox_receipts import (
     valid_bbox_tool_audit_record,
 )
 from dicom_overlay.infrastructure.env_file import read_env_file
+from dicom_overlay.infrastructure.gateway_evidence import (
+    GatewayEvidenceCollector,
+    GatewayTurnEvidence,
+)
 from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
     MAX_GATEWAY_PROTOCOL,
@@ -242,6 +246,7 @@ class OpenClawClient(VisionAnalyzerService):
         require_bound_bbox_receipts: bool = True,
         fast_mode: bool = False,
         bbox_tool_audit_path: str | Path | None = None,
+        collect_transport_evidence: bool = False,
     ) -> None:
         if analysis_prompt_profile not in _ANALYSIS_PROMPT_PROFILES:
             raise ValueError(
@@ -249,6 +254,10 @@ class OpenClawClient(VisionAnalyzerService):
             )
         if not isinstance(fast_mode, bool):
             raise ValueError("fast_mode must be a boolean")
+        if not isinstance(collect_transport_evidence, bool):
+            raise ValueError("collect_transport_evidence must be a boolean")
+        self._collect_transport_evidence = collect_transport_evidence
+        self._transport_evidence: GatewayEvidenceCollector | None = None
         self._url = gateway_url
         self._timeout = timeout_sec
         # Split timeouts: handshake is fast, inference can be slow on big images.
@@ -1528,6 +1537,11 @@ class OpenClawClient(VisionAnalyzerService):
         )
         if not session_key:
             raise ValueError("expected a chat.send frame with a session key")
+        self._transport_evidence = (
+            GatewayEvidenceCollector(request_id, session_key)
+            if self._collect_transport_evidence
+            else None
+        )
         serialized = payload_json if payload_json is not None else json.dumps(frame)
         deadline = time.monotonic() + self._inference_timeout
 
@@ -1731,6 +1745,7 @@ class OpenClawClient(VisionAnalyzerService):
                     deadline=deadline,
                 ) from exc
 
+            self._observe_transport_evidence(raw)
             frame = json.loads(raw)
             frame_type = frame.get("type")
 
@@ -1798,6 +1813,8 @@ class OpenClawClient(VisionAnalyzerService):
         }
         if self._gateway_token:
             params["auth"] = {"token": self._gateway_token}
+        if self._collect_transport_evidence:
+            params["caps"] = ["tool-events"]
         frame = {
             "type": "req",
             "id": connect_id,
@@ -1825,7 +1842,8 @@ class OpenClawClient(VisionAnalyzerService):
     async def _recv_gateway_frame(self, timeout: float) -> str:
         pending_frames: deque[str] | None = getattr(self, "_pending_frames", None)
         if pending_frames:
-            return pending_frames.popleft()
+            pending = pending_frames.popleft()
+            return pending.decode("utf-8") if isinstance(pending, bytes) else pending
         assert self._ws is not None
         raw: str | bytes = await asyncio.wait_for(
             self._ws.recv(),
@@ -1889,6 +1907,7 @@ class OpenClawClient(VisionAnalyzerService):
                     deadline=deadline,
                 ) from exc
 
+            self._observe_transport_evidence(raw)
             frame = json.loads(raw)
             frame_type = frame.get("type")
             # Only log non-event frames to avoid flooding logs
@@ -1986,6 +2005,20 @@ class OpenClawClient(VisionAnalyzerService):
                 session_key=session_key,
                 run_id=run_id or "",
             )
+
+    def transport_evidence(self) -> GatewayTurnEvidence | None:
+        """Private snapshot for the latest send; never added to logs/exports.
+
+        Consumers must retain each snapshot before another turn starts. This is
+        opt-in transport evidence, not canonical workflow or clinical validation.
+        """
+        collector = getattr(self, "_transport_evidence", None)
+        return collector.snapshot() if collector is not None else None
+
+    def _observe_transport_evidence(self, raw: str) -> None:
+        collector = getattr(self, "_transport_evidence", None)
+        if collector is not None:
+            collector.observe(raw)
 
     def _record_tool_events(self, frame: object) -> None:
         for tool_name in _extract_tool_names(frame):

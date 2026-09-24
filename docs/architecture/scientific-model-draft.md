@@ -66,10 +66,13 @@ the medically correct location. That requires localization/reader evaluation.
 This protocol is intended to replace the corresponding model-response format in
 an instrumented pipeline, not add a post-hoc model call that invents a ledger from
 an already published prose report. Transport capture, real stage journal, native
-text collector, source/ROI intake and desktop/export wiring are still required.
+collector activation/live acceptance, source/ROI intake and desktop/export wiring
+are still required. An opt-in [Gateway collector](gateway-evidence-capture.md) now
+preserves exact visible response/tool text before the legacy parser; it does not
+activate the scientific protocol or invent the remaining workflow stages.
 The [native source-evidence adapter](native-source-evidence.md) now verifies exact
-tool receipts and App crop bytes in isolation; it does not collect them from the
-live Gateway or activate this model protocol.
+tool receipts and App crop bytes in isolation; that validation is not live Gateway
+acceptance or activation of this model protocol.
 The current active 16-key skills/schemas and default inference route are unchanged.
 
 ## Failure behavior and limits

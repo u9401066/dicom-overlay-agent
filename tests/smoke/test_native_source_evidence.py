@@ -17,9 +17,11 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from tests.unit.test_contract_assembly import inputs as inputs
+from tests.unit.test_gateway_evidence import Socket, acceptance, final, tool
 from tests.unit.test_scientific_draft import draft_request as draft_request
 
 from dicom_overlay.application.contract_assembly import assemble_review_contract
+from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.scientific_draft import decode_scientific_draft
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
 from dicom_overlay.infrastructure.source_evidence import (
@@ -451,3 +453,42 @@ def test_extracted_pixel_rectangle_preserves_existing_crop_behavior(size, region
         max(y0 + 1, min(height, math.ceil((region.y + region.h) * height))),
     )
     assert ImageProcessor.crop_region_pixel_box(width, height, region) == expected
+
+
+@pytest.mark.asyncio
+async def test_native_producer_text_through_real_client_collector_binds_source(
+    native, tmp_path
+):
+    # Actual native producer, synthetic public Gateway frame replay; not a live
+    # Gateway/model acceptance run. Preserve producer bytes without reserialization.
+    request = deepcopy(native[1])
+    client = OpenClawClient(
+        base_dir=tmp_path,
+        gateway_token="synthetic-token",
+        collect_transport_evidence=True,
+    )
+    client._connected = True
+    client._ws = Socket(
+        [
+            acceptance(),
+            tool(request["tool_details_json"].decode(), request["tool_call_id"]),
+            final('{"synthetic":true}'),
+        ]
+    )
+    await client._send_chat_text_frame(
+        {
+            "type": "req",
+            "id": "request-1",
+            "method": "chat.send",
+            "params": {"sessionKey": "session-1"},
+        }
+    )
+    receipt = client.transport_evidence()
+    captured = receipt.require_native_tool_text(request["tool_call_id"])
+    assert captured.text_bytes == request["tool_details_json"]
+    request["tool_details_json"] = captured.text_bytes
+    request["tool_call_id"] = captured.tool_call_id
+    binding = bind_native_bbox_evidence(**request)
+    assert binding.source_pixel_box == (16, 19, 91, 78)
+    assert binding.tool_details_sha256 == captured.text_sha256
+    assert len(binding.evidence) == 2

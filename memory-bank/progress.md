@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — Gateway capture wired, opt-in only
+
+- Actual client receive/recovery/handshake paths now support bounded original
+  visible-output snapshots, request/run/session/native-call binding and explicit
+  unavailable evidence. No thinking/auth/raw transcript persisted; default false,
+  no new inference calls. Native result hash still must bind independent audit.
+-56collector tests +1native producer via synthetic-Gateway smoke added. Focused
+ 99pass0.73s; pre-final-binary-fix full2011pass7skip196.01s. Final full regression
+ 2012pass7skip194.59s, session84891terminal0; Ruff/format/focusedmypy/docs links
+  and staged gitleaks green. Architecture
+  docs added/crosslinked. No clinical accuracy or live tool-event fidelity claimed.
+- Original realGUI batch independently70/120verified at~17:03UTC,50pending,
+  zero invalid/technical failures. Gold unopened; original80364 remains live.
+  Prior780c0c6 CI/secrets all pass. No runtime/schema/dependency/prompt update,
+  new EXE or main merge. Real stage journal/intake/scientific desktop wiring open.
+
 ## 2026-09-25 Taipei / September 24 UTC — actual native producer/source binding
 
 - Added host adapter verifying exact native tool text/audit receipts, authorized

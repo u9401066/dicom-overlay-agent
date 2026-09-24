@@ -48,10 +48,11 @@ bind the observed call to its real run journal. `recorded_at` is not a verified
 timestamp. A model-supplied receipt is not accepted as independent evidence merely
 because it has the right shape.
 
-The existing Gateway client records tool names and local audit entries, but does
-not yet provide this adapter's exact native text collector or complete canonical
-execution journal. Intake/study-scope, original model-response capture and desktop
-export wiring remain required. No old prose report or model bbox is retroactively
+The Gateway client now has an opt-in [visible-output collector](gateway-evidence-capture.md)
+connected to its receive loops. Its exact native text projection still needs live
+acceptance; default desktop inference does not enable it. A complete canonical
+execution journal, intake/study-scope and desktop export wiring remain required.
+No old prose report or model bbox is retroactively
 upgraded to canonical evidence. The effective-pixel remap applies to this new
 adapter; it is not a claim that every legacy multipass/DPI path has been changed.
 
