@@ -1,5 +1,26 @@
 # Active Context
 
+## 2026-09-24 Region history now exercised through actual App
+
+- Implemented same-image/per-marker completed history, inline Send, persistent
+  regional panel, Hide/reopen, bounded untrusted prompt context and explicit
+  source-SHA-bound conversation export. General chat no longer logs questions.
+- Actual source App (6be42cb + hashed patch), exposed case 119: 110.874s analysis,
+  117.571s workflow, source MAE 0.0; manual blank-area drag + two real QA turns,
+  separate existing-marker QA, real Apply preserving bbox, manual history reopen.
+- Final export desktop-20260924-103246-547403: all 10 analysis/regional usage
+  bindings are Astra medium. UI screenshots inspected. Initial second-answer
+  observer raced and saw first answer; retained, then corrected with question
+  matching before counting success. No new blind/100-case acceptance claimed.
+- Live image-change test found stale summary remaining beside new image. Added
+  silent result/box/chat invalidation; real retest passes: old surfaces hidden,
+  stale Export blocked, zero extra model requests. Four prerequisite medium
+  turns verified; 96.451s analysis. Final 1,620 tests pass / six explicit skips,
+  separate native Windows drag pass, Ruff/docs pass. Source App gracefully closed.
+- Previous 6be42cb push/PR CI 35985738657/35985746278 and secret scans
+  35985738789/35985746260 all pass. New history stage not yet pushed.
+- Details: docs/evidence/2026-09/regional-history-2026-09-24.md.
+
 ## 2026-09-24 Blank-ROI Mark defect reproduced; QA incomplete
 
 - Actual 9a27b61 EXE reproduced blank-ROI mouse pass-through; existing AI-region

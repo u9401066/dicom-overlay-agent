@@ -24,10 +24,11 @@ Use the [documentation index](docs/README.md) and [component ownership map](docs
 to find current guidance separately from archived evidence.
 
 Manual Mark now covers blank areas of the authorized image ROI, not only AI
-boxes. Native Windows drag checks pass; existing-region live QA was observed,
-but patched-source analysis timeouts leave new-region end-to-end QA unverified.
-Per-region conversational history is still incomplete. See the
-[regional interaction checkpoint](docs/evidence/2026-09/regional-interaction-2026-09-24.md).
+boxes. Actual source-App tests now cover manual-region two-turn inline QA,
+separate existing-marker QA, reviewer-confirmed report revision, history reopening
+and source-bound conversation export; all ten model turns bind to Astra medium.
+This is not yet a refreshed frozen release or the 100-case acceptance cohort.
+See the [regional history checkpoint](docs/evidence/2026-09/regional-history-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11
 

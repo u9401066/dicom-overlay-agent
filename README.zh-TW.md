@@ -20,10 +20,11 @@
 目前操作說明與歷史證據已分開，入口為[文件導覽](docs/README.md)與
 [App／harness／plugin 責任地圖](docs/architecture/components.md)。
 
-人工 Mark 已修正成可從已授權影像 ROI 的空白處起筆，不限於 AI 框內；原生
-Windows 拖曳測試通過。既有框已實機提問並讀到回答，但修正版初判兩次逾時，
-新增框的真實模型問答仍未完成驗證。每區多輪記憶／永久對話紀錄也尚未完整，
-見[區域互動測試紀錄](docs/evidence/2026-09/regional-interaction-2026-09-24.md)。
+人工 Mark 已可從已授權影像 ROI 的空白處起筆，不限於 AI 框內。真實 source App
+已跑通人工框兩輪面板續問、既有框獨立問答、人工確認後回寫、重新選框讀歷史與
+綁定原圖的對話匯出；10 個模型回合均核對為 Astra medium。區域答案不再 30 秒
+自動消失，換圖即失效。這不是新版封裝或 100 例驗收完成，見
+[區域歷史實機紀錄](docs/evidence/2026-09/regional-history-2026-09-24.md)。
 
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
 ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。

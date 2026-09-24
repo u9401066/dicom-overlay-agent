@@ -54,10 +54,17 @@ def export_desktop_review(
     output_root: Path,
     user_regions: list[RegionRect] | None = None,
     user_annotations: list[UserRegionAnnotation] | None = None,
+    regional_conversations: dict[str, object] | None = None,
     now: datetime | None = None,
 ) -> Path:
     """Write one self-contained, coordinate-auditable desktop review folder."""
     raw = base64.b64decode(image_base64, validate=True)
+    if (
+        regional_conversations is not None
+        and regional_conversations.get("source_image_sha256")
+        != hashlib.sha256(raw).hexdigest()
+    ):
+        raise ValueError("Regional conversation belongs to a different source image")
     captured_at = now or datetime.now(UTC)
     stamp = captured_at.strftime("%Y%m%d-%H%M%S-%f")
     case = f"desktop-{stamp}"
@@ -185,6 +192,13 @@ def export_desktop_review(
     payload["coordinate_audit"] = audit_path.name
     payload["crop_directory"] = crops_dir.name
     result_path = folder / "result.json"
+    if regional_conversations is not None:
+        conversation_path = folder / "regional-conversations.json"
+        conversation_path.write_text(
+            json.dumps(regional_conversations, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        payload["regional_conversations"] = conversation_path.name
     result_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

@@ -12,9 +12,11 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -860,6 +862,7 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
 
     proposal_accepted = pyqtSignal()
     proposal_dismissed = pyqtSignal()
+    followup_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -884,7 +887,15 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         self._title_label = QLabel("💬 AI 對話")
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self._title_label.setStyleSheet("color: white; padding-bottom: 4px;")
-        layout.addWidget(self._title_label)
+        title_row = QHBoxLayout()
+        title_row.addWidget(self._title_label, stretch=1)
+        hide_button = QPushButton("Hide")
+        hide_button.setToolTip(
+            "Hide this panel; regional history stays until the image changes"
+        )
+        hide_button.clicked.connect(self.hide)
+        title_row.addWidget(hide_button)
+        layout.addLayout(title_row)
 
         sep = QLabel("─" * 36)
         sep.setStyleSheet("color: #555;")
@@ -951,7 +962,43 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         action_layout.addWidget(self._apply_proposal_btn)
         self._proposal_actions.setVisible(False)
         layout.addWidget(self._proposal_actions)
+        self._history = QTextEdit()
+        self._history.setObjectName("regionalHistory")
+        self._history.setReadOnly(True)
+        self._history.setAcceptRichText(False)
+        self._history.setMaximumHeight(150)
+        self._history.setAccessibleName("This region's conversation history")
+        self._history.hide()
+        layout.addWidget(self._history)
+        self._followup = QWidget()
+        followup_layout = QHBoxLayout(self._followup)
+        followup_layout.setContentsMargins(0, 0, 0, 0)
+        self._followup_input = QLineEdit()
+        self._followup_input.setObjectName("regionalFollowupInput")
+        self._followup_input.setPlaceholderText("繼續詢問此區域…")
+        self._followup_input.setMaxLength(4000)
+        self._followup_input.returnPressed.connect(self._send_followup)
+        followup_layout.addWidget(self._followup_input)
+        self._followup_send = QPushButton("Send")
+        self._followup_send.setObjectName("regionalFollowupSend")
+        self._followup_send.clicked.connect(self._send_followup)
+        followup_layout.addWidget(self._followup_send)
+        self._followup.hide()
+        layout.addWidget(self._followup)
         protect_widget_from_capture(self)
+
+    def set_regional_history(self, text: str, *, enabled: bool) -> None:
+        self._followup_input.clear()
+        self._history.setPlainText(text)
+        self._history.setVisible(bool(text))
+        self._followup.setVisible(True)
+        self._followup.setEnabled(enabled)
+
+    def _send_followup(self) -> None:
+        question = self._followup_input.text().strip()
+        if question and self._followup.isEnabled() and not self._followup.isHidden():
+            self._followup_input.clear()
+            self.followup_requested.emit(question)
 
     def show_chat(
         self,
@@ -966,6 +1013,7 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         self.setVisible(True)
 
     def show_waiting(self, question: str) -> None:
+        self._followup.setEnabled(False)
         self._question_label.setText(f"Q: {question}")
         self._answer_label.setText("思考中…")
         self._set_proposal("")
@@ -991,6 +1039,10 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         self.proposal_dismissed.emit()
 
     def clear(self) -> None:
+        self._history.clear()
+        self._history.hide()
+        self._followup_input.clear()
+        self._followup.hide()
         self._question_label.setText("")
         self._answer_label.setText("")
         self._set_proposal("")
@@ -1041,6 +1093,7 @@ class OverlayWindow(QWidget):
         self._display_duration_sec = 30
         self._critical_persist = True
         self._current_severity = "normal"
+        self._regional_chat_persistent = False
         self._interaction_mode = "passive"
         self._content_rect: tuple[int, int, int, int] | None = None
         self._coordinate_frame: OverlayCoordinateFrame | None = None
@@ -1316,6 +1369,12 @@ class OverlayWindow(QWidget):
         self._content_rect = None
         self.hide()
 
+    def invalidate_review(self) -> None:
+        """Silently remove old-image results without triggering another analysis."""
+        self.clear_result()
+        self.hide_for_recapture()
+        self.set_interaction_mode("passive")
+
     def show_chat_waiting(self, question: str) -> None:
         """Show chat panel with 'thinking' placeholder."""
         self._chat_timer.stop()
@@ -1331,6 +1390,7 @@ class OverlayWindow(QWidget):
         answer: str,
         *,
         proposal_summary: str = "",
+        regional_history: str | None = None,
     ) -> None:
         """Show chat Q&A on overlay."""
         self.chat_panel.show_chat(
@@ -1338,12 +1398,15 @@ class OverlayWindow(QWidget):
             answer,
             proposal_summary=proposal_summary,
         )
+        self._regional_chat_persistent = regional_history is not None
+        if regional_history is not None:
+            self.chat_panel.set_regional_history(regional_history, enabled=True)
         protect_widget_from_capture(self.chat_panel)
         self.setWindowOpacity(1.0)
         self.show()
         protect_widget_from_capture(self)
         # A pending report update must stay available for an explicit decision.
-        if proposal_summary:
+        if proposal_summary or self._regional_chat_persistent:
             self._chat_timer.stop()
         else:
             self._chat_timer.start(self._display_duration_sec * 1000)
@@ -1352,13 +1415,18 @@ class OverlayWindow(QWidget):
         """Remove pending proposal controls after apply, dismiss, or image change."""
 
         self.chat_panel.clear_proposal()
-        if restart_timeout and self.chat_panel.isVisible():
+        if (
+            restart_timeout
+            and self.chat_panel.isVisible()
+            and not self._regional_chat_persistent
+        ):
             self._chat_timer.start(self._display_duration_sec * 1000)
 
     def clear_chat(self) -> None:
         """Dismiss only chat state, preserving the current report and boxes."""
 
         self._chat_timer.stop()
+        self._regional_chat_persistent = False
         self.chat_panel.clear()
 
     def _fade_out(self) -> None:

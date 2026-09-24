@@ -2,6 +2,10 @@
 
 Development evidence, not a clinical release or complete Canvas acceptance.
 
+Later work: [regional history and actual desktop QA](regional-history-2026-09-24.md).
+The failures and gaps below describe this earlier checkpoint; later evidence does
+not retroactively turn these attempts into successes.
+
 ## Reproduced defect and correction
 
 In the actual clean `9a27b61` Windows EXE, Mark at an unmarked point inside the

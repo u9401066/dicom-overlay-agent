@@ -8,8 +8,10 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import pytest
 from PIL import Image
 
+from dicom_overlay.application.regional_conversation import RegionalConversations
 from dicom_overlay.infrastructure.desktop_review_exporter import (
     export_desktop_review,
 )
@@ -24,6 +26,46 @@ from medical_image_harness.models import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def test_export_binds_complete_regional_history_to_original_pixels(tmp_path):
+    image = Image.new("RGB", (80, 40), "white")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode()
+    store = RegionalConversations()
+    store.bind(encoded)
+    thread = store.thread(RegionRect(0.1, 0.2, 0.3, 0.4), "f1")
+    store.append(thread, question="Synthetic first?", answer="Synthetic answer")
+    store.append(thread, question="Synthetic second?", answer="Another answer")
+    result = AnalysisResult(
+        modality=Modality.EKG,
+        summary="Synthetic",
+        severity=Severity.INFO,
+        findings=[],
+        checklist={},
+    )
+    path = export_desktop_review(
+        image_base64=encoded,
+        result=result,
+        output_root=tmp_path,
+        regional_conversations=store.export(),
+    )
+    exported = json.loads((path.parent / "result.json").read_text())
+    history = json.loads((path.parent / exported["regional_conversations"]).read_text())
+    assert history["source_image_sha256"] == exported["source_image"]["sha256"]
+    assert len(history["threads"][0]["turns"]) == 2
+    assert history["content_role"] == "review_conversation_not_verified_findings"
+    mismatched = store.export()
+    mismatched["source_image_sha256"] = "not-this-image"
+    with pytest.raises(ValueError, match="different source image"):
+        export_desktop_review(
+            image_base64=encoded,
+            result=result,
+            output_root=tmp_path / "mismatch",
+            regional_conversations=mismatched,
+        )
+    assert not (tmp_path / "mismatch").exists()
 
 
 def test_export_writes_original_coordinate_review_bundle(tmp_path: Path) -> None:

@@ -747,6 +747,59 @@ def test_chat_timeout_hides_only_chat_and_preserves_report(
     overlay.dismiss()
 
 
+def test_regional_history_persists_and_inline_followup_emits_only_when_ready(qt_app):
+    overlay = OverlayWindow()
+    questions = []
+    overlay.chat_panel.followup_requested.connect(questions.append)
+    overlay.show_chat_response("Question", "Answer", regional_history="Q1\nA1")
+    qt_app.processEvents()
+    assert not overlay._chat_timer.isActive()
+    assert overlay.chat_panel._history.toPlainText() == "Q1\nA1"
+    overlay.clear_chat_proposal(restart_timeout=True)
+    assert not overlay._chat_timer.isActive()
+    overlay.chat_panel._followup_input.setText("  Follow up  ")
+    overlay.chat_panel._followup_send.click()
+    assert questions == ["Follow up"]
+    overlay.show_chat_waiting("Follow up")
+    overlay.chat_panel._followup_input.setText("Do not double send")
+    overlay.chat_panel._followup_send.click()
+    assert questions == ["Follow up"]
+    assert overlay.chat_panel._history.toPlainText() == "Q1\nA1"
+    overlay.clear_chat()
+    assert not overlay.chat_panel._history.toPlainText()
+    assert overlay.chat_panel._followup.isHidden()
+    overlay.dismiss()
+
+
+def test_invalidated_image_hides_report_boxes_and_history_without_state_transition(
+    qt_app,
+):
+    overlay = OverlayWindow()
+    expired = []
+    overlay.display_expired.connect(lambda: expired.append(True))
+    overlay.show_result(
+        _result(),
+        [(10, 20, 30, 40, "warning", "Old", "f1")],
+        content_rect=(0, 0, 800, 400),
+    )
+    overlay._user_regions = [(0.1, 0.2, 0.3, 0.4)]
+    overlay.show_chat_response(
+        "Old question", "Old answer", regional_history="Old history"
+    )
+    overlay.set_interaction_mode("annotate")
+    overlay.invalidate_review()
+    qt_app.processEvents()
+    assert not overlay.isVisible()
+    assert not overlay.summary_panel.isVisible()
+    assert not overlay.chat_panel.isVisible()
+    assert overlay._highlights == [] and overlay.user_regions == []
+    assert overlay._content_rect is None
+    assert overlay._interaction_mode == "passive"
+    assert not overlay.chat_panel._history.toPlainText()
+    assert expired == []
+    overlay.close()
+
+
 def test_process_tab_exposes_interactive_writeback_receipt(
     qt_app: QApplication,
 ) -> None:

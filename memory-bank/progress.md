@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Actual region history, inline QA, report revision
+
+- Added image-bound history and source-bound explicit export; fresh image or
+  analysis clears scope, detached replies cannot append. Prompt context bounded
+  to six pairs / 12,000 characters without deleting full local completed history.
+- Actual source App: manual blank-area mark, two inline-linked questions,
+  separate existing AI-region QA, actual Apply and history reopening passed.
+  Ten original/regional model turns verified as Astra medium; source MAE 0.0.
+- Final 1,620 tests passed / six explicit skips, 71 targeted tests and native
+  Windows drag pass. Real stale-summary retest passes: old surfaces hidden,
+  stale export blocked, no extra inference. Four additional medium analysis
+  turns verified for this prerequisite replay. Both source Apps gracefully closed.
+- Frozen release, rejection flow, cross-DPI history identity, marker promotion,
+  cross-restart import and wider clinical acceptance remain open. Evidence:
+  docs/evidence/2026-09/regional-history-2026-09-24.md.
+
 ## 2026-09-24 Native Mark and regional QA checkpoint
 
 - Reproduced actual EXE blank-ROI hit-test failure; corrected ROI-only alpha

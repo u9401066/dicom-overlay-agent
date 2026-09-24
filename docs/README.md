@@ -13,6 +13,8 @@ The older sealed 121-case Astra-low cohort remains failed and immutable.
 See the [medium checkpoint](evidence/2026-09/astra-medium-2026-09-24.md).
 The [regional interaction checkpoint](evidence/2026-09/regional-interaction-2026-09-24.md)
 separates the corrected blank-ROI Mark hit testing from incomplete live QA/history.
+Its [history follow-up](evidence/2026-09/regional-history-2026-09-24.md) records actual
+manual two-turn QA, separate AI-region QA, Apply and history-export tests.
 
 The candidate runtime remains OpenClaw 2026.9.3 / Node 24.18.0. Adoption of 2026.9.6,
 complete canonical evidence-ledger wiring, diverse legacy/vendor ECG acceptance,

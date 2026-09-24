@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import base64
+import json
+
+import pytest
+
+from dicom_overlay.application.regional_conversation import RegionalConversations
+from dicom_overlay.application.review_chat import build_region_review_prompt
+from medical_image_harness.models import RegionRect
+
+
+def _image(value: bytes = b"synthetic image identity") -> str:
+    return base64.b64encode(value).decode()
+
+
+def test_threads_are_isolated_by_region_and_finding_identity():
+    store = RegionalConversations()
+    store.bind(_image())
+    a = store.thread(RegionRect(0.1, 0.2, 0.3, 0.4), "f1")
+    store.append(a, question="Synthetic question", answer="Synthetic answer")
+    assert store.thread(a.region, "f1") is a
+    assert not store.thread(a.region, "f2").turns
+    assert not store.thread(a.region).turns
+    assert not store.thread(RegionRect(0.2, 0.2, 0.3, 0.4), "f1").turns
+    assert "Synthetic answer" in a.transcript()
+    assert json.loads(a.context())["turns"][0]["question"] == "Synthetic question"
+
+
+@pytest.mark.parametrize("same_pixels", [False, True])
+def test_new_image_or_new_analysis_rejects_late_thread_results(same_pixels):
+    store = RegionalConversations()
+    store.bind(_image())
+    old = store.thread(RegionRect(0, 0, 1, 1))
+    store.append(old, question="Old question", answer="Old answer")
+    if same_pixels:
+        store.clear()  # New analysis is a new scope even if pixels are identical.
+    store.bind(_image() if same_pixels else _image(b"new image"))
+    assert not store.append(old, question="Late", answer="Must not leak")
+    assert store.export()["threads"] == []
+
+
+def test_report_revision_without_image_change_keeps_thread():
+    store = RegionalConversations()
+    store.bind(_image())
+    thread = store.thread(RegionRect(0, 0, 1, 1))
+    store.append(thread, question="First", answer="First answer")
+    store.bind(_image())
+    assert store.thread(thread.region) is thread
+    store.append(thread, question="Second", answer="Second answer")
+    payload = store.export()
+    assert len(payload["threads"][0]["turns"]) == 2
+    payload["threads"][0]["turns"].clear()
+    assert len(thread.turns) == 2  # Export is detached from live state.
+
+
+def test_bounded_model_history_preserves_full_export_and_visible_history():
+    store = RegionalConversations()
+    store.bind(_image())
+    thread = store.thread(RegionRect(0, 0, 1, 1))
+    for i in range(10):
+        store.append(thread, question=f"Q{i}" + "q" * 2500, answer=f"A{i}" + "a" * 9000)
+    context = json.loads(thread.context())
+    assert context["omitted_turns"] == 9
+    assert context["turns"][0]["question"].startswith("Q9")
+    assert len(thread.context()) < 12_100
+    assert len(store.export()["threads"][0]["turns"]) == 10
+    assert "A0" in thread.transcript()
+    prompt = build_region_review_prompt(
+        user_question="Follow up",
+        prior_context="",
+        selected_region=thread.region,
+        selected_finding=None,
+        regional_history=thread.context(),
+    )
+    assert "untrusted context" in prompt and "approval of a report change" in prompt
+    assert "Q9" in prompt and "Q0" not in prompt
+
+
+@pytest.mark.parametrize(
+    "values", [(-0.1, 0, 1, 1), (0, 0, 0, 1), (0, 0, 2, 1), (float("nan"), 0, 1, 1)]
+)
+def test_rejects_invalid_region(values):
+    store = RegionalConversations()
+    store.bind(_image())
+    with pytest.raises(ValueError):
+        store.thread(RegionRect(*values))
+
+
+def test_no_thread_without_current_image():
+    with pytest.raises(ValueError, match="No current image"):
+        RegionalConversations().thread(RegionRect(0, 0, 1, 1))

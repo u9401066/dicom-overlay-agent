@@ -1,0 +1,121 @@
+"""Image-scoped regional conversation state, owned by the desktop UI thread.
+
+This is review context, not scientific evidence or permission to mutate findings.
+Only explicit desktop export persists it; a new analysis resets the scope.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import math
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from medical_image_harness.models import RegionRect
+
+
+@dataclass(frozen=True)
+class RegionalTurn:
+    question: str
+    answer: str
+    created_at: str
+    proposal: str = ""
+
+
+@dataclass
+class RegionalThread:
+    region: RegionRect
+    finding_id: str
+    turns: list[RegionalTurn] = field(default_factory=list)
+
+    def context(self) -> str:
+        """Bound context cost without deleting the full visible/export history."""
+        selected: list[dict[str, str]] = []
+        remaining = 12_000
+        for turn in reversed(self.turns[-6:]):
+            pair = {"question": turn.question[:2_000], "answer": turn.answer[:8_000]}
+            size = len(json.dumps(pair, ensure_ascii=False))
+            if size > remaining:
+                break
+            selected.insert(0, pair)
+            remaining -= size
+        return json.dumps(
+            {"omitted_turns": len(self.turns) - len(selected), "turns": selected},
+            ensure_ascii=False,
+        )
+
+    def transcript(self) -> str:
+        return "\n\n".join(
+            f"{index}. Q: {turn.question}\nA: {turn.answer}"
+            + (
+                f"\nSuggested change (not confirmation): {turn.proposal}"
+                if turn.proposal
+                else ""
+            )
+            for index, turn in enumerate(self.turns, 1)
+        )
+
+
+class RegionalConversations:
+    def __init__(self) -> None:
+        self.image_sha256 = ""
+        self._threads: dict[tuple[object, ...], RegionalThread] = {}
+
+    def clear(self) -> None:
+        self.image_sha256 = ""
+        self._threads.clear()
+
+    def bind(self, image_base64: str) -> None:
+        digest = hashlib.sha256(
+            base64.b64decode(image_base64, validate=True)
+        ).hexdigest()
+        if digest != self.image_sha256:
+            self.clear()
+            self.image_sha256 = digest
+
+    def thread(self, region: RegionRect, finding_id: str = "") -> RegionalThread:
+        values = (region.x, region.y, region.w, region.h)
+        if not self.image_sha256:
+            raise ValueError("No current image for regional conversation")
+        if not all(math.isfinite(value) for value in values) or not (
+            0 <= region.x < region.x + region.w <= 1 + 1e-9
+            and 0 <= region.y < region.y + region.h <= 1 + 1e-9
+        ):
+            raise ValueError("Conversation region must be inside the original ROI")
+        key = (finding_id, *(round(value, 6) for value in values))
+        return self._threads.setdefault(key, RegionalThread(region, finding_id))
+
+    def append(
+        self, thread: RegionalThread, *, question: str, answer: str, proposal: str = ""
+    ) -> bool:
+        # Detached objects from an invalidated image must never enter new history.
+        if not any(current is thread for current in self._threads.values()):
+            return False
+        thread.turns.append(
+            RegionalTurn(question, answer, datetime.now(UTC).isoformat(), proposal)
+        )
+        return True
+
+    def export(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "source_image_sha256": self.image_sha256,
+            "coordinate_space": "normalized_original_roi",
+            "content_role": "review_conversation_not_verified_findings",
+            "threads": [
+                {
+                    "finding_id": thread.finding_id,
+                    "region": {
+                        name: getattr(thread.region, name)
+                        for name in ("x", "y", "w", "h")
+                    },
+                    "turns": [asdict(turn) for turn in thread.turns],
+                }
+                for thread in self._threads.values()
+                if thread.turns
+            ],
+        }
