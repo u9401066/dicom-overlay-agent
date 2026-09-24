@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING, cast
 
 import structlog
-from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen, QResizeEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -1458,11 +1458,25 @@ class OverlayWindow(QWidget):
     def paintEvent(self, a0: object) -> None:
         """Draw region highlights with labels (spec §3.4)."""
         del a0
-        if not self._highlights and self._draft_rect is None:
+        marking_content = (
+            self._interaction_mode == "annotate" and self._content_rect is not None
+        )
+        if not self._highlights and self._draft_rect is None and not marking_content:
             return
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if marking_content:
+            # Windows layered-window hit testing passes alpha-zero pixels to
+            # the window underneath even without WindowTransparentForInput.
+            # Give the *captured ROI*, not just existing AI boxes, a nonzero
+            # input surface. Outside it stays transparent; passive mode still
+            # passes every click through. This does not expand capture scope.
+            assert self._content_rect is not None
+            content = QRect(*self._content_rect).intersected(self.rect())
+            if not content.isEmpty():
+                painter.fillRect(content, QColor(0, 0, 0, 1))
 
         for x, y, w, h, severity, label, _finding_id in self._highlights:
             color = SEVERITY_COLORS.get(severity, SEVERITY_COLORS["info"])

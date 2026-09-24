@@ -339,13 +339,17 @@ def test_report_title_tracks_current_inventory_without_changing_result(
     result.modality = Modality.CXR
     profile = get_active_registry().resolve("CXR")
     panel.update_result(result)
-    assert panel._title_label.text() == f"{profile.icon} {profile.resolved_display_name()} Analysis"
+    assert (
+        panel._title_label.text()
+        == f"{profile.icon} {profile.resolved_display_name()} Analysis"
+    )
     panel.close()
 
 
 @pytest.mark.parametrize("layout", [None, [], {"leads": [None]}])
 def test_report_title_tolerates_invalid_inventory_without_claiming_coverage(
-    qt_app: QApplication, layout: object,
+    qt_app: QApplication,
+    layout: object,
 ) -> None:
     result = _result()
     result.layout = layout  # type: ignore[assignment]
@@ -541,6 +545,73 @@ def test_overlay_maps_drawn_region_back_to_original_roi(qt_app: QApplication) ->
     normalized = overlay._normalized_rect((300, 150, 200, 100))
 
     assert normalized == pytest.approx((0.25, 0.25, 0.25, 0.25))
+    overlay.close()
+
+
+@pytest.mark.parametrize("mode", ["passive", "inspect", "annotate"])
+def test_mark_mode_paints_input_surface_without_any_ai_boxes(
+    qt_app: QApplication,
+    mode: str,
+) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(300, 200)
+    overlay._content_rect = (40, 30, 200, 120)
+    overlay.set_interaction_mode(mode)
+    overlay.show()
+    qt_app.processEvents()
+    pixels = overlay.grab().toImage()
+    ratio = pixels.devicePixelRatio()
+
+    assert pixels.pixelColor(int(100 * ratio), int(80 * ratio)).alpha() == (
+        1 if mode == "annotate" else 0
+    )
+    assert pixels.pixelColor(int(10 * ratio), int(10 * ratio)).alpha() == 0
+    assert overlay._highlights == []
+    assert overlay.user_regions == []
+    overlay.close()
+
+
+def test_mark_input_surface_clears_when_leaving_mark_mode(qt_app: QApplication) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(300, 200)
+    overlay._content_rect = (40, 30, 200, 120)
+    overlay.set_interaction_mode("annotate")
+    overlay.show()
+    qt_app.processEvents()
+    overlay.set_interaction_mode("passive")
+    qt_app.processEvents()
+    pixels = overlay.grab().toImage()
+    ratio = pixels.devicePixelRatio()
+
+    assert pixels.pixelColor(int(100 * ratio), int(80 * ratio)).alpha() == 0
+    assert overlay.windowFlags() & Qt.WindowType.WindowTransparentForInput
+    overlay.close()
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected"),
+    [
+        ((80, 50), (160, 100), (0.25, 0.25, 0.4, 50 / 120)),
+        ((160, 100), (80, 50), (0.25, 0.25, 0.4, 50 / 120)),
+        ((80, 50), (280, 180), (0.25, 0.25, 0.75, 0.75)),
+        ((10, 10), (160, 100), None),
+        ((80, 50), (80, 50), None),
+    ],
+)
+def test_mark_blank_roi_drag_edges(qt_app, start, end, expected) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(300, 200)
+    overlay._content_rect = (30, 20, 200, 120)
+    created = []
+    overlay.user_region_created.connect(lambda *values: created.append(values))
+    overlay.set_interaction_mode("annotate")
+    overlay.show()
+    qt_app.processEvents()
+    QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=QPoint(*start))
+    QTest.mouseMove(overlay, QPoint(*end))
+    QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=QPoint(*end))
+    assert created == ([] if expected is None else [pytest.approx(expected)])
+    assert overlay.user_regions == created
     overlay.close()
 
 

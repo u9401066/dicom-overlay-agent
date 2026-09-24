@@ -23,6 +23,12 @@ and [verified shared-engine package / low replay](docs/evidence/2026-09/shared-e
 Use the [documentation index](docs/README.md) and [component ownership map](docs/architecture/components.md)
 to find current guidance separately from archived evidence.
 
+Manual Mark now covers blank areas of the authorized image ROI, not only AI
+boxes. Native Windows drag checks pass; existing-region live QA was observed,
+but patched-source analysis timeouts leave new-region end-to-end QA unverified.
+Per-region conversational history is still incomplete. See the
+[regional interaction checkpoint](docs/evidence/2026-09/regional-interaction-2026-09-24.md).
+
 ## Historical desktop baseline — 2026-09-11
 
 This sealed baseline used **GPT-6 Astra low**, not the new medium target.

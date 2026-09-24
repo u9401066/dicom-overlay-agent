@@ -1169,6 +1169,7 @@ def main() -> None:
                 summary_panel=overlay.summary_panel,
                 control_bar=control_bar,
                 overlay_layer=overlay,
+                chat_panel=overlay.chat_panel,
             )
         except Exception:
             logger.exception("Review exported, but app widget capture failed")

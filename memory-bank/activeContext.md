@@ -1,5 +1,20 @@
 # Active Context
 
+## 2026-09-24 Blank-ROI Mark defect reproduced; QA incomplete
+
+- Actual 9a27b61 EXE reproduced blank-ROI mouse pass-through; existing AI-region
+  QA answered through the real dialog/ChatPanel (second answer observed).
+- Mark now paints an alpha-1 input surface only inside the authorized ROI;
+  passive mode remains click-through. Native Windows physical drag smoke passes
+  at 150% after fixture DPI correction; 38 targeted tests and Ruff pass.
+- Patched source App's two actual GUI analyses both timed out at the coarse 60s
+  deadline. Keep both failures; new-region end-to-end model QA is NOT passed.
+- Export now renders visible owned ChatPanel. Multi-turn regional context,
+  persistent history, actual new-region QA and indeterminate NORMAL heading
+  remain open. See docs/evidence/2026-09/regional-interaction-2026-09-24.md.
+- Current goal removes separate compression/runtime-upgrade/reference-resource
+  tasks; prioritize arbitrary-viewer ROI capture and clinical Canvas interaction.
+
 ## 2026-09-24 Medium EXE verified, real GUI replay, documentation archive
 
 - Clean 9a27b61 source: 1,594 passed / five explicit skips, Ruff pass; push/PR CI

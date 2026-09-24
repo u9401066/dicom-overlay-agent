@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Native Mark and regional QA checkpoint
+
+- Reproduced actual EXE blank-ROI hit-test failure; corrected ROI-only alpha
+  surface and added reverse/out-of-bounds/zero-area edge coverage.
+- 38 targeted checks plus one opt-in physical Windows drag smoke pass. Actual
+  existing-region QA observed; two patched-source analysis timeouts retained.
+- New-region real-model QA, per-region conversational memory and persistent
+  history remain incomplete. Visible ChatPanel can now be included in Export.
+- Details: docs/evidence/2026-09/regional-interaction-2026-09-24.md.
+- Final local regression: 1,552 unit/smoke + 55 integration = 1,607 passed;
+  six explicit default skips, native Windows input separately passed twice.
+  Ruff and documentation-link checks pass.
+
 ## 2026-09-24 Medium frozen desktop checkpoint and document organization
 
 - Actual 9a27b61 EXE / Gateway / OAuth / GUI replay complete: four Astra medium

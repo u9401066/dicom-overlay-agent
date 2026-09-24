@@ -23,6 +23,7 @@ def test_capture_only_renders_explicit_visible_app_widgets(qtbot, tmp_path):
         summary_panel=panel,
         control_bar=panel,
         overlay_layer=hidden,
+        chat_panel=panel,
     )
 
     receipt = json.loads((tmp_path / "ui-capture.json").read_text())
@@ -30,6 +31,8 @@ def test_capture_only_renders_explicit_visible_app_widgets(qtbot, tmp_path):
     assert receipt["capture_exclusion_disabled"] is False
     assert receipt["widgets"][2]["status"] == "not_visible"
     assert not (tmp_path / "overlay-layer.png").exists()
+    assert receipt["widgets"][3]["status"] == "rendered"
+    assert not QImage(str(tmp_path / "chat-panel.png")).isNull()
     rendered = QImage(str(tmp_path / "summary-panel.png"))
     assert not rendered.isNull()
     assert rendered.pixelColor(4, 4).name() == "#123456"
@@ -50,4 +53,5 @@ def test_capture_does_not_claim_success_when_destination_missing(qtbot, tmp_path
             summary_panel=panel,
             control_bar=panel,
             overlay_layer=panel,
+            chat_panel=panel,
         )
