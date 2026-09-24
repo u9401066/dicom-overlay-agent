@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — versioned scientific model draft
+
+- Added schema-derived model prompt/strict ledger decoder; findings select exact
+  host source-evidence geometry by ID, never self-assert verified boxes/provenance.
+  Original UTF8 JSON body retained; malformed/unsupported graphs fail closed.
+  Legacy Gateway parser rejects scientific protocol misrouting without extra retry.
+-82new synthetic cases; decoder/assembly/ownership145pass. Full1902pass7skip206.80s;
+  four doc-link checks plus Ruff/format/focusedmypy pass. Initial fixture/name/huge
+  parameter-ID test errors corrected, no tests bypassed. No runtime dependency added.
+- New protocol remains inactive pending actual capture/native receipts/host journal
+  and transport wiring. Public scientific owner/schema pin unchanged, no old result
+  promoted to acceptance; latest3029dfbEXE does not include this code.
+- Original actualGUI batch46/120 independently verified at~16:20UTC,74pending,
+  zero invalid/technical failure receipts; gold unopened. Same live80364process.
+  Previous b6baa1d CI and secret scans all passed; user MAIN dirt preserved.
+
 ## 2026-09-25 Taipei / September 24 UTC — local interaction package refreshed
 
 - Built clean DIRECT3029dfb into separate dist-interaction-3029dfb-upx, preserving

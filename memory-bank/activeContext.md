@@ -1,5 +1,38 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — scientific model-led draft decoder
+
+- In this isolated candidate only: infrastructure/scientific_draft.py now derives
+  a versioned request schema/prompt from the pinned public claim definitions and
+  decodes atomic observations plus summary/checklist/finding references. Model
+  bbox_evidence_ids select exact host-validated source geometry; model provenance,
+  verified flags, hashes, workflow events and invented evidence records forbidden.
+- Decoder retains exact supplied UTF8 JSON body bytes/hash, rejects duplicate keys,
+  invalid encodings, nonfinite/oversized/deep input, missing axes/references and
+  unsupported retained claims. Non-diagnostic quality cannot produce pathology
+  findings or assessed clinical axes. Cached schemas only, no evidence/result cache.
+  Neither model text nor schema validation is clinical truth or source attestation.
+- Actual OpenClawClient legacy parser now rejects draft_version explicitly rather
+  than dropping scientific fields. Three actual retry-wrapper tests verify no
+  extra model request on that routing error. No default inference/skill/schema
+  activation, subscription change or public contract/submodule/dependency change.
+-82new synthetic tests; combined decoder/assembly/public ownership145pass2.87s;
+  Ruff/format/focusedmypy pass. Full1902pass7skip206.80s, session51306terminal0.
+  Initial test-authoring failures: reservedfixture request; then huge auto raw-byte
+  parameter IDs caused2setup errors (116passes136.16s). Short hash IDs and one schema
+  per fixture fix collection/setup; no exclusion or production guard relaxed.
+- Four docs-link checks pass. docs/architecture/scientific-model-draft.md records
+  protocol ownership/limits/use. NEXT actual transport raw-body capture, host run
+  journal, native receipt catalogue adapter and capture manifest before desktop
+  wiring. Do not invent old observations/events or add a posthoc model read just
+  to populate a ledger. Preserve live cohort until it completes/seals.
+- ORIGINAL realGUI80364 re-polled live; independent audit at~16:20UTC46/120,
+  74pending,zero invalid/technical failures. Goldunopened, frozen7eba45d remains.
+  App3948/Viewer7832/Gateway26484 and original driver context unchanged.
+- Previous b6baa1d both CI36024581744/36024573731 and both secret scans pass.
+  Latest localEXE is still DIRECT3029dfb, NOT this scientific candidate. PR20
+  remains draft stacked on PR17; no main merge/binary publication this phase.
+
 ## 2026-09-25 Taipei / September 24 UTC — refreshed local EXE, live batch continues
 
 - Previous candidate42dd4efa368bd07f183bdd0422a450f564ce848e is clean/pushed;

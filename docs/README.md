@@ -51,6 +51,7 @@ Source branches/PRs are development checkpoints, not approved medical releases.
 | Maintain clinical YAML and generated SQLite | [Clinical knowledge governance](../clinical_knowledge/README.md) |
 | Review the complete ECG reading sequence and its open integration gaps | [EKG human/agent workflow](clinical/ekg-reading-workflow.md) |
 | Assemble source-bound scientific drafts (isolated candidate; not desktop-wired) | [Host evidence assembly](architecture/host-evidence-assembly.md) |
+| Decode model-led observations without model-owned provenance (inactive protocol) | [Scientific model draft](architecture/scientific-model-draft.md) |
 | Interpret dataset metrics | [Cohorts and denominators](evaluation/cohorts.md) |
 | Audit privacy, licensing and contributors | [Security](../SECURITY.md), [notices](../THIRD_PARTY_NOTICES.md), [contributing](../CONTRIBUTING.md) |
 

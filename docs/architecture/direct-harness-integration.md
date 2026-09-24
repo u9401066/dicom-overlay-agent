@@ -40,8 +40,10 @@ relabeled as validated canonical clinical contracts.
 
 An isolated [host assembly boundary](host-evidence-assembly.md) now validates
 explicit host bytes, source/evidence bindings and the public contract without
-inventing missing observations. The model-led observation ledger, actual host
-journal/receipt adapter and desktop wiring remain implementation work.
+inventing missing observations. The [scientific draft protocol](scientific-model-draft.md)
+adds a matching prompt/schema and decoder that retains model-led observations while
+resolving geometry from host evidence IDs. It is not activated in desktop inference;
+actual transport capture, host journal/receipt adapter and desktop wiring remain work.
 They must preserve raw predictions, exact ROI/crop hashes, native receipt bindings,
 the user's assessment scope, and incomplete-input limitations. Neither filling
 default placeholders nor replaying current guardrails over old results can close
@@ -180,6 +182,13 @@ No public binary release is implied. The later source-only partial-ECG heading
 fix is not present in this preserved 128117b executable.
 
 ## Current interaction package
+
+The [3029dfb refresh](../evidence/2026-09/interaction-package-refresh-2026-09-24.md)
+is now the newest preserved local package, including the later projection/picker/
+ROI-preview/publication fixes. Its 60 bundled App modules match the exact source;
+general verification, 20 frozen smoke tests and byte-verified ZIP transfer pass.
+The following 6e6734e paragraph records the older checkpoint, not current native
+acceptance. Neither package contains the isolated scientific draft/assembly work.
 
 Clean source `6e6734eb33b3d6331ccf0f82476a8c5b97bfe44b` now has its own local
 verified bundle, including explicit window selection, ROI-wide Mark, retained

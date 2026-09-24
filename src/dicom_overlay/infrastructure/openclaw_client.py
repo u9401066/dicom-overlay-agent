@@ -2000,6 +2000,12 @@ class OpenClawClient(VisionAnalyzerService):
     ) -> AnalysisResult:
         payload = response.get("payload", response)
 
+        # A versioned scientific draft needs the independently collected host
+        # evidence catalogue. Never silently discard its ledger in the legacy
+        # parser, or spend another model turn retrying a protocol-routing error.
+        if isinstance(payload, dict) and "draft_version" in payload:
+            raise ValueError("scientific_draft_requires_host_evidence_decoder")
+
         findings = []
         parse_warnings: list[str] = []
         parse_trace: list[dict[str, object]] = []

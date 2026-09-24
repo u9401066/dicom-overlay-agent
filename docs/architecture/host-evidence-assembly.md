@@ -54,17 +54,22 @@ localization rather than banning every spatial tool result.
 - `verified` geometry is source/receipt binding, not proof of medical truth.
   Public-contract validity is neither clinical accuracy nor specialist approval.
 
-The existing Gateway parser still produces the 16-key App draft and does not
+The default Gateway parser still produces the 16-key App draft and does not
 populate the atomic observation ledger. A regression invokes that actual parser
 with synthetic input and confirms assembly rejects it rather than inventing the
 missing ledger. The desktop entrypoint does **not** call this assembler yet.
+The separate [scientific model draft protocol](scientific-model-draft.md) now
+provides a prompt/schema and strict ledger decoder; the legacy parser rejects
+that version marker instead of dropping its observations. This does not activate
+the new protocol or supply the still-missing host journal/native receipt adapters.
 
 ## Required next integration, in order
 
-1. Extend the model-led draft protocol and decoder together with its prompt/skill/
-   schema tests. Require atomic observations, claim type, assessability, evidence
-   references and summary/checklist/finding links. Host provenance stays outside
-   model authority; preserve original response bytes/IDs for audit.
+1. Wire the new model-led draft protocol/decoder into actual instrumented requests,
+   with the matching prompt/schema tests and existing public skill invariants.
+   Atomic observations, claim type, assessability, evidence and summary/checklist/
+   finding links are now represented. Keep host provenance outside model authority;
+   preserve original response bodies and request/run IDs at the transport boundary.
 2. Instrument actual intake, QC, blind observation, optional independent evidence,
    reconciliation/second look, validation and review availability. Record stages
    where they happen; do not reclassify an old coarse/final trace after execution.
