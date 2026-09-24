@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — executed scientific first stages
+
+- Source intake/QC/blind adapter now calls actual client/journal/strict decoder.
+  Trusted ROI/deid, partial study and non-localizing source evidence; no second
+  request for non_diagnostic QC, no default App or canonical export activation.
+  Tool-event boolean rejects observed tools in QC/blind without retaining payload;
+  not a remote tool policy/opaque-provider attestation. CT screenshot limits checked.
+-32new tests; combined150pass1.88s. Focusedmypy/Ruff/format/docs/stagedgitleaks pass;
+  full2136pass7skip208.94s,90681terminal0. README/index/architecture/Memory updated,
+  no package/dependency change. Separate QC increases readable-case paid turns;
+  no overall latency/cost/accuracy improvement claimed.
+- Independent actualGUI audit111/120verified,9pending,zero invalid/technical failure,
+  original80364live, gold unopened. Previous812d1c9 CI/secrets all green.
+  Localization/reconciliation/independent evidence/full assembly/review/App remain
+  required, along with real candidate GUI/EXE/DPI and clinical scoring.
+
 ## 2026-09-25 Taipei / September 24 UTC — Gateway stage request connection
 
 - Added opt-in original-output image API through existing serialized public Gateway

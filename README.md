@@ -56,6 +56,10 @@ It is not yet desktop-wired and does not retroactively certify prior model runs.
 The opt-in [image evidence request API](docs/architecture/gateway-evidence-capture.md)
 now connects Gateway requests to original output receipts, without the legacy
 parser or automatic paid parse retries. Actual staged desktop acceptance is pending.
+An [executable stage adapter](docs/architecture/scientific-image-session.md) now
+runs intake, QC and blind reading; non-diagnostic inputs make no blind-read request.
+This remains an intermediate draft, without completed localization/reconciliation
+or default desktop activation.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

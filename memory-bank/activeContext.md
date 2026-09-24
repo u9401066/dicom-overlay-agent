@@ -1,5 +1,37 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — executable intake/QC/blind adapter
+
+- ScientificImageSession now performs actual source PNG decoding/intake, a real
+  public Gateway QC request and a separate blind request through original-output
+  capture, strict scientific decoding and ExecutionJournal. Only synthetic Gateway
+  replies tested so far; not active desktop/model acceptance or completed pipeline.
+- Host public provenance/study/source-frame evidence bind exact immutable ROI;
+  complete=False, no clinical label or bbox fabricated. Non_diagnostic QC skips
+  blind with zero second request. Invalid QC/draft, scope/QC upgrades, fake geometry,
+  CT screenshot diagnostic/high-confidence claims, cancellation and reruns fail.
+- GatewayTurnEvidence adds tool_event_seen boolean for any matching agent/tool
+  event (including unknown-tool start). QC/blind reject observed tools without
+  retaining arbitrary tool name/args/output. This is after-observation rejection,
+  not remote execution prevention or proof about unreported provider behavior.
+-32new synthetic tests; adapter/collector/request/journal150pass1.88s. Focusedmypy/
+  Ruff/format/docs/stagedgitleaks pass. Full2136pass7skip208.94s,90681terminal0. First typing
+  check flagged contextual generic union and mixed tuple inference; fixed without
+  runtime policy changes. No local scientific type duplicate or dependency added.
+- Read-only snapshots/copies preserve source and replies; failed decoded output
+  retained before parsing. Non-returned transport failure remains client latest
+  snapshot and must be saved before any next send. No automatic disk export.
+  model_used=openclaw-unverified intentionally does not claim configured identity.
+  Readable images add an independent QC paid turn; latency/cost may increase.
+  Non_diagnostic short circuit is request accounting, not an overall speed claim.
+- READMEboth/architecture/index updated. Current code ends at blind intermediate
+  draft; canonical full assembly still rejects it. Next: actual localization/
+  optional independent evidence, reconciliation/targeted revisit, full validation/
+  review publication and App wiring. Do not activate incomplete path as final report.
+- Independent batch111/120verified,9pending,zero invalid/technical failure;
+  original80364live, goldunopened. Previous812d1c9 CI36038426402/36038420472 and
+  secrets36038426541/36038420635 allSUCCESS. Live source/config/helpers frozen.
+
 ## 2026-09-25 Taipei / September 24 UTC — original-output image request API
 
 - OpenClawClient.request_image_evidence now sends a fresh instrumented stage via

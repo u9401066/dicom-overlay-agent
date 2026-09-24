@@ -72,6 +72,9 @@ claims, establish model usage identity, or assemble a canonical result. The
 the native audit/source adapter must independently validate any tool output. The
 default desktop has not activated this API. Real tool-event fidelity, staged
 prompts, trusted intake/scope and complete App wiring remain open.
+The [scientific image session](scientific-image-session.md) now connects real
+intake/QC/blind operations to this API; it is an intermediate, unassembled draft
+path and does not activate the default App.
 
 ## Accepted projection and identity
 

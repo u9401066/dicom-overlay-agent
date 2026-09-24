@@ -45,6 +45,9 @@
 另新增[影像證據請求介面](docs/architecture/gateway-evidence-capture.md)，將 Gateway
 請求直接接到原始回覆紀錄，不經舊解析器，也不因格式錯誤自動重送付費請求。
 完整分階段判讀的桌面接線與實機驗收仍待完成。
+目前[可執行的階段介面](docs/architecture/scientific-image-session.md)已串起原圖登錄、
+品質檢查與盲讀；不可判讀時不再送盲讀請求。結果仍是中間稿，定位、整合與桌面
+啟用尚未完成，不會冒充完整判讀。
 
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的

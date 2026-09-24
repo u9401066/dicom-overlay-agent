@@ -35,6 +35,7 @@ class GatewayTurnEvidence:
     model_text_sha256: str
     model_text_bytes: bytes | None = field(repr=False)
     native_tools: tuple[NativeToolText, ...]
+    tool_event_seen: bool = False
 
     def require_model_text(self) -> bytes:
         if self.failure or not self.terminal_seen or self.model_text_bytes is None:
@@ -81,6 +82,7 @@ class GatewayEvidenceCollector:
         self._failure = ""
         self._model: bytes | None = None
         self._tools: dict[str, NativeToolText] = {}
+        self._tool_event_seen = False
         self._bytes = 0
 
     def snapshot(self) -> GatewayTurnEvidence:
@@ -93,6 +95,7 @@ class GatewayEvidenceCollector:
             sha256(self._model).hexdigest() if self._model is not None else "",
             self._model,
             tuple(self._tools.values()),
+            self._tool_event_seen,
         )
 
     def _fail(self, category: str) -> None:
@@ -194,6 +197,9 @@ class GatewayEvidenceCollector:
                     return
                 self._finish(self._text(message))
         elif frame.get("event") == "agent" and payload.get("stream") == "tool":
+            # A stage can fail closed on any observed tool event without keeping
+            # arbitrary tool names, arguments or outputs in its evidence receipt.
+            self._tool_event_seen = True
             self._tool(payload.get("data"))
 
     def _finish(self, model: bytes | None) -> None:

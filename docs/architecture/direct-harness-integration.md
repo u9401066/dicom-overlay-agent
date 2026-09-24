@@ -45,7 +45,9 @@ adds a matching prompt/schema and decoder that retains model-led observations wh
 resolving geometry from host evidence IDs. It is not activated in desktop inference;
 the [host execution journal](execution-journal.md) now records actual callbacks,
 and the opt-in image request API returns original visible output under the send
-lock. Actual clinical stage operations and desktop wiring remain work. The
+lock. Remaining clinical stage operations and desktop wiring remain work. The
+first [executable stage adapter](scientific-image-session.md) now runs intake,
+QC and blind reading; reconciliation, localization and publication remain open. The
 [native source adapter](native-source-evidence.md) additionally verifies exact
 tool receipts and App crop bytes. The opt-in
 [Gateway collector](gateway-evidence-capture.md) preserves visible text at the
