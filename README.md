@@ -7,12 +7,28 @@
 🌐 [繁體中文](README.zh-TW.md)
 
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
-(published and browser-verified on September 10; development evidence, not a clinical release).
+(public development evidence, not a clinical release).
 
-## Development evidence — 2026-09-11 (not a release)
+## Current development checkpoint — 2026-09-24
 
-The active desktop acceptance target is **GPT-6 Astra low**, selected through
-Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
+The current target is **GPT-6 Astra medium** on the separate
+`agent/direct-harness-models-20260910` development branch, not the App on main.
+Real source-App checks cover blank-ROI Mark, two-turn regional QA, separate
+AI-marker QA, reviewer-confirmed revision and history reopening. The `bd8f303`
+interaction EXE passes package verification and 20 frozen smoke checks.
+Later source `ebbe2a5` preserves history after a confirmed manual ADD and rejects
+stale writeback UI events; it is not included in that EXE or native-retested yet.
+
+Use the [ROI and regional QA guide](https://u9401066.github.io/dicom-overlay-agent/docs.html#regional-qa)
+and [pinned checkpoint evidence](https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md).
+Browser end-to-end, cross-DPI and >=100 current-model clinical acceptance remain
+open. This website/documentation update does not merge candidate App code into
+main or publish a binary release.
+
+## Historical development evidence — 2026-09-11 (not a release)
+
+The desktop acceptance target at that checkpoint was **GPT-6 Astra low**, selected
+through Settings as `openai-codex-astra`. Luna was no longer that cohort's target.
 The sealed real-desktop baseline contains **121 distinct primary cases**, with
 six pilots excluded and six technical failures retained. Preliminary automated
 scoring **failed acceptance**: strict match 0/46 complete references; urgent

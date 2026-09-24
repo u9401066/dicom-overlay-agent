@@ -59,6 +59,7 @@
           <a href="#source">Run from source</a>
           <a href="#subscription">Subscription route</a>
           <a href="#roi">ROI and privacy</a>
+          <a href="#regional-qa">Mark and regional QA</a>
           <a href="#clinical-rules">Clinical-rule audit</a>
           <a href="#harness">Image harness</a>
           <a href="#bundle">Portable bundle</a>
@@ -82,11 +83,18 @@
             <h2>Run from source</h2>
             <p>
               The <a href="https://github.com/u9401066/dicom-overlay-agent">source repository</a>
-              is public. No GitHub Release exists as of 2026-09-11, so repository
+              is public. No GitHub Release exists as of 2026-09-24, so repository
               archives must not be treated as verified portable bundles.
             </p>
-            <p>All dependencies stay inside the project environment and repo-local runtime.</p>
-            <pre><code>uv sync --all-extras
+            <p>These instructions describe the <strong>development branch</strong>,
+              not the older App on main. The documented source checkpoint is
+              <code>ebbe2a5</code>; its later history fix is not in the separately
+              verified <code>bd8f303</code> executable. All dependencies stay local.</p>
+            <pre><code>git clone --recurse-submodules --branch agent/direct-harness-models-20260910 ^
+  https://github.com/u9401066/dicom-overlay-agent.git
+cd dicom-overlay-agent
+git submodule update --init --recursive
+uv sync --all-extras
 scripts\install-openclaw-local.bat
 start.bat</code></pre>
             <p>
@@ -96,20 +104,25 @@ start.bat</code></pre>
           </section>
 
           <section id="subscription">
-            <h2>Subscription-backed GPT-6 Astra low</h2>
+            <h2>Subscription-backed GPT-6 Astra medium</h2>
             <pre><code>codex login</code></pre>
+            <p>Complete the local browser sign-in as described in the
+              <a href="https://learn.chatgpt.com/docs/auth">official OpenAI authentication guide</a>.
+              This project's public-provider import is an App integration, not a
+              promise of identical model access or limits for every subscription.</p>
             <p>
               After signing in, start the app, open Settings, and select
               <strong>OpenAI GPT-6 Astra via Codex Subscription</strong>. This explicit
-              profile selects <code>openai/gpt-6-astra</code> with low reasoning and the native
+              profile selects <code>openai/gpt-6-astra</code> with medium reasoning and the native
               <code>openai-chatgpt-responses</code> transport and no Platform API key.
-              The release-default profile remains <code>openai/gpt-5.4-mini</code>.
+              Existing saved low settings are not silently rewritten; verify the
+              selected effort explicitly. The base profile remains <code>openai/gpt-5.4-mini</code>.
             </p>
             <ol>
               <li>Run <code>codex login</code> locally and finish the browser sign-in.</li>
               <li>Launch DICOM Overlay Agent and open Settings.</li>
-              <li>Select <strong>OpenAI GPT-6 Astra via Codex Subscription</strong>, confirm Reasoning effort is low, save, and restart the app when prompted.</li>
-              <li>Confirm actual Gateway run observations record <code>gpt-6-astra</code> and <code>thinking=low</code>; a selected profile alone is not runtime proof.</li>
+              <li>Select <strong>OpenAI GPT-6 Astra via Codex Subscription</strong>, confirm Reasoning effort is medium, save, and restart the App/Gateway.</li>
+              <li>Confirm actual Gateway run observations record <code>gpt-6-astra</code> and <code>thinking=medium</code>; a selected profile alone is not runtime proof.</li>
             </ol>
             <p>Native OAuth rotation triggers a fresh public-provider import on startup.
               No credential values enter the import audit receipt. Public session usage
@@ -134,12 +147,13 @@ start.bat</code></pre>
                 the App's own auth helper. These checks made no paid model requests
                 and did not prove real subscription authentication or clinical accuracy.
                 Later clean candidate EXEs passed package checks and actual local
-                subscription import; observed image turns bind to Astra low and
-                public session usage. These engineering checks do not establish
+                subscription import; historical image turns bind to Astra low,
+                newer September 24 runs to Astra medium, with public session usage.
+                These engineering checks do not establish
                 clinical accuracy. Broader UI, clinical and distribution-license
                 gates remain open. No candidate binary is released.
-                <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/openclaw-upgrade-audit-2026-09-10.md">Read the measured September 10 audit.</a>
-                <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/candidate-desktop-2026-09-11.md">Read the actual candidate desktop checkpoint.</a>
+                <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md">Read the measured September 10 audit.</a>
+                <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/candidate-desktop-2026-09-11.md">Read the actual candidate desktop checkpoint.</a>
               </p>
             </div>
           </section>
@@ -147,11 +161,16 @@ start.bat</code></pre>
           <section id="roi">
             <h2>ROI and privacy</h2>
             <ol>
-              <li>Open Settings or complete the first-run ROI setup.</li>
-              <li>Select the target viewer and draw only the diagnostic image area.</li>
+              <li>Open the image in your viewer or browser, then Settings → <strong>Choose image window</strong>.</li>
+              <li>Select the exact source window and draw a fresh ROI containing only the diagnostic image area.</li>
               <li>Exclude names, identifiers, timestamps, accession numbers, and surrounding desktop UI.</li>
               <li>Use manual re-trigger once to verify the captured frame before continuous monitoring.</li>
             </ol>
+            <p>Explicit window selection pins its identity for this App session,
+              never silently falls back to another window, and does not overwrite
+              another viewer's saved ROI. Closing/restarting the source requires
+              reselection and a fresh ROI. Full third-party/browser acceptance is
+              still pending; the picker alone is not proof of successful analysis.</p>
             <p>
               Every refinement crop is a subset of the original ROI. Neither crop/refine
               nor overlay calibration is permitted to widen capture beyond that boundary.
@@ -161,6 +180,35 @@ start.bat</code></pre>
               Move obstructing windows away and press Analyze again when blocked.
               App-owned and transparent overlays are not exempt; the App hides its
               report layers before recapture. These checks are not an atomic compositor lock.</p>
+          </section>
+
+          <section id="regional-qa">
+            <h2>Mark and ask about one image region</h2>
+            <p>Analyze the current ROI first. Manual Mark covers its blank image
+              areas as well as AI boxes, <strong>not the whole desktop</strong>.
+              Each region has its own conversation for the current image.</p>
+            <ol>
+              <li><strong>Existing AI marker:</strong> use Inspect on the marker to open its question dialog or completed history.</li>
+              <li><strong>New region:</strong> choose Mark and drag inside the ROI, including blank space outside AI boxes; submit a question about that crop.</li>
+              <li><strong>Continue:</strong> type in the regional panel and press Send. Hide closes only the panel; Inspect reopens completed history without another model request.</li>
+              <li><strong>Review a proposal:</strong> an answer does not change the report. Use Apply to report only after reviewing it, or dismiss the suggestion.</li>
+              <li><strong>Keep a record:</strong> Export writes the image-bound result and regional-conversations.json. History is not automatically saved or restored after restart.</li>
+            </ol>
+            <p>The model receives at most six recent pairs within a 12,000-character
+              context budget; full completed history remains readable/exportable.
+              A new image or fresh analysis clears its old review context.</p>
+            <div class="docs-callout docs-callout-neutral">
+              <strong>What was actually tested</strong>
+              <p>Real source-App interaction covers a blank-area manual mark, two
+                questions, separate AI-region QA, confirmed revision and history
+                reopening. Source ebbe2a5 additionally transfers history after a
+                manual ADD becomes a finding and rejects stale writeback callbacks;
+                that later path has regression coverage but still needs native
+                retesting. Browser QA, cross-DPI selection and restart import are
+                not accepted. No 100-case medium clinical cohort has passed.</p>
+            </div>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/regional-history-2026-09-24.md">Read the actual regional interaction evidence</a> ·
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md">Compare source and executable checkpoints</a></p>
           </section>
 
           <section id="clinical-rules">
@@ -228,7 +276,7 @@ uv run python scripts\build-clinical-knowledge-sqlite.py ^
                 is not a billing ledger. The full 128-case selection is excluded
                 from future blind evaluation. Development reruns never replace
                 sealed predictions or become new independent cases.</p>
-              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/evaluation-desktop-astra-2026-09-11.md">Read the complete baseline and limitations.</a>
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/evaluation-desktop-astra-2026-09-11.md">Read the complete baseline and limitations.</a>
             </div>
             <p>
               The smoke produces a synthetic ECG, takes a non-zero ROI crop, sends one
@@ -255,7 +303,7 @@ uv run python scripts\verify-image-harness.py ^
             <pre><code>scripts\build-exe.bat
 dist\DICOMOverlayAgent\DICOMOverlayAgent.exe --selfcheck
 uv run python scripts\verify-packaged-app.py ^
-  dist\DICOMOverlayAgent</code></pre>
+  --bundle dist\DICOMOverlayAgent</code></pre>
             <p>
               The bundle includes the windowed Python/Qt app, pinned Node.js, the slim
               OpenClaw runtime, modality skills, and required workspace templates. It
@@ -272,15 +320,17 @@ uv run python scripts\verify-packaged-app.py ^
               </p>
             </div>
             <dl class="docs-facts">
+              <div><dt>Interaction package · bd8f303</dt><dd>4.70 MiB launcher; 54.44 MiB App layer; 337.01 MiB full folder. Package verifier and 20 frozen smoke checks pass. The later ebbe2a5 promotion fix is source-only; no binary release.</dd></div>
               <div><dt>Historical actual · 2026-08-09</dt><dd>7.05 MiB launcher; 94.74 MiB app + Python/Qt; 368.01 MiB full zero-install bundle.</dd></div>
               <div><dt>Verified candidate · 0e55a61</dt><dd>4.68 MiB launcher; 54.42 MiB App layer; 337.01 MiB full folder. Clean source, static verifier and 20 frozen packaging smoke checks passed.</dd></div>
               <div><dt>Transfer experiment · c3532d7</dt><dd>141.54 MiB DEFLATE ZIP; 18,771 decompressed file hashes match the preserved bundle. The writable live copy contains private local state and must not be distributed.</dd></div>
               <div><dt>Pending release gate</dt><dd>PyQt6 distribution licensing, broader desktop validation and clinical acceptance remain open. The source is Apache-2.0; this does not grant a PyQt6 commercial license or resolve GPL obligations.</dd></div>
             </dl>
-            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/direct-harness-integration.md">Inspect package provenance and the direct-model extraction boundary.</a>
-              Seven public domain models have one owner; the complete scientific
-              engine and canonical study ledger are not yet extracted. No compatibility
-              alias is presented as completed separation.</p>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/architecture/direct-harness-integration.md">Inspect package provenance and the direct-model extraction boundary.</a>
+              The public harness owns scientific model types, the current bounded
+              multi-pass engine, ECG layout parser and analyzer lifecycle port.
+              Complete canonical evidence-ledger integration is still open; this
+              is not a claim that the whole scientific workflow is integrated.</p>
           </section>
 
           <section id="evidence">
@@ -290,7 +340,8 @@ uv run python scripts\verify-packaged-app.py ^
               <div><dt>Historical · 2026-09-02</dt><dd>Three real viewer/App/OpenClaw/Luna exports were retained. All were incomplete or incorrect; the latest missed critical reference findings.</dd></div>
               <div><dt>Historical batch · 2026-09-02–03</dt><dd>103 attempts produced 60 source-matched exports and 43 timeouts. Reasoning effort was unverified; these are not Astra results.</dd></div>
               <div><dt>Astra low · 2026-09-10 10:22 UTC</dt><dd>Two calibration attempts on one case took 179.252 and 165.043 seconds. A second distinct case completed four turns in 140.481 seconds with source/model/effort receipts; clinical scoring is pending. A terminal-obstructed capture is excluded.</dd></div>
-              <div><dt>Important multi-128 v1</dt><dd>128 unique multi-diagnosis cases are frozen from the canonical pool; the complete Astra real-App cohort is still pending.</dd></div>
+              <div><dt>Important multi-128 v1</dt><dd>Sealed Astra-low baseline: 121 primary cases scored, six pilots excluded; clinical acceptance failed. All 128 selected cases remain excluded from future blind selection.</dd></div>
+              <div><dt>Current · Astra medium</dt><dd>September 24 actual single-image development replays and regional interactions exist. They are exposed cases, not a new blind cohort, and do not satisfy the requested 100-case acceptance.</dd></div>
               <div><dt>Incomplete ECG partial-v2</dt><dd>Eight transformed inputs passed mock schema/bbox plumbing only. That is not a clinical accuracy result.</dd></div>
             </dl>
             <p>

@@ -122,6 +122,39 @@
         </figure>
       </section>
 
+      <section id="development" class="development section-band" aria-labelledby="development-heading">
+        <div class="section-heading compact-heading">
+          <div>
+            <h2 id="development-heading">September 24: interaction checkpoint.</h2>
+            <p>GPT-6 Astra medium is the current development target. No 100-case medium acceptance or public binary release yet.</p>
+          </div>
+        </div>
+        <div class="status-grid">
+          <article>
+            <span class="status-label status-auditable">Actual source-App interaction</span>
+            <h3>Mark anywhere inside the ROI</h3>
+            <p>Start in blank image space, not only an AI box. Manual two-turn QA, separate AI-marker QA, confirmed report revision and reopening history were exercised in the real App.</p>
+          </article>
+          <article>
+            <span class="status-label status-deferred">Browser workflow pending</span>
+            <h3>Choose an image window</h3>
+            <p>Settings can select a browser or another viewer. Each selection requires a fresh, session-only ROI. Full browser capture, inference and regional QA have not passed acceptance.</p>
+          </article>
+          <article>
+            <span class="status-label status-auditable">bd8f303 · packaged checks pass</span>
+            <h3>Updated interaction executable</h3>
+            <p>20 frozen smoke checks pass. Seven archived modules match the source checkpoint. Package checks are not native-GUI or clinical accuracy evidence.</p>
+          </article>
+          <article>
+            <span class="status-label status-deferred">ebbe2a5 · source-only follow-up</span>
+            <h3>Keep a promoted marker's history</h3>
+            <p>Confirmed ADD now transfers its manual conversation to the new finding. Stale writeback cannot restore an old image. These later fixes are not in the bd8f303 executable; live retesting remains open.</p>
+          </article>
+        </div>
+        <p><a href="docs.html#regional-qa">Mark and regional QA guide</a> ·
+          <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md">Exact checkpoint evidence</a></p>
+      </section>
+
       <section id="workflow" class="workflow section-band">
         <div class="section-heading compact-heading">
           <span class="section-number">01</span>
@@ -191,14 +224,14 @@
               Bounding boxes within the image do not establish correct localization.
             </p>
             <p>Six pilots and retained technical failures are separate. Candidate reruns are exposed development checks, not new blind accuracy evidence.</p>
-            <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/evaluation-desktop-astra-2026-09-11.md">Read denominators, uncertainty and limitations</a>
+            <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/evaluation-desktop-astra-2026-09-11.md">Read denominators, uncertainty and limitations</a>
           </aside>
         </div>
         <div class="evidence-ledger">
           <h3>Actual desktop-App run ledger</h3>
           <p>
             These rows came from the real viewer → desktop app → OpenClaw route.
-            GPT-6 Astra low is the active target; GPT-5.6 Luna rows are historical.
+            GPT-6 Astra medium is the active target; GPT-6 Astra low and GPT-5.6 Luna rows are historical.
             Artifact IDs bind each statement to its export. Reported session token
             snapshots are not a lifetime billing ledger or a subscription dollar charge.
           </p>
@@ -212,6 +245,16 @@
                 </tr>
               </thead>
               <tbody>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-24">2026-09-24</time><br>regional-history source App</th>
+                  <td>110.874 s initial analysis · 10 bound Astra-medium analysis/regional turns</td>
+                  <td>Blank-area manual drag, two linked questions, independent AI-region QA, Apply and history reopening. Exposed development case; incomplete findings, not clinical acceptance.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-24">2026-09-24</time><br>9a27b61 medium EXE replay</th>
+                  <td>105.468 s · 4 bound Astra-medium turns</td>
+                  <td>Partial hidden-label ROI; incomplete result. The misleading NORMAL heading was corrected later in bd8f303 presentation, without rewriting the original result.</td>
+                </tr>
                 <tr>
                   <th scope="row"><time datetime="2026-09-11">2026-09-11</time><br>sealed primary cohort</th>
                   <td>121 distinct cases · mean analysis 136.662 s · 460 bound session snapshots</td>
@@ -290,7 +333,7 @@
           <article>
             <span class="status-label status-deferred">Candidate under verification</span>
             <h3>OpenClaw 2.x candidate</h3>
-            <p>Candidate 2026.9.3 now runs in the actual EXE with subscription OAuth and observed Astra low. The sealed baseline used 2026.7.1-2. Clinical, broader UI and binary-license release gates remain open.</p>
+            <p>Candidate 2026.9.3 runs in the actual EXE with subscription OAuth; newer development runs observe Astra medium. The sealed baseline used 2026.7.1-2. Clinical, broader UI and binary-license release gates remain open.</p>
           </article>
         </div>
         <p class="evidence-footnote">
@@ -340,7 +383,7 @@
           <li>
             <span>1</span>
             <h3>Clone and build</h3>
-            <p>The repository is public. No GitHub Release is published as of 2026-09-11. Source builds remain development software.</p>
+            <p>The repository is public. No GitHub Release is published as of 2026-09-24. Follow the guide's explicit development branch; main does not yet contain these App changes.</p>
             <code>scripts\build-exe.bat</code>
           </li>
           <li>
@@ -352,7 +395,7 @@
           <li>
             <span>3</span>
             <h3>Connect subscription</h3>
-            <p>Sign in locally, then choose OpenAI GPT-6 Astra via Codex Subscription with low reasoning.</p>
+            <p>Sign in locally, then choose OpenAI GPT-6 Astra via Codex Subscription with medium reasoning; save and restart the App/Gateway.</p>
             <code>codex login</code>
           </li>
           <li>
@@ -365,7 +408,7 @@
         <div class="install-actions">
           <a class="button button-primary" href="docs.html">Read the setup guide</a>
           <a class="button button-secondary" href="https://github.com/u9401066/dicom-overlay-agent">Browse the public repository</a>
-          <p>Verified candidate: 4.68 MiB launcher, 54.42 MiB App layer, 337.01 MiB portable folder. Binary publication awaits licensing and release gates.</p>
+          <p>bd8f303 candidate: 4.70 MiB launcher, 54.44 MiB App layer, 337.01 MiB portable folder. Binary publication awaits licensing and release gates.</p>
         </div>
       </section>
     </main>
