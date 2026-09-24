@@ -1444,7 +1444,9 @@ class OpenClawClient(VisionAnalyzerService):
             )
             request_id = self._next_request_id("evidence")
             idempotency_key = str(uuid4())
-            session_key = f"image-evidence-{idempotency_key}"
+            # Name the actual agent explicitly: public Gateway history/events
+            # canonicalize short keys. Keep receipt equality strict, not alias-based.
+            session_key = f"agent:main:image-evidence-{idempotency_key}"
             frame = build_openclaw_chat_frame(
                 request_id=request_id,
                 session_key=session_key,

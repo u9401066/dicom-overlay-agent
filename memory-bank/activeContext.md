@@ -1,5 +1,28 @@
 # Active Context
 
+## 2026-09-25 — actual QC received, canonical session-name correction
+
+- Clean53a32a8 App9468/launcher14048/Gateway24572/Viewer7832, new private
+  Ctemp/dicom-scientific-desktop-20260925-receipts-fix. Same actual GUI input and
+  Analyze, one real Astra-medium QC request; stopped18.583s at strict transport
+  gateway_session_identity_changed. No final report/export/five-stage success.
+- Public sessions+chat.history bind canonical agent:main:image-evidence-b06e76fe-
+  6964-44bf-87b6-79bf22c9af01, session0892cf26-6846-4599-af23-84152f026632,
+  Gatewaylog56 confirms Astra medium. Actual limited QC JSON valid posthoc;
+  visible ROI inspected (clipped III, aVR/aVL/aVF/V1–V6). Image-payload/export
+  identity not fully proved by public history alone. Usage snapshot not billing.
+- Public collector first --url probe failed credential guard; query-only private
+  config port18796 succeeded, no model resend/token argv. Never publish private
+  query-config file. Visible history excludes thinking blocks. Preserve both
+  public-evidence-20260924-225612 and-225749; hashes in dated evidence.
+- Exact canonical sender now agent:main:image-evidence-UUID; no loose aliases,
+  no collector relaxation. New regression beforefix1fail3pass; focused195pass
+  9.35s, mypy/client Ruff pass. Previous full90621:2380pass8skip394.75s terminal0;
+  new full91342 still live. 53a32a8 all two CI+two secrets completed success.
+- Actual Quit stopped owned App/launcher/Gateway, no18796listener. Do not restart
+  either sealed runtime. Third clean isolated live execution still pending.
+- Evidence:docs/evidence/2026-09/native-scientific-startup-2026-09-25.md.
+
 ## 2026-09-25 — actual scientific App exposed missing receipt opt-in
 
 - Real clean be27473 App10612/launcher35696/Gateway16428/Viewer7832, port18796,

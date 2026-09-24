@@ -77,6 +77,11 @@ class Gateway:
         }
         if self.variant == "wrong_session":
             final["payload"]["sessionKey"] = "another-session"
+        elif self.variant == "canonical_session":
+            key = frame["params"]["sessionKey"]
+            final["payload"]["sessionKey"] = (
+                key if key.startswith("agent:main:") else f"agent:main:{key}"
+            )
         elif self.variant == "multiple_text":
             final["payload"]["message"]["content"] *= 2
         elif self.variant == "dict_only":
@@ -130,6 +135,32 @@ async def request(client, prompt="Synthetic stage schema"):
     return await client.request_image_evidence(
         prompt, image_bytes=SOURCE, deidentified=True
     )
+
+
+async def test_scientific_request_names_main_agent_explicitly_before_strict_receipt(
+    tmp_path,
+):
+    gateway = Gateway(variant="canonical_session")
+    result = await request(connected(tmp_path, gateway))
+    sent = gateway.sent[0]["params"]["sessionKey"]
+    assert sent.startswith("agent:main:image-evidence-")
+    assert result.gateway.session_key == sent
+    assert result.gateway.require_model_text() == BODY.encode()
+
+
+@pytest.mark.parametrize("agent", ["other", "MAIN", "main "])
+async def test_scientific_receipt_never_accepts_another_agent_namespace(
+    tmp_path, agent
+):
+    class WrongAgentGateway(Gateway):
+        async def send(self, raw):
+            await super().send(raw)
+            requested = self.sent[-1]["params"]["sessionKey"]
+            short = requested.removeprefix("agent:main:")
+            self.frames[-1]["payload"]["sessionKey"] = f"agent:{agent}:{short}"
+
+    with pytest.raises(ValueError, match="gateway_session_identity_changed"):
+        await request(connected(tmp_path, WrongAgentGateway()))
 
 
 @pytest.mark.asyncio

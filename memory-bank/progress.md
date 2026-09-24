@@ -3,6 +3,17 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — actual quality response and canonical Gateway session names
+
+- One actual Astra-medium QC response received via App but transport identity
+  guard rejected Gateway canonical key. Public history/usage bound and preserved;
+  quality schema passes posthoc, not completed scientific or clinical acceptance.
+- Sender now explicitly names main agent; strict matching/foreign-agent rejection
+  unchanged. Beforefix1fail3pass, focused195pass9.35s. Prior receipt-option full
+ 2380pass8skip394.75s; final canonical-sender full and corrected GUI run pending.
+- Both actual failed environments closed through UI and retained, no restarts or
+  model resends for read-only receipt collection. See native scientific evidence.
+
 ## 2026-09-25 — actual scientific App startup failure and correction
 
 - Real App/Viewer/Analyze exposed missing production transport-evidence opt-in,
