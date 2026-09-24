@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Browser actual capture and wrong-focus selection fix
+
+- UIA selected row differed from keyboard-current row, exposing wrong-target
+  picker binding. ROI blocked the first attempt before capture/inference. Fixed
+  selection authority; three regressions now pass and 19 picker tests green.
+- Same actual UIA path now binds Edge correctly. Native ROI + Analyze/Export
+  gives pixel MAE 0, 89.355s, INDETERMINATE partial image. Zero AI boxes still permit
+  manual Mark/question. Browser scroll invalidates panels and stale Export.
+- Six stages bound to Astra medium, exposed case only. Unit/smoke 1,636 passes /
+  six skips plus 55 integration passes = 1,691. No new binary or clinical claim.
+  Evidence: docs/evidence/2026-09/native-browser-selection-2026-09-24.md.
+
 ## 2026-09-24 Native Mark, independent regional histories and Viewer movement
 
 - Clean source 55ec9c9 actually launched with owned Viewer and subscription

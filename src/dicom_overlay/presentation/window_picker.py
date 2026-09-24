@@ -42,7 +42,7 @@ class WindowPickerDialog(QDialog):
         layout.addWidget(explanation)
         self._windows = QListWidget()
         self._windows.setObjectName("captureWindowChoices")
-        self._windows.currentItemChanged.connect(self._selection_changed)
+        self._windows.itemSelectionChanged.connect(self._selection_changed)
         layout.addWidget(self._windows)
         self._status = QLabel("")
         layout.addWidget(self._status)
@@ -80,5 +80,10 @@ class WindowPickerDialog(QDialog):
         self._use.setEnabled(self.selected_window() is not None)
 
     def selected_window(self) -> CaptureWindow | None:
-        item = self._windows.currentItem()
-        return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        # UI Automation/screen readers can select an item without moving the
+        # keyboard-current row. Binding that unrelated row risks capturing the
+        # wrong application. Only one explicitly selected item is authoritative.
+        selected = self._windows.selectedItems()
+        if len(selected) != 1:
+            return None
+        return selected[0].data(Qt.ItemDataRole.UserRole)

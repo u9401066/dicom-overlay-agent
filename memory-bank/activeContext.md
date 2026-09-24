@@ -1,5 +1,26 @@
 # Active Context
 
+## 2026-09-24 Native Edge capture and accessibility picker correction
+
+- Real UIA Select exposed currentItem vs selectedItems mismatch: the focused
+  unrelated row could be bound. First ROI was rejected; no model/capture sent.
+  Picker now uses exactly one selected item, itemSelectionChanged controls Use.
+  Three new regressions fail before/pass after; all 19 picker checks pass.
+- Restarted actual source App with same UIA selection: Edge rect (40,30,1640,1450),
+  physical safe drag (100,440)-(1400,1200), actual ROI (101,440,1297,759), RGB MAE 0.
+  Exposed partial case 44709848, 89.355s, no AI boxes, INDETERMINATE UI.
+  Real manual Mark and answer succeed without any AI box. Browser scroll hides
+  old review and blocks stale Export. Six stages bind to Astra medium.
+- Playwright fallback: Browser plugin absent. Isolated visible Edge, CSS 829x613,
+  DPR 1.935; browser console clean. Artifacts outside repo at
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-browser-native-20260924/.
+- Regression: default unit/smoke 1,636 pass / six skips in 208.12s, separate
+  integration 55 pass in 0.32s; combined 1,691. Old 9e63153 CI/secrets all pass.
+- Source only; preserved 6e EXE unchanged. Remaining: native ROI selected-preview
+  black area (paint path), other viewers/DPI, mid-analysis image replacement,
+  ADD/dismissal, canonical host ledger and 100-current-model blind cases.
+- Evidence: docs/evidence/2026-09/native-browser-selection-2026-09-24.md.
+
 ## 2026-09-24 Actual native regional QA and projection at 55ec9c9
 
 - Real clean source App + owned Qt Viewer + existing isolated subscription

@@ -33,15 +33,20 @@ See the [regional history checkpoint](docs/evidence/2026-09/regional-history-202
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
-Full browser capture/inference acceptance is still pending; see the
-[external-window checkpoint](docs/evidence/2026-09/external-window-selection-2026-09-24.md).
+Actual Edge selection/ROI/capture/inference and manual QA now pass one exposed
+partial-image development replay (89.355 s, six verified Astra-medium stages).
+Mark works with zero AI boxes; scrolling invalidates the old review. This also
+fixed an accessibility selection/focus mismatch that could bind the wrong window.
+Other browsers, DICOM applications and clinical acceptance remain open; see the
+[native browser evidence](docs/evidence/2026-09/native-browser-selection-2026-09-24.md).
+Same-display Viewer movement also preserves marks/history within one physical
+pixel at 150% scale; [native movement evidence](docs/evidence/2026-09/native-regional-projection-2026-09-24.md).
 
-The `bd8f303` interaction executable has now been built separately; seven key
-packaged modules match that exact source commit; package verification and all 20
-frozen smoke tests pass. A subsequent source fix preserves
-manual-region history after a confirmed ADD and rejects stale writeback UI events;
-it is not in that executable yet. See the [package/promotion evidence](docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)
-for verification results and the remaining actual-desktop gates.
+The latest preserved local executable is `6e6734e`: eight key modules match its
+clean source, with package verification and 20 frozen smoke checks passing.
+It includes regional turn IDs and promotion-history fixes, but not the later
+Viewer-projection or picker-accessibility changes. This is not a public release;
+see the [package checkpoint](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11
 

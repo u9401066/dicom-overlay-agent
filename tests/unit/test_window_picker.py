@@ -4,6 +4,7 @@ import os
 from types import SimpleNamespace
 
 import pytest
+from PyQt6.QtCore import QItemSelectionModel
 from PyQt6.QtWidgets import QPushButton
 
 from dicom_overlay.domain.entities import CaptureWindow, WindowRect
@@ -151,6 +152,41 @@ def test_window_picker_requires_explicit_selection_and_refresh_clears_it(qtbot):
     assert dialog._use.isEnabled() and dialog.selected_window() == chosen
     dialog.refresh()
     assert not dialog._use.isEnabled() and dialog.selected_window() is None
+
+
+def test_window_picker_accessibility_selection_wins_over_keyboard_current_row(qtbot):
+    first = CaptureWindow(1, 101, "Editor", "Unselected unrelated window")
+    browser = CaptureWindow(2, 102, "Browser", "Intended image window")
+    dialog = WindowPickerDialog(lambda: [first, browser])
+    qtbot.addWidget(dialog)
+    dialog._windows.setCurrentRow(0)
+    # Windows UIA SelectionItem.Select changes selected items, not currentItem.
+    dialog._windows.item(1).setSelected(True)
+    assert dialog._windows.currentItem() is dialog._windows.item(0)
+    assert dialog._windows.selectedItems() == [dialog._windows.item(1)]
+    assert dialog._use.isEnabled()
+    assert dialog.selected_window() == browser
+
+
+def test_window_picker_focus_without_selection_cannot_enable_capture(qtbot):
+    chosen = CaptureWindow(1, 101, "Browser", "Synthetic image window")
+    dialog = WindowPickerDialog(lambda: [chosen])
+    qtbot.addWidget(dialog)
+    dialog._windows.setCurrentRow(0, QItemSelectionModel.SelectionFlag.NoUpdate)
+    assert dialog._windows.currentItem() is not None
+    assert dialog.selected_window() is None
+    assert not dialog._use.isEnabled()
+
+
+def test_window_picker_clear_selection_does_not_reuse_current_item(qtbot):
+    chosen = CaptureWindow(1, 101, "Browser", "Synthetic image window")
+    dialog = WindowPickerDialog(lambda: [chosen])
+    qtbot.addWidget(dialog)
+    dialog._windows.setCurrentRow(0)
+    dialog._windows.clearSelection()
+    assert dialog._windows.currentItem() is not None
+    assert dialog.selected_window() is None
+    assert not dialog._use.isEnabled()
 
 
 def test_settings_closes_before_requesting_capture_window(qtbot, tmp_path):

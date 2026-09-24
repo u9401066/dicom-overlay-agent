@@ -28,14 +28,18 @@
 [區域歷史實機紀錄](docs/evidence/2026-09/regional-history-2026-09-24.md)。
 
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
-重新框選本次使用的 ROI，不會偷偷切到其他視窗。完整瀏覽器擷取／模型判讀
-仍待驗收，見[選窗與標題修正紀錄](docs/evidence/2026-09/external-window-selection-2026-09-24.md)。
+重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的
+真實 Edge 選窗、ROI、擷取、判讀與人工框問答（89.355 秒，六階段核對 Astra medium）。
+沒有 AI 框也能 Mark；網頁捲動後舊結果失效。並修正輔助操作的選取列／焦點列
+不一致時可能綁錯視窗的問題；其他瀏覽器、DICOM 軟體與臨床驗收仍未完成。
+見[瀏覽器實機紀錄](docs/evidence/2026-09/native-browser-selection-2026-09-24.md)。
+同螢幕 Viewer 移動也已實測：150% 縮放下框跟隨誤差不超過 1 px，歷史保留，
+見[移動與問答實機紀錄](docs/evidence/2026-09/native-regional-projection-2026-09-24.md)。
 
-`bd8f303` 互動版 EXE 已另行建置，七個關鍵封裝模組均與該 commit 程式碼相符。
-封裝總檢查及 20 項 frozen smoke 通過。
-後續 source 修正了人工框確認 ADD 後的歷史移交，以及延遲回寫事件重現舊畫面的
-問題；這兩項尚未包含在上述 EXE。驗證結果與待完成實機項目見
-[封裝與標記升級紀錄](docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)。
+最新保留的本機 EXE 為 `6e6734e`，八個關鍵模組與乾淨來源一致，封裝總檢查及
+20 項 frozen smoke 通過。包含區域回合 ID 與人工框升級歷史修正，但尚未包含
+後續 Viewer 座標跟隨及輔助操作選窗修正；不是公開發布版。
+見[封裝驗證紀錄](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md)。
 
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
 ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。
