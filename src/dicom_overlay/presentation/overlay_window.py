@@ -323,9 +323,21 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         from medical_image_harness.models import Severity
 
         profile = get_active_registry().resolve(result.modality.value)
-        self._title_label.setText(
-            f"{profile.icon} {profile.resolved_display_name()} Analysis"
-        )
+        display_name = profile.resolved_display_name()
+        if result.modality.value == "EKG":
+            # A modality profile describes a capability, not the completeness of
+            # this capture. Missing/hidden labels cannot substantiate 12 leads.
+            inventory = parse_ekg_lead_inventory(result.layout)
+            declared_format = (
+                str(result.layout.get("format", "")).strip().casefold()
+                if isinstance(result.layout, dict)
+                else ""
+            )
+            if declared_format == "partial":
+                display_name = "Partial EKG"
+            elif not inventory.complete:
+                display_name = "EKG"
+        self._title_label.setText(f"{profile.icon} {display_name} Analysis")
 
         self._clear_layout(self._findings_layout)
         self._clear_layout(self._checklist_layout)

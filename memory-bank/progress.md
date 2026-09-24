@@ -3,6 +3,17 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Real-UI finding corrected in source
+
+- Partial/unknown ECG no longer receives an unsupported 12-lead heading. Eleven
+  new title edges and 73 targeted checks PASS; real Windows Qt replay of the
+  immutable exported result visually verified with no additional model request.
+  Full regression 1593 PASS / five explicit skips (218.15 s); separate native
+  Windows bounded capture-exclusion test PASS. New source fix is not inside the
+  preserved 128117b EXE.
+- That preserved build's ZIP is 141.55 MiB; all 18,771 hashes match after roundtrip,
+  53 UPX integrity checks pass, original folder unchanged. No binary publication.
+
 ## 2026-09-24 Independent engine frozen and one actual replay complete
 
 - Source 128117b CI/secret checks, full package verifier, 90 native-source checks

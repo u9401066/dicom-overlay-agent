@@ -166,4 +166,7 @@ Whole folder: 353,389,843 bytes (337.02 MiB); App layer: 57,068,940 bytes
 (54.43 MiB); launcher: 4,910,311 bytes (4.68 MiB). This is 7,563 bytes above
 0e55a61. Both App CI runs and secret scans pass. Exact hashes, scope and remaining
 clinical/upgrade/license gates are in the [September 24 audit](shared-engine-2026-09-24.md).
-No public binary release is implied.
+Its separately measured Deflate-9 ZIP is 148,430,073 bytes (141.55 MiB), with
+18,771 decompressed entry hashes verified and 53 UPX payload tests passing.
+No public binary release is implied. The later source-only partial-ECG heading
+fix is not present in this preserved 128117b executable.

@@ -82,8 +82,13 @@ were hash-verified before startup; no auth/state was added to the preserved buil
 The launcher is part of the App layer, not an additional subtotal. The folder
 increase from 0e55a61 is 7,563 bytes. Node remains v24.18.0 and OpenClaw 2026.9.3.
 No heavy dependency was added, upstream internal chunks were not pruned, and
-DLLs protected by CFG remain uncompressed. The prior c3532d7 ZIP/UPX test is not
-a transfer-compression test of this new build.
+DLLs protected by CFG remain uncompressed.
+
+This build's separate Deflate-9 ZIP is **148,430,073 bytes (141.55 MiB)**, SHA-256
+`d82484dc26476eea091d2cb6eb7166b85b1d8897b5e75078ba81c06cbcb325a6`.
+All 18,771 decompressed entries match the original hashes; all 53 UPX-bearing
+native files pass `upx -t`; the original directory is unchanged. Compression
+took 21.702 s. The ZIP is local and unpublished, without live auth/state.
 
 - Source-tree SHA-256: `b0014fee778ec6753db13da4c7f022984c804c39907c968ac5e6d5684aedf968`.
 - Launcher SHA-256: `5cd11b6cff074cbfccd9f73d4c3f73776cbc97e51aa8ace6e0cffeb30e1d917d`.
@@ -135,6 +140,30 @@ This single replay does not demonstrate improved speed or accuracy over the
 failed primary cohort, and does not validate other vendors or legacy printouts.
 Raw result, usage, driver snapshot, UI helper snapshot and transfer receipts are
 retained privately; no clinical image or OAuth artifact is committed.
+
+## Post-checkpoint title correction
+
+The source UI now derives the ECG heading from the current inventory instead of
+unconditionally using the modality capability label. Explicit partial captures
+say `Partial EKG Analysis`; unknown, missing, duplicate, malformed or hidden-label
+inventories say `EKG Analysis`. Only a complete valid visible inventory retains
+the profile's 12-lead title. An explicitly partial format wins over a contradictory
+12-name list. Other modalities retain their profile title. This does not change
+model prompts, findings, evidence, crop geometry, completeness or review policy.
+
+Eleven new title cases cover those boundaries and transitions; 73 targeted
+presentation/geometry/profile/test-collection checks pass. Full App regression
+passes **1,593 / five explicit skips in 218.15 s**; Ruff passes. The opt-in native
+Windows capture-exclusion test is then run separately and passes (0.46 s), using
+only its bounded test rectangle inside the previously authorized viewer ROI, not
+a full-desktop capture. The owned App is paused then returned to manual monitoring;
+no inference is triggered. This does not turn the remaining frozen/private-artifact
+skips into passes for the new source. A separate **real
+Windows Qt presentation replay** of the immutable desktop export was shown and
+captured, then visually verified: the heading is `Partial EKG Analysis`. The
+replay made zero model requests and preserved the original result bytes. This is
+UI verification, not a new clinical interpretation or a rebuilt 128117b EXE.
+The combined malformed-or-hidden diagnostic remains unresolved.
 
 ## Remaining gates
 

@@ -268,6 +268,93 @@ def test_review_alert_navigates_to_unabridged_reasons(qt_app: QApplication) -> N
     panel.close()
 
 
+@pytest.mark.parametrize(
+    ("declared_format", "lead_names", "visible", "expected_title"),
+    [
+        ("partial", ["unknown"] * 8, False, "Partial EKG Analysis"),
+        (" PARTIAL ", ["I", "II"], True, "Partial EKG Analysis"),
+        ("12lead_12x1", ["I", "II"], True, "EKG Analysis"),
+        ("unknown", [], True, "EKG Analysis"),
+        ("single_rhythm_strip", ["II"], True, "EKG Analysis"),
+        (
+            "12lead_12x1",
+            ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"],
+            False,
+            "EKG Analysis",
+        ),
+        ("12lead_12x1", ["II"] * 12, True, "EKG Analysis"),
+    ],
+)
+def test_report_title_does_not_invent_twelve_visible_leads(
+    qt_app: QApplication,
+    declared_format: str,
+    lead_names: list[str],
+    visible: bool,
+    expected_title: str,
+) -> None:
+    result = _result()
+    result.layout = {
+        "format": declared_format,
+        "leads": [
+            {"name": name, "label_visible": visible, "bbox": [0.0, 0.0, 1.0, 0.05]}
+            for name in lead_names
+        ],
+    }
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert panel._title_label.text() == f"🫀 {expected_title}"
+    panel.close()
+
+
+def test_report_title_tracks_current_inventory_without_changing_result(
+    qt_app: QApplication,
+) -> None:
+    from copy import deepcopy
+
+    from dicom_overlay.domain.modality_profile import get_active_registry
+    from medical_image_harness.ekg_layout import STANDARD_EKG_LEADS
+
+    result = _result()
+    panel = SummaryPanel()
+    result.layout = {
+        "format": "12lead_12x1",
+        "leads": [
+            {"name": name, "label_visible": True, "bbox": [0.0, 0.0, 1.0, 0.05]}
+            for name in STANDARD_EKG_LEADS
+        ],
+    }
+    before = deepcopy(result)
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 12-Lead EKG Analysis"
+    assert result == before
+
+    # An explicitly partial source cannot gain a complete title from lead count.
+    result.layout["format"] = "partial"
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 Partial EKG Analysis"
+    result.layout = {}
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 EKG Analysis"
+
+    result.modality = Modality.CXR
+    profile = get_active_registry().resolve("CXR")
+    panel.update_result(result)
+    assert panel._title_label.text() == f"{profile.icon} {profile.resolved_display_name()} Analysis"
+    panel.close()
+
+
+@pytest.mark.parametrize("layout", [None, [], {"leads": [None]}])
+def test_report_title_tolerates_invalid_inventory_without_claiming_coverage(
+    qt_app: QApplication, layout: object,
+) -> None:
+    result = _result()
+    result.layout = layout  # type: ignore[assignment]
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 EKG Analysis"
+    panel.close()
+
+
 def test_report_clear_removes_all_stale_safety_messages(qt_app: QApplication) -> None:
     result = _result()
     result.review_required = True

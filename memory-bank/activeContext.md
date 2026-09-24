@@ -1,5 +1,24 @@
 # Active Context
 
+## 2026-09-24 Partial ECG heading source fix
+
+- Actual 128117b export exposed a false `12-Lead` header. Presentation now uses
+  the current lead inventory: explicit partial -> Partial EKG, incomplete/hidden/
+  invalid -> EKG, complete visible -> existing 12-lead profile. Other modalities,
+  scientific outputs, geometry and review flags are unchanged.
+- Eleven new edge/transition cases; 73 targeted checks PASS. Real Windows Qt
+  read-only replay of the immutable 128117b result visually confirms corrected
+  heading; zero model requests and source result unchanged. This is not another
+  model run and not evidence that the preserved 128117b EXE contains the fix.
+- Full regression 1593 PASS / five explicit skips (218.15 s), Ruff PASS. Separate
+  native Windows bounded capture-exclusion test PASS (0.46 s); App paused and
+  resumed manually, no inference. Remaining frozen/private-artifact skips are
+  not counted as passes for the new source. Malformed-or-hidden warning open.
+- Clean 128117b ZIP: 148,430,073 bytes (141.55 MiB), all 18,771 entry hashes
+  roundtrip verified; 53 UPX payloads PASS, original source folder unchanged.
+  No binary publication. Evidence docs commit 84243cf push/PR CI and both secret
+  scans pass (35976432339 / 35976437763 / 35976432271 / 35976437759).
+
 ## 2026-09-24 Shared engine frozen and actual hidden-label replay verified
 
 - Clean source 128117b passes push/PR CI 35974012472 / 35974017667 and both
