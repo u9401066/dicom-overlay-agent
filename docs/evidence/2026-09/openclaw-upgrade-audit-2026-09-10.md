@@ -17,7 +17,7 @@ Measured launcher: **4.47 MiB**; App/Python/Qt: **53.84 MiB**; complete folder:
 **336.43 MiB**. All 89 native sources are approved and all 52 UPX-marked
 payloads pass integrity testing. The local Deflate-9 ZIP is **141.13 MiB**;
 all 18,720 decompressed file hashes match. Its local verifier report stays
-outside the bundle and archive. The [package audit](../memory-bank/package-audit-2026-09-10.md)
+outside the bundle and archive. The [package audit](../../../memory-bank/package-audit-2026-09-10.md)
 records exact bytes and provenance. No candidate real-GUI/model, partial-ECG,
 DPI, rollback or distribution-license gate is closed by these package tests.
 
@@ -42,7 +42,7 @@ Static bundle verification and 52 UPX integrity checks pass. The complete
 folder is **336.43 MiB** (App layer 53.84; launcher 4.46), while a local Deflate-9
 ZIP is **141.14 MiB**; every one of 18,721 extracted files matches its source
 SHA-256. No internal upstream chunks were pruned. CI 34483865336 and Secret scan
-34483602372 pass. See the [full measured audit](../memory-bank/package-audit-2026-09-10.md).
+34483602372 pass. See the [full measured audit](../../../memory-bank/package-audit-2026-09-10.md).
 
 No real subscription/model request was made in those candidate checks, and no
 binary was published. Candidate real GUI/OAuth/clinical/rollback, incomplete-ECG
@@ -174,7 +174,7 @@ rule. All source notice files are now preserved byte-for-byte. Node's official
 archive checksum is verified, its LICENSE retained, and the Python/bootloader/
 runtime notices have a separate manifest. This is a preservation check, not
 license clearance; the PyQt distribution decision remains open in
-[Third-Party Notices](../THIRD_PARTY_NOTICES.md). Those staging sizes are not
+[Third-Party Notices](../../../THIRD_PARTY_NOTICES.md). Those staging sizes are not
 EXE measurements; the later corrected packaged result is recorded above.
 
 The raw dependency tree contains 35,246 files. Installation used exact

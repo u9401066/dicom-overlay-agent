@@ -65,7 +65,7 @@ construction, not the current execution ledger. September 2–3 subsequently
 recorded 60 source-matched Luna exports and 43 timeouts across 103 attempts.
 The complete cohort is still unfinished. September 10 switched to Astra low;
 individual GUI calibration/pilot receipts do not imply the remaining cases ran.
-See the [current evidence update](verification-2026-09-10.md).
+See the [current evidence update](../evidence/2026-09/verification-2026-09-10.md).
 
 The full run must be performed in order through the real viewer and desktop App,
 not by replacing viewer interaction with a direct script/client call. For each
@@ -172,7 +172,7 @@ No real primary clinical score has been produced as of this checkpoint.
 
 ## Related evidence
 
-- [Current verification record](verification-2026-09-02.md)
-- [Real desktop runbook](../REAL_TEST_RUNBOOK.md)
-- [Historical MEETI/OpenClaw experiment record](meeti-openclaw-experiments-2026-08-09.md)
-- [Clinical knowledge governance](../clinical_knowledge/README.md)
+- [Current verification record](../evidence/2026-09/verification-2026-09-02.md)
+- [Real desktop runbook](../operations/real-desktop-tests.md)
+- [Historical MEETI/OpenClaw experiment record](../evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md)
+- [Clinical knowledge governance](../../clinical_knowledge/README.md)

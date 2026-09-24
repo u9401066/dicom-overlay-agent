@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Medium frozen desktop checkpoint and document organization
+
+- Actual 9a27b61 EXE / Gateway / OAuth / GUI replay complete: four Astra medium
+  usage bindings, 105.468 s analysis, same hidden-label ROI pixels (MAE 0.0).
+  Partial EKG heading fixed; incorrect NORMAL severity prefix discovered and
+  remains open at this frozen checkpoint. No clinical/speed improvement claimed.
+- 1,594 source tests and 20 frozen package tests pass; five explicit source skips.
+  Full package 337.02 MiB, unchanged dependencies, verified clean-source/live copy.
+  Exact-source push/PR CI and both secret scans pass.
+- Archived 22 documentation files by purpose, updated links/runbook/current model,
+  added component owner guides and four docs regressions (18 combined docs/Pages
+  checks pass). No runtime paths or raw evidence moved; no compatibility copies.
+
 ## 2026-09-24 Requested model target updated
 
 - User requests Astra medium (or optionally GPT-6 Luna xhigh). Astra preset now
@@ -957,7 +970,7 @@
     screenshot baseline protocol 不受影響。
   - OpenClaw runtime inspect 實測 loaded、兩工具皆註冊、diagnostics 0。
   - OpenClawClient 會合併 PHI-free ECGFounder receipt 到 `analysis_trace`。
-  - 文件：`docs/ecgfounder-tool.md`，README/README.zh-TW/ARCHITECTURE/skill 已同步。
+  - 文件：`docs/integrations/ecgfounder-tool.md`，README/README.zh-TW/ARCHITECTURE/skill 已同步。
   - 驗證：相關 pytest 86 passed、Node syntax/plugin smoke passed、Ruff passed。
 
 ## Next (current)
@@ -1079,7 +1092,7 @@
   邊界。Desktop export 現在實際包含 source/result/marked image/crops/
   coordinate audit，便於專家逐框複核；只顯示 audit rationale，不宣稱公開
   private chain-of-thought。
-- 詳細紀錄：`docs/meeti-openclaw-experiments-2026-08-09.md`。
+- 詳細紀錄：`docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`。
 
 ## Done (release verification) - 2026-08-09
 

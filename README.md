@@ -13,10 +13,15 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 The requested desktop target is now **GPT-6 Astra medium**, selected through
 Settings as `openai-codex-astra`. Save the profile and restart the App/Gateway to
-apply it; an existing saved low setting is not silently rewritten. Medium real-GUI
-acceptance must be measured separately from the historical low runs below.
-See the [model transition and open integration work](docs/astra-medium-2026-09-24.md)
-and [verified shared-engine package / low replay](docs/shared-engine-2026-09-24.md).
+apply it; an existing saved low setting is not silently rewritten. Clean build
+`9a27b61` passes 20 packaged smoke checks and one actual hidden-label/partial GUI
+replay (105.468 s, four verified medium turns). This exposed development case is
+not blind acceptance. The replay also exposes an incorrect NORMAL heading on an
+indeterminate result; clinical/UI acceptance remains open.
+See the [model transition and open integration work](docs/evidence/2026-09/astra-medium-2026-09-24.md)
+and [verified shared-engine package / low replay](docs/evidence/2026-09/shared-engine-2026-09-24.md).
+Use the [documentation index](docs/README.md) and [component ownership map](docs/architecture/components.md)
+to find current guidance separately from archived evidence.
 
 ## Historical desktop baseline — 2026-09-11
 
@@ -28,14 +33,14 @@ including nested attempts to observed Astra-low runtime and public usage
 (not a complete billing ledger). Preliminary automated scoring does
 **not meet acceptance**: strict match 0/46 complete-reference cases; annotated
 urgent concerns caught 2/21. Specialist adjudication is pending. Mean completed
-analysis time is 136.662 s. See the [sealed baseline and limitations](docs/evaluation-desktop-astra-2026-09-11.md).
+analysis time is 136.662 s. See the [sealed baseline and limitations](docs/evidence/2026-09/evaluation-desktop-astra-2026-09-11.md).
 
 The separate c3532d7 EXE now has an actual OAuth/Astra-low case (113.735 s,
 no finalization retry) and a pre-send resize guard check. An intentional missing-
 lead capture exposed a structured-layout failure. Corrected 0e55a61 EXE reruns
 the identical ROI in 96.990 s with valid declarations and crop mapping, but
 still requires review; visible-label and clinical accuracy are not adjudicated.
-[Candidate evidence and open gates](docs/candidate-desktop-2026-09-11.md).
+[Candidate evidence and open gates](docs/evidence/2026-09/candidate-desktop-2026-09-11.md).
 
 Earlier pilot evidence:
 Real GUI captures reached the subscription transport with observed
@@ -48,7 +53,7 @@ response deadline. This is not a completed 100-case cohort.
 The historical September 2-3 Luna batch produced 60 exports and 43 timeouts
 across 103 attempts; all 60 exported source images matched their intended
 cases, which is identity evidence, not diagnostic accuracy.
-See the [September 10 evidence update](docs/verification-2026-09-10.md).
+See the [September 10 evidence update](docs/evidence/2026-09/verification-2026-09-10.md).
 
 The working tree identifies itself as `0.4.7` and the harness/plugin as `1.5.9`,
 but this repository currently has **no Git tag and no GitHub Release**. Treat all
@@ -112,11 +117,11 @@ accuracy, latency acceptance, or release readiness.
   Slim native bbox receipts, fabricated OAuth-only migration and actual frozen
   loopback image smoke now pass. Real subscription/clinical and rollback gates
   remain open. The active cohort keeps the existing pin. See the
-  [September 10 audit](docs/openclaw-upgrade-audit-2026-09-10.md).
+  [September 10 audit](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md).
 
 The earlier frozen 32-case pair, 8-case unseen engineering gate, and incomplete
 9,922-case paired run remain historical evidence in the
-[MEETI/OpenClaw evidence record](docs/meeti-openclaw-experiments-2026-08-09.md).
+[MEETI/OpenClaw evidence record](docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md).
 
 The agent never replaces the physician. It acts as a systematic *second-check*
 to reduce omissions caused by fatigue, workload, or distraction. It cannot reach
@@ -154,11 +159,11 @@ dicom-overlay-agent/
 ├── scripts/                       # 🔧 build-exe.bat, stage-openclaw-runtime.ps1, harness runners
 ├── dicom-overlay-agent.spec       # 📦 PyInstaller spec (minimal exe)
 ├── config.yaml                    # ⚙️ ROI, region_maps, hash, gateway settings
-├── spec.md                        # 📜 System specification
+├── docs/                          # 📜 Architecture, operations, integrations, dated evidence
 ├── memory-bank/                   # 🧠 Project memory
 ├── .github/agents/ · .claude/skills/   # 🤖 AI dev harness (agents, skills, instructions)
 ├── README.md / README.zh-TW.md
-└── CONSTITUTION.md · ARCHITECTURE.md · CHANGELOG.md · ROADMAP.md
+└── CONSTITUTION.md · CHANGELOG.md · ROADMAP.md
 ```
 
 ## 🚀 Quick Start
@@ -168,7 +173,7 @@ multi-pass engine, ECG layout parser and analyzer port, without local forwarding
 modules. Canonical evidence assembly and the remaining plugin extraction are still
 in progress. Diverse vendor/legacy-device ECG styles require separate actual GUI
 acceptance; the standard-style cohort does not establish generalization. See the
-[integration scope and verification boundary](docs/direct-harness-integration.md).
+[integration scope and verification boundary](docs/architecture/direct-harness-integration.md).
 
 ### Run from source (Windows)
 
@@ -448,7 +453,7 @@ portable across OpenClaw releases.
   accepts opaque waveform artifact ids rather than paths, and never treats a
   screenshot as a waveform or its class scores as image bboxes. Torch and the
   370 MB checkpoint stay outside the portable app. See
-  [the external tool contract](docs/ecgfounder-tool.md).
+  [the external tool contract](docs/integrations/ecgfounder-tool.md).
   Each evaluation binding also carries a random per-case evidence nonce; only
   one successful receipt matching that nonce, artifact digest, pinned model
   revision, and checkpoint is accepted. The current desktop has no trusted
@@ -472,7 +477,7 @@ portable across OpenClaw releases.
   native bbox receipt and OAuth-only migration checks, including the actual
   App auth helper with fabricated credentials. This is not real subscription
   authentication or clinical evidence. See the
-  [dated upgrade audit](docs/openclaw-upgrade-audit-2026-09-10.md).
+  [dated upgrade audit](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md).
 - The desktop Settings dialog exposes AI Provider profiles and selects the
   model and transport currently active in OpenClaw. The release-default
   `openai-vision` profile uses a Platform API key; **OpenAI Subscription via
@@ -530,7 +535,7 @@ portable across OpenClaw releases.
   clinical single-pass, MultiPass, and MultiPass+ECGFounder all finish. The
   independent ECGFounder waveform batch traversed 1,000/1,000 paired cases,
   with 999 eligible and one flat-lead exclusion.
-  See [`docs/verification-2026-08-05.md`](docs/verification-2026-08-05.md).
+  See [`docs/evidence/2026-08/verification-2026-08-05.md`](docs/evidence/2026-08/verification-2026-08-05.md).
 
 ### Core 4 — Minimal packaged executable
 
@@ -599,22 +604,22 @@ uncompressed estimates must not be subtracted from this compressed build.
 
 ## 📋 Documentation
 
-- [System Spec](spec.md) - Detailed system specification
-- [Architecture](ARCHITECTURE.md) - System architecture
+- [System Spec](docs/architecture/specification.md) - Detailed system specification
+- [Architecture](docs/architecture/overview.md) - System architecture
 - [Constitution](CONSTITUTION.md) - Highest principles
 - [Changelog](CHANGELOG.md) - Version history
 - [Roadmap](ROADMAP.md) - Feature planning
-- [Real Test Runbook](REAL_TEST_RUNBOOK.md) - Live stack testing
-- [2026-09-02 Verification Record](docs/verification-2026-09-02.md) - Current evidence, failures, and unfinished gates
-- [Evaluation Cohorts](docs/evaluation-cohorts.md) - 9,922/128/partial corpus identities and claim boundaries
-- [OpenClaw 2.x Decision](docs/openclaw-2x-decision-2026-09-02.md) - Isolated 2026.8.2 evidence and deferred-upgrade gates
-- [Latest OpenClaw Audit](docs/openclaw-upgrade-audit-2026-09-10.md) - 2026.9.3 protocol/config proof and measured adoption work
+- [Real Test Runbook](docs/operations/real-desktop-tests.md) - Live stack testing
+- [2026-09-02 Verification Record](docs/evidence/2026-09/verification-2026-09-02.md) - Current evidence, failures, and unfinished gates
+- [Evaluation Cohorts](docs/evaluation/cohorts.md) - 9,922/128/partial corpus identities and claim boundaries
+- [OpenClaw 2.x Decision](docs/evidence/2026-09/openclaw-2x-decision-2026-09-02.md) - Isolated 2026.8.2 evidence and deferred-upgrade gates
+- [Latest OpenClaw Audit](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md) - 2026.9.3 protocol/config proof and measured adoption work
 - [Clinical Knowledge Governance](clinical_knowledge/README.md) - Canonical YAML, human/agent steps, and SQLite parity
 - [AGENTS.md](AGENTS.md) - AI maintenance guardrails for the four cores
-- [Image-agent harness reference review](docs/harness-reference-review-2026-08-28.md) - Public patterns adopted without adding a packaged runtime dependency
-- [MEETI/OpenClaw Experiment Record](docs/meeti-openclaw-experiments-2026-08-09.md) - Real paired/unseen results, tools, SLA, and claim boundaries
-- [ECGFounder Tool Contract](docs/ecgfounder-tool.md) - External waveform evidence boundary
-- [2026-08-05 Verification Record](docs/verification-2026-08-05.md) - MultiPass, real canary, coordinates, bundle hashes, and blockers
+- [Image-agent harness reference review](docs/references/2026-08/harness-reference-review-2026-08-28.md) - Public patterns adopted without adding a packaged runtime dependency
+- [MEETI/OpenClaw Experiment Record](docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md) - Real paired/unseen results, tools, SLA, and claim boundaries
+- [ECGFounder Tool Contract](docs/integrations/ecgfounder-tool.md) - External waveform evidence boundary
+- [2026-08-05 Verification Record](docs/evidence/2026-08/verification-2026-08-05.md) - MultiPass, real canary, coordinates, bundle hashes, and blockers
 - [GitHub Pages source](site/index.html) - Public product/evidence site
 
 ## 🎯 Copilot Custom Agents

@@ -16,18 +16,20 @@ to a client is insufficient: the test case must be visible in the real viewer,
 the real desktop App must acquire only its configured ROI, the App-managed
 Gateway must own the request, and the rendered/exported result must be inspected.
 
-## Current target (2026-09-10)
+## Current target (2026-09-24)
 
 Use Settings → **OpenAI GPT-6 Astra via Codex Subscription** (`openai-codex-astra`),
-verify `gpt-6-astra` and reasoning **low**, save, and fully quit the old App before
+verify `gpt-6-astra` and reasoning **medium**, save, and fully quit the old App before
 restarting its managed Gateway. Luna is not the current acceptance target.
 Use the real viewer's Ctrl+O dialog, App Analyze, and App Export. Verify the
 exported source matches the intended case; never infer identity from timing
 alone. Never mark a timeout as a completed case on resume.
 
-See [September 10 evidence](docs/verification-2026-09-10.md): 60 historical Luna
-exports are preserved, but no complete 100-case Astra run exists yet. The older
-gate state below is retained as dated history, not current batch coverage.
+See the [September 24 medium checkpoint](../evidence/2026-09/astra-medium-2026-09-24.md):
+one actual partial/hidden-label development replay is bound to four medium turns.
+The [sealed 121-case low cohort](../evidence/2026-09/evaluation-desktop-astra-2026-09-11.md)
+remains failed; it is not medium coverage. The older gate state below is retained
+as dated history, not current batch coverage. No 100-case medium cohort is accepted.
 
 ## Historical gate status (2026-09-02)
 
@@ -47,14 +49,15 @@ gate state below is retained as dated history, not current batch coverage.
   2026-08-09 368.01 MiB bundle. Rebuild from a clean worktree before publishing
   a new size or hash.
 
-See [`docs/verification-2026-09-02.md`](docs/verification-2026-09-02.md) for the
-full evidence matrix and [`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md)
+See [`docs/evidence/2026-09/verification-2026-09-02.md`](../evidence/2026-09/verification-2026-09-02.md) for the
+full evidence matrix and [`docs/evaluation/cohorts.md`](../evaluation/cohorts.md)
 for cohort identities and claim boundaries.
 
 ## Prerequisites
 
 1. Windows 10/11.
-2. Node.js 22+ available in `PATH`.
+2. The candidate's portable Node 24.18.0, or a separately verified supported Node
+   for the pinned OpenClaw runtime. Do not rely on the old Node 22 prerequisite.
 3. Python virtual environment already prepared:
    - `uv sync --all-extras`
 4. For the current MEETI protocol, a local ChatGPT/Codex subscription sign-in:
@@ -121,7 +124,7 @@ scripts\install-openclaw-local.bat
 
 Do not use `openclaw@latest` in release evidence. OpenClaw `2026.8.2` has only
 passed an isolated protocol probe and remains deferred; see
-[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md).
+[`docs/evidence/2026-09/openclaw-2x-decision-2026-09-02.md`](../evidence/2026-09/openclaw-2x-decision-2026-09-02.md).
 
 ### 2. Sync skills into the runtime workspace
 

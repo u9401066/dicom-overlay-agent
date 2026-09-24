@@ -16,7 +16,7 @@ always keeps the final diagnostic call.
   `third_party/medical-image-agent-harness` submodule. Import them directly
   from `medical_image_harness.models`; do not restore local duplicate classes
   or compatibility re-exports in `domain/entities.py`. Initialize submodules
-  before `uv sync`. See `docs/direct-harness-integration.md` for current scope.
+  before `uv sync`. See `docs/architecture/direct-harness-integration.md` for current scope.
 - Sync the Memory Bank (`memory-bank/`) after meaningful changes.
 - Keep PHI out of code, logs, tests, and fixtures.
 
@@ -99,7 +99,7 @@ call it out and propose mitigation before proceeding.
 
 ## Related Files
 
-- `spec.md` — system specification
+- `docs/architecture/specification.md` — system specification
 - `README.md` / `README.zh-TW.md` — four-core overview
 - `config.yaml` — ROI, `region_maps`, hash, gateway settings
 - `memory-bank/` — project memory

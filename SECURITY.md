@@ -65,7 +65,7 @@ OpenClaw 2026.7.1-2 lockfile 回報 **11 個受影響套件項目（7 high、4 m
 OAuth-only migration、native bbox tool、真實 App、封裝與狀態回復驗證。
 不對執行中的 runtime 做 `npm audit fix --force` 或未驗證的相依版本覆寫。
 完整套件／版本、公告連結與升級門檻見
-[September 10 upgrade audit](docs/openclaw-upgrade-audit-2026-09-10.md#dependency-security-release-gate)。
+[September 10 upgrade audit](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md#dependency-security-release-gate)。
 
 ## Clinical safety 與一般 bug 的分流
 

@@ -62,7 +62,7 @@ OpenClaw's native plugin always exposes `dicom_bbox_validate`. The conditional
 `ecg_founder_analyze_waveform` tool is usable only with an authenticated
 loopback sidecar and an app-supplied opaque waveform artifact id. It cannot read
 arbitrary paths, cannot treat a PNG as a waveform, and cannot create image
-boxes. See [the ECGFounder tool contract](ecgfounder-tool.md).
+boxes. See [the ECGFounder tool contract](../../integrations/ecgfounder-tool.md).
 
 The desktop does not yet resolve the current viewer study to a trusted waveform
 artifact; ECGFounder binding is evaluation-only. Each bound case receives a
@@ -94,7 +94,7 @@ target and is not comparable to screenshot-agent accuracy.
 
 The run artifacts and checkpoint are intentionally ignored because they are
 large external data. Reproduction commands and hashes are in
-[ecgfounder-tool.md](ecgfounder-tool.md).
+[ecgfounder-tool.md](../../integrations/ecgfounder-tool.md).
 
 ## Exploratory MLLM Evidence
 

@@ -27,7 +27,7 @@ inject the existing App checklist and OpenClaw stage identities. Current prompts
 16-key Gateway drafts, source ROI, native receipt validation and overlay geometry
 stay host-owned and unchanged. Old draft PR #4's compatibility exports are not reused.
 
-See the [2026-09-24 extraction audit](shared-engine-2026-09-24.md) for regression
+See the [2026-09-24 extraction audit](../evidence/2026-09/shared-engine-2026-09-24.md) for regression
 collection corrections, explicit scientific-binding changes and outstanding gates.
 
 ## Draft versus canonical evidence contract
@@ -91,7 +91,7 @@ remain required. The older f7e3347 size/smoke measurements do not cover this bra
 - The lifecycle-order correction passes 9 helper/real-staging checks directly
   after another locked `npm ci --ignore-scripts`; full App regression then passes
   **1,429 checks / six explicit skips (186.95 s)**. See the dated
-  [preparation audit](../memory-bank/openclaw-package-preparation-2026-09-10.md).
+  [preparation audit](../../memory-bank/openclaw-package-preparation-2026-09-10.md).
 - Public repository history scan examined 573,122 bytes with no detected secret;
   the new metadata-only patch scan also found none. This is not proof that all
   dependencies or future runtime artifacts are free of sensitive data.
@@ -137,7 +137,7 @@ The separate actual EXE now imports subscription OAuth successfully through the
 pinned migration provider, with Codex agent runtime and Platform key disabled.
 Settings was selected through the real GUI. One exposed development case
 completed all four Astra-low stages under negotiated Gateway protocol 4 /
-OpenClaw 2026.9.3. See the [candidate desktop checkpoint](candidate-desktop-2026-09-11.md).
+OpenClaw 2026.9.3. See the [candidate desktop checkpoint](../evidence/2026-09/candidate-desktop-2026-09-11.md).
 
 ## Partial-format corrected package
 
@@ -165,7 +165,7 @@ separate live copy and preserved build each started with 18,771 files.
 Whole folder: 353,389,843 bytes (337.02 MiB); App layer: 57,068,940 bytes
 (54.43 MiB); launcher: 4,910,311 bytes (4.68 MiB). This is 7,563 bytes above
 0e55a61. Both App CI runs and secret scans pass. Exact hashes, scope and remaining
-clinical/upgrade/license gates are in the [September 24 audit](shared-engine-2026-09-24.md).
+clinical/upgrade/license gates are in the [September 24 audit](../evidence/2026-09/shared-engine-2026-09-24.md).
 Its separately measured Deflate-9 ZIP is 148,430,073 bytes (141.55 MiB), with
 18,771 decompressed entry hashes verified and 53 UPX payload tests passing.
 No public binary release is implied. The later source-only partial-ECG heading

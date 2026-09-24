@@ -2721,7 +2721,7 @@ def main() -> int:
     except (ConnectionError, OSError) as exc:
         print(
             f"\nERROR: could not reach gateway at {args.gateway}: {exc}\n"
-            f"Start the gateway (see REAL_TEST_RUNBOOK.md) or run with --mock.",
+            f"Start the gateway (see docs/operations/real-desktop-tests.md) or run with --mock.",
             file=sys.stderr,
         )
         return 1

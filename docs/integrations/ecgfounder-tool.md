@@ -267,7 +267,7 @@ four separately paired arms:
 
 Start an ECGFounder arm only after the sidecar endpoint and token are exported.
 The reportable full run uses the paired supervisor described in
-[`REAL_TEST_RUNBOOK.md`](../REAL_TEST_RUNBOOK.md); a bounded standalone arm can
+[`docs/operations/real-desktop-tests.md`](../operations/real-desktop-tests.md); a bounded standalone arm can
 still be launched with:
 
 ```powershell
@@ -299,7 +299,7 @@ and mixed/non-comparable protocols unless an explicit exploratory override is
 used.
 
 The upstream MIT notice is retained in
-[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and is included in the
+[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) and is included in the
 portable bundle. The bundle verifier rejects Torch modules, sidecar source,
 MEETI paths, waveform/model data suffixes, and checkpoint files anywhere in the
 desktop bundle.

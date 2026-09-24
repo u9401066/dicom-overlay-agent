@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-24 Medium EXE verified, real GUI replay, documentation archive
+
+- Clean 9a27b61 source: 1,594 passed / five explicit skips, Ruff pass; push/PR CI
+  35979153574/35979159199 and secrets 35979153553/35979159306 pass.
+- Full package verifier and 20 frozen smoke pass (101.48 s). Folder 353,390,069 B
+  / 337.02 MiB, App 54.43 MiB, launcher 4.68 MiB; all 18,771 live-copy hashes match.
+- Actual EXE Settings save/restart, OAuth-only migration, QFileDialog/Analyze/Export:
+  hidden-label exposed case 119, same source hash/ROI as low, MAE 0.0. Medium:
+  105.468 s analysis / 113.323 s workflow, four bound medium turns, no retries.
+  Two hypotheses retracted, zero final findings, incomplete/review true. This is
+  not normal or clinical acceptance, nor evidence of improved speed/accuracy.
+- Actual summary correctly says Partial EKG but still prefixes NORMAL. Preserve
+  frozen raw output; next correction must distinguish indeterminate presentation.
+- Documentation: 22 files relocated, index/components/OpenClaw owner guide added,
+  relative and Pages links updated, four new link/archive tests; 18 docs/Pages
+  checks pass. Runtime paths unchanged; full canonical/plugin split still open.
+  See docs/evidence/2026-09/astra-medium-2026-09-24.md and docs/README.md.
+
 ## 2026-09-24 User changes current target to Astra medium; organization added
 
 - New target: GPT-6 Astra medium; GPT-6 Luna xhigh is permitted as an alternative,
@@ -216,7 +234,7 @@
   overflow, without relaxing exact digest or image/turn binding. New + existing
   native/Gateway checks: 94 passed; full regression 1505 passed / five explicit
   skips (210.59 s), Ruff passed. Actual new-model latency/accuracy is not yet
-  measured. See `docs/bbox-receipt-canonicalization.md`.
+  measured. See `docs/architecture/bbox-receipt-canonicalization.md`.
 - PR #17 direct-model branch merged the candidate scorer; head 7abc364 retains
   pinned public harness efeff23. Push CI 34498083016 passed; parallel PR CI
   34498089534 found a Windows 20 ms scheduling-test race (1458 pass / 6 skip).
@@ -252,7 +270,7 @@
   full App regression passes 1429 / six explicit skips (186.95 s). Main runtime
   and the earlier accepted bundle remain unchanged. The candidate's isolated
   preparation fix a7d8fb4 passes CI 34496955373 and secret scans.
-  See `docs/direct-harness-integration.md`. Full engine extraction, canonical
+  See `docs/architecture/direct-harness-integration.md`. Full engine extraction, canonical
   host assembly and actual candidate GUI/model/packaging remain pending.
 
 - New `scripts/score-desktop-cohort.py` verifies a complete >=100-case primary
@@ -316,7 +334,7 @@
   ROI and rejected all four one-pixel chrome crossings; no screenshot or model
   calls. Full unit/smoke/mock-integration regression: 1406 passed, 6 explicit
   opt-in/local-artifact skips (166.24 s); Ruff passes. Actual resize/DPI and
-  model cases remain pending. See `docs/viewer-client-capture-boundary.md`.
+  model cases remain pending. See `docs/architecture/viewer-client-capture-boundary.md`.
 - Crop-scope fix is pushed as draft stacked PR #15 (`e583a92`); CI 34487320267
   and Secret scans 34487320261 / 34487314337 pass. Candidate #13 is clean after
   isolated merge `8c3fb6e`; CI 34486122894 and Secret scan 34486038887 pass.
@@ -332,7 +350,7 @@
   runtime under Node 24.18 resolved them without skips. Qt scope/wrapping and
   JSON export checks pass; a synthetic offscreen report was visually reviewed
   after explicitly loading Windows fonts (initial preview had missing glyphs).
-  See `docs/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
+  See `docs/architecture/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
   remains pending; main cohort untouched, 80 distinct UI successes at 14:08 UTC.
 
 - English/Traditional-Chinese READMEs, maintenance size charter and the upgrade
@@ -476,7 +494,7 @@
   generated Astra profile. Core measured 175.683 MiB; full raw dependency tree
   799.055 MiB includes 377.406 MiB of Codex runtime dependencies that must not ship.
   HEARTBEAT template relocation and migration-only staging remain concrete gates.
-  See `docs/openclaw-upgrade-audit-2026-09-10.md`; active pin remains unchanged.
+  See `docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md`; active pin remains unchanged.
 - UI repair is isolated in worktree `data/tmp/astra-ui-worktree-20260910`, branch
   `agent/astra-ui-report-20260910`, to preserve the running cohort fingerprint.
   It fixes clipped wrapped labels, improves text contrast/priority, preserves full
@@ -1312,7 +1330,7 @@
 - 目前沒有把 Torch 或 370 MB checkpoint 塞入主 EXE，也還沒有可供 MEETI PNG
   使用的合格 waveform。若只有截圖，必須先有獨立、經校正品質 gate 驗證的
   waveform digitizer；現有 threshold/ink bbox 輔助不等於波形數位化。
-- 完整契約：`docs/ecgfounder-tool.md`。新增/相關測試目前 86 passed，Ruff 通過。
+- 完整契約：`docs/integrations/ecgfounder-tool.md`。新增/相關測試目前 86 passed，Ruff 通過。
 - 系統化 MultiPass urgent canary 已完成但不是改善證據：2 案中 1 案 timeout，
   可評分案 partial 0.4、urgent concern 0/2。不能用此小樣本宣稱提升，需先處理
   多輪 timeout/成本並重新做 paired run。
@@ -1344,7 +1362,7 @@
   Desktop review export is self-contained with source, result, marked image,
   crop PNGs, and coordinate audit.
 - Detailed experiment record:
-  `docs/meeti-openclaw-experiments-2026-08-09.md`.
+  `docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`.
 - The pre-publication 9,922-case run at
   `data/experiments/meeti-paired-full9922-v157-20260809` was deliberately stopped
   at 289 baseline results before final commits. Its state is `interrupted`; the
