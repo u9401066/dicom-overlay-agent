@@ -103,9 +103,11 @@ handoff and validated canonical export. It is synthetic-tested, not live-model
 accepted, and does not yet integrate the legacy clinical-rule hooks. Regional edits
 remain review drafts requiring reconciliation; the default workflow is unchanged.
 Initial [actual App runs](docs/evidence/2026-09/native-scientific-startup-2026-09-25.md)
-fixed missing receipt collection and canonical session naming. QC now advances
-to blind reading, but multi-observation checklist references still block final
-publication; complete live five-stage acceptance has not been achieved.
+fixed missing receipt collection and canonical session naming. QC advanced to
+blind reading, where multi-observation checklist references blocked publication.
+The [follow-up](docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
+adds structured references and private exact visible-output retention; fresh live
+five-stage acceptance is still pending.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

@@ -247,16 +247,24 @@ def decode_scientific_draft(
         )
     checklist = {}
     for axis, item in payload["checklist"].items():
-        if item["assessable"]:
-            checklist_observation = observations.get(item["evidence"])
+        references = item.get("observation_ids", [])
+        if not references and item["assessable"]:
+            references = [item["evidence"]]
+        for reference in references:
+            checklist_observation = observations.get(reference)
             _require(
                 checklist_observation is not None
-                and checklist_observation.assessable
-                and checklist_observation.status
-                in {
-                    VerificationStatus.SUPPORTED,
-                    VerificationStatus.POSSIBLE,
-                },
+                and (
+                    not item["assessable"]
+                    or (
+                        checklist_observation.assessable
+                        and checklist_observation.status
+                        in {
+                            VerificationStatus.SUPPORTED,
+                            VerificationStatus.POSSIBLE,
+                        }
+                    )
+                ),
                 "unsupported_checklist_observation",
             )
         checklist[axis] = ChecklistItem(**{**item, "status": Severity(item["status"])})
@@ -345,7 +353,12 @@ def build_scientific_draft_prompt(
     return (
         "SCIENTIFIC DRAFT PROTOCOL v1. Return one JSON object matching the schema. "
         "Record atomic pixel observations separately from diagnostic hypotheses. "
-        "Cite observation IDs in the summary and assessable checklist items; cite "
+        "Cite observation IDs in the summary. For each assessable checklist item, "
+        'use observation_ids as an array of exact IDs (e.g. ["o1", "o2"]); '
+        "every referenced observation must be assessable and supported or possible. "
+        "Use an empty array for an unassessable item without observations. "
+        "Do not comma-join IDs into the legacy evidence string or supply both "
+        "nonempty reference fields. Cite "
         "only supplied evidence IDs. Missing views/leads/calibration are explicit "
         "limitations, not normal findings. Non-diagnostic images must not produce "
         "pathology findings or diagnostic hypotheses; mark clinical axes unassessable "

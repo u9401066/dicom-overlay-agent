@@ -1,5 +1,18 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-25 — multi-observation contract and private visible-output retention
+
+- Added typed checklist observation_ids in public harness and host decoder;
+  validates every reference without rewriting prior failed replies.
+- Scientific App opt-in stores exact visible turn bytes before decoding, enabling
+  investigation after semantic failures and App exit without chat.history replay.
+- Focused draft158pass; receipt/session/main96pass; public initial494pass and
+  compatibility pass. Full48321:2410pass8skip414.22s; staged33.93KB secrets clean.
+  Fresh actual desktop acceptance pending.
+- Evidence:scientific-reference-receipts-2026-09-25.md. Not a clinical improvement
+  or five-stage acceptance claim; broader goal remains active.
+
+
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 

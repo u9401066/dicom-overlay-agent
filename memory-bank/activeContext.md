@@ -1,5 +1,25 @@
 # Active Context
 
+## 2026-09-25 — structured checklist references and durable visible attempts
+
+- Implemented public ChecklistItem.observation_ids, additive JSON Schema, strict
+  per-reference canonical validation, App decoder and prompts. Legacy single-ID
+  evidence retained; no comma splitting, dropping references or ambiguous dual
+  representation. Before focused4fail6pass; after draft/assembly/reconcile158pass.
+- Scientific opt-in actual main factory now sets private runtime data/scientific-
+  attempts root. Source plus exact visible replies saved before semantic decode,
+  exclusive files/fsync/commit marker, no auth/prompts/reasoning, no global logs.
+  Disk failure stops attempt. Local inherited permissions, not encrypted; manual
+  retention. No claim for collector failures before returned turn. Details in
+  docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md.
+- Public d9798dae0cf4ac3e25578da127801bce6d4391b3:494pass3.82s,
+  compatibility/Ruff/staged14.12KB secret scan/both remoteCI pass; host prompts+
+  docs51pass0.71s after public prompt update; receipt/session/main96pass;
+  main/four-module mypy and changed-source Ruff pass. Full48321 terminal0:
+  2410pass8skip414.22s; staged33.93KB secrets clean. New actual
+  App acceptance pending. Never restart sealed earlier runtimes. No new EXE.
+
+
 ## 2026-09-25 — third real App reaches blind pass, multi-observation references open
 
 - Clean88556d21b799e8364d21ad168b7d8a3436facf4c, fresh private

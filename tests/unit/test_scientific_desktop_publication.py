@@ -20,6 +20,7 @@ from dicom_overlay.infrastructure.scientific_desktop_reader import (
     ScientificDesktopReader,
 )
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
+from medical_image_harness.models import Modality
 from tests.unit.test_contract_assembly import inputs as inputs
 from tests.unit.test_image_evidence_turn import SOURCE, picture
 from tests.unit.test_image_publication_guard import _agent
@@ -61,6 +62,36 @@ def main_client(tmp_path, *, enabled):
 @pytest.mark.parametrize("enabled", [False, True])
 def test_main_client_evidence_collection_matches_scientific_mode(tmp_path, enabled):
     assert main_client(tmp_path, enabled=enabled)._collect_transport_evidence is enabled
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_main_reader_factory_only_retains_explicit_scientific_attempts(
+    tmp_path, enabled
+):
+    path = Path(__file__).resolve().parents[2] / "src/dicom_overlay/__main__.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    argument = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg == "scientific_reader_factory"
+    )
+    factory = eval(
+        compile(ast.Expression(argument.value), str(path), "eval"),
+        {
+            "scientific_mode": enabled,
+            "ScientificDesktopReader": ScientificDesktopReader,
+            "openclaw_client": main_client(tmp_path, enabled=enabled),
+            "base_dir": tmp_path,
+        },
+    )
+    if not enabled:
+        assert factory is None
+        assert not (tmp_path / "data" / "scientific-attempts").exists()
+        return
+    reader = factory(SOURCE, Modality.EKG)
+    store = reader.session._receipt_store
+    assert store.directory.parent == tmp_path / "data" / "scientific-attempts"
+    assert (store.directory / "source.png").read_bytes() == SOURCE
 
 
 def configured(tmp_path, replies):

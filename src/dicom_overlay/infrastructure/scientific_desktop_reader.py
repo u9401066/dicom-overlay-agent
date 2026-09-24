@@ -11,6 +11,7 @@ from dicom_overlay.infrastructure.scientific_image_session import ScientificImag
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+    from pathlib import Path
 
     from dicom_overlay.application.contract_assembly import PreparedReview
     from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
@@ -27,12 +28,14 @@ class ScientificDesktopReader:
         image_bytes: bytes,
         modality: Modality,
         deidentified: bool,
+        receipt_root: Path | None = None,
     ) -> None:
         self.session = ScientificImageSession(
             client,
             image_bytes=image_bytes,
             modality=modality,
             deidentified=deidentified,
+            receipt_root=receipt_root,
         )
 
     @property

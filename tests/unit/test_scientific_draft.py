@@ -67,6 +67,79 @@ def test_round_trip_model_ledger_into_unchanged_public_contract(draft_request):
     assert (payload, host) == original
 
 
+def test_multiple_checklist_references_survive_decode_and_canonical_assembly(
+    draft_request,
+):
+    payload, host = draft_request
+    payload["observations"].append({**payload["observations"][0], "id": "o2"})
+    item = payload["checklist"]["rhythm"]
+    item.pop("evidence")
+    item["observation_ids"] = ["o1", "o2"]
+    original = deepcopy(payload)
+    decoded = decode(payload, host)
+    assert decoded.draft.checklist["rhythm"].observation_ids == ["o1", "o2"]
+    canonical = assemble_review_contract(decoded.draft, **host).to_contract_payload()
+    assert canonical["checklist"]["rhythm"]["observation_ids"] == ["o1", "o2"]
+    assert json.loads(decoded.response_bytes) == original == payload
+
+
+@pytest.mark.parametrize(
+    "refs", [[], ["o1", "missing"], ["o1", "o1"], ["o1, o2"], [1], None]
+)
+def test_invalid_multiple_checklist_references_are_not_repaired(draft_request, refs):
+    payload, host = draft_request
+    item = payload["checklist"]["rhythm"]
+    item.pop("evidence")
+    item["observation_ids"] = refs
+    original = deepcopy(payload)
+    with pytest.raises(ScientificDraftError):
+        decode(payload, host)
+    assert payload == original
+
+
+@pytest.mark.parametrize(
+    "status,assessable",
+    [("contradicted", True), ("unevaluable", True), ("unevaluable", False)],
+)
+def test_second_checklist_reference_cannot_hide_unsupported_observation(
+    draft_request, status, assessable
+):
+    payload, host = draft_request
+    payload["observations"].append(
+        {
+            **payload["observations"][0],
+            "id": "o2",
+            "status": status,
+            "assessable": assessable,
+        }
+    )
+    item = payload["checklist"]["rhythm"]
+    item.pop("evidence")
+    item["observation_ids"] = ["o1", "o2"]
+    with pytest.raises(
+        ScientificDraftError, match=r"^unsupported_checklist_observation$"
+    ):
+        decode(payload, host)
+
+
+def test_ambiguous_checklist_reference_fields_are_rejected(draft_request):
+    payload, host = draft_request
+    payload["checklist"]["rhythm"]["observation_ids"] = ["o1"]
+    with pytest.raises(ScientificDraftError, match=r"^draft_schema_rejected$"):
+        decode(payload, host)
+
+
+def test_unassessable_checklist_structured_references_must_resolve(draft_request):
+    payload, host = draft_request
+    item = payload["checklist"]["rhythm"]
+    item.pop("evidence")
+    item.update(assessable=False, observation_ids=["missing"])
+    with pytest.raises(
+        ScientificDraftError, match=r"^unsupported_checklist_observation$"
+    ):
+        decode(payload, host)
+
+
 @pytest.mark.parametrize(
     "key,value",
     [

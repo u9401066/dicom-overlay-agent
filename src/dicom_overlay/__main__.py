@@ -746,7 +746,11 @@ def main() -> None:
         annotation_accumulator=AnnotationAccumulator(),
         scientific_reader_factory=(
             lambda image, modality: ScientificDesktopReader(
-                openclaw_client, image_bytes=image, modality=modality, deidentified=True
+                openclaw_client,
+                image_bytes=image,
+                modality=modality,
+                deidentified=True,
+                receipt_root=base_dir / "data" / "scientific-attempts",
             )
         )
         if scientific_mode

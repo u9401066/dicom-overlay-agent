@@ -26,6 +26,7 @@ from dicom_overlay.infrastructure.scientific_draft import (
     build_scientific_draft_prompt,
     decode_scientific_draft,
 )
+from dicom_overlay.infrastructure.scientific_receipts import ScientificReceiptStore
 from dicom_overlay.infrastructure.scientific_reconciliation import (
     ReconciledScientificDraft,
     decode_reconciliation,
@@ -44,6 +45,7 @@ from medical_image_harness.study import ImageAsset, StudyManifest
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+    from pathlib import Path
 
     from dicom_overlay.application.execution_journal import StageRecord
     from dicom_overlay.infrastructure.gateway_evidence import ImageEvidenceTurn
@@ -89,10 +91,21 @@ class ScientificImageSession:
         image_bytes: bytes,
         modality: Modality,
         deidentified: bool,
+        receipt_root: Path | None = None,
     ) -> None:
         if modality not in _QUALITY_FOCUS:
             raise ValueError("unsupported_scientific_modality")
         self._journal = ExecutionJournal(image_bytes, deidentified=deidentified)
+        self._receipt_store = (
+            ScientificReceiptStore(
+                receipt_root,
+                run_id=self._journal.run_id,
+                image_bytes=image_bytes,
+                deidentified=deidentified,
+            )
+            if receipt_root is not None
+            else None
+        )
         self._client = client
         self._image = image_bytes
         self._modality = modality
@@ -222,6 +235,8 @@ class ScientificImageSession:
         # Preserve the actual response even when the stage decoder next rejects
         # it. The client's latest-send slot must not replace this attempt body.
         self._turns.append(turn)
+        if self._receipt_store is not None:
+            self._receipt_store.save_turn(self.records[-1].stage, turn)
         if turn.image_sha256 != self._journal.source_image_sha256:
             raise ValueError("scientific_stage_image_identity_mismatch")
         if allow_bbox_tools:
