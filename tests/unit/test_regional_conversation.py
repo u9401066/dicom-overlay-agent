@@ -90,3 +90,64 @@ def test_rejects_invalid_region(values):
 def test_no_thread_without_current_image():
     with pytest.raises(ValueError, match="No current image"):
         RegionalConversations().thread(RegionRect(0, 0, 1, 1))
+
+
+def test_confirmed_manual_promotion_preserves_history_under_new_finding_only():
+    store = RegionalConversations()
+    store.bind(_image())
+    box = RegionRect(0.1, 0.2, 0.3, 0.4)
+    manual = store.thread(box)
+    store.append(manual, question="First", answer="Answer", proposal="Add marker")
+    other = store.thread(box, "unrelated")
+    store.append(other, question="Other", answer="Separate")
+    assert store.promote_manual_region(
+        box, "confirmed", source_image_sha256=store.image_sha256
+    )
+    assert store.thread(box, "confirmed") is manual
+    assert manual.finding_id == "confirmed"
+    assert not store.thread(box).turns
+    assert store.thread(box, "unrelated") is other
+    store.append(manual, question="Follow-up", answer="Continued")
+    exported = store.export()["threads"]
+    assert len(exported) == 2
+    promoted = next(item for item in exported if item["finding_id"] == "confirmed")
+    assert [turn["question"] for turn in promoted["turns"]] == ["First", "Follow-up"]
+    assert promoted["turns"][0]["proposal"] == "Add marker"
+
+
+@pytest.mark.parametrize(
+    "reason", ["wrong_image", "empty_id", "collision", "different_box"]
+)
+def test_manual_promotion_never_merges_or_reassigns_unrelated_history(reason):
+    store = RegionalConversations()
+    store.bind(_image())
+    box = RegionRect(0.1, 0.2, 0.3, 0.4)
+    manual = store.thread(box)
+    store.append(manual, question="Keep", answer="Original")
+    if reason == "collision":
+        store.append(store.thread(box, "new"), question="Other", answer="Other")
+    before = store.export()
+    assert not store.promote_manual_region(
+        RegionRect(0.11, 0.2, 0.3, 0.4) if reason == "different_box" else box,
+        " " if reason == "empty_id" else "new",
+        source_image_sha256="different"
+        if reason == "wrong_image"
+        else store.image_sha256,
+    )
+    assert store.export() == before
+    assert store.thread(box) is manual
+
+
+def test_manual_promotion_is_one_time_and_cannot_restore_invalidated_image():
+    store = RegionalConversations()
+    store.bind(_image())
+    box = RegionRect(0, 0, 1, 1)
+    old = store.thread(box)
+    store.append(old, question="Before", answer="Answer")
+    image_sha = store.image_sha256
+    assert store.promote_manual_region(box, "new", source_image_sha256=image_sha)
+    assert not store.promote_manual_region(box, "new", source_image_sha256=image_sha)
+    store.bind(_image(b"new source"))
+    assert not store.promote_manual_region(box, "new", source_image_sha256=image_sha)
+    assert not store.append(old, question="Late", answer="Do not restore")
+    assert store.export()["threads"] == []

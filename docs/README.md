@@ -18,6 +18,9 @@ manual two-turn QA, separate AI-region QA, Apply and history-export tests.
 The [external-window checkpoint](evidence/2026-09/external-window-selection-2026-09-24.md)
 adds explicit session-local selection and cautious report headings; full browser
 capture/inference acceptance remains pending.
+The [interaction package and promotion follow-up](evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)
+distinguishes the rebuilt `bd8f303` executable from subsequent source-only history
+handoff and stale-writeback protection. Neither adds clinical cohort acceptance.
 
 The candidate runtime remains OpenClaw 2026.9.3 / Node 24.18.0. Adoption of 2026.9.6,
 complete canonical evidence-ledger wiring, diverse legacy/vendor ECG acceptance,

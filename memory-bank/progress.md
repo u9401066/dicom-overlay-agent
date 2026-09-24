@@ -3,6 +3,22 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Rebuilt interaction executable; promotion source follow-up
+
+- bd8f303 clean EXE build completed. Seven key frozen modules match exact git
+  source; native-source audit accepts 90 files. Original builds retained.
+  General package verification passes; frozen suite passes 20 in 147.77s,
+  including isolated synthetic loopback Gateway image/error contract.
+- Package sizes: 4.70 MiB launcher / 54.44 MiB App / 337.01 MiB total.
+  Runtime plugin and fabricated OAuth migration pass. Inspection-time source
+  provenance is dirty, transparently separate from the verified frozen modules.
+- Fixed source-only manual ADD conversation identity handoff and late queued
+  writeback UI resurrection; 85 targeted tests and 1,658 full regression tests
+  pass, six explicit skips (213.17s). This later patch is not in the bd8f303 EXE.
+- All bd8f303 push/PR CI and secrets checks succeed. No actual browser/clinical
+  acceptance gained, no desktop focus taken and no public binary released.
+- Evidence: docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md.
+
 ## 2026-09-24 External-window selection and report-heading correction
 
 - New source flow selects external image windows explicitly and requires new

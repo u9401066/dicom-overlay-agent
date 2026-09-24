@@ -100,6 +100,33 @@ class RegionalConversations:
         )
         return True
 
+    def promote_manual_region(
+        self, region: RegionRect, finding_id: str, *, source_image_sha256: str
+    ) -> bool:
+        """Move history only after a confirmed ADD on the same source image.
+
+        Never infer correspondence from overlap or merge unrelated histories.
+        The caller must verify successful writeback before invoking this method.
+        """
+        if (
+            not self.image_sha256
+            or source_image_sha256 != self.image_sha256
+            or not finding_id.strip()
+        ):
+            return False
+        coordinates = tuple(
+            round(getattr(region, name), 6) for name in ("x", "y", "w", "h")
+        )
+        old_key = ("", *coordinates)
+        new_key = (finding_id, *coordinates)
+        thread = self._threads.get(old_key)
+        if thread is None or new_key in self._threads:
+            return False
+        del self._threads[old_key]
+        thread.finding_id = finding_id
+        self._threads[new_key] = thread
+        return True
+
     def export(self) -> dict[str, object]:
         return {
             "schema_version": 1,

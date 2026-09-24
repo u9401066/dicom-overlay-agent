@@ -16,7 +16,7 @@
 既有 low 設定不會被背景改寫。乾淨版 `9a27b61` 已通過 20 項封裝 smoke，並完成
 一例隱藏標籤／部分影像的真實 GUI 判讀（105.468 秒，四個 medium 回合均已核對）。
 這是已曝光開發案例，不是新盲測；也發現無法判定的結果仍顯示 NORMAL。Source
-呈現層已修正標題、不改寫歷史 severity；新版封裝與臨床驗收仍未完成。
+呈現層已修正標題、不改寫歷史 severity；新版實機與臨床驗收仍未完成。
 見[模型切換與實機紀錄](docs/evidence/2026-09/astra-medium-2026-09-24.md)。
 目前操作說明與歷史證據已分開，入口為[文件導覽](docs/README.md)與
 [App／harness／plugin 責任地圖](docs/architecture/components.md)。
@@ -30,6 +30,12 @@
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。完整瀏覽器擷取／模型判讀
 仍待驗收，見[選窗與標題修正紀錄](docs/evidence/2026-09/external-window-selection-2026-09-24.md)。
+
+`bd8f303` 互動版 EXE 已另行建置，七個關鍵封裝模組均與該 commit 程式碼相符。
+封裝總檢查及 20 項 frozen smoke 通過。
+後續 source 修正了人工框確認 ADD 後的歷史移交，以及延遲回寫事件重現舊畫面的
+問題；這兩項尚未包含在上述 EXE。驗證結果與待完成實機項目見
+[封裝與標記升級紀錄](docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)。
 
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
 ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。

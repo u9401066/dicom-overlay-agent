@@ -1750,8 +1750,19 @@ def main() -> None:
         future.add_done_callback(_done)
 
     def _on_review_apply_done(updated, delta: FindingDelta) -> None:
+        snapshot = _current_review_snapshot()
+        # The queued GUI callback may arrive after capture/image invalidation.
+        # An already-applied old result must not resurrect its overlay/history.
+        if snapshot is None or snapshot.result is not updated:
+            return
+        regional_conversations.bind(snapshot.image_base64)
         if delta.op is FindingOp.ADD:
             for box in delta.finding.bboxes:
+                regional_conversations.promote_manual_region(
+                    box,
+                    delta.finding.id,
+                    source_image_sha256=regional_conversations.image_sha256,
+                )
                 overlay.consume_user_region(box)
         on_analysis_result(
             updated,

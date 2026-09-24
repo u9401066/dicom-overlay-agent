@@ -36,6 +36,13 @@ image applications, with a fresh, session-only ROI and no silent target fallback
 Full browser capture/inference acceptance is still pending; see the
 [external-window checkpoint](docs/evidence/2026-09/external-window-selection-2026-09-24.md).
 
+The `bd8f303` interaction executable has now been built separately; seven key
+packaged modules match that exact source commit; package verification and all 20
+frozen smoke tests pass. A subsequent source fix preserves
+manual-region history after a confirmed ADD and rejects stale writeback UI events;
+it is not in that executable yet. See the [package/promotion evidence](docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)
+for verification results and the remaining actual-desktop gates.
+
 ## Historical desktop baseline — 2026-09-11
 
 This sealed baseline used **GPT-6 Astra low**, not the new medium target.

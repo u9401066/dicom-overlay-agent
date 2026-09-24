@@ -1,5 +1,28 @@
 # Active Context
 
+## 2026-09-24 Interaction EXE and promoted-marker history
+
+- Clean bd8f303 rebuilt in dist-interaction-bd8f303-upx; seven frozen code
+  objects match exact git source after filename normalization. EXE SHA-256
+  451673935c3627127a97e9de9a477c55d29e8478f492559fbf37fa1451bfcf0c.
+- Build session 12231 completed successfully; 90 native sources approved.
+  Follow-up package verifier 80539 completed OK. Frozen suite 43600 completed:
+  20 passed in 147.77s, including synthetic loopback image/Gateway error contract.
+- Package: launcher 4.70 / App 54.44 / total 337.01 MiB, 18,771 files;
+  plugin tools loaded, fabricated OAuth-only migration passes, no real model calls.
+  Manifest inspection-time source provenance is dirty due to the subsequent patch;
+  do not mistake it for build provenance. Frozen code comparison binds bd8f303.
+- Subsequent source moves exact manual thread to confirmed ADD finding ID;
+  never merges overlap/conflicting threads or different source hashes. Queued
+  Apply callback rejects absent/newer displayed result before changing UI/history.
+  85 targeted tests pass; full source suite 60175: 1,658 passed / six skipped
+  in 213.17s. Frozen tests above are for bd8f303, not this later source patch.
+- This subsequent patch is not in the bd8f303 EXE. No new actual desktop/model
+  acceptance; desktop preference question still unanswered, no focus taken.
+- bd8f303 push/PR CI 35991454492/35991456709 and secrets
+  35991454406/35991456769 all succeeded.
+- Evidence: docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md.
+
 ## 2026-09-24 Explicit external-window selector and indeterminate heading
 
 - Added Settings Choose image window, session-local handle/PID/class binding,
