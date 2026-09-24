@@ -200,6 +200,61 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     panel.close()
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "incomplete",
+        "review_required",
+        "validation_warnings",
+        "partial",
+        "info",
+        "complete",
+    ],
+)
+def test_normal_heading_requires_supported_complete_assessment(qt_app, flag):
+    result = _result()
+    result.severity = Severity.NORMAL
+    result.findings = []
+    result.checklist = {"rhythm": ChecklistItem("sinus", Severity.NORMAL)}
+    if flag in {"incomplete", "review_required"}:
+        setattr(result, flag, True)
+    elif flag == "validation_warnings":
+        result.validation_warnings = ["Synthetic unresolved issue"]
+    elif flag == "partial":
+        result.layout = {"format": "partial", "leads": []}
+    elif flag == "info":
+        result.checklist["rhythm"] = ChecklistItem("indeterminate", Severity.INFO)
+    panel = SummaryPanel()
+    panel.update_result(result)
+    heading = panel._summary_label.text().splitlines()[0]
+    assert heading == (
+        "NORMAL"
+        if flag == "complete"
+        else "REVIEW FINDINGS"
+        if flag == "info"
+        else "INDETERMINATE — review required"
+    )
+    assert result.severity is Severity.NORMAL
+    panel.close()
+
+
+@pytest.mark.parametrize("severity", [Severity.CRITICAL, Severity.WARNING])
+def test_incomplete_assessment_does_not_hide_urgent_structured_findings(
+    qt_app, severity
+):
+    result = _result()
+    result.severity = Severity.NORMAL
+    result.incomplete = True
+    result.findings[0] = replace(result.findings[0], severity=severity)
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert panel._summary_label.text().startswith(
+        f"{severity.value.upper()} — incomplete assessment"
+    )
+    assert result.severity is Severity.NORMAL
+    panel.close()
+
+
 def test_report_prioritizes_findings_without_mutating_source(
     qt_app: QApplication,
 ) -> None:

@@ -15,8 +15,9 @@
 在 Settings 選擇 `openai-codex-astra`、儲存並重新啟動 App／Gateway 後套用；
 既有 low 設定不會被背景改寫。乾淨版 `9a27b61` 已通過 20 項封裝 smoke，並完成
 一例隱藏標籤／部分影像的真實 GUI 判讀（105.468 秒，四個 medium 回合均已核對）。
-這是已曝光開發案例，不是新盲測；也發現無法判定的結果仍顯示 NORMAL，UI 與
-臨床驗收仍未完成。見[模型切換與實機紀錄](docs/evidence/2026-09/astra-medium-2026-09-24.md)。
+這是已曝光開發案例，不是新盲測；也發現無法判定的結果仍顯示 NORMAL。Source
+呈現層已修正標題、不改寫歷史 severity；新版封裝與臨床驗收仍未完成。
+見[模型切換與實機紀錄](docs/evidence/2026-09/astra-medium-2026-09-24.md)。
 目前操作說明與歷史證據已分開，入口為[文件導覽](docs/README.md)與
 [App／harness／plugin 責任地圖](docs/architecture/components.md)。
 
@@ -25,6 +26,10 @@
 綁定原圖的對話匯出；10 個模型回合均核對為 Astra medium。區域答案不再 30 秒
 自動消失，換圖即失效。這不是新版封裝或 100 例驗收完成，見
 [區域歷史實機紀錄](docs/evidence/2026-09/regional-history-2026-09-24.md)。
+
+開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
+重新框選本次使用的 ROI，不會偷偷切到其他視窗。完整瀏覽器擷取／模型判讀
+仍待驗收，見[選窗與標題修正紀錄](docs/evidence/2026-09/external-window-selection-2026-09-24.md)。
 
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
 ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。

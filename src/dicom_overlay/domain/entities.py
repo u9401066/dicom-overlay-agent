@@ -89,6 +89,16 @@ class WindowRect:
 
 
 @dataclass(frozen=True)
+class CaptureWindow:
+    """Session-local window identity; title is display-only, never persisted."""
+
+    window_id: int
+    process_id: int
+    window_class: str
+    title: str
+
+
+@dataclass(frozen=True)
 class DisplayFrame:
     """Physical-pixel bounds and identity of one desktop display."""
 

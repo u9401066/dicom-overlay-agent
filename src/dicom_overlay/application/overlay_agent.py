@@ -22,6 +22,7 @@ from dicom_overlay.domain.entities import (
     DisplayFrame,
     FindingDelta,
     FindingOp,
+    ROICrop,
     TriggerMode,
     WindowRect,
 )
@@ -39,7 +40,7 @@ from medical_image_harness.multipass import (
 )
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AppConfig, ROICrop
+    from dicom_overlay.domain.entities import AppConfig, CaptureWindow
     from dicom_overlay.domain.services import (
         ImageProcessorService,
         RegionMapperService,
@@ -1248,6 +1249,28 @@ class OverlayAgent:
         self._config.phi_roi = roi
         self._roi_setup_notified = False
         self._transition(AgentState.WAITING)
+
+    def select_capture_window(self, window: CaptureWindow) -> None:
+        """Switch only between reads; a different window always needs fresh ROI."""
+        if self._state in {AgentState.INIT, AgentState.CAPTURING, AgentState.ANALYZING}:
+            raise RuntimeError(
+                "Wait for the current startup or analysis before selecting a window"
+            )
+        rect = self._monitor.select_capture_window(window)
+        with self._review_lock:
+            self._review_snapshot = None
+            self._last_result = None
+            self._last_image_base64 = ""
+            self._last_capture_rect = None
+            self._result_revision += 1
+        self._config.phi_roi = ROICrop()
+        self._last_hash = ""
+        self._pending_analysis = False
+        self._initial_auto_attempts = 0
+        self._roi_setup_notified = False
+        self._annotation_accumulator.reset([])
+        self._set_target_window(rect)
+        self._transition(AgentState.SETUP)
 
     def on_display_timeout(self) -> None:
         """Called when overlay display times out."""

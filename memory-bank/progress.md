@@ -3,6 +3,23 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 External-window selection and report-heading correction
+
+- New source flow selects external image windows explicitly and requires new
+  session-only ROI. Identity loss never falls back; shells/popups excluded;
+  capture client/geometry/occlusion guards retained. DDD boundaries maintained.
+- Normal heading suppressed for incomplete/unverified assessments without
+  rewriting the source result. Warning/critical precedence and normal controls
+  tested. Offline replay of immutable actual export visually checked after
+  loading local fonts; not counted as a fresh actual GUI/model case.
+- Real App picker showed isolated Edge fixture, but windows disappeared before
+  end-to-end selection/ROI/inference. Guard rejected stale click; no browser
+  acceptance claimed. Desktop-use preference question pending; offline work continues.
+- 402d539 push/PR CI and secret scans all pass. Current source regression:
+  1,648 passed / six explicit skips in 234.53s; Ruff/docs/whitespace checks pass.
+  No refreshed executable or browser end-to-end acceptance claimed.
+- Evidence: docs/evidence/2026-09/external-window-selection-2026-09-24.md.
+
 ## 2026-09-24 Actual region history, inline QA, report revision
 
 - Added image-bound history and source-bound explicit export; fresh image or

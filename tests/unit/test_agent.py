@@ -10,6 +10,7 @@ import pytest
 from dicom_overlay.domain.entities import (
     AgentState,
     AppConfig,
+    CaptureWindow,
     DisplayFrame,
     FindingDelta,
     FindingOp,
@@ -223,10 +224,60 @@ class TestOverlayAgent:
         assert agent.state == AgentState.INIT
 
     @pytest.mark.asyncio
+    async def test_selecting_external_window_requires_new_roi_before_any_capture(
+        self, agent, agent_deps, monkeypatch
+    ):
+        monitor = agent_deps["screen_monitor"]
+        new_rect = WindowRect(20, 30, 1200, 800)
+        monkeypatch.setattr(monitor, "select_capture_window", lambda _: new_rect)
+        agent._state = AgentState.DISPLAYING
+        agent._last_result = agent_deps["vision_analyzer"].result
+        agent._last_image_base64 = "old"
+        previous_revision = agent.result_revision
+        agent.select_capture_window(
+            CaptureWindow(1, 101, "Browser", "Synthetic browser")
+        )
+        assert agent.state is AgentState.SETUP
+        assert agent.target_window == new_rect
+        assert not agent.has_roi_config()
+        assert agent.review_snapshot is None
+        assert agent.last_image_base64 == ""
+        assert agent.result_revision == previous_revision + 1
+        await agent.trigger_manual()
+        assert monitor.capture_rects == []
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    @pytest.mark.parametrize(
+        "state", [AgentState.INIT, AgentState.CAPTURING, AgentState.ANALYZING]
+    )
+    def test_cannot_switch_target_during_active_startup_or_read(
+        self, agent, monkeypatch, state
+    ):
+        selected = []
+        monkeypatch.setattr(
+            agent._monitor, "select_capture_window", lambda row: selected.append(row)
+        )
+        agent._state = state
+        roi = agent._config.phi_roi
+        with pytest.raises(RuntimeError, match="Wait"):
+            agent.select_capture_window(
+                CaptureWindow(1, 101, "Browser", "Synthetic browser")
+            )
+        assert agent._config.phi_roi is roi
+        assert selected == []
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("blocked_check", [1, 2])
-    @pytest.mark.parametrize("reason", ["viewer_roi_obstructed", "roi_outside_viewer_client"])
+    @pytest.mark.parametrize(
+        "reason", ["viewer_roi_obstructed", "roi_outside_viewer_client"]
+    )
     async def test_capture_obstruction_before_or_after_screenshot_never_sends(
-        self, agent, agent_deps, monkeypatch, blocked_check, reason,
+        self,
+        agent,
+        agent_deps,
+        monkeypatch,
+        blocked_check,
+        reason,
     ):
         from dicom_overlay.domain.services import CaptureBlockedError
 
@@ -1083,6 +1134,7 @@ class TestOverlayAgent:
         assert agent.last_capture_rect == expected
         assert monitor.capture_rects[-1] == expected
 
+
 @pytest.mark.asyncio
 async def test_auto_mode_analyzes_initial_stable_image():
     """AUTO mode must analyze a study already visible when monitoring starts.
@@ -1145,6 +1197,7 @@ async def test_auto_mode_initial_trigger_is_one_shot():
     agent._last_hash = ""
     await agent.tick()
     assert analyzer.analyze_calls == 1
+
 
 @pytest.mark.asyncio
 async def test_auto_mode_recovers_initial_trigger_after_reconnect():
@@ -1221,6 +1274,7 @@ async def test_auto_mode_initial_retry_is_capped_for_charge_safety():
     await agent.tick()
     assert agent._initial_auto_attempts == 3
     assert analyzer.analyze_calls == 0
+
 
 class _TimeoutOnceAnalyzer(MockVisionAnalyzer):
     """Fail the first analysis with a timeout, then behave normally."""

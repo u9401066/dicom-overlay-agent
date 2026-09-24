@@ -17,7 +17,8 @@ apply it; an existing saved low setting is not silently rewritten. Clean build
 `9a27b61` passes 20 packaged smoke checks and one actual hidden-label/partial GUI
 replay (105.468 s, four verified medium turns). This exposed development case is
 not blind acceptance. The replay also exposes an incorrect NORMAL heading on an
-indeterminate result; clinical/UI acceptance remains open.
+indeterminate result. Source presentation now corrects that heading without
+rewriting historical severity; clinical/current-binary acceptance remains open.
 See the [model transition and open integration work](docs/evidence/2026-09/astra-medium-2026-09-24.md)
 and [verified shared-engine package / low replay](docs/evidence/2026-09/shared-engine-2026-09-24.md).
 Use the [documentation index](docs/README.md) and [component ownership map](docs/architecture/components.md)
@@ -29,6 +30,11 @@ separate existing-marker QA, reviewer-confirmed report revision, history reopeni
 and source-bound conversation export; all ten model turns bind to Astra medium.
 This is not yet a refreshed frozen release or the 100-case acceptance cohort.
 See the [regional history checkpoint](docs/evidence/2026-09/regional-history-2026-09-24.md).
+
+Development Settings now offers **Choose image window** for browsers and other
+image applications, with a fresh, session-only ROI and no silent target fallback.
+Full browser capture/inference acceptance is still pending; see the
+[external-window checkpoint](docs/evidence/2026-09/external-window-selection-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11
 

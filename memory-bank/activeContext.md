@@ -1,5 +1,27 @@
 # Active Context
 
+## 2026-09-24 Explicit external-window selector and indeterminate heading
+
+- Added Settings Choose image window, session-local handle/PID/class binding,
+  no keyword fallback, fresh ROI after each explicit selection, no overwrite of
+  saved default-viewer calibration. Detected destruction latches invalidation;
+  reselect required. Own windows, desktop shells and transient owned popups excluded.
+- Startup/active read cannot change target; no fresh ROI means no capture/model
+  call. Settings closes before ROI/picker dialogs. No new runtime dependencies.
+- Heading uses incomplete/review/validation/inventory state instead of presenting
+  an unsupported NORMAL. Critical/warning structured statuses keep precedence;
+  entities/history unchanged. Immutable first medium result replayed offscreen,
+  explicit local fonts loaded; readable heading visually checked, not native/App
+  acceptance or a new inference. Original SHA preserved.
+- Real App/isolated Edge opened picker and listed fixture. Before selection/ROI/
+  inference, Edge, Viewer and picker disappeared; reason unknown, guarded click
+  rejected. Remaining App gracefully closed. Asked whether user needs desktop;
+  pending reply, continued only non-focus-taking work. Browser acceptance NOT passed.
+- 402d539 push/PR CI 35988586226/35988592311 and secrets 35988586222/35988592327 pass.
+- Current source regression: 1,648 passed / six explicit skips in 234.53s;
+  Ruff, documentation links and whitespace checks pass. Frozen binary unchanged.
+- Details: docs/evidence/2026-09/external-window-selection-2026-09-24.md.
+
 ## 2026-09-24 Region history now exercised through actual App
 
 - Implemented same-image/per-marker completed history, inline Send, persistent

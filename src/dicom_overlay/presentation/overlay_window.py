@@ -53,6 +53,34 @@ _REPORT_TEXT_COLORS = {
 _USER_REGION_HIGHLIGHT_ID = "__user_region__"
 
 
+def _review_heading(result: AnalysisResult) -> str:
+    """Do not present absence of a confirmed abnormality as a normal assessment."""
+    from medical_image_harness.ekg_layout import parse_ekg_lead_inventory
+    from medical_image_harness.models import Severity
+
+    levels = {
+        result.severity,
+        *(finding.severity for finding in result.findings),
+        *(item.status for item in result.checklist.values()),
+    }
+    if Severity.CRITICAL in levels:
+        return "CRITICAL — incomplete assessment" if result.incomplete else "CRITICAL"
+    if Severity.WARNING in levels:
+        return "WARNING — incomplete assessment" if result.incomplete else "WARNING"
+    limited = (
+        result.incomplete
+        or result.review_required
+        or bool(result.validation_warnings)
+        or (
+            result.modality.value == "EKG"
+            and not parse_ekg_lead_inventory(result.layout).complete
+        )
+    )
+    if limited:
+        return "INDETERMINATE — review required"
+    return "REVIEW FINDINGS" if Severity.INFO in levels else "NORMAL"
+
+
 def _summarize_process_trace(
     trace: list[dict[str, object]],
 ) -> dict[str, object]:
@@ -398,7 +426,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             if value
         )
         self._summary_label.setText(
-            f"{result.severity.value.upper()}\n{result.summary}"
+            f"{_review_heading(result)}\n{result.summary}"
             + (f"\n{metadata}" if metadata else "")
         )
 

@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import DisplayFrame, WindowRect
+    from dicom_overlay.domain.entities import CaptureWindow, DisplayFrame, WindowRect
     from medical_image_harness.models import Modality, RegionRect
 
 
@@ -24,6 +24,10 @@ class ScreenMonitorService(ABC):
     @abstractmethod
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         """Find the DICOM viewer window by title keywords."""
+
+    def select_capture_window(self, window: CaptureWindow) -> WindowRect:
+        """Explicitly bind one live window, or fail without broadening discovery."""
+        raise NotImplementedError("Explicit window selection is unavailable")
 
     def display_for_window(self, window: WindowRect) -> DisplayFrame | None:
         """Return the physical display containing ``window`` when available.

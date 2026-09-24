@@ -92,6 +92,7 @@ from dicom_overlay.presentation.overlay_window import OverlayWindow
 from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
+from dicom_overlay.presentation.window_picker import WindowPickerDialog
 from medical_image_harness.models import Finding, Modality, RegionRect
 from medical_image_harness.multipass import (
     MultiPassAnalyzer,
@@ -801,6 +802,7 @@ def main() -> None:
             AgentState.MONITORING,
             AgentState.WAITING,
             AgentState.ERROR,
+            AgentState.SETUP,
         }:
             regional_conversations.clear()
             _pending_regional_threads.clear()
@@ -1106,7 +1108,10 @@ def main() -> None:
         if roi is None:
             control_bar.set_status("ROI 設定已取消")
             return
-        save_roi_config(config_path, roi)
+        # A runtime-selected browser/viewer must not overwrite a different
+        # viewer's persisted calibration. Re-select and confirm ROI next launch.
+        if not screen_monitor.explicit_window_selected:
+            save_roi_config(config_path, roi)
         config.phi_roi = roi
 
         async def _roi():
@@ -1116,9 +1121,35 @@ def main() -> None:
         control_bar.set_status(
             f"ROI 已更新 top={roi.top} bottom={roi.bottom}"
             f" left={roi.left} right={roi.right}"
+            + ("（本次啟動）" if screen_monitor.explicit_window_selected else "")
         )
 
     signals.roi_setup_requested.connect(open_settings_roi_setup)
+
+    def choose_capture_window() -> None:
+        picker = WindowPickerDialog(
+            screen_monitor.available_capture_windows, parent=control_bar
+        )
+        if not picker.exec():
+            return
+        selected = picker.selected_window()
+        if selected is None:
+            return
+
+        async def _select() -> None:
+            agent.select_capture_window(selected)
+
+        future = bridge.submit(_select())
+
+        def _selected(f) -> None:
+            try:
+                f.result()
+            except Exception:
+                signals.error_msg.emit(
+                    "無法選取視窗，請等待目前判讀結束並確認視窗仍開啟。"
+                )
+
+        future.add_done_callback(_selected)
 
     def open_settings_dialog() -> None:
         dialog = SettingsDialog(
@@ -1133,6 +1164,7 @@ def main() -> None:
         dialog.trigger_mode_saved.connect(on_trigger_mode_changed)
         dialog.analysis_settings_saved.connect(on_analysis_settings_changed)
         dialog.roi_setup_requested.connect(open_settings_roi_setup)
+        dialog.capture_window_requested.connect(choose_capture_window)
         dialog.vision_test_requested.connect(_run_vision_test)
         dialog.exec()
 

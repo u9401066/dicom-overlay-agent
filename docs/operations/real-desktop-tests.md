@@ -31,6 +31,25 @@ The [sealed 121-case low cohort](../evidence/2026-09/evaluation-desktop-astra-20
 remains failed; it is not medium coverage. The older gate state below is retained
 as dated history, not current batch coverage. No 100-case medium cohort is accepted.
 
+## Select a browser or another image application (development source)
+
+1. Open the image in the intended application. Close menus, translation popups
+   and notifications that cover it.
+2. App Settings → **Choose image window** → select its row → **Use selected window**.
+   This does not depend on “DICOM”/“Viewer” appearing in the title.
+3. Draw a new safe image ROI and press Enter. Exclude browser controls and PHI.
+   Calibration is session-only for explicitly selected windows; another viewer's
+   saved ROI is not reused or overwritten. Canceling cannot authorize capture.
+4. Use App Analyze and Export. Compare exported source pixels against that actual
+   application, then inspect overlays and regional questions. A browser merely
+   appearing in the picker is not end-to-end acceptance.
+5. After closing/replacing the selected window, select it again and confirm ROI.
+   The App must not silently switch to another matching window. Restart also
+   requires explicit reselection; stored default keyword discovery is separate.
+
+Browser end-to-end acceptance is still pending at the
+[external-window checkpoint](../evidence/2026-09/external-window-selection-2026-09-24.md).
+
 ## Historical gate status (2026-09-02)
 
 - **Not released:** source metadata says `0.4.7`, but there is no Git tag or
