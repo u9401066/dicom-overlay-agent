@@ -1,5 +1,35 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — host execution journal component
+
+- application/execution_journal.py invokes host stage callbacks once in public
+  protocol order; real running/return/failed/cancelled/explicit-skip records retain
+  source/run IDs, actual timestamps, bounded original-artifact SHA and hash chain.
+  No event import, fake future completion, model prose, PHI paths or reasoning.
+- Public-schema QC precedes blind pass; non_diagnostic blocks interpretation
+  callbacks before invocation. Actual cancellation and a callback swallowing a new
+  task cancellation remain cancelled, not success; same failed run cannot resume.
+  Immutable snapshots and public projection preserve partial/failed history.
+-36 synthetic journal tests plus44assembler checks pass80/0.99s; Ruff/format and
+  focused journal mypy pass. Initial full2075pass7skip1failure201.24s: orphan guard
+  correctly caught unwired journal. Explicit DEFERRED_WIRING reason/prerequisites
+  added without disabling guard or fake entrypoint reference. Final full2076pass
+  7skip205.77s, session53883terminal0. Docs/Mark/history/turn linkage75pass0.90s.
+  Staged gitleaks passes; native tests remain opt-in, no focus stealing.
+- docs/architecture/execution-journal.md documents callback trust limitations and
+  two-phase validation/review availability before unchanged full assembly. No-op
+  callback/hash chain is not clinical evidence or a signature. No App/default
+  pipeline activation, retroconversion, dependency/schema/submodule or EXE change.
+- Actual native promotion evidence and chat screenshot rechecked: three-turn
+  history retained after dismissal/later Apply, reopening without inference,
+  third-turn no duplicate; fixes already in DIRECT. Safe Mark surface is entire
+  authorized ROI, never arbitrary full desktop. No new native GUI during batch.
+- Independent batch audit96/120verified,24pending,zero invalid/technical failures;
+  original80364stilllive, goldunopened. Prior3445772 CI36034342503/36034337896 and
+  secret scans36034342671/36034337955 all SUCCESS. MAIN user dirt preserved.
+- NEXT connect real intake/stage/scientific operations only after frozen cohort
+  is sealed; actual Gateway tool-event fidelity and current EXE GUI remain open.
+
 ## 2026-09-25 Taipei / September 24 UTC — compact clinical note presentation
 
 - Candidate-only presentation/finding_notes.py moves exact known ROI prefixes and

@@ -40,6 +40,9 @@
 [判讀介面整理紀錄](docs/evidence/2026-09/report-note-presentation-2026-09-24.md)：
 100／150／200% 合成離屏渲染通過，尚未當作候選版或新版 EXE 的實機驗收。
 
+隔離分支新增[主機端執行紀錄](docs/architecture/execution-journal.md)，強制流程順序、
+品質檢查先於判讀，並保留失敗／取消狀態。尚未接入桌面，也不回填認證舊判讀。
+
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的
 真實 Edge 選窗、ROI、擷取、判讀與人工框問答（89.355 秒，六階段核對 Astra medium）。

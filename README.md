@@ -50,6 +50,10 @@ fixes stale text height without clipping long identifiers. See the
 [report-layout checkpoint](docs/evidence/2026-09/report-note-presentation-2026-09-24.md):
 synthetic 100/150/200% rendering passes, but native candidate/EXE acceptance is pending.
 
+An isolated [host execution journal](docs/architecture/execution-journal.md) now
+enforces ordered callbacks, quality-gated interpretation and cancellation records.
+It is not yet desktop-wired and does not retroactively certify prior model runs.
+
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
 Actual Edge selection/ROI/capture/inference and manual QA now pass one exposed

@@ -3,6 +3,23 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — actual callback journal, isolated
+
+- Added ordered source-bound execution journal with immutable timing/status/hash
+  receipts, explicit optional/non-diagnostic skips, failure/cancellation retention,
+  artifact limits and no automatic replay/future-stage completion. Public QC schema
+  reused. A swallowed newly requested task cancellation cannot become completion.
+-36 new synthetic checks; with assembler80pass0.99s. Focused mypy/Ruff/format pass.
+  Initial full2075pass7skip1failure201.24s: missing deferred-orchestrator registration.
+  Explicit reason/activation prerequisites added; guard not bypassed. Final full
+  2076pass7skip205.77s, session53883terminal0. Regional QA/docs75pass0.90s;
+  staged gitleaks passes. No new native GUI acceptance.
+  Architecture/README/index updated; no live App/canonical pipeline activation.
+- Native promotion screenshot/audit rechecked; no new GUI inference or focus change.
+  Independent frozen cohort96/120verified,24pending,zero invalid/technical failures,
+  gold unopened. Prior3445772 CI and secrets green. Latest EXE remains3029dfb;
+  new native/cross-DPI acceptance and full canonical wiring remain pending.
+
 ## 2026-09-25 Taipei / September 24 UTC — clinical notes first, raw detail retained
 
 - Display-only note separation preserves crop scope/clinical prose and exact raw

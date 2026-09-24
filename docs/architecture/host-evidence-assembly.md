@@ -62,7 +62,9 @@ missing ledger. The desktop entrypoint does **not** call this assembler yet.
 The separate [scientific model draft protocol](scientific-model-draft.md) now
 provides a prompt/schema and strict ledger decoder; the legacy parser rejects
 that version marker instead of dropping its observations. This does not activate
-the new protocol or supply the still-missing host journal. The opt-in
+the new protocol. The isolated [execution journal](execution-journal.md) now
+records actual callbacks, quality-gated ordering, cancellation and source/artifact
+hashes; desktop stage operations still need to be connected. The opt-in
 [Gateway collector](gateway-evidence-capture.md) now preserves visible model/tool
 text at the receive boundary; default desktop activation and live acceptance remain.
 

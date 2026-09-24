@@ -58,6 +58,7 @@ Source branches/PRs are development checkpoints, not approved medical releases.
 | Decode model-led observations without model-owned provenance (inactive protocol) | [Scientific model draft](architecture/scientific-model-draft.md) |
 | Bind native bbox receipts to actual source/crop pixels (isolated component) | [Native source evidence](architecture/native-source-evidence.md) |
 | Preserve original visible Gateway model/tool text (opt-in; live acceptance pending) | [Gateway evidence capture](architecture/gateway-evidence-capture.md) |
+| Record real stage execution, failure and cancellation (isolated component) | [Host execution journal](architecture/execution-journal.md) |
 | Interpret dataset metrics | [Cohorts and denominators](evaluation/cohorts.md) |
 | Audit privacy, licensing and contributors | [Security](../SECURITY.md), [notices](../THIRD_PARTY_NOTICES.md), [contributing](../CONTRIBUTING.md) |
 
