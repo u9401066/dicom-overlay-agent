@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-25 — actual multireference success, reconciliation decision failure
+
+- Clean20e2690 actual App advanced through QC/blind/native bbox binding, then
+  rejected fourth-turn confirm that changed linked o3 anatomy/text. Four verified
+  Astra-medium turns,134.208s; no second look/report/export or clinical claim.
+- New private receipt store retained all exact replies, including10KB blind and
+  12KB failed reconciliation. Runtime safely Quit and sealed, not restarted.
+- Clarified confirm/revise prompt across the whole linked observation graph;
+  validator unchanged,111 focused tests/mypy/Ruff pass. Fresh live retest pending.
+
+
 ## 2026-09-25 — multi-observation contract and private visible-output retention
 
 - Added typed checklist observation_ids in public harness and host decoder;

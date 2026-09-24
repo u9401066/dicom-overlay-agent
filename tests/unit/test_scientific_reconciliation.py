@@ -8,7 +8,10 @@ from hashlib import sha256
 
 import pytest
 
-from dicom_overlay.infrastructure.scientific_reconciliation import decode_reconciliation
+from dicom_overlay.infrastructure.scientific_reconciliation import (
+    decode_reconciliation,
+    reconciliation_instruction,
+)
 from medical_image_harness.models import Modality
 from tests.unit.test_contract_assembly import inputs as inputs
 from tests.unit.test_scientific_draft import decode
@@ -149,3 +152,37 @@ def test_does_not_repair_duplicate_keys_or_raw_fences(draft_request):
                 trusted_evidence=host["trusted_evidence"],
                 elapsed_ms=0,
             )
+
+
+@pytest.mark.parametrize("field", ["anatomy", "finding", "question"])
+@pytest.mark.parametrize("action", ["confirm", "revise"])
+def test_unchanged_headline_does_not_hide_linked_observation_revision(
+    draft_request, field, action
+):
+    payload, host = draft_request
+    wrapper = envelope(payload)
+    wrapper["draft"]["observations"][0][field] = (
+        "Revised synthetic visible description."
+    )
+    wrapper["decisions"][0]["action"] = action
+    assert wrapper["draft"]["findings"] == payload["findings"]
+    original = deepcopy(wrapper)
+    if action == "confirm":
+        with pytest.raises(ValueError, match="confirmation_changed_observation"):
+            reconcile(wrapper, payload, host)
+    else:
+        assert reconcile(wrapper, payload, host).decoded.draft.observations
+    assert wrapper == original
+
+
+def test_prompt_explains_linked_observation_confirm_invariant(draft_request):
+    payload, host = draft_request
+    observation = decode(payload, host).draft.observations[0]
+    instruction = reconciliation_instruction()
+    for name in vars(observation):
+        if name not in {"id", "evidence_ids"}:
+            assert name in instruction
+    assert (
+        "shared observation" in instruction
+        and "removing a negative clause" in instruction
+    )

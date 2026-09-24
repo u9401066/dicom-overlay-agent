@@ -1,5 +1,26 @@
 # Active Context
 
+## 2026-09-25 — actual four-turn multireference replay; confirm graph prompt
+
+- Actual clean20e2690 App26484/launcher36668/Gateway34584/Viewer7832 in fresh
+  Ctemp/dicom-scientific-desktop-20260925-multiref,18796. Real Open+Analyze,
+  same exposed crop_top_20 ROI1500x864. QC/blind/native localization passed;
+  fourth reply rejected confirmation_changed_observation at134.208s. No second
+  look/Qt/report/export. Blind now supplies valid multi-observation arrays.
+- Exact private source + all4 visible replies persisted before decode, hostrun
+  c9082eaeddc148aeb78e19609adde780. Blind10436B/reconcile12932B, valid JSON;
+  o3 anatomy/text changed despite confirm f1. Do not relax validator or rewrite
+  this attempt. Native bbox tool executed once, no optional external classifier.
+- Public-evidence-20260924-233623 records4 Astra-medium sessions with matching
+  runtime IDs, no query model calls. Hashes/usage in scientific-reference-receipts
+  evidence. Query config private; never publish. Actual Quit stopped ownedApp/
+  launcher/Gateway/18796; viewer retained. This fourth runtime is SEALED.
+- Prompt now explicitly checks all linked observation fields and shared refs;
+  revisions permitted, no forced copying errors. Validator unchanged. New
+  confirm/revise cases:111pass6.76s across reconciliation/session/handoff/main;
+  mypy/Ruff pass. New actual run still required, next fresh runtime confirm-graph.
+
+
 ## 2026-09-25 — structured checklist references and durable visible attempts
 
 - Implemented public ChecklistItem.observation_ids, additive JSON Schema, strict
