@@ -12,6 +12,14 @@ capture flow does not yet have a trusted study-to-waveform resolver and does
 not invoke ECGFounder for screenshot-only analysis. Its Settings status is
 therefore informational and says `Evaluation sidecar configured`.
 
+The [September 25 prompt-integrity correction](../evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
+validates artifact/model/response bindings before forwarding waveform labels to
+later crop turns, preserves conflicting receipts and prevents mutable snapshot
+aliasing. Native audit records additionally retain their exact sanitized digest
+string to avoid JavaScript/Python number-serialization drift. This does not add a
+desktop study resolver or turn the old same-turn image/tool prompt into an
+independently saved blind read.
+
 The native harness plugin registers `ecg_founder_analyze_waveform` only when
 both variables are present in the Gateway environment:
 

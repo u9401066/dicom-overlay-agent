@@ -13,6 +13,7 @@ import time
 from collections import deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from json import JSONDecodeError
 from pathlib import Path
@@ -55,6 +56,9 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     OpenClawRuntimeError,
     build_openclaw_chat_frame,
     parse_gateway_hello,
+)
+from dicom_overlay.infrastructure.waveform_receipts import (
+    valid_waveform_support_receipt,
 )
 from medical_image_harness.image_ops import ImageOperationError, decode_image
 from medical_image_harness.models import (
@@ -141,7 +145,7 @@ class _WaveformArtifactBinding:
     audit_offset: int
     receipts: list[dict[str, object]] = field(default_factory=list)
     duplicate_attempts: list[dict[str, object]] = field(default_factory=list)
-    tool_call_ids: set[str] = field(default_factory=set)
+    tool_records: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 def probe_openclaw_gateway(
@@ -358,7 +362,7 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is None or binding.evidence_nonce != evidence_nonce:
             return []
         self._refresh_waveform_binding(binding)
-        return [dict(receipt) for receipt in binding.receipts]
+        return deepcopy(binding.receipts)
 
     def waveform_duplicate_attempts(
         self,
@@ -372,7 +376,7 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is None or binding.evidence_nonce != evidence_nonce:
             return []
         self._refresh_waveform_binding(binding)
-        return [dict(attempt) for attempt in binding.duplicate_attempts]
+        return deepcopy(binding.duplicate_attempts)
 
     async def connect(self) -> None:
         try:
@@ -1299,15 +1303,22 @@ class OpenClawClient(VisionAnalyzerService):
             if record.get("evidence_nonce") != binding.evidence_nonce:
                 continue
             tool_call_id = str(record.get("tool_call_id") or "")
-            if not tool_call_id or tool_call_id in binding.tool_call_ids:
+            if not tool_call_id:
                 continue
-            binding.tool_call_ids.add(tool_call_id)
-            copied = dict(record)
-            if record.get("status") == "duplicate_suppressed":
+            previous = binding.tool_records.get(tool_call_id)
+            if previous == record:
+                continue
+            copied = deepcopy(record)
+            binding.tool_records[tool_call_id] = deepcopy(record)
+            if previous is not None:
+                # Same identity with different contents is not a replay. Keep
+                # both records so prompt-time AND exactly-once eval checks fail.
+                binding.receipts.append(copied)
+            elif record.get("status") == "duplicate_suppressed":
                 binding.duplicate_attempts.append(copied)
             else:
                 binding.receipts.append(copied)
-            new_records.append(copied)
+            new_records.append(deepcopy(copied))
         return new_records
 
     def _supporting_waveform_evidence(self) -> dict[str, object] | None:
@@ -1317,15 +1328,15 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is None:
             return None
         self._refresh_waveform_binding(binding)
-        successful = [
-            receipt
-            for receipt in binding.receipts
-            if receipt.get("status") == "ok"
-            and receipt.get("evidence_nonce") == binding.evidence_nonce
-        ]
-        if len(successful) != 1:
+        if len(binding.receipts) != 1:
             return None
-        receipt = successful[0]
+        receipt = binding.receipts[0]
+        if not valid_waveform_support_receipt(
+            receipt,
+            artifact_id=binding.artifact_id,
+            evidence_nonce=binding.evidence_nonce,
+        ):
+            return None
         predictions = []
         raw_predictions = receipt.get("predictions")
         if isinstance(raw_predictions, list):

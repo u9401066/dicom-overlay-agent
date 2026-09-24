@@ -17,6 +17,9 @@ The [two-crop coverage follow-up](evidence/2026-09/two-crop-group-coverage-2026-
 verifies both actual lead-group crops and preserved critical-first routing. Its
 noncritical replay still misses the four asserted reference concepts; clinical
 acceptance is not implied by the engineering checks.
+The [waveform prompt-integrity follow-up](evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
+rejects mismatched evidence before crop prompts. Desktop matching and separate
+blind/tool reconciliation are still open; no new accuracy or GUI claim is made.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its

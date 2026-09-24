@@ -48,6 +48,9 @@ The [two-crop coverage follow-up](docs/evidence/2026-09/two-crop-group-coverage-
 now verifies actual limb/precordial group review without another model turn, while
 preserving critical-first routing. The noncritical replay still scores 0/4 asserted
 reference concepts: more complete crop coverage is not yet better diagnostic accuracy.
+The [waveform evidence boundary fix](docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
+now checks bindings before crop prompts; desktop waveform matching and a complete
+independent-evidence pipeline remain unimplemented, not silently enabled.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.

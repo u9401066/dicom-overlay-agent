@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — pre-prompt waveform provenance validation
+
+- Reproduced23/25 failures in evidence-forwarding checks. Runtime now rejects
+  mismatched/conflicting/malformed waveform support before later image prompts,
+  keeps audit records and returns deep snapshots. No extra inference or dependency.
+- Native sanitized digest bytes retained for JS/Python small-number compatibility;
+  independent desktop matching and saved blind/tool reconciliation remain open.
+- Focused135pass17.11s; documentation/eval-validator/scientific-session65pass2.25s;
+  targeted mypy/Ruff/format pass. Final full regression pending.
+- Old120-case score/seal unchanged, previous candidate CI green. No paid model,
+  actual new GUI, package-size measurement, EXE or clinical acceptance in this step.
+  Evidence:docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md.
+
 ## 2026-09-25 — actual two-crop group coverage without extra inference
 
 - App opts into public harness f0f4862 two-group routing only with complete valid

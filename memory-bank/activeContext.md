@@ -1,5 +1,34 @@
 # Active Context
 
+## 2026-09-25 — waveform evidence checked before crop prompts
+
+- Confirmed desktop still has no trusted waveform resolver and does not call
+  use_waveform_artifact; Settings correctly says evaluation-only. Existing eval
+  image-first/tool instructions in one turn do not prove a retained blind pass.
+- Fixed real runtime defect: supporting labels previously needed only nonce + one
+  success. Added stdlib-only waveform_receipts gate for exact artifact/model/pinned
+  checkpoint, response digest/fields, count, unique bounded labels and finite scores.
+  Failure-plus-success and conflicting same tool-call ID now fail closed; identical
+  replay remains deduplicated. Deep receipt snapshots cannot mutate later prompts.
+- Native plugin adds sanitized response_canonical_json to schema-1 audit only;
+  preserves original digest bytes across JS/Python number formats, strict projected
+  content comparison. Existing public tool/Gateway/result schemas unchanged. Not
+  original Gateway text, clinical correctness or proof of image/waveform matching.
+- Initial25 regression checks:23fail/2pass before fix; final focused135pass17.11s,
+  including38 new unit cases and6 new native JS numeric smoke cases. Real client
+  refine send/receive exercised with synthetic Gateway; one send/no parse retries.
+  Large synthetic pytest parameter needed a bounded ID on Windows; fixed fixture
+  ID, not the tested payload/size limit. Ruff/format/targeted mypy pass.
+- Docs/legacy eval validator/scientific session checks65pass2.25s. Full final
+  regression pending. Previous1b1f28c both CI/secrets completed successfully.
+- Frozen120-case seal57aeb9d... and score6532f1ec... rehashed unchanged; no scorer,
+  historical validation implementation, source files or private results rewritten.
+  No paid inference, new native App run, EXE, waveform activation or accuracy claim.
+  Viewer7832 retained; no App started. README/docs/Memory updated for exact scope.
+- Next: trusted source/waveform matching + separate blind/independent/reconcile
+  pipeline and actual App integration; do not call this defensive gate that pipeline.
+  Evidence:docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md.
+
 ## 2026-09-25 — two-turn lead-group coverage, two actual GUI replays
 
 - Public harness f0f486229cd057c291dd2a66f036f1ce796a42b6 adds optional
