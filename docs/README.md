@@ -25,6 +25,9 @@ Further actual App checks cover [Viewer movement](evidence/2026-09/native-region
 The [interaction package and promotion follow-up](evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)
 distinguishes the rebuilt `bd8f303` executable from subsequent source-only history
 handoff and stale-writeback protection. Neither adds clinical cohort acceptance.
+The [native promotion follow-up](evidence/2026-09/native-marker-promotion-2026-09-24.md)
+now verifies real ADD dismissal, later approval, history migration/reopening and
+third-turn follow-up on clean 243f2ef, without claiming a new frozen release.
 
 The candidate runtime remains OpenClaw 2026.9.3 / Node 24.18.0. Adoption of 2026.9.6,
 complete canonical evidence-ledger wiring, diverse legacy/vendor ECG acceptance,

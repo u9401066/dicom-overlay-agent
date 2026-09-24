@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Real manual marker promotion acceptance
+
+- Actual clean 243f2ef App: manual Mark outside existing AI boxes, real ADD
+  proposal dismissed, second ADD applied, promoted finding reopened with both
+  earlier turns, third follow-up preserved. No duplicate; original finding and
+  source unchanged, manual bbox retained exactly, consumed manual marker removed.
+- Three distinct turn IDs link to dismissal/application/no-change. Ten stages
+  bound to Astra medium. All seven GUI exports source-identical, baseline RGB MAE 0.
+- Source CI/secrets all passed. This is exposed-case interaction evidence only;
+  no App code change, EXE refresh or new blind clinical case.
+- Evidence: docs/evidence/2026-09/native-marker-promotion-2026-09-24.md.
+
 ## 2026-09-24 Mid-analysis image replacement reproduced and guarded
 
 - Actual GUI A-to-B swap at identical geometry previously published/exported

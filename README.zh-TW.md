@@ -26,6 +26,8 @@
 綁定原圖的對話匯出；10 個模型回合均核對為 Astra medium。區域答案不再 30 秒
 自動消失，換圖即失效。這不是新版封裝或 100 例驗收完成，見
 [區域歷史實機紀錄](docs/evidence/2026-09/regional-history-2026-09-24.md)。
+也已實機跑通人工框 ADD 建議的拒絕、再次建議後套用、轉為 finding、重開歷史及
+第三輪續問；沒有重複新增，見[人工框升級實機紀錄](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md)。
 
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的

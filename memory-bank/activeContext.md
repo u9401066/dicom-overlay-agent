@@ -1,5 +1,22 @@
 # Active Context
 
+## 2026-09-24 Native manual ADD, dismissal, promotion and continued QA
+
+- Clean 243f2ef actual App/Viewer, exposed partial case 119, manual safe ROI,
+  150% display. Baseline 86.482s workflow / 82.243s inference, source RGB MAE 0.
+- Actual Mark outside AI boxes (1100,170)-(1380,420), real ADD suggestion, Dismiss,
+  inline second question/ADD, Apply, Inspect click/reopen and third inline turn.
+  First two histories move exactly to review-3a1672872360; selected bbox unchanged;
+  manual marker consumed, original finding untouched; third turn no_change.
+- Three host IDs join dismissed/add, applied/add, no_change/none; ten model stages
+  verified Astra medium. No fake response/direct analyzer injection. Actual exports
+  and rendered overlay/chat inspected. Audit accounts for manual context fields
+  updating after second question rather than treating export total count as proof.
+- Both 243f2ef CI and both secret scans succeeded. No new code/binary or clinical
+  cohort claim. 33 docs/callback/history/linkage tests pass (0.34s). Owned App,
+  Viewer and Gateway closed, PIDs/listener gone.
+  Evidence: docs/evidence/2026-09/native-marker-promotion-2026-09-24.md.
+
 ## 2026-09-24 Mid-analysis image identity guard
 
 - Real clean 7f6214e App reproduced A report displayed/exported over same-size

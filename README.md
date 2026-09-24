@@ -30,6 +30,9 @@ separate existing-marker QA, reviewer-confirmed report revision, history reopeni
 and source-bound conversation export; all ten model turns bind to Astra medium.
 This is not yet a refreshed frozen release or the 100-case acceptance cohort.
 See the [regional history checkpoint](docs/evidence/2026-09/regional-history-2026-09-24.md).
+The actual source App now also passes manual ADD proposal dismissal, later Apply,
+promotion to a finding, history reopening and third-turn follow-up without a
+duplicate. See [native promotion evidence](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md).
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
