@@ -16,8 +16,12 @@ separates the corrected blank-ROI Mark hit testing from incomplete live QA/histo
 Its [history follow-up](evidence/2026-09/regional-history-2026-09-24.md) records actual
 manual two-turn QA, separate AI-region QA, Apply and history-export tests.
 The [external-window checkpoint](evidence/2026-09/external-window-selection-2026-09-24.md)
-adds explicit session-local selection and cautious report headings; full browser
-capture/inference acceptance remains pending.
+adds explicit session-local selection and cautious report headings. Its
+[native browser follow-up](evidence/2026-09/native-browser-selection-2026-09-24.md)
+records one exposed Edge capture/inference/manual-QA replay, not broad acceptance.
+Further actual App checks cover [Viewer movement](evidence/2026-09/native-regional-projection-2026-09-24.md),
+[ROI preview](evidence/2026-09/roi-preview-pixels-2026-09-24.md), and
+[mid-analysis image replacement](evidence/2026-09/image-publication-guard-2026-09-24.md).
 The [interaction package and promotion follow-up](evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)
 distinguishes the rebuilt `bd8f303` executable from subsequent source-only history
 handoff and stale-writeback protection. Neither adds clinical cohort acceptance.

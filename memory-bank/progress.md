@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Mid-analysis image replacement reproduced and guarded
+
+- Actual GUI A-to-B swap at identical geometry previously published/exported
+  stale A findings. Preserved before-fix result and bounded screenshots.
+- Source now checks exact current ROI pixels locally before DISPLAYING; changed
+  or unverifiable images withhold active report/QA/export. One memory-only draft
+  retained. No ROI expansion, additional model call, dependency or schema change.
+- Real swapped-image negative and unchanged-image positive controls pass; positive
+  source RGB MAE 0, four Astra-medium stages verified. Eight new regressions;
+  complete unit/integration/smoke 1,724 passed / six skips, 212.89s. No new binary,
+  clinical case or general atomic capture/publication guarantee.
+- Evidence: docs/evidence/2026-09/image-publication-guard-2026-09-24.md.
+
 ## 2026-09-24 ROI preview black-area fix
 
 - Presentation paint preserves frozen source inside selection instead of clearing

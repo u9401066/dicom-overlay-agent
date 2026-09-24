@@ -41,11 +41,15 @@ Other browsers, DICOM applications and clinical acceptance remain open; see the
 [native browser evidence](docs/evidence/2026-09/native-browser-selection-2026-09-24.md).
 Same-display Viewer movement also preserves marks/history within one physical
 pixel at 150% scale; [native movement evidence](docs/evidence/2026-09/native-regional-projection-2026-09-24.md).
+Mid-analysis image replacement is now checked before publishing: a local exact
+ROI pixel comparison withholds stale results and exports. Real swapped/unchanged
+Viewer runs pass; see [publication guard evidence](docs/evidence/2026-09/image-publication-guard-2026-09-24.md).
 
 The latest preserved local executable is `6e6734e`: eight key modules match its
 clean source, with package verification and 20 frozen smoke checks passing.
 It includes regional turn IDs and promotion-history fixes, but not the later
-Viewer-projection or picker-accessibility changes. This is not a public release;
+Viewer-projection, picker-accessibility, ROI-preview or publication-guard changes.
+This is not a public release;
 see the [package checkpoint](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11

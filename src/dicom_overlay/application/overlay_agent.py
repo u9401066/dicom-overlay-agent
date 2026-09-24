@@ -252,6 +252,14 @@ class ReviewSnapshot:
     display_frame: DisplayFrame | None = None
 
 
+@dataclasses.dataclass(frozen=True)
+class WithheldReview:
+    """One bounded in-memory record; never a displayed/current-image report."""
+
+    snapshot: ReviewSnapshot
+    reason: str
+
+
 class OverlayAgent:
     """Main orchestrator — state machine driving the analysis pipeline.
 
@@ -313,6 +321,7 @@ class OverlayAgent:
         self._last_result: AnalysisResult | None = None
         self._result_revision = 0
         self._review_snapshot: ReviewSnapshot | None = None
+        self._last_withheld_review: WithheldReview | None = None
         self._annotation_accumulator = annotation_accumulator or AnnotationAccumulator()
         self._last_image_base64 = ""
         self._running = False
@@ -378,6 +387,12 @@ class OverlayAgent:
             if self._state is not AgentState.DISPLAYING:
                 return None
             return self._review_snapshot
+
+    @property
+    def last_withheld_review(self) -> WithheldReview | None:
+        """Preserve the last rejected draft/source for audit until replaced/exit."""
+        with self._review_lock:
+            return self._last_withheld_review
 
     @property
     def last_image_base64(self) -> str:
@@ -1185,7 +1200,6 @@ class OverlayAgent:
                     display_window=capture_window,
                     display_frame=capture_display,
                 )
-            self._transition(AgentState.DISPLAYING)
             # The viewer may have moved/reflowed during a long model request.
             # Validate current geometry before the first result is presented.
             current_window = self._monitor.find_target_window(
@@ -1200,6 +1214,9 @@ class OverlayAgent:
             self._set_target_window(current_window)
             if not self._update_review_projection(capture_window, notify=False):
                 return
+            if not await self._verify_image_before_publication(source_screenshot):
+                return
+            self._transition(AgentState.DISPLAYING)
             if self.on_analysis_result:
                 self.on_analysis_result(result)
         except TimeoutError:
@@ -1219,6 +1236,71 @@ class OverlayAgent:
                 self._transition(AgentState.ERROR)
                 if self.on_error:
                     self.on_error("分析錯誤")
+
+    def _withhold_review(self, reason: str) -> None:
+        with self._review_lock:
+            if self._review_snapshot is not None:
+                self._last_withheld_review = WithheldReview(
+                    self._review_snapshot, reason
+                )
+            self._review_snapshot = None
+            self._last_result = None
+            self._last_image_base64 = ""
+            self._last_capture_rect = None
+            self._annotation_accumulator.reset([])
+            self._result_revision += 1
+            self._last_hash = ""
+            self._debounce_start = 0.0
+        logger.warning("Analysis result withheld", reason=reason)
+        if self._state is AgentState.ANALYZING:
+            self._transition(AgentState.MONITORING)
+            self._mark_pending_analysis(reason)
+            if self.on_error:
+                self.on_error(
+                    "判讀期間影像已變更或無法確認；舊結果未顯示。"
+                    "請確認影像與 ROI 後重新 Analyze。"
+                )
+
+    async def _verify_image_before_publication(self, original: bytes) -> bool:
+        """Local, bounded ROI recheck; never transmit or publish new pixels."""
+        if self.on_before_capture is not None:
+            self.on_before_capture()
+            await asyncio.sleep(0.4)
+        if self._state is not AgentState.ANALYZING:
+            self._withhold_review("state_changed_before_publication")
+            return False
+        previous_window = self._target_window
+        current_window = self._monitor.find_target_window(
+            self._config.monitor.window_title_keywords
+        )
+        if current_window is None:
+            self._withhold_review("viewer_lost_before_publication")
+            self._set_target_window(None)
+            self._transition(AgentState.WAITING)
+            return False
+        self._set_target_window(current_window)
+        if not self._update_review_projection(previous_window, notify=False):
+            return False
+        snapshot = self.review_snapshot
+        if snapshot is None:
+            self._withhold_review("review_invalidated_before_publication")
+            return False
+        rect = snapshot.display_rect or snapshot.capture_rect
+        try:
+            self._monitor.verify_capture_target(rect)
+            current = self._monitor.capture_region(rect)
+            self._monitor.verify_capture_target(rect)
+            matches = self._processor.same_image_pixels(original, current)
+        except Exception:
+            self._withhold_review("viewer_unverifiable_before_publication")
+            return False
+        if not matches:
+            self._withhold_review("image_changed_during_analysis")
+            return False
+        if self._state is not AgentState.ANALYZING:
+            self._withhold_review("state_changed_before_publication")
+            return False
+        return True
 
     async def _analyze_with_retry(
         self,

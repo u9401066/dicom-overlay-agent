@@ -494,6 +494,16 @@ class ImageProcessor(ImageProcessorService):
     _MIN_CROP_EDGE_PX = 512
     _MIN_SOURCE_SIGNAL_EDGE_PX = 64
 
+    def same_image_pixels(self, original: bytes, current: bytes) -> bool:
+        """Compare exact decoded RGBA pixels, not a low-resolution image hash."""
+        with (
+            Image.open(io.BytesIO(original)) as first,
+            Image.open(io.BytesIO(current)) as second,
+        ):
+            return first.size == second.size and (
+                first.convert("RGBA").tobytes() == second.convert("RGBA").tobytes()
+            )
+
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int
     ) -> bytes:

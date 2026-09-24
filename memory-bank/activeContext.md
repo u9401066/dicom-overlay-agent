@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-24 Mid-analysis image identity guard
+
+- Real clean 7f6214e App reproduced A report displayed/exported over same-size
+  synthetic B while geometry remained unchanged. Failure artifacts preserved.
+- Before DISPLAYING, local exact decoded-pixel ROI check now fails closed for
+  changes/occlusion/capture/decode errors. Same authorized ROI only; no extra
+  model request, dependency or schema change. One rejected draft/source retained
+  in bounded memory, not durable/canonical audit. Pause is preserved.
+- Actual source-patched App: swapped image withheld/no stale Export (102.076s);
+  unchanged image publishes/exports (95.601s), source RGB MAE 0. Positive and
+  original failure each have four usage-bound Astra-medium stages. Exposed case,
+  not clinical acceptance. Eight new tests; related 71 pass; full explicit
+  unit/integration/smoke 1,724 pass / six skips in 212.89s. 7f CI/secrets all pass.
+- Exact checking is conservative for dynamic pixels, adds local capture + hide
+  beat and does not cancel in-flight inference or make desktop painting atomic.
+  Owned App/Viewer/Gateway closed, PIDs/listener absent. No EXE refresh.
+  Evidence: docs/evidence/2026-09/image-publication-guard-2026-09-24.md.
+
 ## 2026-09-24 ROI selected-preview black area corrected and natively verified
 
 - Opaque-dialog CompositionMode_Clear erased the selected screenshot pixels.

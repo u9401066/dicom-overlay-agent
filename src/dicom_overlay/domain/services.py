@@ -62,6 +62,15 @@ class ScreenMonitorService(ABC):
 class ImageProcessorService(ABC):
     """Handles ROI cropping for PHI removal (spec §3.2)."""
 
+    def same_image_pixels(self, original: bytes, current: bytes) -> bool:
+        """Require exact identity before publishing a delayed interpretation.
+
+        Adapters may compare decoded pixels to ignore lossless file metadata,
+        but must not use perceptual similarity as proof of image identity.
+        The conservative default only accepts identical encoded bytes.
+        """
+        return original == current
+
     @abstractmethod
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int

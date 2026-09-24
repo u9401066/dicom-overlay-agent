@@ -35,10 +35,12 @@
 見[瀏覽器實機紀錄](docs/evidence/2026-09/native-browser-selection-2026-09-24.md)。
 同螢幕 Viewer 移動也已實測：150% 縮放下框跟隨誤差不超過 1 px，歷史保留，
 見[移動與問答實機紀錄](docs/evidence/2026-09/native-regional-projection-2026-09-24.md)。
+判讀途中換圖也已實測並修正：發佈前在本機核對相同安全 ROI 的像素，換圖後不顯示
+或匯出舊結果；未換圖則正常顯示與匯出。見[換圖防護紀錄](docs/evidence/2026-09/image-publication-guard-2026-09-24.md)。
 
 最新保留的本機 EXE 為 `6e6734e`，八個關鍵模組與乾淨來源一致，封裝總檢查及
 20 項 frozen smoke 通過。包含區域回合 ID 與人工框升級歷史修正，但尚未包含
-後續 Viewer 座標跟隨及輔助操作選窗修正；不是公開發布版。
+後續 Viewer 座標跟隨、輔助操作選窗、ROI 預覽及判讀途中換圖防護；不是公開發布版。
 見[封裝驗證紀錄](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md)。
 
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
