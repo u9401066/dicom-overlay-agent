@@ -7,7 +7,7 @@
 🌐 [繁體中文](README.zh-TW.md)
 
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
-(published and browser-verified on September 10; development evidence, not a clinical release).
+(updated and browser-verified on September 24; development evidence, not a clinical release).
 
 ## Current development target — 2026-09-24 (not a release)
 

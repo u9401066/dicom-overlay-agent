@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-24 Public website refreshed independently of App code
+
+- Website-only PR 19 merged into main as 37d6ed3eabeff74dfc5f17f67ea0a1ffafa30d93;
+  only site, two READMEs, site tests and memory changed. Main App/runtime pins
+  remain untouched. Worktree: data/tmp/pages-refresh-20260924, branch
+  agent/pages-interaction-20260924 (eff8d96, review follow-up 2264e1f).
+- Pages deployment 35997090375 succeeds. Live https://u9401066.github.io/dicom-overlay-agent/
+  checked after deployment at 1440x1000, 390x844 and 320x740: identity, content,
+  no relevant console/error overlay, no horizontal overflow, guide navigation,
+  menu open/Escape/focus/link-close all pass; screenshots visually reviewed.
+- frontend-testing-debugging skill used existing Playwright core/headless Edge
+  because Browser plugin absent. No native desktop focus; screenshots/helper and
+  JSON receipts outside repo: Windows Temp/dicom-pages-qa-20260924/live-after-*.
+  Local QA servers stopped. OpenAI Docs auth page fetched for login guidance.
+- Site now distinguishes current medium target, failed old low cohort, bd8f303
+  package and ebbe2a5 source-only follow-up. Adds ROI Mark/QA guide and explicit
+  browser/DPI/100-case limitations. Fixes --bundle argument, pinned checkout,
+  submodule setup and uv --locked. Pinned evidence URLs verified in remote tree.
+- 17 site tests/Ruff/secret scans pass. PR CI 35996634353 succeeds; three review
+  findings were corrected before merge. Main post-merge CI 35997090497 and
+  main secret scan 35997090320 both pass.
+- ebbe2a5 source push/PR CI 35994641836/35994647106 and secrets
+  35994641916/35994647014 all succeeded. No new clinical case or binary release.
+
 ## 2026-09-24 Interaction EXE and promoted-marker history
 
 - Clean bd8f303 rebuilt in dist-interaction-bd8f303-upx; seven frozen code

@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Website publication and live responsive verification
+
+- PR 19 merged website/docs only into main (37d6ed3); App code not merged.
+  Pages 35997090375 deployed successfully. Public URL rendered and interacted
+  with at 1440, 390 and 320px; no relevant console errors or horizontal overflow.
+- Added current medium/Mark/region QA instructions, exact source-vs-EXE status,
+  fixed setup command/submodules/locked checkpoint and pinned evidence links.
+  Sealed clinical failures remain unchanged, browser/100-case acceptance pending.
+- 17 site tests and PR CI pass. Three automated review findings addressed before
+  merge. Main post-merge CI 35997090497 and secret scan 35997090320 pass.
+- QA artifacts remain outside repo; synthetic public media only. Native desktop
+  preference question remains unanswered; no desktop focus or real model call.
+
 ## 2026-09-24 Rebuilt interaction executable; promotion source follow-up
 
 - bd8f303 clean EXE build completed. Seven key frozen modules match exact git
