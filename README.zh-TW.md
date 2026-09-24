@@ -7,12 +7,26 @@
 🌐 [English](README.md)
 
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
-（9 月 10 日已公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
+（公開開發證據，不是臨床正式版本）。
 
-## 開發證據 — 2026-09-11（尚未發布）
+## 目前開發進度 — 2026-09-24
 
-目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
-`openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由，
+目前目標為 **GPT-6 Astra medium**，實作位於獨立開發分支
+`agent/direct-harness-models-20260910`，不是 main 的 App。真實 source App
+已驗證 ROI 空白處 Mark、人工框兩輪續問、AI 框獨立問答、人工確認修改與歷史重開。
+`bd8f303` 互動版 EXE 通過封裝總檢查及 20 項 frozen smoke；後續 `ebbe2a5`
+修正人工框確認 ADD 後的歷史移交，以及延遲回寫重現舊畫面，尚未納入該 EXE，
+也尚待實機重測。
+
+請見[ROI 與區域問答指南](https://u9401066.github.io/dicom-overlay-agent/docs.html#regional-qa)
+及[固定版本證據](https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)。
+瀏覽器完整流程、跨 DPI 與至少 100 例目前模型的臨床驗收仍未完成。
+本次網站／文件更新不合併候選 App 程式至 main，也不發布執行檔。
+
+## 歷史開發證據 — 2026-09-11（尚未發布）
+
+當時實機驗收使用 **GPT-6 Astra low**，在 Settings 選擇
+`openai-codex-astra`；Luna 不列為該輪驗收目標。真實 GUI 擷取已連通訂閱路由，
 已封存 **121 個不重複主要實機案例**，排除六個 pilot，另保留六次技術失敗。
 初步自動評分**未達驗收**：完整參考嚴格符合 0/46、緊急疑慮辨識 2/21；全部仍須
 複核，待專科審查。平均分析 136.662 秒，不含失敗嘗試與 GUI／匯出時間。
@@ -38,7 +52,7 @@ Luna 有兩條刻意分開的路由，避免把訂閱額度與 Platform API 計�
 
 | Settings profile | 認證／transport | 模型 | 計費證據 |
 | --- | --- | --- | --- |
-| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth、`thinkingDefault=low`；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth；**main 基準：low；目前開發分支：medium**（見上方 checkpoint）；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
 | `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | 本機 ChatGPT/Codex OAuth 遷移到 OpenClaw 原生 `openai-chatgpt-responses`；不使用 `OPENAI_API_KEY`，也不啟用 Codex agent runtime | `openai/gpt-5.6-luna` | 訂閱用量；下列 token 成本只作 API 等值估算 |
 | `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` 經 OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | 一般 Platform API 計費 |
 

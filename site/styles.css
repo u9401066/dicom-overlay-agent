@@ -1389,6 +1389,7 @@ h1 {
   color: var(--muted);
 }
 
+.development,
 .workflow,
 .evidence,
 .safety,
@@ -2087,5 +2088,9 @@ h1 {
   .rule-flow span {
     transform: rotate(90deg);
     transform-origin: center;
+  }
+
+  .development {
+    padding: 34px 18px 38px;
   }
 }

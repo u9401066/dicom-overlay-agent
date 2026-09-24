@@ -1,5 +1,31 @@
 # Active Context
 
+## 2026-09-24 Website-only interaction checkpoint refresh
+
+- Main App/runtime pins remain unchanged. Site/READMEs explicitly describe
+  separate development branch ebbe2a5 and the earlier bd8f303 frozen executable.
+  Medium is current; failed 121-case low evidence stays historical and intact.
+- Added actual Mark/Inspect/Send/Apply/Export guide, external-window/fresh-ROI
+  limitations, no whole-desktop annotation promise and no 100-case pass claim.
+- Fixed missing --bundle argument and documented submodule-aware branch clone.
+  Evidence links pin already-pushed ebbe2a5 paths, not absent main archive paths.
+  Official OpenAI authentication guide fetched for codex login; App provider
+  behavior remains distinguished from general subscription entitlements.
+- frontend-testing-debugging skill: Browser plugin unavailable, existing
+  Playwright core + headless Edge used. 1440x1000 and 390x844 pass identity,
+  nonblank/error-overlay/console checks, menu/Escape/focus/link behavior and
+  overflow checks. Visual review found/fixed missing mobile section padding.
+  Initial helper locator mistakes were corrected before crediting the rerun.
+- 17 website tests, Ruff and whitespace checks pass. Screenshots/helper/receipts
+  stay outside the repo in Windows Temp/dicom-pages-qa-20260924. Public media
+  remains synthetic. No native desktop focus or model request used for this QA.
+- Separate site branch targets main because Pages permits only main; deployment
+  and live-site verification remain pending at this commit. No binary publication.
+- PR 19 review follow-up: label main-low vs development-medium in both provider
+  tables; pin setup checkout to ebbe2a5 and require uv sync --locked. Expanded
+  headless QA also passes at 320x740. eff8d96 CI and secret scans passed; review
+  identified these documentation corrections before merge.
+
 ## 2026-09-11 Public evidence checkpoint (docs/site only)
 
 - Publish sealed 121-case failed Astra-low baseline: strict 0/46 complete labels,

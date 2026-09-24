@@ -1,7 +1,18 @@
-# Progress (Updated: 2026-09-10)
+# Progress (Updated: 2026-09-24)
 
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
+
+## 2026-09-24 Website-only source checkpoint
+
+- Updated Pages and both READMEs for Astra medium, ROI-wide manual Mark and
+  image-bound regional QA; clearly separates bd8f303 package from ebbe2a5 source.
+- Corrected stale cohort/engine claims, setup submodules and --bundle command.
+  Existing failed baseline is retained; no App changes merged by this site update.
+- 17 static checks and headless Edge desktop/mobile navigation/visual QA pass;
+  no console/runtime error or page overflow. Mobile summary padding corrected.
+- Public deployment and live URL recheck pending. Main-only Pages policy is
+  respected; no policy edits, binary release or new clinical acceptance.
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 
