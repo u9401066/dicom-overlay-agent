@@ -3,6 +3,24 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — first baseline failure corrected and natively replayed
+
+- Prompt now requires actual visible lead panels instead of promising automatic
+  geometry for an empty compact inventory. Three regression tests;45prompt/layout
+  and262robustness/multipass pass. No schema/detector threshold/dependency changes.
+- Real source App replay of exposed baselineindex24 restores12lead entries with
+  zero warnings while local detector stillfinds8. ExactROI/sourcepixels, four
+  mediumstages,98.191sanalysis; remainsincomplete/review. Seven lowsignalbbox flags
+  remain. No clinical/latency improvement claim or baseline rewrite.
+- Separate runtime avoids overwriting sealed log. Actualstartup click dropped
+  beforeviewer discovery; laterreadyclick startsoneanalysis. Copiedpublicconfig
+  stillpointsat unchangedoldpluginpath. Bothreadiness/relocation gaps documented.
+- FirstfulltestfailedunsupportedglobalNode25; portableNode24.18stagingretry2pass.
+  Fullrerun2163pass7skip386.34s; Ruff/format/docs/diffcheck pass. Original120seal
+  independentlyreverifiedafterreplay, scoreSHAunchanged. d5bb512 CI/secrets allgreen.
+  Evidence:
+  docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md.
+
 ## 2026-09-25 — completed real GUI cohort, sealed and scored
 
 -120/120 independently verified; 482 Astra-medium stages. Original driver exited0,

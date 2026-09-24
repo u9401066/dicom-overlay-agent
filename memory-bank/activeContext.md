@@ -1,5 +1,36 @@
 # Active Context
 
+## 2026-09-25 — explicit lead inventory, actual App replay
+
+- All five baseline schema failures had empty layout.leads; detector peaks at
+  indices24/26/33/41/94 were8/9/8/8/7. Coarse prompt falsely promised local geometry
+  while forbidding per-lead boxes. Now requests visible panel geometry/labels;
+  unknown/partial constraints unchanged. No detector weakening or invented labels.
+- Actual exposed index24 replay on candidate source d5bb512+dirty recorded prompt
+  change, tracked source hashes unchanged throughout. Native QFileDialog/Analyze/
+  Export, ROI30,30,1500,1080 @150%, RGBMAE0, four verified Astra-medium stages.
+  New12leads/zero validation warnings vsold0/three; detector still8, no local repair.
+  Analysis98.191s/coarse29.349s; total273.431s includes startup/first rejected click.
+  Incomplete/review retained, seven low-signal bbox audit flags remain; no clinical
+  or localization acceptance. Actual summary/report visually inspected.
+- Private Ctemp/dicom-layout-replay-20260925/ holds new runtime/attempt/receipt,
+  export runtime/data/exports/desktop-20260924-185138-394927. Old App3948/Gateway26484
+  closed viaQuit; retained Viewer7832. Current App3308 launcher27668/Gateway4128.
+  Runtime has unchanged plugin selected via old absolute publicconfig path: NOT
+  portable-plugin acceptance. Startup Analyze was enabled before viewer ready;
+  rejected firstclick, confirmedready then one actualanalysis. Fix these gaps next.
+-45prompt/layout+262robustness tests passed; three new regression tests. Firstfull
+ 2162pass7skip1failure due incorrect PATH selecting unsupported globalNode25.6.1;
+ corrected Node24.18 staging2pass123.54s. Fullrerun69953 terminal0:
+ 2163pass7skip386.34s. Ruff/format/docs/diffcheck pass. No new EXE/deps.
+ All79Appsource hashes unchanged sinceactualrun. Original120seal/inventory/audit
+ reverifiedafterreplay (23485terminal0), originalscoreSHAunchanged.
+ Nextsourcefixes: gateway_manager.py _ensure config appends currentplugin path
+ without removing prior ownedpath (~line529); control_bar.py gatewaystatus only
+ updateslabel and never disablesstartup Analyze. Preserve otherplugins/ROI and
+ do not disable offline recovery permanently. Native Appstillopen, manualmode.
+ d5bb512 CI/secrets allgreen. Docs/READMEboth/Memory updated; baseline immutable.
+
 ## 2026-09-25 — actual 120-case medium batch sealed; clinical acceptance failed
 
 - Original driver 80364 terminated exit 0: 117 new + three original, no reruns.

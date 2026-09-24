@@ -32,6 +32,11 @@ urgent concerns caught 5/24, legacy draft schema 115/120. The 74 partially uncer
 references remain separate. Mean analysis/workflow times were 93.993/106.485 s;
 these are not controlled speed comparisons. See the evidence page for intervals,
 hashes, limitations and the no-inference seal/score procedure.
+The [first failure-driven correction](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
+removes a prompt assumption that local row detection always supplies lead geometry.
+One actual exposed-case replay now has 12 explicit panels and zero schema warnings,
+even though the detector still finds only eight rows. Diagnosis, localization,
+startup readiness and relocated-plugin acceptance remain open.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.
