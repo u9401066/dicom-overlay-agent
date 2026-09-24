@@ -3,6 +3,17 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — actual scientific App startup failure and correction
+
+- Real App/Viewer/Analyze exposed missing production transport-evidence opt-in,
+  before any model request. Main constructor corrected; exact-constructor test
+  reproduces beforefix and focused74pass5.94s after. No weakened receipt gate.
+- Cold OAuth/profile measurements kept separate; failed black UI screenshot
+  retained, not credited. Actual UI Quit stopped owned App/Gateway. New isolated
+  runtime prepared; corrected GUI/model and full test completion still pending.
+- See native-scientific-startup-2026-09-25 evidence; be27473 remote CI/secrets green
+  did not prove this desktop wiring. Original clinical cohorts remain unchanged.
+
 ## 2026-09-25 — explicit scientific desktop publication boundary
 
 - Added optional main/agent/Qt two-phase wiring and source-bound canonical export.

@@ -1,5 +1,26 @@
 # Active Context
 
+## 2026-09-25 — actual scientific App exposed missing receipt opt-in
+
+- Real clean be27473 App10612/launcher35696/Gateway16428/Viewer7832, port18796,
+  fresh Ctemp/dicom-scientific-desktop-20260925-be27473. Both CLI flags enabled.
+  Actual file dialog opened existing deidentified partial corpus crop_top_20;
+  Analyze reached capture/connect then gateway_evidence_collection_required.
+  Zero embedded run starts; no model chat.send before the explicit client guard.
+- Root cause: main OpenClawClient constructor omitted collect_transport_evidence.
+  Fixtures set it independently. New test executes exact main constructor AST;
+  beforefix1pass1fail; one-line collect_transport_evidence=scientific_mode fixes;
+  existing scientific tests now use constructed client. Focused74pass5.94s,
+  Ruff/main mypy pass. Default mode unchanged; no weakened gate or paid retry.
+- Cold OAuth97.846s + profile37.532s separately recorded; no speedup claim.
+  Controlbar UIA showed unpublished-result error. PrintWindow image black,
+  retained but not counted as visual readability. Quit through UI, App/Gateway
+  gone and no18796listener. Viewer retained. Never restart sealed first runtime.
+- Fresh Ctemp/dicom-scientific-desktop-20260925-receipts-fix prepared, no prior
+  auth/home/log/session copy. Corrected actual run still pending. Full90621 live.
+- be27473 CI36068383641/36068380377 and secrets36068383670/36068380213 all success.
+  Evidence:docs/evidence/2026-09/native-scientific-startup-2026-09-25.md.
+
 ## 2026-09-25 — opt-in scientific desktop publication and manual-Mark recheck
 
 - Actual main/agent wiring behind both --scientific-review --deidentified-input;

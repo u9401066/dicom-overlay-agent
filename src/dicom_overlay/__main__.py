@@ -663,6 +663,7 @@ def main() -> None:
         gateway_token=gateway_token,
         registry=registry,
         base_dir=base_dir,
+        collect_transport_evidence=scientific_mode,
     )
 
     # --- Build hook pipeline (guardrails) ---

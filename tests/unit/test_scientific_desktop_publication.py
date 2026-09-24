@@ -2,27 +2,65 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import base64
 import io
 import json
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
 from dicom_overlay.__main__ import _scientific_mode_requested
-from dicom_overlay.domain.entities import AgentState, FindingDelta, FindingOp
+from dicom_overlay.domain.entities import AgentState, AppConfig, FindingDelta, FindingOp
 from dicom_overlay.infrastructure.desktop_review_exporter import export_desktop_review
+from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.scientific_desktop_reader import (
     ScientificDesktopReader,
 )
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
 from tests.unit.test_contract_assembly import inputs as inputs
-from tests.unit.test_image_evidence_turn import SOURCE, connected, picture
+from tests.unit.test_image_evidence_turn import SOURCE, picture
 from tests.unit.test_image_publication_guard import _agent
 from tests.unit.test_scientific_draft import draft_request as draft_request
 from tests.unit.test_scientific_image_session import replies as replies
 from tests.unit.test_scientific_review_handoff import receipt, setup
+
+
+def main_client(tmp_path, *, enabled):
+    """Use the real main construction, not a fixture that enables missing options."""
+    path = Path(__file__).resolve().parents[2] / "src/dicom_overlay/__main__.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    construction = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "openclaw_client"
+            for target in node.targets
+        )
+    )
+    config = AppConfig()
+    config.openclaw.inference_timeout_sec = 1
+    environment = {
+        "config": config,
+        "gateway_token": "synthetic-token",
+        "registry": None,
+        "base_dir": tmp_path,
+        "scientific_mode": enabled,
+        "OpenClawClient": OpenClawClient,
+    }
+    exec(
+        compile(ast.Module(body=[construction], type_ignores=[]), str(path), "exec"),
+        environment,
+    )
+    return environment["openclaw_client"]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_main_client_evidence_collection_matches_scientific_mode(tmp_path, enabled):
+    assert main_client(tmp_path, enabled=enabled)._collect_transport_evidence is enabled
 
 
 def configured(tmp_path, replies):
@@ -30,7 +68,10 @@ def configured(tmp_path, replies):
     monitor.screenshot = SOURCE
     agent._processor = ImageProcessor()
     _unused, gateway = setup(tmp_path, replies)
-    client = connected(tmp_path, gateway)
+    client = main_client(tmp_path, enabled=True)
+    client._ws = gateway
+    client._connected = True
+    client._gateway_protocol = 4
     readers, published = [], []
 
     def factory(raw, modality):

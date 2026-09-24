@@ -6,6 +6,9 @@ purposes. Start here; a dated successful smoke run is not current clinical appro
 Latest development wiring: [scientific desktop publication](evidence/2026-09/scientific-desktop-publication-2026-09-25.md)
 keeps prepared reports out of Export/QA until Qt availability and two source-pixel
 checks pass. Opt-in only, synthetic-tested, no new clinical/live-model acceptance.
+An [actual App follow-up](evidence/2026-09/native-scientific-startup-2026-09-25.md)
+found and corrected a missing transport-receipt opt-in before the first model
+request; successful live scientific interpretation is not yet established.
 
 ## Current checkpoint — September 24, 2026
 
