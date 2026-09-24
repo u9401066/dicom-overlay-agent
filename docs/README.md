@@ -3,6 +3,10 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+Latest development wiring: [scientific desktop publication](evidence/2026-09/scientific-desktop-publication-2026-09-25.md)
+keeps prepared reports out of Export/QA until Qt availability and two source-pixel
+checks pass. Opt-in only, synthetic-tested, no new clinical/live-model acceptance.
+
 ## Current checkpoint — September 24, 2026
 
 September 25 update: the [120-case real desktop batch](evidence/2026-09/medium-desktop-batch-2026-09-24.md)

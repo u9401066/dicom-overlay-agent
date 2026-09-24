@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import os
 from concurrent.futures import CancelledError
 from dataclasses import replace
+from pathlib import Path
 from time import monotonic
 
 import pytest
@@ -320,3 +322,75 @@ def test_close_during_render_does_not_leave_a_background_timer(
     with pytest.raises(ReviewPresentationError, match="review_surface_closed"):
         future.result()
     assert not presenter._watch.isActive() and presenter._active is None
+
+
+def test_acknowledged_preview_can_retire_without_revoking_publication(
+    qt_app, bridge, panel, prepared
+):
+    presenter = QtReviewPresenter(panel, lambda *_: True)
+    revoked = []
+    presenter.invalidated.connect(revoked.append)
+    shown = bridge.submit(presenter("a" * 32, prepared))
+    pump(qt_app, shown.done)
+    shown.result()
+    wrong = bridge.submit(presenter.retire("b" * 32))
+    pump(qt_app, wrong.done)
+    assert wrong.result() is False and panel.isVisible()
+    retired = bridge.submit(presenter.retire("a" * 32))
+    pump(qt_app, retired.done)
+    assert retired.result() is True and not panel.isVisible()
+    assert not revoked and presenter._active is None and not presenter._watch.isActive()
+    # Final overlay publication uses inherited update_result after source recheck.
+    panel.update_result(prepared.result)
+    assert panel._observations.toPlainText() and panel._evidence.toPlainText()
+
+
+def test_closed_preview_cannot_be_retired_as_accepted(qt_app, bridge, panel, prepared):
+    presenter = QtReviewPresenter(panel, lambda *_: True)
+    shown = bridge.submit(presenter("a" * 32, prepared))
+    pump(qt_app, shown.done)
+    shown.result()
+    panel.hide()
+    retired = bridge.submit(presenter.retire("a" * 32))
+    pump(qt_app, retired.done)
+    assert retired.result() is False
+
+
+def test_real_agent_uses_exact_main_callback_and_qt_retirement_before_publication(
+    qt_app, bridge, panel, tmp_path, replies
+):
+    from tests.unit.test_scientific_desktop_publication import analyze, configured
+
+    agent, monitor, legacy, gateway, readers, published = configured(tmp_path, replies)
+    presenter = QtReviewPresenter(panel, agent.scientific_review_is_current)
+    presenter.invalidated.connect(agent.invalidate_scientific_review)
+    # Execute the exact main callback, not a second implementation of its ordering.
+    source = Path(__file__).resolve().parents[2] / "src/dicom_overlay/__main__.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    callback = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "offer_scientific_review"
+    )
+    environment = {"scientific_presenter": presenter}
+    exec(
+        compile(ast.Module(body=[callback], type_ignores=[]), str(source), "exec"),
+        environment,
+    )
+    agent.on_scientific_review = environment["offer_scientific_review"]
+    pending = bridge.submit(analyze(agent))
+    pump(qt_app, pending.done)
+    pending.result()
+    assert len(published) == 1 and len(gateway.sent) == 5
+    assert len(monitor.capture_rects) == 3 and legacy.analyze_calls == 0
+    assert presenter._active is None and not panel.isVisible()
+    assert not panel._observations.toPlainText()  # Preview was retired, not left stale.
+    assert agent.displayed_review_snapshot.result is published[0]
+    assert (
+        readers[0].session.final_result.to_contract_payload()
+        == published[0].to_contract_payload()
+    )
+    # Existing overlay update_result is the subsequent final-display path.
+    panel.update_result(published[0])
+    assert panel._observations.toPlainText() and panel._evidence.toPlainText()

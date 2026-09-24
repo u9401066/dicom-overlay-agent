@@ -1,8 +1,39 @@
 # Scientific review availability on the Qt thread
 
 `presentation.scientific_review` supplies the concrete Qt presentation adapter for
-`ScientificImageSession.offer_review()`. It does not yet replace the default App
-analysis path or wire itself into `__main__`.
+`ScientificImageSession.offer_review()`. The default App analysis path is unchanged.
+An explicit development mode now wires this adapter into `__main__` and the actual
+agent publication boundary; live model acceptance of that mode remains pending.
+
+## Explicit development activation
+
+```powershell
+uv run python -m dicom_overlay --scientific-review --deidentified-input
+```
+
+Both flags are required together. The second is the operator's assertion that the
+selected test input is already de-identified, not an automatic de-identification
+service or permission to capture outside the authorized ROI. Use only trusted,
+de-identified development images. Normal window selection and ROI checks still apply.
+Do not enable this mode for clinical care: it uses strict scientific stage parsing
+but does not yet run the legacy clinical-consistency hook chain. Legacy multi-pass
+Settings do not select its stages; the shared client's fast-mode setting still applies.
+It makes five sequential Gateway requests on a complete run, with no automatic
+paid retry or legacy fallback. Non-diagnostic QC stops after the first request.
+
+The agent performs geometry/exact-pixel validation, keeps the prepared snapshot
+unavailable to Export and regional QA, then requests Qt presentation. The exact
+App callback retires the acknowledged preview before a second unoccluded ROI
+pixel check. Only then can the final validated contract enter DISPLAYING and the
+normal report/QA/export path. Availability is not physician approval. Failed,
+cancelled or stale attempts require an explicit new Analyze action.
+
+Canonical export adds `scientific-result.json` only after full contract and source
+SHA validation. Manual annotations remain separate context. Applying a regional
+finding edit clears the canonical ledger claim and exports a draft marked
+`requires_reconciliation`; it never silently represents a human edit as a newly
+validated scientific run. The original session remains in memory, not yet a
+durable raw-receipt archive.
 
 ## Thread and content boundary
 
@@ -38,7 +69,7 @@ revalidation before initial display and final publication.
 The presenter checks scope before display, before acknowledgement and every
 100 ms while visible. Scope expiry, changed content, window hiding/closing or
 explicit `invalidate()` clears the displayed text/binding and emits
-`invalidated(run_id)`. The eventual App wiring must use that signal to withhold
+`invalidated(run_id)`. The opt-in App wiring uses that signal to withhold
 its associated publication/export too; clearing this panel alone cannot revoke
 an already copied result held elsewhere.
 
@@ -52,7 +83,7 @@ shutdown/source changes. Qt teardown events tolerate cleared Python attributes.
 The previous runtime evidence and sealed Gateway logs must not be restarted or
 overwritten to test this adapter.
 
-## Readability and next integration
+## Readability and remaining integration
 
 Structured quality is rendered as adequacy, detail, limitations and view inventory,
 not a raw JSON dictionary. The original quality record is unchanged. A scientific
@@ -60,12 +91,11 @@ draft without layout metadata no longer claims all twelve leads are absent.
 Its Process tab shows actual workflow records and explicitly requires separate
 model-usage receipts instead of displaying an inferred zero model-call count.
 
-Next, connect this presenter at the existing agent's post-analysis
-geometry/pixel-validation boundary, with distinct prepared versus final states.
-Do not render directly inside `analyze()` before that boundary or feed prepared
-scientific content through legacy normalization that can mutate its bindings.
-Preserve canvas QA, bbox mapping/fallback, capture exclusion, stale-image
-invalidation and explicit approval for report edits. Non-diagnostic QC still
-needs a truthful quality-only presentation, not fabricated observations.
+Whole-App/model acceptance, independent waveform matching/classification, legacy
+clinical-rule integration, raw-receipt persistence and default activation remain
+open. Non-diagnostic QC currently shows a specific control-bar error, not a full
+quality-only review panel. The second look uses the full source ROI, not a zoom.
+Do not feed prepared content through legacy normalization that mutates bindings.
 
 See [native component evidence](../evidence/2026-09/qt-scientific-review-2026-09-25.md).
+See [desktop publication tests](../evidence/2026-09/scientific-desktop-publication-2026-09-25.md).

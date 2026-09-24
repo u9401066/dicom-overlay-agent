@@ -3,6 +3,21 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — explicit scientific desktop publication boundary
+
+- Added optional main/agent/Qt two-phase wiring and source-bound canonical export.
+  Default remains unchanged; clinical-rule hooks/current live-model acceptance,
+  non-diagnostic quality-only UI and durable receipts remain open.
+- Focused54pass7.13s, native Mark1pass1.08s, regional121pass1.13s, Windows150%
+  review/main-callback2pass1.88s; synthetic Gateway only, no new paid model replay.
+- Main/oldEXE still lack candidate interaction fixes. Actual earlier manual3turn
+  promotion proof re-inspected; no new clinical claim or baseline modification.
+- Initial full run failed only staging under unsupported global Node25; corrected
+  Node24.18 full rerun2378pass8skip417.97s (57401terminal0). Ruff/format,
+  six-module mypy and docs12pass; native Mark also passes effective Qt DPR1/2
+  overrides on the150% desktop, without changing OS settings. Not cross-monitor
+  acceptance. See current activeContext and dated evidence.
+
 ## 2026-09-25 — real native geometry into scientific reconciliation
 
 - Opt-in scientific session now executes source-bound native localization and

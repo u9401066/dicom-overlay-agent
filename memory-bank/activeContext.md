@@ -1,5 +1,37 @@
 # Active Context
 
+## 2026-09-25 — opt-in scientific desktop publication and manual-Mark recheck
+
+- Actual main/agent wiring behind both --scientific-review --deidentified-input;
+  default workflow unchanged. Assertion is not automatic PHI removal. Strict
+  scientific stages do not yet run legacy clinical-rule hooks; development only.
+- Prepared reports cannot enable Export/QA. Source geometry/pixels checked before
+  Qt availability and after preview retirement; full validated final then publishes.
+  Exact main callback tested with actual AsyncBridge/Qt/agent/session, synthetic
+  Gateway. Close/pause/cancel/content/source changes cannot publish or auto-retry.
+- Canonical export validates source SHA before writes. Human regional edits clear
+  canonical workflow claim, retain original session and draft review context;
+  requires reconciliation. Raw response persistence and live usage still pending.
+- Focused54pass7.13s; mypy5modules/Ruff/docs12pass. New fixture issues corrected:
+  white PNG->white JPEG wasn't a pixel change, and retract requires signal audit.
+- Native Mark1pass1.08s; regional121pass1.13s. Actual old3turn promotion audit and
+  chat screenshot re-inspected; no new paid inference/main merge/EXE claimed.
+- Extra native Mark runs: per-process QT_SCALE_FACTOR yields effective DPR~1
+  (1pass1.07s) and~2 (1pass1.05s) on same150% Windows desktop. Actual Win32 input,
+  normalized geometry/pass-through checks; not OS-scale/cross-monitor acceptance.
+- Windows150% native review + exact main Qt handoff2pass1.88s (70294 terminal0).
+  Fresh Ctemp/dicom-scientific-publication-ui-20260925-062908; report visually
+  checked, screenshot hashes match earlier synthetic component; actual close
+  revokes, no desktop-wide capture. Not a whole-App/model acceptance run.
+- Initial full4103:2373pass8skip1fail248.60s; staging rejected global Node25.6.1.
+  Diagnostic smoke32001:439pass7skip1fail247.96s, same unsupported PATH.
+  Final rerun57401 explicitly
+  uses existing portable Node24.18, without restarting sealed Gateway runtimes.
+  Terminal0:2378pass8skip417.97s. Final source Ruff/format, six-module mypy
+  (including main), docs12pass0.12s; initial staged61.90KB secret scan clean.
+- Previous edc75df two CI+two secret runs all completed success. Current work
+  evidence:docs/evidence/2026-09/scientific-desktop-publication-2026-09-25.md.
+
 ## 2026-09-25 — concrete Qt scientific review presenter, native component proof
 
 - New presentation/scientific_review.py: inherited frameless/topmost/draggable

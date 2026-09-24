@@ -91,12 +91,17 @@ runs intake, QC, blind reading, native localization, reconciliation and a separa
 source-image second look; non-diagnostic inputs make no blind-read request.
 Content preflight and a run/source/content-bound review-availability callback now
 precede full canonical validation. These stages are tested with synthetic replies;
-the real App presenter, independent classifier and default desktop activation
-remain open. See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
+the independent classifier and default desktop activation remain open.
+See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
 The concrete [Qt review surface](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)
 now paints observation/evidence tabs before acknowledging availability, with
 native 150%-DPI synthetic-window and real-mouse close/revocation checks. This is
 component evidence, not yet default App/OpenClaw staged-pipeline acceptance.
+Explicit development [desktop wiring](docs/architecture/scientific-review-presentation.md)
+now uses `--scientific-review --deidentified-input`, two pixel checks, queued Qt
+handoff and validated canonical export. It is synthetic-tested, not live-model
+accepted, and does not yet integrate the legacy clinical-rule hooks. Regional edits
+remain review drafts requiring reconciliation; the default workflow is unchanged.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

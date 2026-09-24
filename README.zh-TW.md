@@ -69,15 +69,19 @@
 品質檢查先於判讀，並保留失敗／取消狀態。尚未接入桌面，也不回填認證舊判讀。
 另新增[影像證據請求介面](docs/architecture/gateway-evidence-capture.md)，將 Gateway
 請求直接接到原始回覆紀錄，不經舊解析器，也不因格式錯誤自動重送付費請求。
-完整分階段判讀的桌面接線與實機驗收仍待完成。
+完整分階段判讀的實機驗收仍待完成，桌面接線目前僅能明確啟用開發模式。
 目前[可執行的階段介面](docs/architecture/scientific-image-session.md)已串起原圖登錄、
 品質檢查、盲讀、原圖定位、整合及獨立第二次檢視；不可判讀時不送盲讀請求。
 內容預檢與綁定回合／來源／內容的檢閱可用回執，現在先於完整契約驗證執行。
-這些階段目前以合成回覆測試，真實 App 檢閱介面、獨立分類器及桌面預設啟用仍未完成，
+這些階段目前以合成回覆測試，獨立分類器及桌面預設啟用仍未完成，
 見[交付邊界紀錄](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md)。
 另已完成具體的 [Qt 檢閱面板](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)：
 繪製觀察／證據分頁後才回覆可供檢閱，並在 Windows 150% 縮放下以合成內容驗證
 真實滑鼠關閉、清除與撤銷。這是元件實機證據，尚不是桌面預設 OpenClaw 分階段驗收。
+明確啟用的[開發版桌面接線](docs/architecture/scientific-review-presentation.md)使用
+`--scientific-review --deidentified-input`，加入兩次像素核對、Qt 交接及正式契約匯出。
+目前是合成回覆測試，尚未通過真實模型驗收，也未整合舊版臨床規則 hooks；
+人工套用區域修改後只保留待重新整合的草稿，不冒稱為新的正式科學判讀。預設流程不變。
 
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的

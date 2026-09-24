@@ -64,18 +64,10 @@ class ScientificReviewPanel(SummaryPanel):
     def update_result(self, result: AnalysisResult) -> None:
         # A replacement through the inherited API is not a bound prepared view.
         self._content_sha256 = ""
+        result = deepcopy(result)
+        if result.workflow_events:
+            result.analysis_trace = deepcopy(result.workflow_events)
         super().update_result(result)
-
-    def show_prepared(self, prepared: PreparedReview) -> None:
-        result = prepared.result
-        payload = result.to_contract_payload(validate=False)
-        if review_content_sha256(
-            result
-        ) != prepared.content_sha256 or preflight_validation_errors(payload):
-            raise ReviewPresentationError("invalid_prepared_review")
-        # Presentation-only copy: show actual workflow prefix in the Process tab.
-        result.analysis_trace = deepcopy(result.workflow_events)
-        self.update_result(result)
         self._observations.setPlainText(
             "\n\n".join(
                 f"{item.id} · {item.anatomy}\n{item.finding}\n"
@@ -103,6 +95,15 @@ class ScientificReviewPanel(SummaryPanel):
             )
         )
         self._availability.setText("研究草稿・待醫師檢閱，非核准報告")
+
+    def show_prepared(self, prepared: PreparedReview) -> None:
+        result = prepared.result
+        payload = result.to_contract_payload(validate=False)
+        if review_content_sha256(
+            result
+        ) != prepared.content_sha256 or preflight_validation_errors(payload):
+            raise ReviewPresentationError("invalid_prepared_review")
+        self.update_result(result)
         self._content_sha256 = prepared.content_sha256
         self._tabs.setCurrentIndex(0)
         self.show()
@@ -136,6 +137,7 @@ class QtReviewPresenter(QObject):
 
     _requested = pyqtSignal(object)
     _cancelled = pyqtSignal(object)
+    _retirement_requested = pyqtSignal(object)
     invalidated = pyqtSignal(str)
 
     def __init__(
@@ -162,6 +164,9 @@ class QtReviewPresenter(QObject):
         # Runtime connect() supports type; the pinned Qt stubs omit it.
         self._requested.connect(self._show, type=Qt.ConnectionType.QueuedConnection)  # type: ignore[call-arg]
         self._cancelled.connect(self._cancel, type=Qt.ConnectionType.QueuedConnection)  # type: ignore[call-arg]
+        self._retirement_requested.connect(
+            self._retire, type=Qt.ConnectionType.QueuedConnection
+        )  # type: ignore[call-arg]
         panel.installEventFilter(self)
         self._watch = QTimer(self)
         self._watch.setInterval(100)
@@ -195,6 +200,42 @@ class QtReviewPresenter(QObject):
             return self._is_current(request.run_id, request.source_sha256) is True
         except Exception:
             return False
+
+    async def retire(self, run_id: str) -> bool:
+        """Hide an acknowledged preview before the host rechecks source pixels.
+
+        This is ownership transfer, not approval or revocation. The host must
+        withhold publication if it returns false or subsequent source checks fail.
+        """
+        future: Future[bool] = Future()
+        self._retirement_requested.emit((run_id, future))
+        return await asyncio.wait_for(
+            asyncio.wrap_future(future), self._timeout_seconds
+        )
+
+    @pyqtSlot(object)
+    def _retire(self, item: tuple[str, Future[bool]]) -> None:
+        run_id, future = item
+        if future.done():
+            return
+        request = self._active
+        accepted = bool(
+            request is not None
+            and request.run_id == run_id
+            and request.future.done()
+            and not request.future.cancelled()
+            and request.future.exception() is None
+            and self._current(request)
+            and self._panel.isVisible()
+            and self._panel.content_sha256 == request.prepared.content_sha256
+        )
+        if accepted:
+            self._active = None
+            self._watch.stop()
+            self._panel.hide()
+            self._panel.clear()
+        with suppress(InvalidStateError):
+            future.set_result(accepted)
 
     @staticmethod
     def _fail(request: _Presentation, category: str) -> None:
