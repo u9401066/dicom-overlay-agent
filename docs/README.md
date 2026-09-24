@@ -13,6 +13,10 @@ verifies new-path loading, startup/busy shortcut suppression and successful read
 The [actual startup timing follow-up](evidence/2026-09/subscription-startup-timing-2026-09-25.md)
 separates first OAuth import from subsequent launch without skipping auth checks
 or treating different startup conditions as an implementation speedup.
+The [two-crop coverage follow-up](evidence/2026-09/two-crop-group-coverage-2026-09-25.md)
+verifies both actual lead-group crops and preserved critical-first routing. Its
+noncritical replay still misses the four asserted reference concepts; clinical
+acceptance is not implied by the engineering checks.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its

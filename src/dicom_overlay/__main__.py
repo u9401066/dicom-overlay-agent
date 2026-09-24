@@ -688,6 +688,7 @@ def main() -> None:
             cropper=image_processor.crop_region_base64,
             bbox_calibrator=calibrate_ekg_bboxes,
             max_zoom_targets=max_zoom_targets,
+            prefer_ekg_group_coverage=True,
         )
         multi_pass = MultiPassAnalyzer(inner=openclaw_client, interpreter=interpreter)
         analyzer = RhythmStripRefiningAnalyzer(

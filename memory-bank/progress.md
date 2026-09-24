@@ -3,6 +3,21 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — actual two-crop group coverage without extra inference
+
+- App opts into public harness f0f4862 two-group routing only with complete valid
+  labeled input before normalization. Preserves critical-first and attention routes.
+- Two actual source-App replays, eight verified Astra-medium stages total. First
+  preserved critical-first; second executed both groups covering all named leads.
+  Both exact ROI/export pixels,103 source files frozen per run,12leads/zero warnings.
+- Second still0/4 asserted reference concepts, incomplete/review required; no
+  clinical or controlled speed improvement. One low-signal box flag persists.
+- Public459 tests/compatibility/Ruff/CI pass; App focused218 pass. Initial full run
+  exposed stale pin assertion, fixed without weakening the boundary; full rerun
+  2145 passed /7 skipped /381.89s. App Ruff/format/docs pass.
+- Draft public PR3, README/docs/index/Memory updated; no new EXE or baseline mutation.
+  Evidence:docs/evidence/2026-09/two-crop-group-coverage-2026-09-25.md.
+
 ## 2026-09-25 — startup phases measured through the actual App
 
 - Public OAuth migration/profile-list commands now have secret-free phase timing;

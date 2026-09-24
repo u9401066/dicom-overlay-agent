@@ -44,6 +44,10 @@ The [startup timing follow-up](docs/evidence/2026-09/subscription-startup-timing
 separates first OAuth import (148.8 s total) from subsequent launch (28.9 s), with
 real App readiness observations and no model calls. This is diagnosis, not a
 controlled implementation-speedup claim; authentication checks remain intact.
+The [two-crop coverage follow-up](docs/evidence/2026-09/two-crop-group-coverage-2026-09-25.md)
+now verifies actual limb/precordial group review without another model turn, while
+preserving critical-first routing. The noncritical replay still scores 0/4 asserted
+reference concepts: more complete crop coverage is not yet better diagnostic accuracy.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.

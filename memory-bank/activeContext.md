@@ -1,5 +1,40 @@
 # Active Context
 
+## 2026-09-25 — two-turn lead-group coverage, two actual GUI replays
+
+- Public harness f0f486229cd057c291dd2a66f036f1ce796a42b6 adds optional
+  prefer_ekg_group_coverage=False; App explicitly enables it. Complete valid named
+  inventory required BEFORE normalization, two bounded group crops / two-turn cap,
+  no critical or waveform/local attention. No extra turn. Fourteen new tests;
+  public full459 pass2.48s, compatibility/Ruff pass, both public CI runs green.
+  Public draft PR3, branch agent/ekg-group-coverage-20260925. Submodule is clean.
+- Actual candidate App36748 launcher5912 / Viewer7832, private runtime
+  Ctemp/dicom-group-coverage-20260925. Real file dialog → Analyze → Export twice;
+  103 App/engine source hashes unchanged per run; source dirty on b40f841 plus pin.
+- Exposed index0 took existing critical-first route, so NOT new-coverage proof.
+  100.898s analysis /132.448s GUI, four medium stages; urgent-concern caught, asserted
+  concepts1/4 vs baseline0/4, still incomplete and not causally attributable to policy.
+  Export desktop-20260924-194518-912633;
+  audit36a83a53565898b59b86b4178582d06bc5db3ab5930505cf5b14674932d14b66.
+- Exposed index1 actually ran precordial[0,.425,1,.575] and limb[0,0,1,.575] crops,
+  all12 named lead boxes contained.103.686s analysis /117.596s GUI,four medium stages.
+  Exact ROI/source pixels,12 leads/zero schema warnings, still info/incomplete/review.
+  Asserted reference concepts remain0/4, NOT a diagnostic accuracy improvement.
+  Export desktop-20260924-194901-118072;
+  case-001/audit SHA ddfe6f4ccb749b6709172586b1ab03abb3098db4d98bbc138bc4dd7babc0510a.
+- Both review PNGs and actual second summary UI inspected; one low-signal bbox flag
+  remains. Scoring read references only after completed candidate receipt verification;
+  old sealed score/seal hashes unchanged. No original repairs or new scoring inference.
+- Initial App full run2144pass/1stale pin failure/7skip367.78s; pin updated and
+  host opt-in bound by AST test. Focused218pass2.76s. Fresh full2145pass/7skip381.89s
+  (2776 terminal0); Ruff/format/docs pass. No suppressed tests.
+  Previous b40f841 CI/secrets allgreen. App quit via owned UI, App/Gateway/18795 absent;
+  Viewer7832 retained. No active App. No new EXE or clinical acceptance.
+- Next primary gap: diagnostic uncertainty/recall despite wider review, calibration
+  and independent matched evidence, full scientific pipeline/App wiring, varied
+  partial/vendor inputs and current-EXE acceptance. Do not award positive diagnosis
+  recall merely for an info/possible label or treat crop planning as a full read.
+
 ## 2026-09-25 — actual startup phase diagnosis (not a speed fix)
 
 - Added credential-free monotonic timings around existing public OAuth migration
