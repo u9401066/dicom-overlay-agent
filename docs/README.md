@@ -33,6 +33,10 @@ now includes those interaction/source-identity fixes, verifies all 60 bundled Ap
 modules and passes 20 frozen smoke checks. Its byte-verified ZIP is local only;
 native acceptance of this new EXE and the license gate remain open.
 
+The isolated [report-note presentation candidate](evidence/2026-09/report-note-presentation-2026-09-24.md)
+keeps clinical crop limitations visible and makes original ROI/bbox notes available
+in Process. Scaled synthetic rendering is distinct from pending native acceptance.
+
 The candidate runtime remains OpenClaw 2026.9.3 / Node 24.18.0. Adoption of 2026.9.6,
 complete canonical evidence-ledger wiring, diverse legacy/vendor ECG acceptance,
 clinical accuracy improvement and the PyQt6 binary-distribution license are open.

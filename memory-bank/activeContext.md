@@ -1,5 +1,39 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — compact clinical note presentation
+
+- Candidate-only presentation/finding_notes.py moves exact known ROI prefixes and
+  fixed bbox-expansion messages to inspectable Process details. Crop clinical body
+  stays explicitly [Crop-only evidence] in Report; unknown/malformed/mixed notes
+  stay visible. No result/notes/ID/bbox/summary/checklist/trace/export mutation.
+- SummaryPanel provides mouse/keyboard entry to original ordered notes, matching
+  priority numbers and finding IDs. Clear/replace invalidates delayed targets.
+  Text remains plain/selectable. Frameless/topmost/drag/ROI capture unchanged.
+- Reproduced old label retaining480px after Short note.; fixed height measurement
+  releases old Qt minimum before remeasuring, guards recursion, adapts shorter text.
+  First3render checks had39px hscroll while offscreen fonts were missing. Explicit
+  TEST-only loading of installed Segoe/JhengHei/symbol/emoji fonts corrected that.
+  WITHDREW small-minwidth workaround after a long unbroken identifier clipped.
+  New regression preserves necessary hscroll; do not claim all IDs wrap/no-scroll.
+-28new tests +existing panels74pass2.35s. Fresh offscreen100/150/200% processes
+  verify pixel size/notes/wrapping/navigation. Actual widgets rendered with synthetic
+  fixtures ONLY; fixture Luna text is not a model call/change. Final150% report/
+  Process visually reviewed in pytest-3400/test_isolated_scaled_render_pr1.
+  Six final-source images hash-verified copied to candidate ignored
+  data/tmp/report-note-presentation-20260925/{report,process}-{100,150,200}.png.
+  No new native-window/DPI/App/EXE acceptance while original cohort still runs.
+- Preliminary full2039pass7skip195.84s before defensive long-ID adjustment.
+  Final full2040pass7skip204.41s, session40032terminal0. Ruff/format/helpermypy/
+  docs links and staged gitleaks pass.
+  READMEboth/docs index/runbook/evidence updated; no new fonts bundled/dependency.
+- Original80364 stilllive; independent audit82/120verified,38pending,zero invalid/
+  technical failures at~17:24UTC. Goldunopened; liveApp7eba45d/DIRECT production and
+  private helper/config/driver frozen. Prior648c50b bothCI36031722498/36031714674,
+  secret scans36031722507/36031714660 all SUCCESS. MAIN user dirt untouched.
+- NEXT finish real host stage journal/intake/scientific pipeline; after current
+  cohort seals, actual candidate UI/tool-event fidelity/cross-DPI and newEXE tests.
+  Latest preserved EXE remains3029dfb, not this source UI/canonical candidate.
+
 ## 2026-09-25 Taipei / September 24 UTC — opt-in Gateway visible-output capture
 
 - gateway_evidence.py now collects exact decoded visible model/native bbox text

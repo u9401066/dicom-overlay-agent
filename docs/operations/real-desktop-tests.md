@@ -67,6 +67,20 @@ and [ADD dismissal, promotion, reopening and a third turn](../evidence/2026-09/n
 These are source-App tests, not proof that the latest preserved EXE contains all
 subsequent fixes, or that every cross-monitor/DPI and clinical scenario is complete.
 
+## Inspect compact notes (isolated source candidate)
+
+In the [report-note candidate](../evidence/2026-09/report-note-presentation-2026-09-24.md),
+Report still shows `[Crop-only evidence]` alongside each affected statement.
+Use **標記來源與座標細節 → Process** to inspect its exact original ROI prefix and
+frame-adjustment messages; use Tab/Space for keyboard access. Different finding
+IDs and their presentation-priority numbers remain distinguishable. Raw result
+and export notes are not edited. Unknown or mixed clinical notes remain in Report.
+
+This behavior is not in the frozen active batch or the preserved 3029dfb EXE.
+After that batch is sealed, verify navigation and readability through the actual
+candidate App at native scale and across displays; do not count the existing
+offscreen render tests as completion of those native checks.
+
 ## Select a browser or another image application (development source)
 
 1. Open the image in the intended application. Close menus, translation popups

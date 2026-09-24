@@ -3,6 +3,23 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — clinical notes first, raw detail retained
+
+- Display-only note separation preserves crop scope/clinical prose and exact raw
+  originals in Process; keyboard/mouse entry, stable IDs/priority and stale-target
+  handling. Fixed old wrapped-label height after shortening; no clinical mutation.
+- Initial3render failures traced to empty offscreen font DB; test-only installed
+  fonts loaded. Discarded minwidth workaround that clipped an unbroken long token;
+  added necessary-hscroll regression. Short-note480px issue separately reproduced.
+-28new checks; focused74pass2.35s including100/150/200% child offscreen renders.
+  Correct-font synthetic screenshots visually inspected, not native App acceptance.
+  Preliminary full2039pass7skip195.84s; final2040pass7skip204.41s after long-ID
+  adjustment, session40032terminal0. Ruff/format/helpermypy/docs/gitleaks pass.
+  READMEboth/runbook/index/evidence updated; no font/dependency/package changes.
+- Independent realGUI audit82/120verified,38pending,zero invalid/technical failures;
+  original80364stilllive, goldunopened. Previous648c50b CI/secrets allgreen. Latest
+  EXE3029dfb not refreshed; candidate defaults and frozen batch unchanged.
+
 ## 2026-09-25 Taipei / September 24 UTC — Gateway capture wired, opt-in only
 
 - Actual client receive/recovery/handshake paths now support bounded original

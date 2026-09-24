@@ -44,6 +44,12 @@ The actual source App now also passes manual ADD proposal dismissal, later Apply
 promotion to a finding, history reopening and third-turn follow-up without a
 duplicate. See [native promotion evidence](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md).
 
+The isolated source candidate now keeps crop limitations beside clinical notes,
+while exact ROI/bbox-adjustment details are available through **Process**. It also
+fixes stale text height without clipping long identifiers. See the
+[report-layout checkpoint](docs/evidence/2026-09/report-note-presentation-2026-09-24.md):
+synthetic 100/150/200% rendering passes, but native candidate/EXE acceptance is pending.
+
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
 Actual Edge selection/ROI/capture/inference and manual QA now pass one exposed
