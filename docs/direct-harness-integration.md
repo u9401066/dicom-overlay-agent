@@ -155,3 +155,15 @@ The corrected actual partial-input run completes in 96.990 s with four
 Astra-low sessions and valid lead declarations/crop mapping. It remains incomplete
 and is not clinical acceptance. The c3532d7 ZIP/UPX transfer experiment above
 must not be relabeled as a 0e55a61 ZIP verification; no binary is published.
+
+## Shared-current-engine packaged checkpoint
+
+Clean `128117b661c7d5a0c9a0d04ca09cf2cdac542a38` now passes the full verifier,
+90 native-source checks and 20 actual frozen smoke tests (106.17 s), including
+the public engine's bounded crop/refine/finalization path. The hash-verified
+separate live copy and preserved build each started with 18,771 files.
+Whole folder: 353,389,843 bytes (337.02 MiB); App layer: 57,068,940 bytes
+(54.43 MiB); launcher: 4,910,311 bytes (4.68 MiB). This is 7,563 bytes above
+0e55a61. Both App CI runs and secret scans pass. Exact hashes, scope and remaining
+clinical/upgrade/license gates are in the [September 24 audit](shared-engine-2026-09-24.md).
+No public binary release is implied.

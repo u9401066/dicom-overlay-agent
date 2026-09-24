@@ -57,15 +57,92 @@ opt-in frozen/Gateway smoke and rendered Windows capture; they are not passing
 results. Final enum/public-pin targeted regression passes 297 / three explicit
 frozen-bundle opt-in skips. Public PR #2 merged as
 `13ef25ffb60ae0b343eed3744cca74b5b190bfe5` after both final CI runs passed; the App
-pins its tested source ancestor. Fresh frozen/GUI evidence
-is still pending; prior 0e55a61/c3532d7 binary evidence
-must not be attributed to this extracted engine.
+pins its tested source ancestor. App commit
+`128117b661c7d5a0c9a0d04ca09cf2cdac542a38` passes push CI 35974012472,
+PR CI 35974017667 and both secret scans (35974012731 / 35974018025).
+Prior 0e55a61/c3532d7 binary evidence must not be attributed to this engine.
+
+## Fresh frozen checkpoint
+
+A separately preserved, clean `128117b` build passes the full static/runtime
+verifier, 90-file native dependency-source audit and **20 actual frozen packaging
+smoke checks in 106.17 seconds**. This includes the newly wired public-engine
+crop/refinement/finalization smoke, with scripted responses rather than a model.
+The source and every one of the 18,771 files in the separate writable live copy
+were hash-verified before startup; no auth/state was added to the preserved build.
+
+| Component | Bytes | MiB |
+| --- | ---: | ---: |
+| Launcher | 4,910,311 | 4.68 |
+| App / Python / Qt | 57,068,940 | 54.43 |
+| OpenClaw | 272,805,439 | 260.17 |
+| Portable Node | 23,515,464 | 22.43 |
+| Whole folder | 353,389,843 | 337.02 |
+
+The launcher is part of the App layer, not an additional subtotal. The folder
+increase from 0e55a61 is 7,563 bytes. Node remains v24.18.0 and OpenClaw 2026.9.3.
+No heavy dependency was added, upstream internal chunks were not pruned, and
+DLLs protected by CFG remain uncompressed. The prior c3532d7 ZIP/UPX test is not
+a transfer-compression test of this new build.
+
+- Source-tree SHA-256: `b0014fee778ec6753db13da4c7f022984c804c39907c968ac5e6d5684aedf968`.
+- Launcher SHA-256: `5cd11b6cff074cbfccd9f73d4c3f73776cbc97e51aa8ace6e0cffeb30e1d917d`.
+- Payload-tree SHA-256: `8ac7c44df09db69fedfc7106f27212e6a7731a2ee01f92406ed3a16c5ff5361b`.
+
+The verifier report and copy receipt remain outside the build. This is local
+development evidence, not a public binary release or clinical acceptance.
+
+## Actual desktop / Astra-low checkpoint
+
+The new EXE was launched from its verified writable copy, with manual triggering.
+Its actual Settings dialog selected Astra; the App was gracefully closed and
+restarted to apply that provider. The official pinned OAuth-only migration
+completed successfully: OpenClaw owns inference, Codex agent runtime is disabled,
+and no Platform API key is retained. Gateway protocol 4 was negotiated and
+retained in the result. This is separate from the offline packaging smoke.
+
+One **already exposed development case** was opened through the real Viewer
+QFileDialog, then the real App's Analyze and Export buttons. The previously
+authorized narrow ROI `(150,81,1370,708)` deliberately contains eight rows with
+their labels hidden. The exported source exactly matches the visible subrectangle
+(pixel comparison MAE 0.0); no full-desktop image was sent. Source SHA-256 is
+`cce82cb830055010eed9296e5c4cb7146e9b46ac2658c2e4ccf7603adc6f8e94`, the same input
+as the historical hidden-label probe, not a new blind case.
+
+- Export: `desktop-20260924-083531-047249`; result SHA-256:
+  `12c9c9234c7fa75371345126b2f703d8f07ac952d15a93856b82f65384345b04`.
+- Analysis: **90.980 s**; real open/analyze/export workflow: **98.577 s**.
+  Four coarse/refine/refine/final sessions, zero parse retries; all four bound
+  public session and runtime observations verify `gpt-6-astra`, low reasoning.
+  Read-only usage collection made no extra model request and changed no result.
+  Public token snapshots are not a monetary charge or a full billing ledger.
+- All eight declared rows remain `unknown` / `label_visible=false`; no named
+  finding regions or crop-lead map are invented. Finalization preserves the
+  receipt-bound box despite small model decimal drift. One hypothesis is
+  retracted during refinement; two low-confidence findings remain.
+- Result is **incomplete, review_required=true**, not clinically accepted.
+  The single rendered finding box has 0.7041 px coordinate back-projection drift,
+  which is a mapping check, not clinical IoU. The export's independent pixel
+  heuristic still marks it LOW-SIGNAL; anatomical box precision is not closed.
+- Source, summary widget capture and rendered review were visually inspected.
+  The App's capture-protected window returns a black external screenshot; its
+  real Export widget capture provides the visible result, without disabling
+  capture protection. It still incorrectly says `12-Lead EKG Analysis`, and the
+  validator still combines valid hidden rows with malformed entries in a warning.
+  These presentation/diagnostic edges remain open at this frozen checkpoint.
+
+This single replay does not demonstrate improved speed or accuracy over the
+failed primary cohort, and does not validate other vendors or legacy printouts.
+Raw result, usage, driver snapshot, UI helper snapshot and transfer receipts are
+retained privately; no clinical image or OAuth artifact is committed.
+
+## Remaining gates
 
 The following remain separate, unclosed gates:
 
-- Fresh EXE/App/Gateway/Astra-low runs, ROI/DPI mapping, overlay layers and canvas
-  interactions after direct engine wiring; current prior processes were absent
-  when checked on September 24.
+- Broader EXE/App/Gateway/Astra-low, ROI/DPI mapping, overlay layers and canvas
+  acceptance after direct engine wiring. The single real partial/hidden replay
+  above does not close these groups.
 - Full independent harness/host assembly/plugin and external-tool evidence binding.
   Importing the public model does not populate the canonical observation ledger.
 - Clinical improvement against adjudicated references, including urgent misses.
@@ -77,7 +154,11 @@ The following remain separate, unclosed gates:
   visible-label inventory and assessability. Rotation, faded grids or missing
   calibration must not be converted to invented leads or measurements. Synthetic
   style variants can check plumbing but cannot establish legacy-device accuracy.
-- Recheck the current OpenClaw release against the public Gateway/plugin contract;
-  the existing candidate pin is 2026.9.3, not a claim of latest as of September 24.
-- Fresh size/dependency audit and unresolved PyQt6 distribution-license decision
-  before any public binary release.
+- Recheck the current OpenClaw release against the public Gateway/plugin contract.
+  The [official latest release](https://github.com/openclaw/openclaw/releases/tag/v2026.9.6)
+  checked on September 24 is 2026.9.6 (published September 23, 23:21 UTC), not
+  this candidate's 2026.9.3. Its macOS app warning does not establish a Windows
+  Gateway failure; neither do release notes alone establish upgrade safety.
+  Test Gateway negotiation, image attachments, subscription migration, plugin/MCP,
+  dependency security and packaging separately before changing the runtime pin.
+- Unresolved PyQt6 distribution-license decision before any public binary release.

@@ -1,6 +1,29 @@
 # Active Context
 
-## 2026-09-24 Shared engine wired; regression and fresh package work ongoing
+## 2026-09-24 Shared engine frozen and actual hidden-label replay verified
+
+- Clean source 128117b passes push/PR CI 35974012472 / 35974017667 and both
+  secret scans. Fresh full verifier PASS, 90 approved native sources, 20 frozen
+  checks PASS (106.17 s). 18,771 files / 353,389,843 bytes (337.02 MiB), App
+  54.43 MiB, launcher 4.68 MiB; +7,563 bytes versus 0e55a61. All live-copy hashes
+  match; preserved dist-engine-128117b-upx remains separate and clean.
+- Real App PID 7180 (manual mode) / Viewer PID 10376, port 18793; GUI-selected
+  Astra-low and successful OAuth-only import; no Codex agent runtime or Platform
+  key. Actual QFileDialog/Analyze/Export hidden-label case completes 90.980 s
+  (98.577 s workflow), four bound Astra-low sessions, zero parse retries,
+  negotiated Gateway 4 / OpenClaw 9.3. Export desktop-20260924-083531-047249.
+  Source crop pixel MAE 0.0; eight unknown/false rows; 0.7041 px mapping drift.
+- Still incomplete/review required, two low-confidence findings; one LOW-SIGNAL
+  box. No clinical acceptance/performance claim. Real widget export inspected;
+  fixed 12-Lead heading and malformed-or-hidden warning remain defects. Old
+  cohort, raw results and prior package receipts remain immutable.
+- Official latest OpenClaw checked September 24 is 2026.9.6, released September
+  23 23:21 UTC. Candidate remains 9.3 until Gateway/OAuth/plugin/MCP/security/
+  packaging upgrade audit. Latest version alone is not compatibility proof.
+- Full evidence/hashes: docs/shared-engine-2026-09-24.md. No public binary or
+  PyQt6 license decision. Diverse vendor/legacy ECG acceptance remains open.
+
+## 2026-09-24 Shared engine source integration
 
 - Continued the September 11 extraction in the direct worktree. Public PR #2 now
   pins 3c7645ec2c41364e8ae521416ae758ddb81ea7c3, 445 synthetic tests / 87.06%

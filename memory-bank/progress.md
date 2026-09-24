@@ -3,7 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
-## 2026-09-24 Independent engine integration in progress
+## 2026-09-24 Independent engine frozen and one actual replay complete
+
+- Source 128117b CI/secret checks, full package verifier, 90 native-source checks
+  and 20 frozen smoke checks PASS. Folder 337.02 MiB (+7,563 bytes); separate
+  live copy matches all 18,771 hashes. No public binary release.
+- Real GUI-selected subscription Astra low / OpenClaw 9.3 Gateway 4 reads the
+  exposed partial/hidden-label case in 90.980 s, four bound sessions, no parse
+  retries; workflow 98.577 s. Exact ROI pixel proof and 0.7041 px mapping drift.
+  Incomplete/review remains true; LOW-SIGNAL box and incorrect 12-Lead heading
+  remain. Not blind, clinically accepted or proof of faster general performance.
+- Latest official OpenClaw 9.6 identified; separate upgrade audit pending.
+
+## 2026-09-24 Independent engine source integration
 
 - Public current engine/layout/ports: 445 synthetic checks, 87.06% coverage;
   package/boundary/secret checks pass. Direct App ownership now wired without
