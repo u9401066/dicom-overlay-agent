@@ -35,8 +35,11 @@ hashes, limitations and the no-inference seal/score procedure.
 The [first failure-driven correction](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
 removes a prompt assumption that local row detection always supplies lead geometry.
 One actual exposed-case replay now has 12 explicit panels and zero schema warnings,
-even though the detector still finds only eight rows. Diagnosis, localization,
-startup readiness and relocated-plugin acceptance remain open.
+even though the detector still finds only eight rows. Diagnosis and localization
+acceptance remain open. The [next actual replay](docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+verifies current-path plugin loading after relocation and blocks startup/busy
+Analyze clicks and shortcuts without preventing later manual recovery. Cold AI
+startup remains slow; this is a source-App fix, not a new EXE acceptance claim.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.

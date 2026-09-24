@@ -31,7 +31,9 @@
 已完成[第一項失敗導向修正與實機重測](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)：
 初讀不再假設本機一定能補齊導程座標。一例已曝光案例在偵測器仍只找到八列時，
 已回傳 12 個明確導程、零格式警告；不代表診斷或定位通過。啟動按鈕就緒狀態及
-搬移 runtime 後的 plugin 絕對路徑問題也已記錄，仍待修正。
+搬移 runtime 後的 plugin 絕對路徑問題，已在[下一次實機重測](docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+修正並確認：只載入新位置的 harness，啟動／判讀中不接受重複 Analyze 或快捷鍵，
+就緒後可正常判讀。冷啟動仍慢，這不是新版 EXE 或診斷準確率驗收。
 另新增 [EKG 人用／agent 共讀流程](docs/clinical/ekg-reading-workflow.md)，涵蓋十步
 與全部十六軸；目前是待專科審查的設計，不把七條一致性規則宣稱為完整判讀器。
 

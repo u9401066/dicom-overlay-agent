@@ -3,6 +3,9 @@
 The [sealed 120-case medium batch](medium-desktop-batch-2026-09-24.md) remains
 unchanged and failed clinical acceptance. This is an exposed development replay,
 not a replacement prediction, fresh blinded case or improved accuracy score.
+The subsequently observed startup/plugin-path gaps are addressed by the
+[next native replay](portable-plugin-readiness-2026-09-25.md); the observations
+below remain the historical record of this run.
 
 ## Observed failure and bounded change
 

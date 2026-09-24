@@ -1068,6 +1068,11 @@ class OverlayAgent:
 
     async def trigger_manual(self) -> None:
         """Manual trigger from Control Bar or hotkey."""
+        # A second queued click/hotkey can arrive before Qt renders the state
+        # change from the first. Never start a second paid read in that gap.
+        if self._state in {AgentState.CAPTURING, AgentState.ANALYZING}:
+            logger.info("Manual trigger ignored while capture/analysis is active")
+            return
         if self._target_window is None:
             logger.warning("No viewer window, cannot trigger manually")
             return

@@ -8,6 +8,8 @@ purposes. Start here; a dated successful smoke run is not current clinical appro
 September 25 update: the [120-case real desktop batch](evidence/2026-09/medium-desktop-batch-2026-09-24.md)
 is sealed/scored and failed clinical acceptance. An [explicit lead-inventory correction](evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
 now passes one actual exposed-case source-App replay, without changing the baseline.
+Its [portable-plugin/readiness follow-up](evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+verifies new-path loading, startup/busy shortcut suppression and successful ready-state analysis.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its

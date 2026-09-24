@@ -1,5 +1,32 @@
 # Active Context
 
+## 2026-09-25 — moved plugin / Analyze readiness fixed and natively verified
+
+- GatewayManager now replaces only absolute App-owned harness load-path entries,
+  including index.js, with currentpath; preserves unrelated/custom/relativepaths
+  and otherplugin settings. No deletion/internalSDK changes.29new tests coverpaths,
+  idempotence, UIreadiness/offlinerecovery/duplicate captures.
+- Analyze disabled duringstarting/INIT/WAITING/SETUP/CAPTURING/ANALYZING/RECONNECTING;
+  same Qtshortcutguard givesreason; applicationguardblocksqueued duplicate paidread.
+  Offlineafterstartup stillallowsmanualrecovery inmonitoring/error/display/paused.
+- Actual nativeApp9404 launcher35952 Gateway17208 Viewer7832, newprivate runtime
+  Ctemp/dicom-relocation-ready-20260925/runtime. PreviousApp3308/Gateway4128 quit.
+  Actual startupbuttondisabled +physicalCtrlShiftA blocked, readybuttonenabled,
+  one actualQFileDialog/Analyze run, busyCtrlShiftA blocked, exportbuttonstate restored.
+  Logloads currentharnessonly,no duplicateoldpathwarning. Four Astra-mediumstages,
+  exactROI/sourceRGBMAE0, 12leads/zerowarnings, stillincomplete/review.97.545sanalysis,
+ 111.916sworkflow. Coldstartup~136s remainsperformanceissue; no efficacyclaim.
+- Private exportdesktop-20260924-190928-490683 plusUIstates/attempt/receipt/audit.
+  auditSHA6fd8b4bfc40d402215651a51c7d613d695df50ac1f4306c2b2b32a1924473c89.
+  All79sourcefiles boundduringnative run; afterwardgateway_managerformatteronly,
+  originalpreserved asgateway_manager.native.py andASTequalityverified. Sourcewasdirty
+  ona2e44f7,notcleanEXE. Actualcontrolbarimagevisuallyinspected.
+- Full2192pass7skip358.30s (27303terminal0), focused165pass5.97safterformatter,
+  Ruff/format/focusedmypy pass. InitialfocusedPOSIXpathfailure fixedntpath3.13
+  isabsbehavior. a2e44f7 CI/secrets allsuccess. No newEXE/deps/schema/protocol.
+  CurrentAppmanualmodeopen. Next: cold-authprobestartupcost, low-signalboxmetric,
+  fullscientificpipeline/clinicalimprovement/diversecases/currentEXEnativeacceptance.
+
 ## 2026-09-25 — explicit lead inventory, actual App replay
 
 - All five baseline schema failures had empty layout.leads; detector peaks at

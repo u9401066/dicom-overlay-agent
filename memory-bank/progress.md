@@ -3,6 +3,20 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — plugin relocation and actual input readiness
+
+- App-owned oldabsolute harnesspaths replaced,currentactualGatewayloadverified;
+  unrelatedplugins preserved. Analyze/shortcutdisabled duringstartup/busy states,
+  manualoffline recoveryretained; queuedduplicate trigger guarded inapplication.
+- ActualstartupCtrlShiftA andbusyCtrlShiftA rejected withvisible reasons; ready
+  actualGUIanalysis/export completed, fourmediumstages, exactROI/sourcepixels.
+ 97.545sanalysis/111.916sworkflow, stillincomplete; coldstartup~136snotfixed.
+-29new regressions; focused165pass, full2192pass7skip358.30s. InitialPOSIXpath
+  recognitionfailure corrected. Ruff/format/focusedmypy pass.79sourcefiles bound
+  throughnative run, subsequentonefileformatterchange verifiedASTidentical.
+- READMEboth/index/evidence/Memory updated; no newEXE or clinicalacceptance.
+  Evidence:docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md.
+
 ## 2026-09-25 — first baseline failure corrected and natively replayed
 
 - Prompt now requires actual visible lead panels instead of promising automatic

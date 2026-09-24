@@ -1078,6 +1078,9 @@ def main() -> None:
         bridge.submit(_r())
 
     def on_retrigger():
+        if reason := control_bar.analysis_unavailable_reason:
+            control_bar.set_status(reason)
+            return
         control_bar.set_pending_analysis(False)
         bridge.submit(agent.trigger_manual())
 
