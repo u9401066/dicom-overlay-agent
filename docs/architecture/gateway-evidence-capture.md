@@ -33,6 +33,46 @@ Only the latest send is owned by the client. Callers must retain snapshots befor
 the next turn or any outer parse retry replaces that slot. This is not automatic
 durable storage, a complete attempt archive or scientific export wiring.
 
+## Instrumented image request API
+
+`await client.request_image_evidence(prompt, image_bytes=roi_png,
+deidentified=True)` now connects a new stage request directly to the collector.
+It uses the existing public `connect` / `chat.send` transport and recovery paths;
+it does not route through the legacy 16-key result decoder or add a parse retry.
+Collection must be enabled before connect, and a negotiated supported protocol
+must exist. Each request gets a fresh session, idempotency key and host bbox nonce.
+
+The caller supplies the already-authorized immutable ROI PNG bytes and complete
+stage prompt/schema. De-identification must be explicitly asserted. Empty,
+mutable, corrupt, non-PNG and multi-frame input is rejected before sending; the
+public image decoder supplies its pixel safety bound. No silent transcoding,
+new capture or ROI expansion occurs. Source bytes are at most 32 MiB, prompt
+UTF-8 at most 512 KiB, and the serialized request at most 16 MiB. These checks
+are transport/resource gates, not medical image quality assessment.
+
+The method prepends host image SHA-256 and bbox nonce, then returns a frozen
+`ImageEvidenceTurn` with exact attached-image SHA, sent-prompt SHA, nonce, elapsed
+time and `GatewayTurnEvidence`. The snapshot is captured while holding the send
+lock: concurrent or subsequent requests cannot replace another caller's returned
+receipt. If the attachment is a crop, this image SHA is the **crop** SHA; the
+caller must separately retain its immutable parent and effective crop transform.
+Body whitespace, malformed JSON and duplicate keys remain intact for the strict
+[scientific decoder](scientific-model-draft.md). Missing original text, identity
+conflicts or collection failures cannot become successful request receipts.
+
+Cancellation uses the existing abort path; accepted reconnects observe the same
+run without another send. Pre-acceptance recovery may replay the exact frame once
+with the same idempotency key. Failed/nonterminal evidence stays available via
+`transport_evidence()` until the next send, so the caller must snapshot it in its
+failure handler. There is still no automatic durable attempt archive.
+
+This API does **not** itself perform QC/blind/reconciliation, verify clinical
+claims, establish model usage identity, or assemble a canonical result. The
+[execution journal](execution-journal.md) must wrap actual stage operations, and
+the native audit/source adapter must independently validate any tool output. The
+default desktop has not activated this API. Real tool-event fidelity, staged
+prompts, trusted intake/scope and complete App wiring remain open.
+
 ## Accepted projection and identity
 
 The collector observes matching `res` acceptance and a known nonempty `runId`.
@@ -91,7 +131,7 @@ passes its original text through a **synthetic** Gateway replay and validates
 the source/crop binding. No live Gateway, GUI, paid model call, new scientific
 workflow stage, clinical correctness or new packaged EXE is claimed by these tests.
 
-Final local verification: **56 collector tests plus one new native-producer smoke**;
+Original collector checkpoint: **56 collector tests plus one native-producer smoke**;
 collector/recovery targeted suite **99 passed in 0.73 s**. Final full regression
 after the buffered-binary-frame fix: **2,012 passed / seven explicit conditional
 skips in 194.59 s** under Node 24.18. Skips remain the optional candidate-local
@@ -99,3 +139,17 @@ Node directory, private cohort, three frozen-package opt-ins and two native GUI
 opt-ins. Ruff/format, focused collector mypy, documentation links and staged
 secret scan pass. The preceding pre-binary-fix full run also passed 2,011 tests;
 it is not substituted for this final-source run.
+
+The image-request follow-up adds **26 synthetic client tests plus two actual
+native-producer/synthetic-Gateway source-binding cases**, including whole-image
+and crop attachments. Client/collector/recovery/source checks total **181 passed
+in 1.75 s**. Journal integration consumes actual received synthetic QC bytes and
+blocks the next callback for non-diagnostic input; the strict draft decoder consumes
+the original visible response without a legacy round-trip. No live inference is
+credited. Focused mypy now passes both client and collector: three existing typing
+errors were corrected by narrowing the already-checked rejection count and typing
+the mixed refinement-context mapping, without changing runtime policy.
+Final image-request full regression: **2,104 passed / seven explicit conditional
+skips in 202.92 s** (Python 3.13.12, Node 24.18, offscreen Qt). Ruff/format, focused
+client/collector mypy, documentation links and staged secret scanning pass. These
+results do not replace native input/capture, current EXE or real-model acceptance.

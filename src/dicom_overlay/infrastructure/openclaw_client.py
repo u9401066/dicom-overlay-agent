@@ -46,6 +46,7 @@ from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.gateway_evidence import (
     GatewayEvidenceCollector,
     GatewayTurnEvidence,
+    ImageEvidenceTurn,
 )
 from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
@@ -55,6 +56,7 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     build_openclaw_chat_frame,
     parse_gateway_hello,
 )
+from medical_image_harness.image_ops import ImageOperationError, decode_image
 from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
@@ -1210,9 +1212,9 @@ class OpenClawClient(VisionAnalyzerService):
         if len(receipts) != 1:
             return
         receipt = receipts[0]
+        rejected_count = receipt.get("rejected_count")
         if receipt.get("accepted_count") != 0 or not (
-            isinstance(receipt.get("rejected_count"), int)
-            and int(receipt["rejected_count"]) > 0
+            isinstance(rejected_count, int) and rejected_count > 0
         ):
             return
 
@@ -1240,7 +1242,7 @@ class OpenClawClient(VisionAnalyzerService):
                 "tool": "dicom_bbox_validate",
                 "tool_call_id": str(receipt.get("tool_call_id") or ""),
                 "accepted_count": 0,
-                "rejected_count": int(receipt["rejected_count"]),
+                "rejected_count": int(rejected_count),
                 "retracted_count": len(boxes),
             }
         )
@@ -1363,6 +1365,111 @@ class OpenClawClient(VisionAnalyzerService):
         """Send a free-text question with acceptance-aware recovery."""
         async with self._ws_lock:
             return await self._do_chat(message)
+
+    async def request_image_evidence(
+        self,
+        prompt: str,
+        *,
+        image_bytes: bytes,
+        deidentified: bool,
+    ) -> ImageEvidenceTurn:
+        """Send a new instrumented stage without the legacy result parser.
+
+        The trusted caller supplies an already-authorized PNG ROI and the stage
+        prompt/schema. This does not capture pixels, determine clinical scope,
+        run a QC gate, or enforce the scientific lifecycle: use a real execution
+        journal around those operations. No past result is converted here.
+
+        Requires collection enabled before connect. A returned immutable receipt
+        is captured under the send lock, so a subsequent turn cannot replace it.
+        Raw visible text remains untouched; callers apply their strict decoder.
+        There is no outer model retry for missing/malformed scientific output.
+        """
+        if not self._collect_transport_evidence:
+            raise ValueError("gateway_evidence_collection_required")
+        if deidentified is not True:
+            raise ValueError("untrusted_deidentification")
+        if (
+            type(image_bytes) is not bytes
+            or not 0 < len(image_bytes) <= 32 * 1024 * 1024
+        ):
+            raise ValueError("invalid_immutable_image_bytes")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("stage_prompt_required")
+        try:
+            prompt_bytes = prompt.encode("utf-8")
+        except UnicodeError:
+            raise ValueError("invalid_stage_prompt_encoding") from None
+        if len(prompt_bytes) > 512 * 1024:
+            raise ValueError("stage_prompt_size_limit")
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        try:
+            _, image = decode_image(encoded)
+        except ImageOperationError:
+            raise ValueError("invalid_stage_image_encoding") from None
+        try:
+            # The stable App Gateway builder advertises image/png. Do not send
+            # JPEG/APNG bytes under that MIME or silently re-encode the source.
+            if image.format != "PNG" or getattr(image, "n_frames", 1) != 1:
+                raise ValueError("stage_requires_single_frame_png")
+        finally:
+            image.close()
+
+        async with self._ws_lock:
+            if not self.is_connected():
+                raise ConnectionError("Not connected to OpenClaw Gateway")
+            if self._gateway_protocol not in range(
+                MIN_GATEWAY_PROTOCOL, MAX_GATEWAY_PROTOCOL + 1
+            ):
+                raise ValueError("validated_gateway_protocol_required")
+            source_sha = hashlib.sha256(image_bytes).hexdigest()
+            nonce = uuid4().hex
+            # Trusted binding supplied separately from model claims. A native
+            # bbox call must still bind its exact text to an independent audit.
+            bound_prompt = (
+                "HOST IMAGE BINDING (metadata, not clinical evidence):\n"
+                f"bbox_source_image_sha256={source_sha}\n"
+                f"bbox_evidence_nonce={nonce}\n\n" + prompt
+            )
+            request_id = self._next_request_id("evidence")
+            idempotency_key = str(uuid4())
+            session_key = f"image-evidence-{idempotency_key}"
+            frame = build_openclaw_chat_frame(
+                request_id=request_id,
+                session_key=session_key,
+                message=bound_prompt,
+                idempotency_key=idempotency_key,
+                image_base64=encoded,
+                fast_mode=self._fast_mode,
+            )
+            serialized = json.dumps(frame)
+            if len(serialized.encode("utf-8")) > _MAX_WS_MESSAGE_BYTES:
+                raise ValueError("stage_request_size_limit")
+            self._start_attempt_sequence()
+            self._begin_run_trace(
+                session_key,
+                bbox_evidence_nonce=nonce,
+                source_image_sha256=source_sha,
+            )
+            started = time.monotonic()
+            # Ignore legacy text extraction: only the independently collected,
+            # exact visible text body is authoritative for the returned receipt.
+            await self._send_chat_frame_with_recovery(
+                frame, expect_text=True, payload_json=serialized
+            )
+            receipt = self.transport_evidence()
+            if receipt is None or (
+                receipt.request_id != request_id or receipt.session_key != session_key
+            ):
+                raise ValueError("gateway_evidence_identity_mismatch")
+            receipt.require_model_text()
+            return ImageEvidenceTurn(
+                source_sha,
+                hashlib.sha256(bound_prompt.encode("utf-8")).hexdigest(),
+                nonce,
+                int((time.monotonic() - started) * 1000),
+                receipt,
+            )
 
     async def chat_about_image(
         self,
@@ -2611,7 +2718,7 @@ def _build_refinement_prompt(
                 for box in hypothesis.bboxes
             ],
         }
-    context = {
+    context: dict[str, Any] = {
         "modality": modality.value,
         "allowed_regions": valid_regions,
         "crop_in_original_image": {

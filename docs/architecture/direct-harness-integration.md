@@ -43,7 +43,9 @@ explicit host bytes, source/evidence bindings and the public contract without
 inventing missing observations. The [scientific draft protocol](scientific-model-draft.md)
 adds a matching prompt/schema and decoder that retains model-led observations while
 resolving geometry from host evidence IDs. It is not activated in desktop inference;
-actual transport capture, host journal and desktop wiring remain work. The
+the [host execution journal](execution-journal.md) now records actual callbacks,
+and the opt-in image request API returns original visible output under the send
+lock. Actual clinical stage operations and desktop wiring remain work. The
 [native source adapter](native-source-evidence.md) additionally verifies exact
 tool receipts and App crop bytes. The opt-in
 [Gateway collector](gateway-evidence-capture.md) preserves visible text at the

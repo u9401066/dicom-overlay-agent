@@ -50,6 +50,21 @@ class GatewayTurnEvidence:
         raise ValueError("gateway_native_tool_text_missing")
 
 
+@dataclass(frozen=True)
+class ImageEvidenceTurn:
+    """Host image/request binding plus the original visible Gateway outputs.
+
+    This is a transport receipt, not a scientific draft or a model usage receipt.
+    Neither source hash nor prompt hash establishes clinical correctness.
+    """
+
+    image_sha256: str
+    prompt_sha256: str
+    bbox_evidence_nonce: str
+    elapsed_ms: int
+    gateway: GatewayTurnEvidence
+
+
 class GatewayEvidenceCollector:
     """One immutable send identity, including reconnects of the same paid turn.
 

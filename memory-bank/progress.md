@@ -3,6 +3,20 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — Gateway stage request connection
+
+- Added opt-in original-output image API through existing serialized public Gateway
+  transport. Exact source/prompt/nonce and immutable returned snapshot; no legacy
+  draft coercion, silent image conversion, outer parse retry or default activation.
+  Protocol/deid/PNG/resource gates execute before send. Failure snapshots retained.
+-26newclient+2nativeproducer source/crop tests. Focused181pass1.75s, docs/Ruff pass,
+  focusedclient+collectormypy pass after three pre-existing typing errors corrected.
+  Full2104pass7skip202.92s,61911terminal0; stagedgitleaks pass.
+  README/architecture/Memory updated; no EXE or live model test.
+- Independently103/120actualGUI exports verified,17pending,zero invalid/technical
+  failures. Goldunopened; original80364live. Priorc45ad9d bothCI/secretsallgreen.
+  Actual canonical stage operations, desktop wiring and clinical scoring incomplete.
+
 ## 2026-09-25 Taipei / September 24 UTC — actual callback journal, isolated
 
 - Added ordered source-bound execution journal with immutable timing/status/hash

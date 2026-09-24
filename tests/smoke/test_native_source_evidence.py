@@ -13,11 +13,13 @@ from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from PIL import Image
 from tests.unit.test_contract_assembly import inputs as inputs
 from tests.unit.test_gateway_evidence import Socket, acceptance, final, tool
+from tests.unit.test_image_evidence_turn import Gateway
 from tests.unit.test_scientific_draft import draft_request as draft_request
 
 from dicom_overlay.application.contract_assembly import assemble_review_contract
@@ -491,4 +493,48 @@ async def test_native_producer_text_through_real_client_collector_binds_source(
     binding = bind_native_bbox_evidence(**request)
     assert binding.source_pixel_box == (16, 19, 91, 78)
     assert binding.tool_details_sha256 == captured.text_sha256
+    assert len(binding.evidence) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1])
+async def test_public_image_request_retains_native_text_for_source_binding(
+    native, tmp_path, monkeypatch, index
+):
+    # Native producer output is real; Gateway frames and fixed host nonce are
+    # synthetic. This is not a live model or independent transport observer.
+    request = deepcopy(native[index])
+    monkeypatch.setattr(
+        "dicom_overlay.infrastructure.openclaw_client.uuid4",
+        lambda: UUID(hex=request["evidence_nonce"]),
+    )
+
+    class NativeGateway(Gateway):
+        async def send(self, raw):
+            await super().send(raw)
+            sent = self.sent[-1]
+            event = tool(request["tool_details_json"].decode(), request["tool_call_id"])
+            event["payload"]["sessionKey"] = sent["params"]["sessionKey"]
+            self.frames.insert(1, event)
+
+    client = OpenClawClient(
+        base_dir=tmp_path,
+        gateway_token="synthetic-token",
+        collect_transport_evidence=True,
+    )
+    client._connected, client._gateway_protocol = True, 4
+    client._ws = NativeGateway('{"synthetic":true}')
+    turn = await client.request_image_evidence(
+        "Synthetic source localization stage",
+        image_bytes=request["tool_image_bytes"],
+        deidentified=True,
+    )
+    captured = turn.gateway.require_native_tool_text(request["tool_call_id"])
+    assert turn.image_sha256 == sha256(request["tool_image_bytes"]).hexdigest()
+    request["tool_details_json"] = captured.text_bytes
+    request["tool_call_id"] = captured.tool_call_id
+    request["evidence_nonce"] = turn.bbox_evidence_nonce
+    binding = bind_native_bbox_evidence(**request)
+    assert binding.tool_details_sha256 == captured.text_sha256
+    assert binding.source_image_sha256 == sha256(request["source_bytes"]).hexdigest()
     assert len(binding.evidence) == 2

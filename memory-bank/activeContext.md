@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — original-output image request API
+
+- OpenClawClient.request_image_evidence now sends a fresh instrumented stage via
+  existing public Gateway transport/recovery, without legacy16-key decoding or
+  outer paid parse retry. Collection must be enabled before connect; negotiated
+  protocol, trusted deid, immutable decodable single-frame PNG and bounded prompt/
+  request required. Does not capture pixels, expand ROI or silently transcode.
+- Frozen ImageEvidenceTurn carries exact attached-image/prompt hashes, bbox nonce,
+  elapsed time and original Gateway snapshot while still under send lock. Different
+  concurrent turns cannot replace returned snapshots; crop SHA is attached crop,
+  not a falsely asserted parent. Native audit/source binding remains independent.
+-26 synthetic client tests plus2actual-native-producer/synthetic-Gateway tests;
+  targeted client/collector/recovery/source181pass1.75s. Journal consumes raw QC
+  bytes and blocks non_diagnostic inference; scientific decoder gets original JSON
+  without legacy coercion. Full2104pass7skip202.92s,61911terminal0.
+  Ruff/format/docs/stagedgitleaks pass. Client+collector mypy pass after three existing typing errors
+  were fixed by explicit rejection-count narrowing/mixed-context annotation only.
+- READMEboth/gateway architecture/direct-integration/journal docs updated. No default
+  App activation, model/prompt switch, schema/submodule/dependency/EXE rebuild.
+  True stage prompts/intake/scope/tool-event fidelity and actual GUI wiring open.
+- Independent frozen batch103/120verified,17pending,zero invalid/technical failures;
+  gold unopened, original80364confirmedlive. Do not steal focus/restart/modifylive.
+  Priorc45ad9d CI36037007972/36037000756 and secrets36037008026/36037000768 allSUCCESS.
+
 ## 2026-09-25 Taipei / September 24 UTC — host execution journal component
 
 - application/execution_journal.py invokes host stage callbacks once in public

@@ -53,6 +53,9 @@ synthetic 100/150/200% rendering passes, but native candidate/EXE acceptance is 
 An isolated [host execution journal](docs/architecture/execution-journal.md) now
 enforces ordered callbacks, quality-gated interpretation and cancellation records.
 It is not yet desktop-wired and does not retroactively certify prior model runs.
+The opt-in [image evidence request API](docs/architecture/gateway-evidence-capture.md)
+now connects Gateway requests to original output receipts, without the legacy
+parser or automatic paid parse retries. Actual staged desktop acceptance is pending.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

@@ -42,6 +42,9 @@
 
 隔離分支新增[主機端執行紀錄](docs/architecture/execution-journal.md)，強制流程順序、
 品質檢查先於判讀，並保留失敗／取消狀態。尚未接入桌面，也不回填認證舊判讀。
+另新增[影像證據請求介面](docs/architecture/gateway-evidence-capture.md)，將 Gateway
+請求直接接到原始回覆紀錄，不經舊解析器，也不因格式錯誤自動重送付費請求。
+完整分階段判讀的桌面接線與實機驗收仍待完成。
 
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的

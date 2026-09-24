@@ -55,6 +55,9 @@ internal blind read. A trusted caller can still supply a no-op or false artifact
 The hash chain is not a signature or an independent observer. Source-byte image
 decoding and crop validation belong to the [source adapter](native-source-evidence.md);
 visible response/call identity comes from [Gateway capture](gateway-evidence-capture.md).
+Its `request_image_evidence()` API can now supply the exact response artifacts
+directly to stage callbacks without the legacy parser. A synthetic QC integration
+test exercises that connection; actual clinical stage prompts/App wiring remain.
 
 Full public assembly requires completed contract-validation **and** human-handoff
 events. Integration must therefore separate actual content/schema checks and
