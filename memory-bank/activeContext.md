@@ -1,5 +1,19 @@
 # Active Context
 
+## 2026-09-25 — user-reported manual Mark branch comparison
+
+- Same native Windows test: main1c531a5 fails at blank-ROI WindowFromPoint;
+  candidate5b6ccf3 passes1/1 in1.08s. Main source path verified via PYTHONPATH;
+  initial main pytest launcher-resolution failure was not treated as bug evidence.
+- Candidate regional UI/geometry/QA/writeback/export121pass1.09s. No fresh model
+  call, full-App run, EXE release or main merge. Correct scope is entire authorized
+  image ROI, not unrestricted desktop. Fix6be42cb already exists on candidate.
+- Prior real manual/existing-region QA and ADD/dismiss/apply/third-turn evidence
+  re-read; final chat screenshot visually inspected. Full visible/export history,
+  bounded latest-six-pair/12k model context; cross-monitor/DPI coverage incomplete.
+- Evidence:docs/evidence/2026-09/manual-mark-branch-comparison-2026-09-25.md.
+  Unrelated MAIN dirt and scientific preflight work in progress remain untouched.
+
 ## 2026-09-25 — scientific post-blind native localization and reconciliation
 
 - ScientificImageSession now continues read_blind with localize_and_reconcile:
