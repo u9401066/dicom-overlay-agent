@@ -1,5 +1,17 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-25 — real second-look attempt and deadline/geometry gaps
+
+- Fresh actual App passed four stages then fifth request canceled at total180s;
+  Gateway confirms chat.abort, no report/export. Five verified Astra-medium
+  sessions,4 complete local visible replies. Same exposed case, no new cohort.
+- Native localization ran but final reconciliation did not adopt its boxes.
+  Next: explicit localization disposition and more efficient bounded stages;
+  no silent box linking or speed claim from increasing timeout.
+- Current full2417pass8skip407.03s; remote pin-fix both CI and secrets pass.
+  Runtime Quit/sealed, no active inference. No new EXE or clinical acceptance.
+
+
 ## 2026-09-25 — CI pin assertion correction
 
 - Remote20e2690 exposed old6152ab0 expected pin; public submodule now d9798da.

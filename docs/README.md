@@ -13,7 +13,9 @@ The next real run exposed canonical session naming; after correction, QC advance
 to blind reading, where multi-observation checklist references failed the prior
 single-ID contract. A [follow-up](evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
 adds typed multiple references and private exact visible-response persistence;
-fresh live acceptance remains pending.
+fresh replay reaches the second-look request but the total deadline cancels it.
+Native localization evidence was not adopted in the reconciliation finding boxes;
+complete live acceptance remains pending.
 
 ## Current checkpoint — September 24, 2026
 

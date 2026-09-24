@@ -124,3 +124,58 @@ before the submodule commit changed HEAD, so it did not establish final committe
 CI acceptance. Updated the expected pin and current architecture document to
 d9798da, preserving the strict pin check. Boundary/documentation31pass1.79s;
 fresh full regression is running. No clinical/runtime validation gate was relaxed.
+
+## Fresh confirm-graph replay: second look canceled by total deadline
+
+Private `C:/Users/Ericlab/AppData/Local/Temp/dicom-scientific-desktop-20260925-confirm-graph`
+launched source1eb0565 (launcher14196/App5404/Gateway23616, Viewer7832,18796).
+Only the pin test and docs changed during startup; production/schema/skill hashes
+remained unchanged. Actual Analyze used clean checkpoint7b35d0d and the same
+exposed crop/ROI, not an additional independent case. OAuth71.537s and profile
+check32.653s remain separate cold-start measurements.
+
+QC, blind, native localization and reconciliation completed. Both retained
+findings used confirm without changing their linked observations. The App then
+sent the fifth second-look request but canceled it at the existing total180s
+analysis SLA. Attempt wall time185.070s includes file/UI overhead. No prepared
+review, Qt handoff, displayed report or export was produced.
+
+| Stage | Actual run ID | Turn elapsed ms |
+| --- | --- | ---: |
+| QC | 99fd829f-bdc0-4135-8000-3520818b52a0 | 12856 |
+| Blind | 8d932775-434a-484b-b00e-0328965bbc2e | 47468 |
+| Native localization | 337776e4-77ab-4540-a0a3-69b5ddf22bb8 | 12930 |
+| Reconcile | a3776781-771d-4a37-a66c-c919f9cddef3 | 55873 |
+| Second look, canceled | 66683f95-8d5d-4c36-87ea-d520251f24e5 | no completed receipt |
+
+Gateway log confirms the last run was aborted and `chat.abort` succeeded (54ms).
+There was no automatic retry. The private store retains the four returned turns
+under host run `41a882aef36c443c925ecb40ecb37c93`; it does not invent a completed
+fifth body from partial stream or history. Public read-only query
+`public-evidence-20260924-234751` verifies five Astra-medium session identities
+against runtime log lines55/194/1597/1676/3116. Literal usage input/output/total:
+QC6720/178/6720, blind9169/2658/9169, localization10447/389/9995,
+reconcile12754/3110/12754, aborted second look null/null/0. Missing usage is not
+zero cost; none of these snapshots is an additive billing ledger.
+
+- Public usage receipt SHA256:
+  `c9e84128a8b1240c3a5f46f23701945a6e298713478e2c17a457d768967f8c97`.
+- Attempt receipt SHA256:
+  `0371cda80dc16b1a9a4ceb8d77c499a72738ccfa9c3fa6787f3b9f49f2403022`.
+- Actual Quit stopped App/launcher/Gateway; port18796 listener absent. Viewer
+  retained. This fifth isolated runtime is sealed; never restart it.
+
+Two important open issues remain: scientific preparation currently shares the
+legacy total180s deadline, and both actual reconciliation drafts kept only
+source-frame evidence with empty finding bbox references despite a completed
+native localization turn. A valid geometry/tool receipt is not proof of adopted
+finding localization. Do not silently attach boxes, extend the SLA and call it a
+speed improvement, or claim completed regional QA under this scientific mode.
+Next work must address bounded stage budgeting, response efficiency, and explicit
+localization acceptance/rejection while retaining actual source and claim checks.
+
+Final current-source local suite1904: **2417 passed /8 skipped in407.03s**.
+Both local runs used supported portable Node24. Remote pin-fix CI36074069157/
+36074064451 and secret scans36074069175/36074064496 all completed successfully.
+Final documentation recheck:12 passed in0.10s. No clinical improvement,
+new EXE acceptance or complete five-stage App success is claimed.

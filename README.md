@@ -107,7 +107,8 @@ fixed missing receipt collection and canonical session naming. QC advanced to
 blind reading, where multi-observation checklist references blocked publication.
 The [follow-up](docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
 adds structured references and private exact visible-output retention; fresh live
-five-stage acceptance is still pending.
+replays now reach the second-look request, but the total deadline and unadopted
+localization evidence still prevent complete live acceptance.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

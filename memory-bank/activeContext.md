@@ -1,5 +1,30 @@
 # Active Context
 
+## 2026-09-25 — five requests, second look aborted at legacy total180s deadline
+
+- Confirm-graph runtime Ctemp/dicom-scientific-desktop-20260925-confirm-graph:
+  source1eb0565 startup launcher14196/App5404/Gateway23616, same Viewer7832.
+  Only docs/test changed to7b35d0d before actual Analyze; source/schema/skill
+  fingerprints unchanged. Same crop_top_20 ROI, wall185.070s, not a new case.
+- QC/blind/native/reconcile passed; fifth second-look request aborted at App's
+  shared DEFAULT_TOTAL_ANALYSIS_SLA_SEC180s. Gateway chat.abort54ms successful,
+  aborted=true/timedOut=false. No late report/Qt/export or automatic retry.
+- Hostrun41a882aef36c443c925ecb40ecb37c93 keeps4 complete original replies;
+  fifth partial not reconstructed. Public-evidence-20260924-234751 verifies5
+  Astra-medium sessions; fifth usage null/null/0 means unknown, not free.
+  Full IDs/receipts in scientific-reference-receipts evidence. Private config
+  must not publish. Actual Quit; ownedPIDs/18796 absent; Viewer retained. SEALED.
+- New gap: both actual reconciliations leave finding bbox_evidence_ids empty
+  and only source-frame evidence despite native tool validation. No annotation
+  adoption or scientific regional QA claim. Need explicit localization uptake/
+  rejection + response efficiency and bounded per-stage/overall budgets. Do not
+  simply extend SLA and claim faster completion or silently attach boxes.
+- Full1904 terminal0:2417pass8skip407.03s. 7b35d0d CI36074069157/36074064451
+  and secrets36074069175/36074064496 all success. Final docs12pass0.10s.
+  Prior20e2690/1eb0565 failed stale pin assertion,
+  repaired in7b35d0d. No new EXE or clinical improvement. Goal remains active.
+
+
 ## 2026-09-25 — CI fixed-pin follow-up during fresh App startup
 
 - Remote20e2690 CI36073119191 failed only test_public_harness_model_boundary's
