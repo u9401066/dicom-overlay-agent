@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-24 Viewer translation projection source correction
+
+- Snapshot acquisition rectangle stays immutable; separate current display
+  geometry follows same-size/same-display Viewer translation without model calls.
+  Main reprojects AI/fallback/manual marks and preserves chat/proposal/input/panels.
+- Resize, monitor/DPI/display changes and off-display ROI require fresh ROI;
+  old review disappears. Post-analysis publication and capture-hide delay guard
+  geometry invalidation. Paused resume and AUTO after fresh ROI are covered.
+- 147 targeted tests pass (synthetic, real offscreen Qt callbacks/signals).
+  Intermediate full suite 56779: 1,687 passed / six skips, before the final
+  active-result clearing/AUTO change. Intermediate 49291 passed 1,688 / six skips
+  in 230.34s. Final 66633 completed: 1,688 passed / six explicit skips in 235.31s,
+  after the translation-tick sampling guard (no hash capture before Qt can move).
+  Ruff/format/docs links/staged secrets checks pass. These are not native tests.
+- Not in preserved 6e6734e EXE. Native movement/DPI/browser/clinical acceptance
+  is still open. 58eb61a push/PR CI and both secret scans all succeeded.
+- Evidence: docs/evidence/2026-09/viewer-projection-followup-2026-09-24.md.
+
 ## 2026-09-24 Latest interaction EXE; geometry defect reproduced
 
 - Clean 6e6734e build completed in dist-interaction-6e6734e-upx. Eight frozen

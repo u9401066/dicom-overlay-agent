@@ -245,6 +245,11 @@ class ReviewSnapshot:
     result: AnalysisResult
     capture_rect: WindowRect
     revision: int
+    # Acquisition geometry above never changes; these fields describe only
+    # where the same pixels may currently be projected for interaction.
+    display_rect: WindowRect | None = None
+    display_window: WindowRect | None = None
+    display_frame: DisplayFrame | None = None
 
 
 class OverlayAgent:
@@ -321,6 +326,7 @@ class OverlayAgent:
         # Callbacks for presentation layer
         self.on_state_change: Any = None
         self.on_analysis_result: Any = None
+        self.on_review_geometry_change: Any = None
         self.on_pending_analysis: Any = None
         self.on_error: Any = None
         self.on_roi_setup_required: Any = None
@@ -727,7 +733,9 @@ class OverlayAgent:
 
     def resume(self) -> None:
         if self._state == AgentState.PAUSED:
-            self._transition(AgentState.MONITORING)
+            self._transition(
+                AgentState.MONITORING if self.has_roi_config() else AgentState.SETUP
+            )
 
     async def tick(self) -> None:
         """One iteration of the main loop. Called by the event loop timer."""
@@ -798,6 +806,7 @@ class OverlayAgent:
     def _sync_capture_display(self, window: WindowRect) -> None:
         display = self._monitor.display_for_window(window)
         if display is None:
+            self._display_frame = None
             return
         physical = display.physical_rect
         changed = display != self._display_frame
@@ -818,6 +827,87 @@ class OverlayAgent:
                 physical.height,
             )
 
+    def invalidate_display_geometry(self) -> None:
+        """Require fresh ROI after reflow/DPI changes; never stretch old evidence."""
+        with self._review_lock:
+            if self._state not in {
+                AgentState.DISPLAYING,
+                AgentState.ANALYZING,
+                AgentState.CAPTURING,
+                AgentState.MONITORING,
+                AgentState.PAUSED,
+                AgentState.WAITING,
+            }:
+                return
+            self._review_snapshot = None
+            self._last_result = None
+            self._last_image_base64 = ""
+            self._last_capture_rect = None
+            self._annotation_accumulator.reset([])
+            self._initial_auto_attempts = 0
+            self._result_revision += 1
+            self._config.phi_roi = dataclasses.replace(
+                self._config.phi_roi, configured=False
+            )
+            self._last_hash = ""
+            self._debounce_start = 0.0
+            self._pending_analysis = False
+            self._roi_setup_notified = False
+            if self._state is not AgentState.PAUSED:
+                self._transition(AgentState.SETUP)
+        if self.on_error:
+            self.on_error("視窗大小或螢幕配置已改變；請重新確認安全 ROI 後判讀")
+
+    def _update_review_projection(
+        self, previous_window: WindowRect | None, *, notify: bool = True
+    ) -> bool:
+        """Translate a current review, or invalidate it before further interaction."""
+        with self._review_lock:
+            snapshot = self._review_snapshot
+            window = self._target_window
+            if snapshot is None or window is None:
+                return True
+            old_window = snapshot.display_window or previous_window
+            if old_window is None:
+                self.invalidate_display_geometry()
+                return False
+            if (window.width, window.height) != (
+                old_window.width,
+                old_window.height,
+            ) or snapshot.display_frame != self._display_frame:
+                self.invalidate_display_geometry()
+                return False
+            if window == old_window:
+                return True
+            old_rect = snapshot.display_rect or snapshot.capture_rect
+            translated = WindowRect(
+                old_rect.left + window.left - old_window.left,
+                old_rect.top + window.top - old_window.top,
+                old_rect.width,
+                old_rect.height,
+            )
+            frame = self._display_frame
+            if frame is not None:
+                bounds = frame.physical_rect
+                if not (
+                    bounds.left <= translated.left < translated.right <= bounds.right
+                    and bounds.top
+                    <= translated.top
+                    < translated.bottom
+                    <= bounds.bottom
+                ):
+                    self.invalidate_display_geometry()
+                    return False
+            updated = dataclasses.replace(
+                snapshot,
+                display_rect=translated,
+                display_window=window,
+            )
+            self._review_snapshot = updated
+        if notify and self.on_review_geometry_change:
+            self.on_review_geometry_change(updated)
+        return True
+
     async def _tick_displaying(self) -> None:
         """While results are shown, keep monitoring for image changes.
 
@@ -832,7 +922,15 @@ class OverlayAgent:
             self._set_target_window(None)
             self._transition(AgentState.WAITING)
             return
+        previous_window = self._target_window
         self._set_target_window(window)
+        if not self._update_review_projection(previous_window):
+            return
+        if previous_window != window:
+            # Give the queued Qt projection one tick to move. Sampling now could
+            # mistake the old overlay's capture-exclusion blocks for new pixels.
+            self._debounce_start = 0.0
+            return
 
         # Settling period: overlay needs time to render on screen.
         # Skip hash monitoring until overlay is fully visible (~2s).
@@ -973,6 +1071,8 @@ class OverlayAgent:
         if self.on_before_capture is not None:
             self.on_before_capture()
             await asyncio.sleep(0.4)
+        if self._state is not AgentState.CAPTURING:
+            return  # Pause/DPI/ROI invalidation may occur during the UI-hide beat.
 
         # Capture the screen area defined by ROI (screen-relative margins).
         # ROI margins and screen dimensions are both in physical pixels.
@@ -981,6 +1081,8 @@ class OverlayAgent:
             self._transition(AgentState.WAITING)
             return
         self._sync_capture_display(self._target_window)
+        capture_window = self._target_window
+        capture_display = self._display_frame
         roi = self._config.phi_roi
         try:
             capture_rect = self._get_roi_rect()
@@ -1079,8 +1181,25 @@ class OverlayAgent:
                     result=result,
                     capture_rect=capture_rect,
                     revision=self._result_revision,
+                    display_rect=capture_rect,
+                    display_window=capture_window,
+                    display_frame=capture_display,
                 )
             self._transition(AgentState.DISPLAYING)
+            # The viewer may have moved/reflowed during a long model request.
+            # Validate current geometry before the first result is presented.
+            current_window = self._monitor.find_target_window(
+                self._config.monitor.window_title_keywords
+            )
+            if current_window is None:
+                with self._review_lock:
+                    self._review_snapshot = None
+                self._set_target_window(None)
+                self._transition(AgentState.WAITING)
+                return
+            self._set_target_window(current_window)
+            if not self._update_review_projection(capture_window, notify=False):
+                return
             if self.on_analysis_result:
                 self.on_analysis_result(result)
         except TimeoutError:

@@ -1280,6 +1280,8 @@ class OverlayWindow(QWidget):
         self,
         rect: WindowRect,
         display_frame: DisplayFrame | None = None,
+        *,
+        preserve_panel_positions: bool = False,
     ) -> OverlayCoordinateFrame:
         """Position the overlay over the display containing the viewer.
 
@@ -1319,7 +1321,10 @@ class OverlayWindow(QWidget):
                 logical.height,
             )
 
+        unchanged_frame = self._coordinate_frame == frame
         self._coordinate_frame = frame
+        if preserve_panel_positions and unchanged_frame:
+            return frame
         sw, sh = logical.width, logical.height
         screen_x, screen_y = logical.left, logical.top
 
@@ -1368,6 +1373,20 @@ class OverlayWindow(QWidget):
 
         # Results persist until dismissed or new image triggers a new analysis.
         # No auto-hide timer.
+
+    def reproject_result(
+        self,
+        highlights: list[tuple[int, int, int, int, str, str, str]],
+        *,
+        content_rect: tuple[int, int, int, int] | None,
+    ) -> None:
+        """Move existing markers without clearing conversation or reopening panels."""
+        self._selection_start = None
+        self._draft_rect = None
+        self._highlights = highlights
+        self._content_rect = content_rect
+        self._refresh_user_region_highlights()
+        self.update()
 
     def clear_result(self) -> None:
         self.summary_panel.clear()

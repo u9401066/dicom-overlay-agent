@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Current projection separated from acquisition geometry
+
+- Source now follows same-display translation without another model call or
+  losing manual marks/history/proposals. Reflow/DPI changes require fresh ROI;
+  capture/publication/paused-resume/AUTO-restart races covered.
+- 147 targeted synthetic/offscreen Qt checks pass. Intermediate full run 56779
+  passed 1,687 with six skips; intermediate 49291 passed 1,688 / six skips in
+  230.34s. Final 66633 passed 1,688 / six explicit skips in 235.31s after the
+  projection-before-hash timing guard. Ruff/format/docs/secret scan pass.
+- No new native/model case or binary release. Preserved 6e6734e EXE is unchanged.
+  Previous documentation checkpoint 58eb61a CI/secrets all passed.
+
 ## 2026-09-24 Interaction EXE checkpoint and newly found movement gap
 
 - Clean 6e6734e EXE built; eight frozen modules match source and 90 native

@@ -159,6 +159,7 @@ class _SignalBridge(QObject):
 
     state_changed = pyqtSignal(object, object)
     analysis_result = pyqtSignal(object)
+    review_geometry_changed = pyqtSignal(object)
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
     prepare_capture = pyqtSignal()
@@ -771,6 +772,7 @@ def main() -> None:
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
     agent.on_state_change = signals.state_changed.emit
     agent.on_analysis_result = signals.analysis_result.emit
+    agent.on_review_geometry_change = signals.review_geometry_changed.emit
     agent.on_pending_analysis = lambda _reason: signals.pending_analysis.emit(
         "New image ready. Click Analyze."
     )
@@ -812,7 +814,7 @@ def main() -> None:
         control_bar.update_state(new)
         if new == AgentState.PAUSED:
             control_bar.set_paused(True)
-        elif new == AgentState.MONITORING:
+        elif new in {AgentState.MONITORING, AgentState.SETUP}:
             control_bar.set_paused(False)
 
     def on_analysis_result(
@@ -820,19 +822,22 @@ def main() -> None:
         *,
         announce: bool = True,
         preserve_user_regions: bool = False,
+        projection_only: bool = False,
     ):
-        # Invalidate every in-flight follow-up before replacing the visible image.
-        _chat_request_id[0] += 1
-        _pending_review[0] = None
-        overlay.clear_chat()
-        _active_region[0] = None
-        _pending_regional_threads.clear()
-        if not preserve_user_regions:
-            regional_conversations.clear()
-            overlay.clear_user_regions()
         current_snapshot = _current_review_snapshot()
-        if current_snapshot is not None:
-            regional_conversations.bind(current_snapshot.image_base64)
+        if current_snapshot is None or current_snapshot.result is not result:
+            return  # Never render a queued result after invalidation/replacement.
+        # Invalidate every in-flight follow-up before replacing the visible image.
+        if not projection_only:
+            _chat_request_id[0] += 1
+            _pending_review[0] = None
+            overlay.clear_chat()
+            _active_region[0] = None
+            _pending_regional_threads.clear()
+            if not preserve_user_regions:
+                regional_conversations.clear()
+                overlay.clear_user_regions()
+        regional_conversations.bind(current_snapshot.image_base64)
         logger.info(
             "Result: %s severity=%s findings=%d",
             result.modality.value,
@@ -844,23 +849,20 @@ def main() -> None:
         highlights: list[tuple[int, int, int, int, str, str, str]] = []
         overlay_content_rect: tuple[int, int, int, int] | None = None
         coordinate_frame = None
-        if agent.target_window:
+        projection_window = current_snapshot.display_window or agent.target_window
+        projection_display = (
+            current_snapshot.display_frame
+            if current_snapshot.display_window
+            else agent.display_frame
+        )
+        if projection_window:
             coordinate_frame = overlay.position_over_window(
-                agent.target_window,
-                agent.display_frame,
+                projection_window,
+                projection_display,
+                preserve_panel_positions=projection_only,
             )
 
-        snapshot = agent.review_snapshot
-        content_rect = (
-            snapshot.capture_rect
-            if snapshot is not None and snapshot.result is result
-            else agent.last_capture_rect
-        )
-        if content_rect is None and agent.target_window:
-            try:
-                content_rect = agent._get_roi_rect()
-            except ValueError:
-                logger.exception("Cannot map result: ROI exceeds target display")
+        content_rect = current_snapshot.display_rect or current_snapshot.capture_rect
 
         projection_safe = bool(
             coordinate_frame is not None
@@ -966,11 +968,10 @@ def main() -> None:
                                     finding.id,
                                 )
                             )
-        overlay.show_result(
-            result,
-            highlights,
-            content_rect=overlay_content_rect,
-        )
+        if projection_only:
+            overlay.reproject_result(highlights, content_rect=overlay_content_rect)
+            return
+        overlay.show_result(result, highlights, content_rect=overlay_content_rect)
         control_bar.set_pending_analysis(False)
         if announce and config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
@@ -978,6 +979,17 @@ def main() -> None:
             # Same export path as the control-bar Export button; keeps batch
             # acceptance evidence identical to a manual clinician export.
             on_export_review()
+
+    def on_review_geometry_changed(snapshot: ReviewSnapshot) -> None:
+        current = _current_review_snapshot()
+        if current is None or current.image_base64 != snapshot.image_base64:
+            return  # A queued translation cannot restore an old image/report.
+        on_analysis_result(
+            current.result,
+            announce=False,
+            preserve_user_regions=True,
+            projection_only=True,
+        )
 
     def on_error(msg: str):
         if msg.startswith("New image ready"):
@@ -997,9 +1009,29 @@ def main() -> None:
 
     signals.state_changed.connect(on_state_change)
     signals.analysis_result.connect(on_analysis_result)
+    signals.review_geometry_changed.connect(on_review_geometry_changed)
     signals.pending_analysis.connect(on_pending_analysis)
     signals.error_msg.connect(on_error)
     signals.prepare_capture.connect(overlay.hide_for_recapture)
+
+    def _display_configuration_changed(*_args) -> None:
+        # Hide immediately, including while paused; the bridge owns state/ROI.
+        overlay.invalidate_review()
+
+        async def _invalidate():
+            agent.invalidate_display_geometry()
+
+        bridge.submit(_invalidate())
+
+    def _watch_display(screen) -> None:
+        screen.geometryChanged.connect(_display_configuration_changed)
+        screen.logicalDotsPerInchChanged.connect(_display_configuration_changed)
+
+    for display in app.screens():
+        _watch_display(display)
+    app.screenAdded.connect(_watch_display)
+    app.screenAdded.connect(_display_configuration_changed)
+    app.screenRemoved.connect(_display_configuration_changed)
 
     # ─── Display timeout — single source of truth (overlay timer) ───
     def _on_display_expired() -> None:

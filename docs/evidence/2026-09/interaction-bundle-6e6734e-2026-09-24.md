@@ -75,3 +75,6 @@ Viewer movement, native manual ADD/Apply/Inspect continuation and dismissal,
 browser capture/QA, mixed-DPI monitors and >=100 current-model real-GUI cases
 remain acceptance gates. No desktop focus was taken in this checkpoint; the
 desktop-use preference question is still unanswered.
+
+Subsequent [source projection correction](viewer-projection-followup-2026-09-24.md)
+addresses this path, but is not contained in this preserved 6e6734e executable.
