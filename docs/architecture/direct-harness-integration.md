@@ -38,7 +38,10 @@ without a trusted study manifest, observation/evidence ledger and ordered workfl
 events still fails `to_contract_payload()`; current review exports must not be
 relabeled as validated canonical clinical contracts.
 
-The host assembler and model-led observation ledger remain implementation work.
+An isolated [host assembly boundary](host-evidence-assembly.md) now validates
+explicit host bytes, source/evidence bindings and the public contract without
+inventing missing observations. The model-led observation ledger, actual host
+journal/receipt adapter and desktop wiring remain implementation work.
 They must preserve raw predictions, exact ROI/crop hashes, native receipt bindings,
 the user's assessment scope, and incomplete-input limitations. Neither filling
 default placeholders nor replaying current guardrails over old results can close

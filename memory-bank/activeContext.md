@@ -1,5 +1,31 @@
 # Active Context
 
+## 2026-09-24 ISOLATED host assembly candidate; actual GUI run stays elsewhere
+
+- NEW worktree data/tmp/evidence-assembly-worktree-20260924, branch
+  agent/canonical-evidence-20260924, based on3029dfb. Its own uv env and unchanged
+  submodule3c7645e. Develop here WITHOUT changing the live direct-harness worktree
+  src/config/prompts/rules/driver. MAIN user dirt remains untouched.
+- Added application/contract_assembly.py: deep-copy, exact immutable input/
+  transformation hashes and inventories, host-only bindings, exact trusted-evidence
+  parity, source coordinate/tool-source proof, pinned public validation. No ledger,
+  normal status, verified boxes, completeness or workflow events fabricated.
+- NOT wired into desktop. Actual current Gateway parser still lacks observation
+  ledger; explicit synthetic parser regression rejects it. Host journal/native
+  receipt adapter/protocol decoder/quality lifecycle still need implementation.
+-44new tests pass; Ruff/format and focusedmypy pass. Fresh full run before npm:
+  1760pass8skip5fail51errors (missing localOpenClaw); Node25first install warned,
+  reran lockednpmci with portableNode24.18, no global edits.93native/Core2/ownership
+  targeted tests pass. Corrected fullsuite1820pass7skip183.19s; session22239terminal0.
+  Seven skips include candidate-local optional portableNode-directory plus usual
+  private/frozen/native opt-ins. Native plugin checks use portable24.18viaPATH.
+- ORIGINAL realGUI run STILL in direct-harness-worktree-20260910:
+  session80364 live; App3948,Viewer7832,Gateway26484parent3948; driver2760/10104.
+  At15:41UTC independent audit25/120,100medium stages,95pending,zero invalid/
+  technical failures. Frozen plan/temp roots unchanged. Gold unopened.
+- Both3029dfb CI36020406337/36020401506 and secret scans passed.
+- Evidence/design: docs/architecture/host-evidence-assembly.md. No new EXE/main merge.
+
 ## 2026-09-24 Clinical workflow documentation; 16 real GUI cases audited
 
 - Added docs/clinical/ekg-reading-workflow.md: ten human/agent step IDs, sixteen

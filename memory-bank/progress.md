@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Isolated scientific assembly boundary
+
+- Separate worktree/branch protects frozen actual GUI batch. Host assembly validates
+  exact bytes, lineage, manifests, model-led ledger references, trusted evidence and
+  workflow sequence through unchanged public schema. No placeholder completion.
+-44new synthetic tests pass including real legacy-parser rejection; Ruff/format/
+  focusedmypy pass. Fresh environment native tests failed until locked local npm
+  install; supported portableNode24.18 rerun passes93native/Core2/ownership checks.
+  Full corrected regression1820pass7skip183.19s; desktop integration still open.
+- Actual original-source cohort25/120 independently verified at15:41UTC,100model
+  stages,95pending,zero failures; same live driver, no inference reruns or gold reads.
+
 ## 2026-09-24 Human/agent ECG workflow and critical-first native evidence
 
 - Added ten-step/16-axis clinical workflow design with official references, local
