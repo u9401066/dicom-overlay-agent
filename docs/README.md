@@ -28,6 +28,10 @@ handoff and stale-writeback protection. Neither adds clinical cohort acceptance.
 The [native promotion follow-up](evidence/2026-09/native-marker-promotion-2026-09-24.md)
 now verifies real ADD dismissal, later approval, history migration/reopening and
 third-turn follow-up on clean 243f2ef, without claiming a new frozen release.
+The [3029dfb package refresh](evidence/2026-09/interaction-package-refresh-2026-09-24.md)
+now includes those interaction/source-identity fixes, verifies all 60 bundled App
+modules and passes 20 frozen smoke checks. Its byte-verified ZIP is local only;
+native acceptance of this new EXE and the license gate remain open.
 
 The candidate runtime remains OpenClaw 2026.9.3 / Node 24.18.0. Adoption of 2026.9.6,
 complete canonical evidence-ledger wiring, diverse legacy/vendor ECG acceptance,

@@ -1,5 +1,36 @@
 # Active Context
 
+## 2026-09-25 Taipei / September 24 UTC — refreshed local EXE, live batch continues
+
+- Previous candidate42dd4efa368bd07f183bdd0422a450f564ce848e is clean/pushed;
+  draft PR20 stacks on agent/direct-harness-models-20260910. CI36022557989 and
+  36023128583, secret scans36022558026/36023128909 all pass. Do not merge a
+  partial scientific assembler as if desktop canonical integration were complete.
+- New LOCAL frozen package built from clean DIRECT3029dfb155d673b0002870ce570ee9e5c58b3d40,
+  NOT this host-assembly candidate. All60bundled App code modules compare exactly
+  to thatcommit;90native dependency sources approved. Includes projection/picker/
+  ROI-preview/publication fixes missing from old6eEXE. Python3.13.12/UPX5.2.1/
+  Node24.18/OpenClaw2026.9.3 unchanged; clinical7rule SQLite parity unchanged.
+- DIRECT/dist-interaction-3029dfb-upx/DICOMOverlayAgent: launcher4.71MiB,
+  App54.45MiB,total337.02MiB. EXEsha b3323a77430e02897259a4a14a7d8114c4605dcf3e66fc077ab044f4208a8162.
+  Package verifier session59053 terminal0; full20frozen smokes session64231
+  terminal0,94.48s; build51770 terminal0. No native GUI acceptance of newEXE yet.
+- DIRECT/data/tmp/package-transfer-interaction-3029dfb: ZIP141.58MiB,
+  18771entries byte/hash roundtrip verified,53UPXpayloads tested; helper59024
+  terminal0. Initial UTF8-vs-cp950 helper failure fixed before output creation.
+  No public binary uploaded; PyQt6 distribution-license/clinical/DPI gates open.
+  Evidence docs/evidence/2026-09/interaction-package-refresh-2026-09-24.md.
+- ORIGINAL live realGUI80364 remains on frozen7eba45d; App3948,Viewer7832,
+  Gateway26484,driver2760/10104 revalidated live. At~16:01UTC35/120 independent
+  verified,85pending,zero invalid/technical failures. Gold unopened. Case029actual
+  summary inspected; critical-first execution is not clinical/scoring evidence.
+  DO NOT launch new App/Viewer or modify DIRECTsrc/config/prompts/rules/helpers/
+  driver midbatch. Packaging only touched ignored build/dist directories.
+- Scientific integration inspection confirms current parser still drops ledger;
+  no decoder/journal/desktop wiring added this turn. Next implement coherent
+  model-led draft protocol+decoder/prompt/schema tests in this isolated candidate,
+  then real host journal/native receipts/capture adapter; do not invent completion.
+
 ## 2026-09-24 ISOLATED host assembly candidate; actual GUI run stays elsewhere
 
 - NEW worktree data/tmp/evidence-assembly-worktree-20260924, branch

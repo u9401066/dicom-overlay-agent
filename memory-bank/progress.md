@@ -3,6 +3,20 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 Taipei / September 24 UTC — local interaction package refreshed
+
+- Built clean DIRECT3029dfb into separate dist-interaction-3029dfb-upx, preserving
+  earlier bundles. Includes latest source projection/ROI/picker/publication fixes.
+  Compared all60bundled App modules to exactcommit;90native sources approved.
+- Actual frozen20smokes pass94.48s; general bundle verifier passes; launcher4.71MiB,
+  App54.45MiB,full337.02MiB. LocalZIP141.58MiB roundtrip18771entries plus53UPX
+  tests all pass. No newEXE native interaction/clinical/publicrelease claim.
+- READMEboth/docsindex/evidence updated; no App/runtime/dependency/ROI changes.
+  Host-assembly candidate42dd4ef draftPR20 CI and secret scans all pass.
+- Same realGUI80364 cohort independently35/120verified,85pending,zero technical/
+  invalid receipts at~16:01UTC. Goldunopened; case029actualcritical-first summary
+  reviewed without claiming diagnostic accuracy or improved latency.
+
 ## 2026-09-24 Isolated scientific assembly boundary
 
 - Separate worktree/branch protects frozen actual GUI batch. Host assembly validates

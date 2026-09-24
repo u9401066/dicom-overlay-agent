@@ -58,12 +58,13 @@ Mid-analysis image replacement is now checked before publishing: a local exact
 ROI pixel comparison withholds stale results and exports. Real swapped/unchanged
 Viewer runs pass; see [publication guard evidence](docs/evidence/2026-09/image-publication-guard-2026-09-24.md).
 
-The latest preserved local executable is `6e6734e`: eight key modules match its
-clean source, with package verification and 20 frozen smoke checks passing.
-It includes regional turn IDs and promotion-history fixes, but not the later
-Viewer-projection, picker-accessibility, ROI-preview or publication-guard changes.
-This is not a public release;
-see the [package checkpoint](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md).
+The latest preserved local executable is `3029dfb`: all 60 bundled App modules match
+its clean source; package verification and 20 frozen smoke checks pass. It now
+includes Viewer projection, picker accessibility, ROI preview and publication
+guards alongside the earlier regional QA/history fixes. The complete folder is
+337.02 MiB; a 141.58 MiB ZIP has every entry byte-verified. Native acceptance of
+this new EXE and binary-license gates remain open; it is not a public release.
+See the [package refresh](docs/evidence/2026-09/interaction-package-refresh-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11
 
