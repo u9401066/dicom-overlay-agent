@@ -16,35 +16,39 @@ from dicom_overlay.application.annotation_accumulator import (
     AnnotationAccumulator,
     max_severity,
 )
-from dicom_overlay.application.multi_pass import (
-    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
-    AnalysisSlaTimeout,
-)
+from dicom_overlay.application.regional_conversation import validate_review_turn_id
 from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
 from dicom_overlay.domain.entities import (
     AgentState,
-    AnalysisResult,
     DisplayFrame,
-    Finding,
     FindingDelta,
     FindingOp,
-    Modality,
-    RegionRect,
-    Severity,
+    ROICrop,
     TriggerMode,
     WindowRect,
 )
 from dicom_overlay.domain.services import CaptureBlockedError
+from medical_image_harness.models import (
+    AnalysisResult,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
+from medical_image_harness.multipass import (
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+    AnalysisSlaTimeout,
+)
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AppConfig, ROICrop
+    from dicom_overlay.domain.entities import AppConfig, CaptureWindow
     from dicom_overlay.domain.services import (
         ImageProcessorService,
         RegionMapperService,
         ScreenMonitorService,
-        VisionAnalyzerService,
     )
     from dicom_overlay.infrastructure.gateway_manager import GatewayManager
+    from medical_image_harness.protocols import VisionAnalyzerService
 
 logger = structlog.get_logger(__name__)
 
@@ -241,6 +245,19 @@ class ReviewSnapshot:
     result: AnalysisResult
     capture_rect: WindowRect
     revision: int
+    # Acquisition geometry above never changes; these fields describe only
+    # where the same pixels may currently be projected for interaction.
+    display_rect: WindowRect | None = None
+    display_window: WindowRect | None = None
+    display_frame: DisplayFrame | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class WithheldReview:
+    """One bounded in-memory record; never a displayed/current-image report."""
+
+    snapshot: ReviewSnapshot
+    reason: str
 
 
 class OverlayAgent:
@@ -304,6 +321,7 @@ class OverlayAgent:
         self._last_result: AnalysisResult | None = None
         self._result_revision = 0
         self._review_snapshot: ReviewSnapshot | None = None
+        self._last_withheld_review: WithheldReview | None = None
         self._annotation_accumulator = annotation_accumulator or AnnotationAccumulator()
         self._last_image_base64 = ""
         self._running = False
@@ -317,6 +335,7 @@ class OverlayAgent:
         # Callbacks for presentation layer
         self.on_state_change: Any = None
         self.on_analysis_result: Any = None
+        self.on_review_geometry_change: Any = None
         self.on_pending_analysis: Any = None
         self.on_error: Any = None
         self.on_roi_setup_required: Any = None
@@ -370,6 +389,12 @@ class OverlayAgent:
             return self._review_snapshot
 
     @property
+    def last_withheld_review(self) -> WithheldReview | None:
+        """Preserve the last rejected draft/source for audit until replaced/exit."""
+        with self._review_lock:
+            return self._last_withheld_review
+
+    @property
     def last_image_base64(self) -> str:
         return self._last_image_base64
 
@@ -408,6 +433,7 @@ class OverlayAgent:
         expected_revision: int,
         local_signal_audit: dict[str, object] | None = None,
         regional_review_trace: list[dict[str, object]] | None = None,
+        review_turn_id: str = "",
     ) -> AnalysisResult:
         """Apply a reviewer-confirmed regional proposal to the displayed result.
 
@@ -423,6 +449,7 @@ class OverlayAgent:
                 expected_revision=expected_revision,
                 local_signal_audit=local_signal_audit,
                 regional_review_trace=regional_review_trace,
+                review_turn_id=review_turn_id,
             )
 
     def _apply_finding_delta_locked(
@@ -432,6 +459,7 @@ class OverlayAgent:
         expected_revision: int,
         local_signal_audit: dict[str, object] | None,
         regional_review_trace: list[dict[str, object]] | None,
+        review_turn_id: str = "",
     ) -> AnalysisResult:
         """Apply one delta while ``_review_lock`` is held."""
 
@@ -443,6 +471,7 @@ class OverlayAgent:
             raise RuntimeError(
                 "The image result changed before this proposal was applied"
             )
+        self._check_review_turn_id(review_turn_id)
 
         current_id_list = [finding.id for finding in self._last_result.findings]
         current_ids = set(current_id_list)
@@ -549,6 +578,8 @@ class OverlayAgent:
             ],
         }
         safe_signal_audit = _safe_local_signal_audit(local_signal_audit)
+        if review_turn_id:
+            trace_entry["review_turn_id"] = review_turn_id
         if safe_signal_audit:
             trace_entry["local_signal_audit"] = safe_signal_audit
         safe_regional_turns = _safe_regional_turns(regional_review_trace)
@@ -592,6 +623,7 @@ class OverlayAgent:
         user_confirmed: bool = False,
         proposed_operation: str = "none",
         target_id: str = "",
+        review_turn_id: str = "",
     ) -> AnalysisResult:
         """Persist a crop-review turn that did not mutate report findings."""
 
@@ -610,6 +642,7 @@ class OverlayAgent:
                 raise RuntimeError(
                     "The image result changed before this review was recorded"
                 )
+            self._check_review_turn_id(review_turn_id)
 
             trace_entry: dict[str, object] = {
                 "stage": "interactive_review",
@@ -620,6 +653,8 @@ class OverlayAgent:
             }
             if target_id.strip():
                 trace_entry["target_id"] = target_id.strip()
+            if review_turn_id:
+                trace_entry["review_turn_id"] = review_turn_id
             safe_signal_audit = _safe_local_signal_audit(local_signal_audit)
             if safe_signal_audit:
                 trace_entry["local_signal_audit"] = safe_signal_audit
@@ -647,6 +682,18 @@ class OverlayAgent:
                 result_revision=self._result_revision,
             )
             return updated
+
+    def _check_review_turn_id(self, turn_id: str) -> None:
+        """Called under the review lock, before any report mutation."""
+        if not turn_id:  # Older non-conversation callers have no linked turn.
+            return
+        validate_review_turn_id(turn_id)
+        if self._last_result is not None and any(
+            entry.get("stage") == "interactive_review"
+            and entry.get("review_turn_id") == turn_id
+            for entry in self._last_result.analysis_trace
+        ):
+            raise ValueError("Review turn already has a recorded outcome")
 
     def _transition(self, new_state: AgentState) -> None:
         with self._review_lock:
@@ -701,7 +748,9 @@ class OverlayAgent:
 
     def resume(self) -> None:
         if self._state == AgentState.PAUSED:
-            self._transition(AgentState.MONITORING)
+            self._transition(
+                AgentState.MONITORING if self.has_roi_config() else AgentState.SETUP
+            )
 
     async def tick(self) -> None:
         """One iteration of the main loop. Called by the event loop timer."""
@@ -772,6 +821,7 @@ class OverlayAgent:
     def _sync_capture_display(self, window: WindowRect) -> None:
         display = self._monitor.display_for_window(window)
         if display is None:
+            self._display_frame = None
             return
         physical = display.physical_rect
         changed = display != self._display_frame
@@ -792,6 +842,87 @@ class OverlayAgent:
                 physical.height,
             )
 
+    def invalidate_display_geometry(self) -> None:
+        """Require fresh ROI after reflow/DPI changes; never stretch old evidence."""
+        with self._review_lock:
+            if self._state not in {
+                AgentState.DISPLAYING,
+                AgentState.ANALYZING,
+                AgentState.CAPTURING,
+                AgentState.MONITORING,
+                AgentState.PAUSED,
+                AgentState.WAITING,
+            }:
+                return
+            self._review_snapshot = None
+            self._last_result = None
+            self._last_image_base64 = ""
+            self._last_capture_rect = None
+            self._annotation_accumulator.reset([])
+            self._initial_auto_attempts = 0
+            self._result_revision += 1
+            self._config.phi_roi = dataclasses.replace(
+                self._config.phi_roi, configured=False
+            )
+            self._last_hash = ""
+            self._debounce_start = 0.0
+            self._pending_analysis = False
+            self._roi_setup_notified = False
+            if self._state is not AgentState.PAUSED:
+                self._transition(AgentState.SETUP)
+        if self.on_error:
+            self.on_error("視窗大小或螢幕配置已改變；請重新確認安全 ROI 後判讀")
+
+    def _update_review_projection(
+        self, previous_window: WindowRect | None, *, notify: bool = True
+    ) -> bool:
+        """Translate a current review, or invalidate it before further interaction."""
+        with self._review_lock:
+            snapshot = self._review_snapshot
+            window = self._target_window
+            if snapshot is None or window is None:
+                return True
+            old_window = snapshot.display_window or previous_window
+            if old_window is None:
+                self.invalidate_display_geometry()
+                return False
+            if (window.width, window.height) != (
+                old_window.width,
+                old_window.height,
+            ) or snapshot.display_frame != self._display_frame:
+                self.invalidate_display_geometry()
+                return False
+            if window == old_window:
+                return True
+            old_rect = snapshot.display_rect or snapshot.capture_rect
+            translated = WindowRect(
+                old_rect.left + window.left - old_window.left,
+                old_rect.top + window.top - old_window.top,
+                old_rect.width,
+                old_rect.height,
+            )
+            frame = self._display_frame
+            if frame is not None:
+                bounds = frame.physical_rect
+                if not (
+                    bounds.left <= translated.left < translated.right <= bounds.right
+                    and bounds.top
+                    <= translated.top
+                    < translated.bottom
+                    <= bounds.bottom
+                ):
+                    self.invalidate_display_geometry()
+                    return False
+            updated = dataclasses.replace(
+                snapshot,
+                display_rect=translated,
+                display_window=window,
+            )
+            self._review_snapshot = updated
+        if notify and self.on_review_geometry_change:
+            self.on_review_geometry_change(updated)
+        return True
+
     async def _tick_displaying(self) -> None:
         """While results are shown, keep monitoring for image changes.
 
@@ -806,7 +937,15 @@ class OverlayAgent:
             self._set_target_window(None)
             self._transition(AgentState.WAITING)
             return
+        previous_window = self._target_window
         self._set_target_window(window)
+        if not self._update_review_projection(previous_window):
+            return
+        if previous_window != window:
+            # Give the queued Qt projection one tick to move. Sampling now could
+            # mistake the old overlay's capture-exclusion blocks for new pixels.
+            self._debounce_start = 0.0
+            return
 
         # Settling period: overlay needs time to render on screen.
         # Skip hash monitoring until overlay is fully visible (~2s).
@@ -947,6 +1086,8 @@ class OverlayAgent:
         if self.on_before_capture is not None:
             self.on_before_capture()
             await asyncio.sleep(0.4)
+        if self._state is not AgentState.CAPTURING:
+            return  # Pause/DPI/ROI invalidation may occur during the UI-hide beat.
 
         # Capture the screen area defined by ROI (screen-relative margins).
         # ROI margins and screen dimensions are both in physical pixels.
@@ -955,6 +1096,8 @@ class OverlayAgent:
             self._transition(AgentState.WAITING)
             return
         self._sync_capture_display(self._target_window)
+        capture_window = self._target_window
+        capture_display = self._display_frame
         roi = self._config.phi_roi
         try:
             capture_rect = self._get_roi_rect()
@@ -1053,7 +1196,26 @@ class OverlayAgent:
                     result=result,
                     capture_rect=capture_rect,
                     revision=self._result_revision,
+                    display_rect=capture_rect,
+                    display_window=capture_window,
+                    display_frame=capture_display,
                 )
+            # The viewer may have moved/reflowed during a long model request.
+            # Validate current geometry before the first result is presented.
+            current_window = self._monitor.find_target_window(
+                self._config.monitor.window_title_keywords
+            )
+            if current_window is None:
+                with self._review_lock:
+                    self._review_snapshot = None
+                self._set_target_window(None)
+                self._transition(AgentState.WAITING)
+                return
+            self._set_target_window(current_window)
+            if not self._update_review_projection(capture_window, notify=False):
+                return
+            if not await self._verify_image_before_publication(source_screenshot):
+                return
             self._transition(AgentState.DISPLAYING)
             if self.on_analysis_result:
                 self.on_analysis_result(result)
@@ -1074,6 +1236,71 @@ class OverlayAgent:
                 self._transition(AgentState.ERROR)
                 if self.on_error:
                     self.on_error("分析錯誤")
+
+    def _withhold_review(self, reason: str) -> None:
+        with self._review_lock:
+            if self._review_snapshot is not None:
+                self._last_withheld_review = WithheldReview(
+                    self._review_snapshot, reason
+                )
+            self._review_snapshot = None
+            self._last_result = None
+            self._last_image_base64 = ""
+            self._last_capture_rect = None
+            self._annotation_accumulator.reset([])
+            self._result_revision += 1
+            self._last_hash = ""
+            self._debounce_start = 0.0
+        logger.warning("Analysis result withheld", reason=reason)
+        if self._state is AgentState.ANALYZING:
+            self._transition(AgentState.MONITORING)
+            self._mark_pending_analysis(reason)
+            if self.on_error:
+                self.on_error(
+                    "判讀期間影像已變更或無法確認；舊結果未顯示。"
+                    "請確認影像與 ROI 後重新 Analyze。"
+                )
+
+    async def _verify_image_before_publication(self, original: bytes) -> bool:
+        """Local, bounded ROI recheck; never transmit or publish new pixels."""
+        if self.on_before_capture is not None:
+            self.on_before_capture()
+            await asyncio.sleep(0.4)
+        if self._state is not AgentState.ANALYZING:
+            self._withhold_review("state_changed_before_publication")
+            return False
+        previous_window = self._target_window
+        current_window = self._monitor.find_target_window(
+            self._config.monitor.window_title_keywords
+        )
+        if current_window is None:
+            self._withhold_review("viewer_lost_before_publication")
+            self._set_target_window(None)
+            self._transition(AgentState.WAITING)
+            return False
+        self._set_target_window(current_window)
+        if not self._update_review_projection(previous_window, notify=False):
+            return False
+        snapshot = self.review_snapshot
+        if snapshot is None:
+            self._withhold_review("review_invalidated_before_publication")
+            return False
+        rect = snapshot.display_rect or snapshot.capture_rect
+        try:
+            self._monitor.verify_capture_target(rect)
+            current = self._monitor.capture_region(rect)
+            self._monitor.verify_capture_target(rect)
+            matches = self._processor.same_image_pixels(original, current)
+        except Exception:
+            self._withhold_review("viewer_unverifiable_before_publication")
+            return False
+        if not matches:
+            self._withhold_review("image_changed_during_analysis")
+            return False
+        if self._state is not AgentState.ANALYZING:
+            self._withhold_review("state_changed_before_publication")
+            return False
+        return True
 
     async def _analyze_with_retry(
         self,
@@ -1246,6 +1473,28 @@ class OverlayAgent:
         self._config.phi_roi = roi
         self._roi_setup_notified = False
         self._transition(AgentState.WAITING)
+
+    def select_capture_window(self, window: CaptureWindow) -> None:
+        """Switch only between reads; a different window always needs fresh ROI."""
+        if self._state in {AgentState.INIT, AgentState.CAPTURING, AgentState.ANALYZING}:
+            raise RuntimeError(
+                "Wait for the current startup or analysis before selecting a window"
+            )
+        rect = self._monitor.select_capture_window(window)
+        with self._review_lock:
+            self._review_snapshot = None
+            self._last_result = None
+            self._last_image_base64 = ""
+            self._last_capture_rect = None
+            self._result_revision += 1
+        self._config.phi_roi = ROICrop()
+        self._last_hash = ""
+        self._pending_analysis = False
+        self._initial_auto_attempts = 0
+        self._roi_setup_notified = False
+        self._annotation_accumulator.reset([])
+        self._set_target_window(rect)
+        self._transition(AgentState.SETUP)
 
     def on_display_timeout(self) -> None:
         """Called when overlay display times out."""

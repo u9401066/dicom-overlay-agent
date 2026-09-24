@@ -78,7 +78,7 @@ def test_settings_dialog_subscription_comparison_presets(qtbot, tmp_path):
     qtbot.addWidget(dialog)
     for key, model, effort in (
         ("openai-codex-luna", "gpt-5.6-luna", "high"),
-        ("openai-codex-astra", "gpt-6-astra", "low"),
+        ("openai-codex-astra", "gpt-6-astra", "medium"),
     ):
         index = next(
             i

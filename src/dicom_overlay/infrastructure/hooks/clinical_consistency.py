@@ -21,7 +21,7 @@ from dicom_overlay.domain.clinical_rules import (
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult
+    from medical_image_harness.models import AnalysisResult
 
 logger = structlog.get_logger(__name__)
 

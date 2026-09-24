@@ -22,11 +22,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from dicom_overlay.application.multi_pass import (
-    DEFAULT_FIRST_REFINEMENT_SLA_SEC,
-    DEFAULT_INITIAL_RESPONSE_SLA_SEC,
-    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
-)
 from dicom_overlay.infrastructure.codex_subscription_auth import (
     ensure_openclaw_subscription_auth,
 )
@@ -45,6 +40,11 @@ from dicom_overlay.infrastructure.openclaw_settings import (
     default_provider_profiles,
     derive_openclaw_timeout_budget,
     merge_openclaw_config,
+)
+from medical_image_harness.multipass import (
+    DEFAULT_FIRST_REFINEMENT_SLA_SEC,
+    DEFAULT_INITIAL_RESPONSE_SLA_SEC,
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -203,8 +203,8 @@ def test_export_eval_annotations_writes_bbox_audit_and_crops(
                 "layout": {
                     "format": "12lead_rows",
                     "leads": [
-                        {"name": "I", "bbox": [0.0, 0.0, 1.0, 0.5]},
-                        {"name": "II", "bbox": [0.0, 0.5, 1.0, 0.5]},
+                        {"name": "I", "label_visible": True, "bbox": [0.0, 0.0, 1.0, 0.5]},
+                        {"name": "II", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.5]},
                     ],
                 },
                 "findings": [

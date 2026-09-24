@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-REGISTRY_SHA256 = "d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c"
+REGISTRY_SHA256 = "0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1"
 
 REGISTRY_DIGEST_SCOPE = "canonical-input-documents-v1"
 

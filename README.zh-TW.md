@@ -7,16 +7,71 @@
 🌐 [English](README.md)
 
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
-（9 月 10 日已公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
+（9 月 24 日已更新公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
 
-## 開發證據 — 2026-09-10（尚未發布）
+## 開發證據（尚未發布）
 
-目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
-`openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由。
-截至 9 月 10 日 14:52 UTC，**95 個不重複案例**（主批次 89 例、較早 pilot
-6 例，評分時分開）已驗證真實開檔 → Analyze →
-Export、來源影像身分與 Astra low runtime。128-case 批次仍在進行，尚未做臨床
-評分；被保護機制攔下的嘗試保留為失敗，不算成功。這不是百例臨床驗收通過。
+2026-09-24 使用者更新目標：新的實機測試改為 **GPT-6 Astra medium**。
+在 Settings 選擇 `openai-codex-astra`、儲存並重新啟動 App／Gateway 後套用；
+既有 low 設定不會被背景改寫。乾淨版 `9a27b61` 已通過 20 項封裝 smoke，並完成
+一例隱藏標籤／部分影像的真實 GUI 判讀（105.468 秒，四個 medium 回合均已核對）。
+這是已曝光開發案例，不是新盲測；也發現無法判定的結果仍顯示 NORMAL。Source
+呈現層已修正標題、不改寫歷史 severity；新版實機與臨床驗收仍未完成。
+見[模型切換與實機紀錄](docs/evidence/2026-09/astra-medium-2026-09-24.md)。
+目前操作說明與歷史證據已分開，入口為[文件導覽](docs/README.md)與
+[App／harness／plugin 責任地圖](docs/architecture/components.md)。
+新的 [120 例 medium 批次](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
+已從 9,922 張可用影像排除曝光案例後選定；完整 ROI 校準後
+[已開始真實 GUI 執行](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)，尚未完成或評分；同頁提供獨立唯讀稽核工具，局部執行通過不等於臨床正確率。參考標籤為
+46 例 asserted、74 例部分不確定，不能把建檔當作驗收通過。
+另新增 [EKG 人用／agent 共讀流程](docs/clinical/ekg-reading-workflow.md)，涵蓋十步
+與全部十六軸；目前是待專科審查的設計，不把七條一致性規則宣稱為完整判讀器。
+
+人工 Mark 已可從已授權影像 ROI 的空白處起筆，不限於 AI 框內。真實 source App
+已跑通人工框兩輪面板續問、既有框獨立問答、人工確認後回寫、重新選框讀歷史與
+綁定原圖的對話匯出；10 個模型回合均核對為 Astra medium。區域答案不再 30 秒
+自動消失，換圖即失效。這不是新版封裝或 100 例驗收完成，見
+[區域歷史實機紀錄](docs/evidence/2026-09/regional-history-2026-09-24.md)。
+也已實機跑通人工框 ADD 建議的拒絕、再次建議後套用、轉為 finding、重開歷史及
+第三輪續問；沒有重複新增，見[人工框升級實機紀錄](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md)。
+
+開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
+重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的
+真實 Edge 選窗、ROI、擷取、判讀與人工框問答（89.355 秒，六階段核對 Astra medium）。
+沒有 AI 框也能 Mark；網頁捲動後舊結果失效。並修正輔助操作的選取列／焦點列
+不一致時可能綁錯視窗的問題；其他瀏覽器、DICOM 軟體與臨床驗收仍未完成。
+見[瀏覽器實機紀錄](docs/evidence/2026-09/native-browser-selection-2026-09-24.md)。
+同螢幕 Viewer 移動也已實測：150% 縮放下框跟隨誤差不超過 1 px，歷史保留，
+見[移動與問答實機紀錄](docs/evidence/2026-09/native-regional-projection-2026-09-24.md)。
+判讀途中換圖也已實測並修正：發佈前在本機核對相同安全 ROI 的像素，換圖後不顯示
+或匯出舊結果；未換圖則正常顯示與匯出。見[換圖防護紀錄](docs/evidence/2026-09/image-publication-guard-2026-09-24.md)。
+
+最新保留的本機 EXE 為 `6e6734e`，八個關鍵模組與乾淨來源一致，封裝總檢查及
+20 項 frozen smoke 通過。包含區域回合 ID 與人工框升級歷史修正，但尚未包含
+後續 Viewer 座標跟隨、輔助操作選窗、ROI 預覽及判讀途中換圖防護；不是公開發布版。
+見[封裝驗證紀錄](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md)。
+
+2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
+ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。
+補回 38 個原本未被 pytest 收集的 edge cases；canonical evidence 組裝、完整
+plugin 拆分與新版實機驗收尚未完成。不同廠牌／老式機器 ECG 圖片會另列驗收組，
+不能用目前標準樣式的結果推論全部適用。見[本次接線與驗證範圍](docs/evidence/2026-09/shared-engine-2026-09-24.md)。
+
+以下為 9 月 11 日封存的實機證據，並非新版 engine 的實機結果：
+
+當時實機基準使用 **GPT-6 Astra low**，並非新的 medium 目標。
+真實 GUI 擷取已連通訂閱路由。
+主要實機基準已完成並封存：**121 個不重複案例**、六次保留的技術失敗，
+另六個早期 pilot 不納入評分。原有 446 個階段快照；另行封存後補查含內部重試
+共 460 個 session，均有 Astra low runtime 與公開用量紀錄（不是完整帳務）。
+初步自動評分**未達驗收**：完整標註案例
+嚴格符合 0/46、緊急疑慮辨識 2/21，仍待專科複核。完成案例平均分析時間
+136.662 秒。詳見[封存基準、分母與限制](docs/evidence/2026-09/evaluation-desktop-astra-2026-09-11.md)。
+
+獨立 c3532d7 EXE 已完成真實 OAuth／Astra low 單例（113.735 秒、整合無重試）
+與縮窗後的送出前阻擋檢查。刻意缺導程截圖另外抓到結構化導程欄位錯誤；
+新版 0e55a61 EXE 已在 96.990 秒完成相同 ROI，導程欄位與裁切對應有效，但仍須
+複核，尚未證明標籤可讀性與診斷正確。[新版實機證據與未完成門檻](docs/evidence/2026-09/candidate-desktop-2026-09-11.md)。
 
 較早的 pilot 證據：
 runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整合階段逾時
@@ -25,9 +80,9 @@ runtime 確認 `gpt-6-astra / low`。同一校準案例的第一次匯出在整�
 下一個 pilot 案例碰到首階段 60 秒逾時。這些不是已完成百例驗收。
 另已核對 9 月 2–3 日的歷史 Luna 批次：103 次嘗試、60 份匯出、43 次逾時。
 60 份來源影像均匹配預定案例，這只證明影像身分，並非診斷正確率。
-詳見[9 月 10 日證據更新](docs/verification-2026-09-10.md)。
+詳見[9 月 10 日證據更新](docs/evidence/2026-09/verification-2026-09-10.md)。
 
-目前 working tree 的產品 metadata 是 `0.4.7`、harness/plugin 是 `1.5.8`，但
+目前 working tree 的產品 metadata 是 `0.4.7`、harness/plugin 是 `1.5.9`，但
 repository **沒有任何 Git tag，也沒有 GitHub Release**。在乾淨封裝、指定實機
 批次、CI、tag 與 release artifacts 全部通過以前，所有 `0.4.7` 內容都屬於
 Unreleased。
@@ -37,7 +92,7 @@ Luna 有兩條刻意分開的路由，避免把訂閱額度與 Platform API 計�
 
 | Settings profile | 認證／transport | 模型 | 計費證據 |
 | --- | --- | --- | --- |
-| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth、`thinkingDefault=low`；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth、`thinkingDefault=medium`；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
 | `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | 本機 ChatGPT/Codex OAuth 遷移到 OpenClaw 原生 `openai-chatgpt-responses`；不使用 `OPENAI_API_KEY`，也不啟用 Codex agent runtime | `openai/gpt-5.6-luna` | 訂閱用量；下列 token 成本只作 API 等值估算 |
 | `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` 經 OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | 一般 Platform API 計費 |
 
@@ -82,11 +137,11 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
   OAuth-only migration 與真實 EXE loopback 圖片 smoke 也已通過。
   真實訂閱、臨床與 state rollback gates 仍未完成。
   進行中的實機批次保持原 pin。詳見
-  [9 月 10 日升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md)。
+  [9 月 10 日升級稽核](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md)。
 
 較早的 32-case frozen pair、8-case unseen engineering gate 與尚未完成的
 9,922-case paired run 保留為歷史證據，詳見
-[`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)。
+[`docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`](docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md)。
 
 ## 2026-07-02 real-model smoke 狀態
 
@@ -245,19 +300,24 @@ dicom-overlay-agent/
 ├── scripts/                       # 🔧 build-exe.bat、stage-openclaw-runtime.ps1、harness runners
 ├── dicom-overlay-agent.spec       # 📦 PyInstaller spec（最小 exe）
 ├── config.yaml                    # ⚙️ ROI、region_maps、hash、gateway 設定
-├── spec.md                        # 📜 系統規格書
+├── docs/                          # 📜 架構、操作、整合與分月證據歸檔
 ├── memory-bank/                   # 🧠 專案記憶
 ├── .github/agents/ · .claude/skills/   # 🤖 AI 開發 harness（agents、skills、instructions）
 ├── README.md / README.zh-TW.md
-└── CONSTITUTION.md · ARCHITECTURE.md · CHANGELOG.md · ROADMAP.md
+└── CONSTITUTION.md · CHANGELOG.md · ROADMAP.md
 ```
 
 ## 🚀 快速開始
+
+此整合分支直接使用固定版本的公開 harness 資料模型，不保留 App 舊型別匯入
+的相容層。完整判讀引擎拆分與 canonical 證據組裝仍在進行，詳見
+[整合範圍與驗證邊界](docs/architecture/direct-harness-integration.md)。
 
 ### 從原始碼執行（Windows）
 
 ```powershell
 # 1. 同步 Python 環境（uv 優先）
+git submodule update --init --recursive
 uv sync --all-extras
 
 # 2. 安裝 repo 本地 OpenClaw runtime（只需一次）
@@ -309,7 +369,7 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
   但不允許任何 `ADD`／`REVISE`／`RETRACT` 改動報告；成功套用會在報告、Process trace、
   JSON 與標框 PNG 保留 `interactive_ai_review` provenance。不同診斷即使框重疊，
   也不會再只因 IoU 高就被誤合併。
-- **多趟放大** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
+- **多趟放大** — [`multipass.py`](third_party/medical-image-agent-harness/src/medical_image_harness/multipass.py)
   以完整 ROI 解析度重讀異常區域以精修 bbox。由於唯一輸入是螢幕截圖（≤4K），
   若某區域在截到的像素中太小，數位放大無意義；此時改以 `zoom_hints` 提示，
   請醫師在 DICOM viewer 內放大後重新截圖。
@@ -368,7 +428,7 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   tool 只接收不透明的 waveform artifact id，不接任意路徑，也不會把 PNG
   當波形或把 150 類分數當作影像 bbox。Torch 與約 370 MB checkpoint 不會
   塞進可攜式主程式，完整契約見
-  [`docs/ecgfounder-tool.md`](docs/ecgfounder-tool.md)。
+  [`docs/integrations/ecgfounder-tool.md`](docs/integrations/ecgfounder-tool.md)。
   每個實驗 case 另綁定隨機 evidence nonce；只有 nonce、artifact digest、
   固定 model revision 與 checkpoint 全部相符的唯一成功 receipt 才算有效。
   桌面目前尚未實作可信任的 study-to-waveform resolver，因此設定頁只會顯示
@@ -381,7 +441,7 @@ App **只透過穩定的公開 Gateway 協定**（`connect` + `chat.send`）溝�
   `2026.9.3` slim 候選已通過隔離 protocol/config、原生 bbox receipt 與
   OAuth-only 搬移檢查；App 自己的搬移入口也已用不可登入的假憑證驗證。
   這不代表真實訂閱認證、臨床正確率或新版 EXE 驗收通過；詳見
-  [升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md)。
+  [升級稽核](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md)。
 
 ### 核心 4 — 最小化執行檔封裝
 
@@ -440,22 +500,22 @@ plugin surfaces 保持完整；裁剪內部 chunks 會破壞 **核心 3**。
 
 ## 📋 文檔
 
-- [系統規格](spec.md) - 詳細系統規格書
-- [架構說明](ARCHITECTURE.md) - 系統架構
+- [系統規格](docs/architecture/specification.md) - 詳細系統規格書
+- [架構說明](docs/architecture/overview.md) - 系統架構
 - [憲法](CONSTITUTION.md) - 最高原則
 - [變更日誌](CHANGELOG.md) - 版本歷史
 - [路線圖](ROADMAP.md) - 功能規劃
-- [真實測試 Runbook](REAL_TEST_RUNBOOK.md) - Live stack 測試
-- [2026-09-02 驗證紀錄](docs/verification-2026-09-02.md) - 當前證據、失敗與未完成 gates
-- [Evaluation cohorts](docs/evaluation-cohorts.md) - 9,922／128／partial corpus 身分與宣稱邊界
-- [OpenClaw 2.x 決策](docs/openclaw-2x-decision-2026-09-02.md) - 2026.8.2 隔離證據與暫緩升級 gates
-- [最新 OpenClaw 升級稽核](docs/openclaw-upgrade-audit-2026-09-10.md) - 2026.9.3 協定／設定實證與量測
+- [真實測試 Runbook](docs/operations/real-desktop-tests.md) - Live stack 測試
+- [2026-09-02 驗證紀錄](docs/evidence/2026-09/verification-2026-09-02.md) - 當前證據、失敗與未完成 gates
+- [Evaluation cohorts](docs/evaluation/cohorts.md) - 9,922／128／partial corpus 身分與宣稱邊界
+- [OpenClaw 2.x 決策](docs/evidence/2026-09/openclaw-2x-decision-2026-09-02.md) - 2026.8.2 隔離證據與暫緩升級 gates
+- [最新 OpenClaw 升級稽核](docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md) - 2026.9.3 協定／設定實證與量測
 - [Clinical knowledge governance](clinical_knowledge/README.md) - Canonical YAML、人／agent 步驟與 SQLite parity
 - [AGENTS.md](AGENTS.md) - 四大核心的 AI 維護守則
-- [影像 agent harness 參考稽核](docs/harness-reference-review-2026-08-28.md) - 採用公開設計模式但不增加封裝 runtime 依賴
-- [ECGFounder 工具契約](docs/ecgfounder-tool.md) - 外部波形證據邊界
-- [2026-08-09 MEETI/OpenClaw 實驗紀錄](docs/meeti-openclaw-experiments-2026-08-09.md) - 真實 paired/unseen 結果、工具、SLA 與宣稱邊界
-- [2026-08-05 驗證紀錄](docs/verification-2026-08-05.md) - MultiPass、真實 canary、座標、bundle hash 與阻擋項
+- [影像 agent harness 參考稽核](docs/references/2026-08/harness-reference-review-2026-08-28.md) - 採用公開設計模式但不增加封裝 runtime 依賴
+- [ECGFounder 工具契約](docs/integrations/ecgfounder-tool.md) - 外部波形證據邊界
+- [2026-08-09 MEETI/OpenClaw 實驗紀錄](docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md) - 真實 paired/unseen 結果、工具、SLA 與宣稱邊界
+- [2026-08-05 驗證紀錄](docs/evidence/2026-08/verification-2026-08-05.md) - MultiPass、真實 canary、座標、bundle hash 與阻擋項
 - [GitHub Pages 原始碼](site/index.html) - 公開產品與證據網站
 
 ## 🎯 Copilot 自訂 Agents

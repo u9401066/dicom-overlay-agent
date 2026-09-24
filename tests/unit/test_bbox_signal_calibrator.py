@@ -7,16 +7,16 @@ import io
 
 from PIL import Image, ImageDraw
 
-from dicom_overlay.domain.entities import (
+from dicom_overlay.domain.hooks import AnalyzeRequest
+from dicom_overlay.infrastructure.bbox_signal_calibrator import calibrate_ekg_bboxes
+from dicom_overlay.infrastructure.hooks.bbox_calibration import BboxCalibrationHook
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.hooks import AnalyzeRequest
-from dicom_overlay.infrastructure.bbox_signal_calibrator import calibrate_ekg_bboxes
-from dicom_overlay.infrastructure.hooks.bbox_calibration import BboxCalibrationHook
 
 
 def _image_base64(*, with_neighbor_signal: bool) -> str:
@@ -115,8 +115,8 @@ def test_bbox_is_constrained_to_declared_lead_layout() -> None:
     result = _result()
     result.layout = {
         "leads": [
-            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
-            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+            {"name": "V4", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "label_visible": True, "bbox": [0.0, 0.75, 1.0, 0.25]},
         ]
     }
     result.findings[0] = Finding(
@@ -155,8 +155,8 @@ def test_unpaired_bbox_conflict_records_geometry_lead_without_moving_box() -> No
     result = _result()
     result.layout = {
         "leads": [
-            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
-            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+            {"name": "V4", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "label_visible": True, "bbox": [0.0, 0.75, 1.0, 0.25]},
         ]
     }
     result.findings[0] = Finding(

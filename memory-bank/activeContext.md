@@ -1,6 +1,626 @@
 # Active Context
 
+## 2026-09-24 Clinical workflow documentation; 16 real GUI cases audited
+
+- Added docs/clinical/ekg-reading-workflow.md: ten human/agent step IDs, sixteen
+  canonical axes, QC/critical-first/differential/localization/reconciliation,
+  official-source links and precise implementation boundaries. Specialist-review
+  draft, not a complete runtime reader or new active rule. Medical-image-reading
+  protocol used; external journal fulltext403 limitations recorded, no copied tables.
+- Current canonical registry remains seven rules, digest
+  0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1.
+  Existing generated views and build/clinical-knowledge.sqlite parity both pass.
+  No canonical YAML/generated Python/prompts/source/config changes during batch.
+- Eight new documentation consistency tests; clinical registry/rules/SQLite/docs
+  targeted run93passed1.31s. Tests do not claim medical correctness or integration.
+- At15:25UTC independent audit16/120,64medium stages,104pending,zero invalid or
+  technical failure. session80364 LIVE; App3948/Viewer7832/ownedGateway26484.
+  Keep same driver2760/10104, config and frozen plan. Do not restart due to timeout.
+- Native case012 meeti_42323817 exported desktop-20260924-152002-843586;
+  critical_triage activates f2+limb support, defers f1/f3; two actual refine targets
+  match; unassessed/deferred-axis guards keep incomplete/review. Actual summary
+  viewed.94.218sanalysis106.717sworkflow; no accuracy/speed-improvement claim.
+- ea94429 CI36019112516/36019106681 all jobs success; secret scans success.
+  PR17 checkpoint https://github.com/u9401066/dicom-overlay-agent/pull/17#issuecomment-5816916153.
+  NEXT: continue live cohort, then seal before gold scoring; canonical ledger and
+  versioned workflow generation/runtime wiring still open. No new EXE/main merge.
+
+## 2026-09-24 First six GUI cases independently audited; continuation LIVE
+
+- Initial session71757 is terminal/no longer registered; case000–002 all completed.
+  Cases001/002 actual summary images inspected, incomplete/review/indeterminate.
+- Same frozen run-batch.py resumed --limit120, current unified session80364.
+  App3948/Viewer7832 unchanged; Gateway26484 parent3948 owns127.0.0.1:18795.
+  Driver launcher2760/child10104. DO NOT relaunch/restart on observation timeout.
+  No production source/config/driver/helper/collector edits during live cohort.
+- At15:08UTC six completed cases (indices0–5),114pending. New read-only repository
+  scripts/verify-desktop-batch.py independently passes these six,24model stages,
+  sourceRGBMAE0, no invalid/technical failures. Gold still unopened. No clinical pass.
+- Frozen plan SHA ba0351ab71dcf3972dd69666694c8e5ca3540fc93ba1e9aae2523386fe184fd6;
+  same outside-temp evidence root/cohort-run-7eba45d. Audit requires explicit plan
+  digest, exports root, manifest and original gateway log. --allow-partial cannot
+  suppress technical failures or invalid evidence. Runtime sessions cannot be
+  reused across inputs; original log, source pixels and artifact hashes recomputed.
+- Both44963abCI runs36016479750/36016484832 and prior secret scans passed.
+  At15:14UTC repeat independent audit10/120,40stages,110pending; real default CLI
+  exited1 for incomplete run, --allow-partial passed.33new synthetic tests and
+  docs checks37pass. Final explicit fullsuite1769pass/6skip201.71s; Ruff/format and
+  stagedgitleaks pass. No App dependency/schema change or EXE refresh.
+  This audit is not the canonical scientific ledger or independent UI event observer.
+- Evidence/usage: docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+
+## 2026-09-24 Complete-image GUI calibration and medium batch started
+
+- Actual clean 7eba45d source App (PID 3948, launcher 21292) + frameless Viewer
+  (PID 7832, launcher 26028), isolated existing runtime/18795. ACTIVE owned windows
+  while batch runs; do not launch replacements or close without checking live state.
+- Temporary C:/Users/Ericlab/AppData/Local/Temp/dicom-medium-batch-20260924/config.yaml
+  has actual GUI-set zero margins, reference1500x1080, full safe rect(30,30,1500,1080).
+  Old partial config unchanged. First Ctrl+O activation failed before inference;
+  physical owned click/native Ctrl+O fixed automation, failed receipt preserved.
+- Exposed calibration case119 actual Analyze/Export: 110.821s workflow,106.732s model,
+  source1500x1080 RGB MAE0; original-file bilinear MAE0.58394; four Astra medium stages.
+  Export desktop-20260924-144954-635855. Summary/ROI visually inspected.
+- New run root same temp directory/cohort-run-7eba45d. plan.json binds120 exact input
+  hashes, answer-free manifest, code/config/driver/helper fingerprints and PIDs.
+  run-batch.py --limit3 launched via live unified session71757; inspect session and
+  per-case receipts before any resume. Only exported_verified receipts advance;
+  failures/unresolved attempts stop and must be retained, not overwritten.
+- 14:54 UTC checkpoint: case000 meeti_42918436 exported_verified, workflow110.420s,
+  model98.593s, file-to-visible MAE0.53507, visible-to-export0, four medium stages.
+  Export desktop-20260924-145401-720536; two findings, incomplete/review true,
+  rendered summary inspected. Case001 meeti_48835021 began14:54:05; unscored.
+- Both 7eba45d CI/secrets passed. No App edits/new EXE. Gold remains sealed.
+  Evidence: docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+
+## 2026-09-24 Fresh medium 120-case cohort reserved, not run
+
+- Added prospective selector reusing canonical eligibility and answer-free pairing.
+  Frozen 9,922-image source, seed 20260924, >=3 canonical diagnoses, report/image
+  uniqueness and signature cap four; excludes prior IDs and byte/report aliases.
+- Refreshed preselection union 1,366 IDs; 120 reserved (46 asserted/74 partial,
+  24 critical-concern/96 warning). No asserted acute-risk candidates remain under
+  these filters; zero cant_miss denominator, never claim confirmed urgent sensitivity.
+- Private MAIN data/eval-datasets/prospective-medium-20260924/cohort-v1 contains
+  immutable inference/gold/report. Pair e77a690a5c9cd4d72df05c7e93d877e987b0731605e62dde118d44702f81fda9.
+  Future denylist is postselection-denylist.txt with 1,486 reserved/exposed IDs.
+- Twelve new tests, combined selector/exposure tests 27 pass. Initial construction
+  pair-field mismatch fixed before outputs and covered by full construction test.
+  Full explicit unit/integration/smoke 1,736 pass / six skips, 228.33s; docs four
+  pass, Ruff/format/secret scan pass. All 120 image headers 1000x720 RGBA, not visual
+  QC. Production App unchanged. Both 613b843 CI/secrets pass.
+- NEXT: exposed calibration image, actual GUI full safe ROI setup/source verification,
+  then clean-source 120-case file-dialog/Analyze/Export run. Current prior ROI is
+  intentionally partial and MUST NOT be reused. Gold remains sealed; no model
+  calls/new GUI cases in this construction checkpoint.
+- Evidence: docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md.
+
+## 2026-09-24 Native manual ADD, dismissal, promotion and continued QA
+
+- Clean 243f2ef actual App/Viewer, exposed partial case 119, manual safe ROI,
+  150% display. Baseline 86.482s workflow / 82.243s inference, source RGB MAE 0.
+- Actual Mark outside AI boxes (1100,170)-(1380,420), real ADD suggestion, Dismiss,
+  inline second question/ADD, Apply, Inspect click/reopen and third inline turn.
+  First two histories move exactly to review-3a1672872360; selected bbox unchanged;
+  manual marker consumed, original finding untouched; third turn no_change.
+- Three host IDs join dismissed/add, applied/add, no_change/none; ten model stages
+  verified Astra medium. No fake response/direct analyzer injection. Actual exports
+  and rendered overlay/chat inspected. Audit accounts for manual context fields
+  updating after second question rather than treating export total count as proof.
+- Both 243f2ef CI and both secret scans succeeded. No new code/binary or clinical
+  cohort claim. 33 docs/callback/history/linkage tests pass (0.34s). Owned App,
+  Viewer and Gateway closed, PIDs/listener gone.
+  Evidence: docs/evidence/2026-09/native-marker-promotion-2026-09-24.md.
+
+## 2026-09-24 Mid-analysis image identity guard
+
+- Real clean 7f6214e App reproduced A report displayed/exported over same-size
+  synthetic B while geometry remained unchanged. Failure artifacts preserved.
+- Before DISPLAYING, local exact decoded-pixel ROI check now fails closed for
+  changes/occlusion/capture/decode errors. Same authorized ROI only; no extra
+  model request, dependency or schema change. One rejected draft/source retained
+  in bounded memory, not durable/canonical audit. Pause is preserved.
+- Actual source-patched App: swapped image withheld/no stale Export (102.076s);
+  unchanged image publishes/exports (95.601s), source RGB MAE 0. Positive and
+  original failure each have four usage-bound Astra-medium stages. Exposed case,
+  not clinical acceptance. Eight new tests; related 71 pass; full explicit
+  unit/integration/smoke 1,724 pass / six skips in 212.89s. 7f CI/secrets all pass.
+- Exact checking is conservative for dynamic pixels, adds local capture + hide
+  beat and does not cancel in-flight inference or make desktop painting atomic.
+  Owned App/Viewer/Gateway closed, PIDs/listener absent. No EXE refresh.
+  Evidence: docs/evidence/2026-09/image-publication-guard-2026-09-24.md.
+
+## 2026-09-24 ROI selected-preview black area corrected and natively verified
+
+- Opaque-dialog CompositionMode_Clear erased the selected screenshot pixels.
+  Paint now retains the frozen source and dims only outside selection; all ROI
+  math/containment unchanged, no recapture/capture expansion/dependency change.
+- 25 new pixel tests fail before/pass after: forward/reverse/existing ROI,
+  screenshot DPR 1/1.25/1.5/2, negative origins, reset, unchanged source/margins.
+  Combined ROI tests 43 pass. Full explicit unit/integration/smoke offscreen:
+  1,716 passed / six explicit skips in 212.63s.
+- Actual source App + synthetic grid Viewer at 150%: existing/new/reverse
+  selections retain exact interior RGB; outside dimmed; R reset and Enter save
+  work. Forward/reverse screenshots identical. Zero model requests. Saved only
+  temporary config; derived (300,300,699,348) stays inside requested drag.
+- Owned App/Viewer/Gateway closed and PIDs/listener gone. Source only, no EXE.
+  Both ca34f73 CI runs and both secret scans succeeded.
+  Evidence: docs/evidence/2026-09/roi-preview-pixels-2026-09-24.md; raw screenshots
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-roi-preview-20260924/.
+
+## 2026-09-24 Native Edge capture and accessibility picker correction
+
+- Real UIA Select exposed currentItem vs selectedItems mismatch: the focused
+  unrelated row could be bound. First ROI was rejected; no model/capture sent.
+  Picker now uses exactly one selected item, itemSelectionChanged controls Use.
+  Three new regressions fail before/pass after; all 19 picker checks pass.
+- Restarted actual source App with same UIA selection: Edge rect (40,30,1640,1450),
+  physical safe drag (100,440)-(1400,1200), actual ROI (101,440,1297,759), RGB MAE 0.
+  Exposed partial case 44709848, 89.355s, no AI boxes, INDETERMINATE UI.
+  Real manual Mark and answer succeed without any AI box. Browser scroll hides
+  old review and blocks stale Export. Six stages bind to Astra medium.
+- Playwright fallback: Browser plugin absent. Isolated visible Edge, CSS 829x613,
+  DPR 1.935; browser console clean. Artifacts outside repo at
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-browser-native-20260924/.
+- Regression: default unit/smoke 1,636 pass / six skips in 208.12s, separate
+  integration 55 pass in 0.32s; combined 1,691. Old 9e63153 CI/secrets all pass.
+- Source only; preserved 6e EXE unchanged. Remaining: native ROI selected-preview
+  black area (paint path), other viewers/DPI, mid-analysis image replacement,
+  ADD/dismissal, canonical host ledger and 100-current-model blind cases.
+- Evidence: docs/evidence/2026-09/native-browser-selection-2026-09-24.md.
+
+## 2026-09-24 Actual native regional QA and projection at 55ec9c9
+
+- Real clean source App + owned Qt Viewer + existing isolated subscription
+  runtime, exposed partial case 119. Actual file dialog/Analyze/Export; 91.064s
+  analysis, 99.939s workflow, ROI MAE 0. No unrestricted desktop capture.
+- Actual mouse Mark starts outside AI box; manual Q1/Q2 and separate existing
+  f1 question answered. Reopening manual box returns its two-turn history with
+  no model request. Three host turn IDs bind to no_change/unconfirmed outcomes.
+- Viewer translated +200,+120 physical px at 150% scale; actual exported AI
+  and manual fills follow within 1px. Source/history/chat/summary identical.
+  Shrink invalidates review, requests ROI and blocks stale Export.
+- Ten model stages verified Astra medium via public usage/runtime bindings;
+  no API key or model substitution. Exposed case, not a clinical accuracy pass.
+- App/Viewer and owned Gateway shut down; their PIDs/listener are gone.
+  55ec9c9 CI and secret scans all success.
+  Not included in preserved 6e6734e EXE. Browser/DPI/new blind cohort, native
+  promotion/dismissal and mid-analysis image replacement remain open.
+- Evidence: docs/evidence/2026-09/native-regional-projection-2026-09-24.md.
+
+## 2026-09-24 Viewer translation projection source correction
+
+- Snapshot acquisition rectangle stays immutable; separate current display
+  geometry follows same-size/same-display Viewer translation without model calls.
+  Main reprojects AI/fallback/manual marks and preserves chat/proposal/input/panels.
+- Resize, monitor/DPI/display changes and off-display ROI require fresh ROI;
+  old review disappears. Post-analysis publication and capture-hide delay guard
+  geometry invalidation. Paused resume and AUTO after fresh ROI are covered.
+- 147 targeted tests pass (synthetic, real offscreen Qt callbacks/signals).
+  Intermediate full suite 56779: 1,687 passed / six skips, before the final
+  active-result clearing/AUTO change. Intermediate 49291 passed 1,688 / six skips
+  in 230.34s. Final 66633 completed: 1,688 passed / six explicit skips in 235.31s,
+  after the translation-tick sampling guard (no hash capture before Qt can move).
+  Ruff/format/docs links/staged secrets checks pass. These are not native tests.
+- Not in preserved 6e6734e EXE. Native movement/DPI/browser/clinical acceptance
+  is still open. 58eb61a push/PR CI and both secret scans all succeeded.
+- Evidence: docs/evidence/2026-09/viewer-projection-followup-2026-09-24.md.
+
+## 2026-09-24 Latest interaction EXE; geometry defect reproduced
+
+- Clean 6e6734e build completed in dist-interaction-6e6734e-upx. Eight frozen
+  modules match exact git source; 90 native sources approved. EXE SHA-256:
+  671474add1136f21da34a39cbd56568c39d2fce1fc70f44750362eb6095e1d75.
+- Frozen tests 74633 completed: 20 passed in 120.77s. Full package verifier
+  55310 completed OK, failures empty; its included source roots are clean at
+  6e6734e. Plugin tools load; fabricated OAuth-only migration passes, zero model
+  calls. 18,771 files: 4.70 MiB launcher / 54.44 MiB App / 337.01 MiB total.
+  Payload SHA: 3bedb58a1b2f88bfb5ccee542d8ae6456d8691bfa73c92f504b8949e6701b397.
+- Both 6e6734e source CI runs and both secret scans succeeded.
+- New read-only synthetic diagnostic: same-size Viewer moves x=0 to x=300,
+  agent target updates but displayed snapshot remains x=0, DISPLAYING, no
+  state event or model call. Current main tick does not reproject highlights.
+  Fix current display geometry separately from immutable acquisition provenance;
+  cover translation, resize and display/DPI changes without widening ROI.
+- This is not native reproduction and is not fixed in the preserved EXE.
+  Desktop-use question re-asked while building; unanswered, no focus taken.
+- Evidence: docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md.
+
+## 2026-09-24 Regional conversation/outcome identity
+
+- Host-generated review_turn_id now joins conversation export schema v2 to
+  existing interactive_review applied/dismissed/blocked/no_change trace events.
+  Promotion preserves IDs; duplicates/invalid IDs rejected before append/report
+  mutation. No matching event never implies confirmation or dismissal.
+- Actual nested callbacks plus Qt signal tested with synthetic offline responses;
+  four paths pass, plus 77 targeted state/export/writeback tests. No native GUI,
+  model request, new dependency, capture expansion or canonical-ledger claim.
+- Source only, absent from preserved bd8f303 EXE. Current source remains under
+  development; desktop preference unanswered. Canonical host assembler and
+  browser/DPI/100-current-model-GUI acceptance still pending.
+- Prior 1ab1b54 push/PR CI 35997552092/35997557335 and both secret scans pass.
+- Evidence: docs/evidence/2026-09/regional-turn-linkage-2026-09-24.md.
+- Full source suite 44703: 1,669 passed / six explicit skips in 241.12s.
+  Combined targeted suite: 81 passed. Documentation links, Ruff and staged
+  secret scan pass. Frozen/native skips are not current-build verification.
+
+## 2026-09-24 Public website refreshed independently of App code
+
+- Website-only PR 19 merged into main as 37d6ed3eabeff74dfc5f17f67ea0a1ffafa30d93;
+  only site, two READMEs, site tests and memory changed. Main App/runtime pins
+  remain untouched. Worktree: data/tmp/pages-refresh-20260924, branch
+  agent/pages-interaction-20260924 (eff8d96, review follow-up 2264e1f).
+- Pages deployment 35997090375 succeeds. Live https://u9401066.github.io/dicom-overlay-agent/
+  checked after deployment at 1440x1000, 390x844 and 320x740: identity, content,
+  no relevant console/error overlay, no horizontal overflow, guide navigation,
+  menu open/Escape/focus/link-close all pass; screenshots visually reviewed.
+- frontend-testing-debugging skill used existing Playwright core/headless Edge
+  because Browser plugin absent. No native desktop focus; screenshots/helper and
+  JSON receipts outside repo: Windows Temp/dicom-pages-qa-20260924/live-after-*.
+  Local QA servers stopped. OpenAI Docs auth page fetched for login guidance.
+- Site now distinguishes current medium target, failed old low cohort, bd8f303
+  package and ebbe2a5 source-only follow-up. Adds ROI Mark/QA guide and explicit
+  browser/DPI/100-case limitations. Fixes --bundle argument, pinned checkout,
+  submodule setup and uv --locked. Pinned evidence URLs verified in remote tree.
+- 17 site tests/Ruff/secret scans pass. PR CI 35996634353 succeeds; three review
+  findings were corrected before merge. Main post-merge CI 35997090497 and
+  main secret scan 35997090320 both pass.
+- ebbe2a5 source push/PR CI 35994641836/35994647106 and secrets
+  35994641916/35994647014 all succeeded. No new clinical case or binary release.
+
+## 2026-09-24 Interaction EXE and promoted-marker history
+
+- Clean bd8f303 rebuilt in dist-interaction-bd8f303-upx; seven frozen code
+  objects match exact git source after filename normalization. EXE SHA-256
+  451673935c3627127a97e9de9a477c55d29e8478f492559fbf37fa1451bfcf0c.
+- Build session 12231 completed successfully; 90 native sources approved.
+  Follow-up package verifier 80539 completed OK. Frozen suite 43600 completed:
+  20 passed in 147.77s, including synthetic loopback image/Gateway error contract.
+- Package: launcher 4.70 / App 54.44 / total 337.01 MiB, 18,771 files;
+  plugin tools loaded, fabricated OAuth-only migration passes, no real model calls.
+  Manifest inspection-time source provenance is dirty due to the subsequent patch;
+  do not mistake it for build provenance. Frozen code comparison binds bd8f303.
+- Subsequent source moves exact manual thread to confirmed ADD finding ID;
+  never merges overlap/conflicting threads or different source hashes. Queued
+  Apply callback rejects absent/newer displayed result before changing UI/history.
+  85 targeted tests pass; full source suite 60175: 1,658 passed / six skipped
+  in 213.17s. Frozen tests above are for bd8f303, not this later source patch.
+- This subsequent patch is not in the bd8f303 EXE. No new actual desktop/model
+  acceptance; desktop preference question still unanswered, no focus taken.
+- bd8f303 push/PR CI 35991454492/35991456709 and secrets
+  35991454406/35991456769 all succeeded.
+- Evidence: docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md.
+
+## 2026-09-24 Explicit external-window selector and indeterminate heading
+
+- Added Settings Choose image window, session-local handle/PID/class binding,
+  no keyword fallback, fresh ROI after each explicit selection, no overwrite of
+  saved default-viewer calibration. Detected destruction latches invalidation;
+  reselect required. Own windows, desktop shells and transient owned popups excluded.
+- Startup/active read cannot change target; no fresh ROI means no capture/model
+  call. Settings closes before ROI/picker dialogs. No new runtime dependencies.
+- Heading uses incomplete/review/validation/inventory state instead of presenting
+  an unsupported NORMAL. Critical/warning structured statuses keep precedence;
+  entities/history unchanged. Immutable first medium result replayed offscreen,
+  explicit local fonts loaded; readable heading visually checked, not native/App
+  acceptance or a new inference. Original SHA preserved.
+- Real App/isolated Edge opened picker and listed fixture. Before selection/ROI/
+  inference, Edge, Viewer and picker disappeared; reason unknown, guarded click
+  rejected. Remaining App gracefully closed. Asked whether user needs desktop;
+  pending reply, continued only non-focus-taking work. Browser acceptance NOT passed.
+- 402d539 push/PR CI 35988586226/35988592311 and secrets 35988586222/35988592327 pass.
+- Current source regression: 1,648 passed / six explicit skips in 234.53s;
+  Ruff, documentation links and whitespace checks pass. Frozen binary unchanged.
+- Details: docs/evidence/2026-09/external-window-selection-2026-09-24.md.
+
+## 2026-09-24 Region history now exercised through actual App
+
+- Implemented same-image/per-marker completed history, inline Send, persistent
+  regional panel, Hide/reopen, bounded untrusted prompt context and explicit
+  source-SHA-bound conversation export. General chat no longer logs questions.
+- Actual source App (6be42cb + hashed patch), exposed case 119: 110.874s analysis,
+  117.571s workflow, source MAE 0.0; manual blank-area drag + two real QA turns,
+  separate existing-marker QA, real Apply preserving bbox, manual history reopen.
+- Final export desktop-20260924-103246-547403: all 10 analysis/regional usage
+  bindings are Astra medium. UI screenshots inspected. Initial second-answer
+  observer raced and saw first answer; retained, then corrected with question
+  matching before counting success. No new blind/100-case acceptance claimed.
+- Live image-change test found stale summary remaining beside new image. Added
+  silent result/box/chat invalidation; real retest passes: old surfaces hidden,
+  stale Export blocked, zero extra model requests. Four prerequisite medium
+  turns verified; 96.451s analysis. Final 1,620 tests pass / six explicit skips,
+  separate native Windows drag pass, Ruff/docs pass. Source App gracefully closed.
+- Previous 6be42cb push/PR CI 35985738657/35985746278 and secret scans
+  35985738789/35985746260 all pass. New history stage not yet pushed.
+- Details: docs/evidence/2026-09/regional-history-2026-09-24.md.
+
+## 2026-09-24 Blank-ROI Mark defect reproduced; QA incomplete
+
+- Actual 9a27b61 EXE reproduced blank-ROI mouse pass-through; existing AI-region
+  QA answered through the real dialog/ChatPanel (second answer observed).
+- Mark now paints an alpha-1 input surface only inside the authorized ROI;
+  passive mode remains click-through. Native Windows physical drag smoke passes
+  at 150% after fixture DPI correction; 38 targeted tests and Ruff pass.
+- Patched source App's two actual GUI analyses both timed out at the coarse 60s
+  deadline. Keep both failures; new-region end-to-end model QA is NOT passed.
+- Export now renders visible owned ChatPanel. Multi-turn regional context,
+  persistent history, actual new-region QA and indeterminate NORMAL heading
+  remain open. See docs/evidence/2026-09/regional-interaction-2026-09-24.md.
+- Current goal removes separate compression/runtime-upgrade/reference-resource
+  tasks; prioritize arbitrary-viewer ROI capture and clinical Canvas interaction.
+
+## 2026-09-24 Medium EXE verified, real GUI replay, documentation archive
+
+- Clean 9a27b61 source: 1,594 passed / five explicit skips, Ruff pass; push/PR CI
+  35979153574/35979159199 and secrets 35979153553/35979159306 pass.
+- Full package verifier and 20 frozen smoke pass (101.48 s). Folder 353,390,069 B
+  / 337.02 MiB, App 54.43 MiB, launcher 4.68 MiB; all 18,771 live-copy hashes match.
+- Actual EXE Settings save/restart, OAuth-only migration, QFileDialog/Analyze/Export:
+  hidden-label exposed case 119, same source hash/ROI as low, MAE 0.0. Medium:
+  105.468 s analysis / 113.323 s workflow, four bound medium turns, no retries.
+  Two hypotheses retracted, zero final findings, incomplete/review true. This is
+  not normal or clinical acceptance, nor evidence of improved speed/accuracy.
+- Actual summary correctly says Partial EKG but still prefixes NORMAL. Preserve
+  frozen raw output; next correction must distinguish indeterminate presentation.
+- Documentation: 22 files relocated, index/components/OpenClaw owner guide added,
+  relative and Pages links updated, four new link/archive tests; 18 docs/Pages
+  checks pass. Runtime paths unchanged; full canonical/plugin split still open.
+  See docs/evidence/2026-09/astra-medium-2026-09-24.md and docs/README.md.
+
+## 2026-09-24 User changes current target to Astra medium; organization added
+
+- New target: GPT-6 Astra medium; GPT-6 Luna xhigh is permitted as an alternative,
+  not a silent fallback. Astra preset/Settings expectation now medium; OpenClaw
+  subscription ownership unchanged. Old low evidence remains low and immutable.
+  Official Astra page confirms medium support; actual new GUI receipts pending.
+- Added requirement 12: organize App / public harness / OpenClaw plugin files and
+  current-vs-historical documentation, updating all consuming paths without
+  compatibility wrappers. Clinical UX must communicate conclusions and priority
+  concerns, not technical jargon without a useful diagnostic impression.
+- Canonical integration inspection: App parser drops observation/evidence fields.
+  No assembler or parser changes have yet been made; do not claim completed host
+  assembly. Model-output protocol, strict host binding and runtime wiring must be
+  implemented together rather than inventing a ledger for old predictions.
+- Previous heading commit 425d363 push/PR CI (35977211005 / 35977219380) and
+  secret scans (35977211011 / 35977219302) pass. Main user's dirt remains intact.
+- Scope/evidence boundary: docs/astra-medium-2026-09-24.md.
+
+## 2026-09-24 Partial ECG heading source fix
+
+- Actual 128117b export exposed a false `12-Lead` header. Presentation now uses
+  the current lead inventory: explicit partial -> Partial EKG, incomplete/hidden/
+  invalid -> EKG, complete visible -> existing 12-lead profile. Other modalities,
+  scientific outputs, geometry and review flags are unchanged.
+- Eleven new edge/transition cases; 73 targeted checks PASS. Real Windows Qt
+  read-only replay of the immutable 128117b result visually confirms corrected
+  heading; zero model requests and source result unchanged. This is not another
+  model run and not evidence that the preserved 128117b EXE contains the fix.
+- Full regression 1593 PASS / five explicit skips (218.15 s), Ruff PASS. Separate
+  native Windows bounded capture-exclusion test PASS (0.46 s); App paused and
+  resumed manually, no inference. Remaining frozen/private-artifact skips are
+  not counted as passes for the new source. Malformed-or-hidden warning open.
+- Clean 128117b ZIP: 148,430,073 bytes (141.55 MiB), all 18,771 entry hashes
+  roundtrip verified; 53 UPX payloads PASS, original source folder unchanged.
+  No binary publication. Evidence docs commit 84243cf push/PR CI and both secret
+  scans pass (35976432339 / 35976437763 / 35976432271 / 35976437759).
+
+## 2026-09-24 Shared engine frozen and actual hidden-label replay verified
+
+- Clean source 128117b passes push/PR CI 35974012472 / 35974017667 and both
+  secret scans. Fresh full verifier PASS, 90 approved native sources, 20 frozen
+  checks PASS (106.17 s). 18,771 files / 353,389,843 bytes (337.02 MiB), App
+  54.43 MiB, launcher 4.68 MiB; +7,563 bytes versus 0e55a61. All live-copy hashes
+  match; preserved dist-engine-128117b-upx remains separate and clean.
+- Real App PID 7180 (manual mode) / Viewer PID 10376, port 18793; GUI-selected
+  Astra-low and successful OAuth-only import; no Codex agent runtime or Platform
+  key. Actual QFileDialog/Analyze/Export hidden-label case completes 90.980 s
+  (98.577 s workflow), four bound Astra-low sessions, zero parse retries,
+  negotiated Gateway 4 / OpenClaw 9.3. Export desktop-20260924-083531-047249.
+  Source crop pixel MAE 0.0; eight unknown/false rows; 0.7041 px mapping drift.
+- Still incomplete/review required, two low-confidence findings; one LOW-SIGNAL
+  box. No clinical acceptance/performance claim. Real widget export inspected;
+  fixed 12-Lead heading and malformed-or-hidden warning remain defects. Old
+  cohort, raw results and prior package receipts remain immutable.
+- Official latest OpenClaw checked September 24 is 2026.9.6, released September
+  23 23:21 UTC. Candidate remains 9.3 until Gateway/OAuth/plugin/MCP/security/
+  packaging upgrade audit. Latest version alone is not compatibility proof.
+- Full evidence/hashes: docs/shared-engine-2026-09-24.md. No public binary or
+  PyQt6 license decision. Diverse vendor/legacy ECG acceptance remains open.
+
+## 2026-09-24 Shared engine source integration
+
+- Continued the September 11 extraction in the direct worktree. Public PR #2 now
+  pins 3c7645ec2c41364e8ae521416ae758ddb81ea7c3, 445 synthetic tests / 87.06%
+  coverage, Ruff/boundary/wheel/sdist PASS. Original a118b88 public CI runs passed;
+  the follow-up direct-enum-definition CI 35973556494 / 35973562338 both pass.
+  Public PR #2 merged as 13ef25ffb60ae0b343eed3744cca74b5b190bfe5; the App
+  pins its tested 3c7645e ancestor. Final App target checks: 297 PASS / three
+  explicit frozen-bundle opt-in skips (13.03 s).
+- App now directly imports public multi-pass/layout/lifecycle; local engine/parser
+  files and lifecycle duplicate removed, no forwarding shims. Desktop/eval inject
+  existing host checklist/trace policy. 38 previously uncollected parametrized
+  tests restored and AST collection guards added. Six registry/SQLite failures
+  resolved by source-map update and regenerated digests; 21 related tests pass.
+- Independent public-source Git/content fingerprint added; parent Git does not
+  recurse into submodules. New offline package smoke exercises the real public
+  engine with synthetic crop/refine/final, not clinical inference. Full App suite
+  passes 1582 / five explicit skips in 265.75 s. Final enum/pin follow-up is checked
+  separately; fresh frozen GUI acceptance remains open.
+- Prior App/Gateway are no longer running on September 24; real GUI must restart.
+  Preserve all old sealed/cohort/raw artifacts. Added requested vendor/legacy ECG
+  style groups to unclosed acceptance, not a broad generalized capability claim.
+- Audit: docs/shared-engine-2026-09-24.md. No new binary release or license choice.
+
+## 2026-09-11 Public Pages deployed and browser-verified
+
+- Docs-only PR #18 passed CI 34508568445 and both secret scans, merged as
+  1c531a5f6160546e9dee1038a0fe33774ca11f75. Pages deployment 34508937809 and
+  main secret scan 34508937893 passed. No candidate code or binary was merged.
+  Main worktree fast-forwarded only these docs/site files; original user dirt
+  remains unchanged. Repository description/homepage/topics already suitable;
+  PR #18 labeled documentation/evaluation.
+- Actual public URL https://u9401066.github.io/dicom-overlay-agent/ passed
+  existing Playwright/Edge at 1440x1000, 390x844 and 320x700: identity, meaningful
+  content, no error overlay, no console warnings/errors, no page/cell overflow,
+  evidence link -> docs harness, mobile menu Escape/focus. Public desktop and
+  mobile screenshots visually inspected. External evidence/script are under
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-pages-qa-20260911/public-v2/.
+  Frontend-testing skill found and fixed long-statistic overlap that a page-wide
+  overflow assertion missed. No clinical claims follow. Main post-merge CI and
+  later candidate docs CI were still running at this checkpoint.
+
+## 2026-09-11 Corrected partial EXE and public evidence refresh
+
+- Same frozen EXE also completes real hidden-label crop (150,81,1370,708) in
+  85.872 s, four bound Astra-low sessions, zero parse retries. All eight rows
+  correctly declare unknown/false; no named crop/finding regions. Schema-valid
+  non-fabrication check passes; clinical accuracy remains null. Source/review
+  visually inspected, no labels present; one low-signal box retained in audit.
+  Idle transport breaks before acceptance; same-idempotency-key replay succeeds.
+  Original raw/usage receipts retained. Combined malformed-or-hidden warning and
+  fixed 12-Lead title remain presentation edges. App 27896 remains in manual
+  mode with this narrower ROI; Viewer 26088 unchanged. Public docs-only PR #18
+  adds both partial trials without main source/runtime changes; CI rerunning.
+
+- Clean 0e55a61 package passes static verifier, 20 frozen smoke tests (100.62 s),
+  90 native-source checks, CI and secret scans. 337.01 MiB folder / 54.42 MiB
+  App / 4.68 MiB launcher; all 18,771 live-copy hashes match; preserved build
+  unchanged. Exact provenance is in docs/direct-harness-integration.md.
+- Actual new EXE PID 27896 / owned Gateway 15000 / port 18792: real Settings
+  Astra OAuth import, file dialog, Analyze, Export. Partial case 119 repeats
+  identical source SHA 00294b0b...1270 in 96.990 s (103.286 s GUI wall), four
+  verified Astra-low sessions, zero retries, valid eight-lead declarations and
+  both crop mappings; V3-V6 remain absent. Raw result SHA 46223416...ac07 and
+  separate read-only audit/usage receipts retained. Not label-visibility or
+  clinical acceptance, not general speedup. Review required; actual widget and
+  ROI render inspected at 150% DPI. Fixed 12-Lead title on partial input remains
+  a presentation edge; hidden-label grounding is another separate gate.
+- Pages update now states failed sealed 121-case baseline, exact denominators,
+  exposed rerun scope, measured candidates and unresolved distribution license.
+  Frontend testing skill / Browser unavailable -> existing Playwright + Edge.
+  Real screenshot caught long statistic overlap; wrapping fixed and own-cell
+  bounds added. Local 1440x1000, 390x844, 320x700 navigation/menu/Escape/focus,
+  console/overflow checks pass; 14 static site tests pass. Public deploy pending.
+
+## 2026-09-11 Actual corrected EXE and first resize guard
+
+- c3532d7 ZIP is 148,419,324 bytes (141.54 MiB), SHA
+  f07c63a9c4463819a47c1c168c167429f68e565451d14b8881dc23bb24216a9f.
+  All 18,771 entries roundtrip/hash-match; separate live copy matches; 53 UPX
+  native payload tests pass. Original package preserved, no binary publication.
+- Old App/Gateway closed normally via Quit. Live candidate EXE PID 33640 uses
+  port 18791 and its own state. Real Settings selects Astra low; official pinned
+  OAuth migration succeeds, Codex runtime/API key disabled. A known failed case
+  now completes four verified Astra-low stages in 113.735 s (old 175.805 s with
+  final timeout). Exact same captured source hash, finalization 40.400 s, zero
+  parse retries, seven receipt-bound boxes. Still incomplete/review-required;
+  not general speed/accuracy or blind acceptance. Summary widget visually checked.
+- Actual Viewer shrink 1522x1136 -> 1200x850 + Analyze fails closed before sending
+  with roi_outside_viewer_client; restored geometry and unchanged ROI. Retained
+  startup/config convergence, GUI focus and local evidence-formatting failures
+  are documented in docs/candidate-desktop-2026-09-11.md.
+- Separate deliberate partial ROI selected through actual Set ROI dragging,
+  inside the original safe region: actual 1484x708 source matches the Viewer
+  subrectangle pixel-for-pixel. Four Astra-low stages finish in 91.436 s and
+  prose identifies V3-V6 absent, but structured layout FAILS (lead instead of
+  name, missing label_visible, unsupported partial_stacked). Eight malformed
+  entries, zero valid mapped leads; raw output and separate one-pixel driver
+  expectation/recovery receipts preserved. No rerun or baseline rescoring.
+- Actual triage prompt now states exact canonical partial shape and prioritizes
+  fields over character count. Parser requires boolean visible=true; missing,
+  string/numeric visibility is not accepted or filled by row normalization.
+  No lead/name alias, new clinical rule or model change. New + related target
+  regression 224 pass; Ruff pass. This is source-only pending new EXE/model QA;
+  preserved c3532d7 binaries do not contain it. See candidate desktop report.
+
+## 2026-09-11 Post-seal usage and corrected package verification
+
+- Read-only usage supplement v2 binds all 460 public sessions to Astra low:
+  446 original stages plus 14 nested attempts. Thirteen synthetic binding checks
+  cover exact/masked identity ambiguity; two masked identifiers never suffice.
+  Seal verified unchanged, no inference or rescoring. Failed attempts without
+  exported identity remain unknown; no complete billing or monetary claim.
+  Supplement SHA 0684cbfb65d0bb7fcba56d46821d38c34220728b184bb278f415f4e26c45a045.
+- Cumulative exposure denylist now has 1,358 identities, conservatively including
+  all 128 selected cases. New blind selections must exclude them. Original
+  selection, gold, exports and failed baseline are unchanged.
+- Captured seven-box tool replay accepts all seven and matches the exact draft
+  digest under plugin 1.5.9. Zero model requests; not clinical validation.
+- c3532d7 clean-source static/runtime package verification passes; 20 frozen
+  smoke checks pass (103.22 s), 90 native sources approved. Launcher 4.68 MiB,
+  App 54.42 MiB, folder 337.01 MiB. Source and payload hashes are recorded in
+  docs/direct-harness-integration.md. CI push 34501374911 and PR 34501380408
+  pass on Windows/Ubuntu; secret scans pass. Immutable bundle retained; actual
+  candidate GUI/OAuth/model checks will use a separate writable copy.
+  No binary publication or license decision; failed clinical acceptance stays open.
+
+## 2026-09-11 Bbox receipt defect and direct-model package checkpoint
+
+- Primary real-GUI cohort is complete and sealed: 121 distinct successes,
+  six retained technical failures, 1,991 inventoried files; six pilots excluded.
+  Seal `data/tmp/desktop-astra-ui-20260910-main/primary-seal-20260910-1613.json`
+  SHA 2de49ad479ddeef43b4e47fb1539e78161d4c4654d4ffc13c37ea63fb5e43657.
+  First paired-gold score uses candidate a7d8fb4's recorded scorer, not the new
+  coordinate correction: strict 0/46 complete-label cases; urgent concerns 2/21;
+  exact severity 8/121; schema 113/121. All 121 results incomplete/review-required;
+  109 finalizations complete, 12 timeout after a mismatched-receipt retry.
+  Mean completed-case latency 136.662 s. This is a failed preliminary automatic
+  acceptance result, not clinical sensitivity/specificity or release approval.
+  Raw evidence is unchanged; see the separate dated evaluation report.
+- Further synthetic origin half-tie tests found two Python rounding failures.
+  App and artifact validator now share fractional-part rounding matching native
+  Math.round. All 30,000 scalar half-tie/adjacent-float vectors match; expanded
+  targeted suite 128 passed; full regression 1516 passed / five explicit skips
+  (205.70 s). PR CI 34500348053 then exposed another existing 40 ms Windows
+  stream-test race before acceptance. The mock now supplies its known-run ack
+  immediately, uses a 200 ms test deadline and has a 1 s outer bound against
+  endless deadline renewal. Production timeout/abort behavior is unchanged.
+
+- Read-only public Gateway history on an original failed GUI finalization
+  identified native `(origin + extent) - origin` cancellation on unclipped
+  boxes. Synthetic cross-language parity first reproduced 23 failures / 13
+  passes; plugin 1.5.9 preserves untouched extents and rejects rounded ROI
+  overflow, without relaxing exact digest or image/turn binding. New + existing
+  native/Gateway checks: 94 passed; full regression 1505 passed / five explicit
+  skips (210.59 s), Ruff passed. Actual new-model latency/accuracy is not yet
+  measured. See `docs/architecture/bbox-receipt-canonicalization.md`.
+- PR #17 direct-model branch merged the candidate scorer; head 7abc364 retains
+  pinned public harness efeff23. Push CI 34498083016 passed; parallel PR CI
+  34498089534 found a Windows 20 ms scheduling-test race (1458 pass / 6 skip).
+  That policy test now uses its existing injected clock; 139 multi-pass checks
+  pass locally, with no production SLA or timeout-test change.
+- Separate clean-source 7abc364 local package: static verifier passes, 90 native
+  dependency sources approved, 20 actual frozen packaging checks pass (126.76 s).
+  Launcher 4.67 MiB, App layer 54.42 MiB, full folder 337.01 MiB. This artifact
+  retains plugin 1.5.8 and does not cover the later receipt correction; older
+  f7e3347 bundle is unchanged. No binary publication/license change.
+- Frozen main cohort at 16:01 UTC has 118 primary distinct GUI successes; index
+  118 initial timeout remains, and index 126 was blocked pre-send by ROI
+  obstruction while packaged tests were also active. Six technical failures
+  are retained. Packaged tests ended; real Viewer rerun 126..127 is in progress,
+  then 118 must be retried before sealing. No gold scoring has run.
+
 ## 2026-09-10 Current acceptance target and runtime fixes
+
+- Separate `agent/direct-harness-models-20260910` worktree consumes public
+  harness efeff23 directly for seven shared model types; duplicate App classes
+  and all old caller imports are removed, with no compatibility exports.
+  CI/Pages initialize the submodule and use the frozen uv source map. Schema
+  resources are required by packaging and tested offline. Extra schema dependency
+  installed non-pyc footprint is 1.43 MiB, not a measured EXE/ZIP increase.
+  1127 existing checks passed; new boundary/package-verifier 56 passed; public
+  harness own environment 222 passed plus public/agent-method and built-package
+  integrity checks. Public PR #1 supplies missing py.typed metadata only; CI
+  passed and the direct App's three targeted mypy modules pass without ignores.
+  Full App run exposed one fresh-install OpenClaw staging failure (1420 passed,
+  six explicit skips). Public CLI preparation now runs before OAuth-only
+  migration relocation/pruning, with isolated state and a cleared child
+  environment. Another cold locked install passes 9 helper/staging checks;
+  full App regression passes 1429 / six explicit skips (186.95 s). Main runtime
+  and the earlier accepted bundle remain unchanged. The candidate's isolated
+  preparation fix a7d8fb4 passes CI 34496955373 and secret scans.
+  See `docs/architecture/direct-harness-integration.md`. Full engine extraction, canonical
+  host assembly and actual candidate GUI/model/packaging remain pending.
 
 - New `scripts/score-desktop-cohort.py` verifies a complete >=100-case primary
   hash seal before opening the pre-digested paired gold, then scores immutable
@@ -13,10 +633,6 @@
   exposed a floating-point nonzero lower endpoint at 0/100; fixed explicitly.
   This is tooling, not a real clinical score. Main at 15:06 UTC: 95 primary
   successes + six earlier pilots = 101 distinct actual UI cases.
-- Direct independent-harness integration is being developed in a new isolated
-  worktree based on bf28d82, pinning public harness 9d24e28. It does not merge
-  old PR #4 compatibility exports, change the frozen main cohort, or modify the
-  verified f7e3347 package. No full-extraction or canonical export claim yet.
 
 - Integrated candidate is now `f7e3347`: PR #16 merged into #15, then #15
   merged into #13's branch; #13 remains draft and main stays on the frozen
@@ -67,7 +683,7 @@
   ROI and rejected all four one-pixel chrome crossings; no screenshot or model
   calls. Full unit/smoke/mock-integration regression: 1406 passed, 6 explicit
   opt-in/local-artifact skips (166.24 s); Ruff passes. Actual resize/DPI and
-  model cases remain pending. See `docs/viewer-client-capture-boundary.md`.
+  model cases remain pending. See `docs/architecture/viewer-client-capture-boundary.md`.
 - Crop-scope fix is pushed as draft stacked PR #15 (`e583a92`); CI 34487320267
   and Secret scans 34487320261 / 34487314337 pass. Candidate #13 is clean after
   isolated merge `8c3fb6e`; CI 34486122894 and Secret scan 34486038887 pass.
@@ -83,7 +699,7 @@
   runtime under Node 24.18 resolved them without skips. Qt scope/wrapping and
   JSON export checks pass; a synthetic offscreen report was visually reviewed
   after explicitly loading Windows fonts (initial preview had missing glyphs).
-  See `docs/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
+  See `docs/architecture/crop-evidence-scope.md`. Separate candidate GUI/partial-ECG evidence
   remains pending; main cohort untouched, 80 distinct UI successes at 14:08 UTC.
 
 - English/Traditional-Chinese READMEs, maintenance size charter and the upgrade
@@ -227,7 +843,7 @@
   generated Astra profile. Core measured 175.683 MiB; full raw dependency tree
   799.055 MiB includes 377.406 MiB of Codex runtime dependencies that must not ship.
   HEARTBEAT template relocation and migration-only staging remain concrete gates.
-  See `docs/openclaw-upgrade-audit-2026-09-10.md`; active pin remains unchanged.
+  See `docs/evidence/2026-09/openclaw-upgrade-audit-2026-09-10.md`; active pin remains unchanged.
 - UI repair is isolated in worktree `data/tmp/astra-ui-worktree-20260910`, branch
   `agent/astra-ui-report-20260910`, to preserve the running cohort fingerprint.
   It fixes clipped wrapped labels, improves text contrast/priority, preserves full
@@ -1063,7 +1679,7 @@
 - 目前沒有把 Torch 或 370 MB checkpoint 塞入主 EXE，也還沒有可供 MEETI PNG
   使用的合格 waveform。若只有截圖，必須先有獨立、經校正品質 gate 驗證的
   waveform digitizer；現有 threshold/ink bbox 輔助不等於波形數位化。
-- 完整契約：`docs/ecgfounder-tool.md`。新增/相關測試目前 86 passed，Ruff 通過。
+- 完整契約：`docs/integrations/ecgfounder-tool.md`。新增/相關測試目前 86 passed，Ruff 通過。
 - 系統化 MultiPass urgent canary 已完成但不是改善證據：2 案中 1 案 timeout，
   可評分案 partial 0.4、urgent concern 0/2。不能用此小樣本宣稱提升，需先處理
   多輪 timeout/成本並重新做 paired run。
@@ -1095,7 +1711,7 @@
   Desktop review export is self-contained with source, result, marked image,
   crop PNGs, and coordinate audit.
 - Detailed experiment record:
-  `docs/meeti-openclaw-experiments-2026-08-09.md`.
+  `docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`.
 - The pre-publication 9,922-case run at
   `data/experiments/meeti-paired-full9922-v157-20260809` was deliberately stopped
   at 289 baseline results before final commits. Its state is `interrupted`; the

@@ -10,7 +10,7 @@ import structlog
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import AnalysisResult
+    from medical_image_harness.models import AnalysisResult
 
 logger = structlog.get_logger(__name__)
 

@@ -10,13 +10,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import (
-        AnalysisResult,
-        DisplayFrame,
-        Modality,
-        RegionRect,
-        WindowRect,
-    )
+    from dicom_overlay.domain.entities import CaptureWindow, DisplayFrame, WindowRect
+    from medical_image_harness.models import Modality, RegionRect
 
 
 class CaptureBlockedError(RuntimeError):
@@ -29,6 +24,10 @@ class ScreenMonitorService(ABC):
     @abstractmethod
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         """Find the DICOM viewer window by title keywords."""
+
+    def select_capture_window(self, window: CaptureWindow) -> WindowRect:
+        """Explicitly bind one live window, or fail without broadening discovery."""
+        raise NotImplementedError("Explicit window selection is unavailable")
 
     def display_for_window(self, window: WindowRect) -> DisplayFrame | None:
         """Return the physical display containing ``window`` when available.
@@ -63,6 +62,15 @@ class ScreenMonitorService(ABC):
 class ImageProcessorService(ABC):
     """Handles ROI cropping for PHI removal (spec §3.2)."""
 
+    def same_image_pixels(self, original: bytes, current: bytes) -> bool:
+        """Require exact identity before publishing a delayed interpretation.
+
+        Adapters may compare decoded pixels to ignore lossless file metadata,
+        but must not use perceptual similarity as proof of image identity.
+        The conservative default only accepts identical encoded bytes.
+        """
+        return original == current
+
     @abstractmethod
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int
@@ -83,35 +91,6 @@ class ImageProcessorService(ABC):
     @abstractmethod
     def image_size(self, image_data: bytes) -> tuple[int, int]:
         """Return ``(width, height)`` for PNG image bytes."""
-
-
-class VisionAnalyzerService(ABC):
-    """Sends images to Vision API for analysis (spec §3.3)."""
-
-    @abstractmethod
-    async def analyze(
-        self,
-        image_base64: str,
-        modality: Modality,
-        valid_regions: list[str],
-    ) -> AnalysisResult:
-        """Analyze an image and return structured findings."""
-
-    @abstractmethod
-    async def chat(self, message: str) -> str:
-        """Send a free-text question and return the AI's text response."""
-
-    @abstractmethod
-    async def connect(self) -> None:
-        """Establish connection to the analysis backend."""
-
-    @abstractmethod
-    async def disconnect(self) -> None:
-        """Close connection to the analysis backend."""
-
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Check if the connection is active."""
 
 
 class RegionMapperService(ABC):

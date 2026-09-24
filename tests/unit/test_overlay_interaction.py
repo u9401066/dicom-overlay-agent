@@ -13,12 +13,13 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel
 
-from dicom_overlay.application.multi_pass import (
-    RefinementAction,
-    RefinementDelta,
-    apply_refinement_delta,
+from dicom_overlay.presentation.control_bar import ControlBarWindow
+from dicom_overlay.presentation.overlay_window import (
+    ChatPanel,
+    OverlayWindow,
+    SummaryPanel,
 )
-from dicom_overlay.domain.entities import (
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,
@@ -26,11 +27,10 @@ from dicom_overlay.domain.entities import (
     RegionRect,
     Severity,
 )
-from dicom_overlay.presentation.control_bar import ControlBarWindow
-from dicom_overlay.presentation.overlay_window import (
-    ChatPanel,
-    OverlayWindow,
-    SummaryPanel,
+from medical_image_harness.multipass import (
+    RefinementAction,
+    RefinementDelta,
+    apply_refinement_delta,
 )
 
 
@@ -200,6 +200,61 @@ def test_report_panel_exposes_full_report_checklist_and_process(
     panel.close()
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "incomplete",
+        "review_required",
+        "validation_warnings",
+        "partial",
+        "info",
+        "complete",
+    ],
+)
+def test_normal_heading_requires_supported_complete_assessment(qt_app, flag):
+    result = _result()
+    result.severity = Severity.NORMAL
+    result.findings = []
+    result.checklist = {"rhythm": ChecklistItem("sinus", Severity.NORMAL)}
+    if flag in {"incomplete", "review_required"}:
+        setattr(result, flag, True)
+    elif flag == "validation_warnings":
+        result.validation_warnings = ["Synthetic unresolved issue"]
+    elif flag == "partial":
+        result.layout = {"format": "partial", "leads": []}
+    elif flag == "info":
+        result.checklist["rhythm"] = ChecklistItem("indeterminate", Severity.INFO)
+    panel = SummaryPanel()
+    panel.update_result(result)
+    heading = panel._summary_label.text().splitlines()[0]
+    assert heading == (
+        "NORMAL"
+        if flag == "complete"
+        else "REVIEW FINDINGS"
+        if flag == "info"
+        else "INDETERMINATE — review required"
+    )
+    assert result.severity is Severity.NORMAL
+    panel.close()
+
+
+@pytest.mark.parametrize("severity", [Severity.CRITICAL, Severity.WARNING])
+def test_incomplete_assessment_does_not_hide_urgent_structured_findings(
+    qt_app, severity
+):
+    result = _result()
+    result.severity = Severity.NORMAL
+    result.incomplete = True
+    result.findings[0] = replace(result.findings[0], severity=severity)
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert panel._summary_label.text().startswith(
+        f"{severity.value.upper()} — incomplete assessment"
+    )
+    assert result.severity is Severity.NORMAL
+    panel.close()
+
+
 def test_report_prioritizes_findings_without_mutating_source(
     qt_app: QApplication,
 ) -> None:
@@ -265,6 +320,97 @@ def test_review_alert_navigates_to_unabridged_reasons(qt_app: QApplication) -> N
     assert panel._review_button.isHidden()
     assert panel._review_label.text() == ""
     assert panel._report_scroll.verticalScrollBar().value() == 0
+    panel.close()
+
+
+@pytest.mark.parametrize(
+    ("declared_format", "lead_names", "visible", "expected_title"),
+    [
+        ("partial", ["unknown"] * 8, False, "Partial EKG Analysis"),
+        (" PARTIAL ", ["I", "II"], True, "Partial EKG Analysis"),
+        ("12lead_12x1", ["I", "II"], True, "EKG Analysis"),
+        ("unknown", [], True, "EKG Analysis"),
+        ("single_rhythm_strip", ["II"], True, "EKG Analysis"),
+        (
+            "12lead_12x1",
+            ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"],
+            False,
+            "EKG Analysis",
+        ),
+        ("12lead_12x1", ["II"] * 12, True, "EKG Analysis"),
+    ],
+)
+def test_report_title_does_not_invent_twelve_visible_leads(
+    qt_app: QApplication,
+    declared_format: str,
+    lead_names: list[str],
+    visible: bool,
+    expected_title: str,
+) -> None:
+    result = _result()
+    result.layout = {
+        "format": declared_format,
+        "leads": [
+            {"name": name, "label_visible": visible, "bbox": [0.0, 0.0, 1.0, 0.05]}
+            for name in lead_names
+        ],
+    }
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert panel._title_label.text() == f"🫀 {expected_title}"
+    panel.close()
+
+
+def test_report_title_tracks_current_inventory_without_changing_result(
+    qt_app: QApplication,
+) -> None:
+    from copy import deepcopy
+
+    from dicom_overlay.domain.modality_profile import get_active_registry
+    from medical_image_harness.ekg_layout import STANDARD_EKG_LEADS
+
+    result = _result()
+    panel = SummaryPanel()
+    result.layout = {
+        "format": "12lead_12x1",
+        "leads": [
+            {"name": name, "label_visible": True, "bbox": [0.0, 0.0, 1.0, 0.05]}
+            for name in STANDARD_EKG_LEADS
+        ],
+    }
+    before = deepcopy(result)
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 12-Lead EKG Analysis"
+    assert result == before
+
+    # An explicitly partial source cannot gain a complete title from lead count.
+    result.layout["format"] = "partial"
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 Partial EKG Analysis"
+    result.layout = {}
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 EKG Analysis"
+
+    result.modality = Modality.CXR
+    profile = get_active_registry().resolve("CXR")
+    panel.update_result(result)
+    assert (
+        panel._title_label.text()
+        == f"{profile.icon} {profile.resolved_display_name()} Analysis"
+    )
+    panel.close()
+
+
+@pytest.mark.parametrize("layout", [None, [], {"leads": [None]}])
+def test_report_title_tolerates_invalid_inventory_without_claiming_coverage(
+    qt_app: QApplication,
+    layout: object,
+) -> None:
+    result = _result()
+    result.layout = layout  # type: ignore[assignment]
+    panel = SummaryPanel()
+    panel.update_result(result)
+    assert panel._title_label.text() == "🫀 EKG Analysis"
     panel.close()
 
 
@@ -457,6 +603,73 @@ def test_overlay_maps_drawn_region_back_to_original_roi(qt_app: QApplication) ->
     overlay.close()
 
 
+@pytest.mark.parametrize("mode", ["passive", "inspect", "annotate"])
+def test_mark_mode_paints_input_surface_without_any_ai_boxes(
+    qt_app: QApplication,
+    mode: str,
+) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(300, 200)
+    overlay._content_rect = (40, 30, 200, 120)
+    overlay.set_interaction_mode(mode)
+    overlay.show()
+    qt_app.processEvents()
+    pixels = overlay.grab().toImage()
+    ratio = pixels.devicePixelRatio()
+
+    assert pixels.pixelColor(int(100 * ratio), int(80 * ratio)).alpha() == (
+        1 if mode == "annotate" else 0
+    )
+    assert pixels.pixelColor(int(10 * ratio), int(10 * ratio)).alpha() == 0
+    assert overlay._highlights == []
+    assert overlay.user_regions == []
+    overlay.close()
+
+
+def test_mark_input_surface_clears_when_leaving_mark_mode(qt_app: QApplication) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(300, 200)
+    overlay._content_rect = (40, 30, 200, 120)
+    overlay.set_interaction_mode("annotate")
+    overlay.show()
+    qt_app.processEvents()
+    overlay.set_interaction_mode("passive")
+    qt_app.processEvents()
+    pixels = overlay.grab().toImage()
+    ratio = pixels.devicePixelRatio()
+
+    assert pixels.pixelColor(int(100 * ratio), int(80 * ratio)).alpha() == 0
+    assert overlay.windowFlags() & Qt.WindowType.WindowTransparentForInput
+    overlay.close()
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected"),
+    [
+        ((80, 50), (160, 100), (0.25, 0.25, 0.4, 50 / 120)),
+        ((160, 100), (80, 50), (0.25, 0.25, 0.4, 50 / 120)),
+        ((80, 50), (280, 180), (0.25, 0.25, 0.75, 0.75)),
+        ((10, 10), (160, 100), None),
+        ((80, 50), (80, 50), None),
+    ],
+)
+def test_mark_blank_roi_drag_edges(qt_app, start, end, expected) -> None:
+    overlay = OverlayWindow()
+    overlay.resize(300, 200)
+    overlay._content_rect = (30, 20, 200, 120)
+    created = []
+    overlay.user_region_created.connect(lambda *values: created.append(values))
+    overlay.set_interaction_mode("annotate")
+    overlay.show()
+    qt_app.processEvents()
+    QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=QPoint(*start))
+    QTest.mouseMove(overlay, QPoint(*end))
+    QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=QPoint(*end))
+    assert created == ([] if expected is None else [pytest.approx(expected)])
+    assert overlay.user_regions == created
+    overlay.close()
+
+
 def test_promoted_manual_region_is_consumed_without_removing_other_regions(
     qt_app: QApplication,
 ) -> None:
@@ -587,6 +800,59 @@ def test_chat_timeout_hides_only_chat_and_preserves_report(
     assert overlay._highlights == highlights
     assert overlay._content_rect == (0, 0, 800, 400)
     overlay.dismiss()
+
+
+def test_regional_history_persists_and_inline_followup_emits_only_when_ready(qt_app):
+    overlay = OverlayWindow()
+    questions = []
+    overlay.chat_panel.followup_requested.connect(questions.append)
+    overlay.show_chat_response("Question", "Answer", regional_history="Q1\nA1")
+    qt_app.processEvents()
+    assert not overlay._chat_timer.isActive()
+    assert overlay.chat_panel._history.toPlainText() == "Q1\nA1"
+    overlay.clear_chat_proposal(restart_timeout=True)
+    assert not overlay._chat_timer.isActive()
+    overlay.chat_panel._followup_input.setText("  Follow up  ")
+    overlay.chat_panel._followup_send.click()
+    assert questions == ["Follow up"]
+    overlay.show_chat_waiting("Follow up")
+    overlay.chat_panel._followup_input.setText("Do not double send")
+    overlay.chat_panel._followup_send.click()
+    assert questions == ["Follow up"]
+    assert overlay.chat_panel._history.toPlainText() == "Q1\nA1"
+    overlay.clear_chat()
+    assert not overlay.chat_panel._history.toPlainText()
+    assert overlay.chat_panel._followup.isHidden()
+    overlay.dismiss()
+
+
+def test_invalidated_image_hides_report_boxes_and_history_without_state_transition(
+    qt_app,
+):
+    overlay = OverlayWindow()
+    expired = []
+    overlay.display_expired.connect(lambda: expired.append(True))
+    overlay.show_result(
+        _result(),
+        [(10, 20, 30, 40, "warning", "Old", "f1")],
+        content_rect=(0, 0, 800, 400),
+    )
+    overlay._user_regions = [(0.1, 0.2, 0.3, 0.4)]
+    overlay.show_chat_response(
+        "Old question", "Old answer", regional_history="Old history"
+    )
+    overlay.set_interaction_mode("annotate")
+    overlay.invalidate_review()
+    qt_app.processEvents()
+    assert not overlay.isVisible()
+    assert not overlay.summary_panel.isVisible()
+    assert not overlay.chat_panel.isVisible()
+    assert overlay._highlights == [] and overlay.user_regions == []
+    assert overlay._content_rect is None
+    assert overlay._interaction_mode == "passive"
+    assert not overlay.chat_panel._history.toPlainText()
+    assert expired == []
+    overlay.close()
 
 
 def test_process_tab_exposes_interactive_writeback_receipt(

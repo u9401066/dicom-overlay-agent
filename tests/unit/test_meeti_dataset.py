@@ -227,8 +227,8 @@ class TestCantMiss:
         assert "long QT" in labels.cant_miss
 
     def test_cant_miss_aligns_with_harness_reference(self) -> None:
-        from dicom_overlay.domain.entities import Modality
         from dicom_overlay.infrastructure.eval_harness import CANT_MISS
+        from medical_image_harness.models import Modality
 
         reference = set(CANT_MISS[Modality.EKG])
         produced = set()

@@ -16,18 +16,76 @@ to a client is insufficient: the test case must be visible in the real viewer,
 the real desktop App must acquire only its configured ROI, the App-managed
 Gateway must own the request, and the rendered/exported result must be inspected.
 
-## Current target (2026-09-10)
+## Current target (2026-09-24)
 
 Use Settings → **OpenAI GPT-6 Astra via Codex Subscription** (`openai-codex-astra`),
-verify `gpt-6-astra` and reasoning **low**, save, and fully quit the old App before
+verify `gpt-6-astra` and reasoning **medium**, save, and fully quit the old App before
 restarting its managed Gateway. Luna is not the current acceptance target.
 Use the real viewer's Ctrl+O dialog, App Analyze, and App Export. Verify the
 exported source matches the intended case; never infer identity from timing
 alone. Never mark a timeout as a completed case on resume.
 
-See [September 10 evidence](docs/verification-2026-09-10.md): 60 historical Luna
-exports are preserved, but no complete 100-case Astra run exists yet. The older
-gate state below is retained as dated history, not current batch coverage.
+See the [September 24 medium checkpoint](../evidence/2026-09/astra-medium-2026-09-24.md):
+one actual partial/hidden-label development replay is bound to four medium turns.
+The [sealed 121-case low cohort](../evidence/2026-09/evaluation-desktop-astra-2026-09-11.md)
+remains failed; it is not medium coverage. The older gate state below is retained
+as dated history, not current batch coverage. No 100-case medium cohort is accepted.
+A [fresh 120-case medium cohort](../evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
+is selected/reserved and its [actual GUI run has started](../evidence/2026-09/medium-desktop-batch-2026-09-24.md).
+Before another run, calibrate the complete safe image ROI
+through the actual App using an exposed image; do not reuse the partial interaction
+ROI or open gold during inference. Preserve every case and failure in the run ledger.
+
+The same batch evidence page documents `scripts/verify-desktop-batch.py`, which
+independently audits the frozen plan, original inputs, exports, pixel matching and
+runtime usage. Preserve the plan digest separately. Use `--allow-partial` only for
+an ongoing run; invalid evidence and technical failures always fail the command.
+A failed audit is not permission to restart a live App or repeat inference.
+
+## Manual Mark and per-region conversations (development source)
+
+1. After Analyze publishes a result, choose **Mark**, then drag anywhere inside
+   the authorized image ROI, including blank areas outside all AI boxes. The safe
+   image region is the boundary, not the entire desktop. Reconfigure ROI explicitly
+   if needed; never include patient identifiers just to obtain a larger canvas.
+2. Ask in the **Reviewer annotation** dialog. Continue the same region's thread
+   using the chat panel's inline entry and **Send**.
+3. Use **Inspect** and click an existing AI/manual box to open that region's own
+   history. Reopening history does not need another model request. Threads for
+   different regions must remain separate.
+4. A proposed report change is not automatically applied. **Dismiss** keeps the
+   existing report; **Apply to report** accepts the proposed change. An accepted
+   ADD promotes the manual marker to a report finding while retaining its selected
+   source rectangle and prior conversation. Continue on that promoted finding;
+   reopening or a no-change answer must not duplicate it.
+5. Export the local development draft and inspect `regional-conversations.json`,
+   report interaction audit and rendered chat/overlay images. A summary saying
+   "two findings" alone cannot prove a promotion: compare IDs, geometry and history.
+
+Real native evidence covers [blank-ROI Mark and separate threads](../evidence/2026-09/native-regional-projection-2026-09-24.md)
+and [ADD dismissal, promotion, reopening and a third turn](../evidence/2026-09/native-marker-promotion-2026-09-24.md).
+These are source-App tests, not proof that the latest preserved EXE contains all
+subsequent fixes, or that every cross-monitor/DPI and clinical scenario is complete.
+
+## Select a browser or another image application (development source)
+
+1. Open the image in the intended application. Close menus, translation popups
+   and notifications that cover it.
+2. App Settings → **Choose image window** → select its row → **Use selected window**.
+   This does not depend on “DICOM”/“Viewer” appearing in the title.
+3. Draw a new safe image ROI and press Enter. Exclude browser controls and PHI.
+   Calibration is session-only for explicitly selected windows; another viewer's
+   saved ROI is not reused or overwritten. Canceling cannot authorize capture.
+4. Use App Analyze and Export. Compare exported source pixels against that actual
+   application, then inspect overlays and regional questions. A browser merely
+   appearing in the picker is not end-to-end acceptance.
+5. After closing/replacing the selected window, select it again and confirm ROI.
+   The App must not silently switch to another matching window. Restart also
+   requires explicit reselection; stored default keyword discovery is separate.
+
+One exposed Edge replay now covers actual selection, ROI, capture, inference and
+manual QA; see the [native follow-up](../evidence/2026-09/native-browser-selection-2026-09-24.md).
+Other browsers/DICOM applications and broad acceptance remain pending.
 
 ## Historical gate status (2026-09-02)
 
@@ -47,14 +105,15 @@ gate state below is retained as dated history, not current batch coverage.
   2026-08-09 368.01 MiB bundle. Rebuild from a clean worktree before publishing
   a new size or hash.
 
-See [`docs/verification-2026-09-02.md`](docs/verification-2026-09-02.md) for the
-full evidence matrix and [`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md)
+See [`docs/evidence/2026-09/verification-2026-09-02.md`](../evidence/2026-09/verification-2026-09-02.md) for the
+full evidence matrix and [`docs/evaluation/cohorts.md`](../evaluation/cohorts.md)
 for cohort identities and claim boundaries.
 
 ## Prerequisites
 
 1. Windows 10/11.
-2. Node.js 22+ available in `PATH`.
+2. The candidate's portable Node 24.18.0, or a separately verified supported Node
+   for the pinned OpenClaw runtime. Do not rely on the old Node 22 prerequisite.
 3. Python virtual environment already prepared:
    - `uv sync --all-extras`
 4. For the current MEETI protocol, a local ChatGPT/Codex subscription sign-in:
@@ -121,7 +180,7 @@ scripts\install-openclaw-local.bat
 
 Do not use `openclaw@latest` in release evidence. OpenClaw `2026.8.2` has only
 passed an isolated protocol probe and remains deferred; see
-[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md).
+[`docs/evidence/2026-09/openclaw-2x-decision-2026-09-02.md`](../evidence/2026-09/openclaw-2x-decision-2026-09-02.md).
 
 ### 2. Sync skills into the runtime workspace
 

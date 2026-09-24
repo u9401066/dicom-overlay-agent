@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import logging
@@ -11,17 +12,17 @@ from typing import TYPE_CHECKING
 import structlog
 from PIL import Image, ImageFont
 
-from dicom_overlay.domain.entities import (
+from dicom_overlay.infrastructure.desktop_review_exporter import (
+    export_desktop_review,
+)
+from dicom_overlay.infrastructure.logging_config import setup_logging
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.infrastructure.desktop_review_exporter import (
-    export_desktop_review,
-)
-from dicom_overlay.infrastructure.logging_config import setup_logging
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -120,12 +121,77 @@ def run_package_runtime_smoke(work_dir: Path) -> dict[str, object]:
         if not (review_path.parent / "bbox-audit.json").is_file():
             raise RuntimeError("review coordinate audit was not written")
 
+    def harness_contract_smoke() -> None:
+        from medical_image_harness.resources import load_skill
+        from medical_image_harness.schema import load_schema, validation_errors
+
+        if not load_skill().strip():
+            raise RuntimeError("public harness method resource is empty")
+        schema = load_schema()
+        if "input_provenance" not in schema.get("required", []):
+            raise RuntimeError("canonical harness contract lacks provenance gate")
+        if not validation_errors({}):
+            raise RuntimeError("canonical harness validator accepted an empty draft")
+
+    def harness_engine_smoke() -> None:
+        from medical_image_harness.image_ops import crop_source_image
+        from medical_image_harness.multipass import (
+            MultiPassInterpreter,
+            RefinementAction,
+            RefinementDelta,
+            RefinementResult,
+        )
+
+        stages: list[str] = []
+        box = RegionRect(0.2, 0.2, 0.4, 0.4)
+
+        class SyntheticAnalyzer:
+            async def analyze(self, image_base64, modality, valid_regions):
+                del image_base64, valid_regions
+                stages.append("coarse")
+                return AnalysisResult(
+                    modality=modality, summary="Synthetic package check",
+                    severity=Severity.WARNING, checklist={},
+                    findings=[Finding(id="synthetic", regions=[], label="Synthetic marker",
+                        detail="Non-clinical fixture", severity=Severity.WARNING, bboxes=[box])],
+                )
+
+            async def refine(self, image_base64, modality, valid_regions, **context):
+                del modality, valid_regions
+                with Image.open(io.BytesIO(base64.b64decode(image_base64))) as crop:
+                    if crop.width >= 96 or crop.height >= 48:
+                        raise RuntimeError("shared engine did not supply a bounded crop")
+                stages.append("refine")
+                return RefinementResult((RefinementDelta(
+                    RefinementAction.CONFIRM, target_id=context["hypothesis"].id,
+                    rationale="Synthetic packaging check only",
+                ),))
+
+            async def finalize(self, image_base64, modality, valid_regions, *, draft, **context):
+                del image_base64, modality, valid_regions, context
+                stages.append("finalize")
+                return draft
+
+        interpreter = MultiPassInterpreter(
+            SyntheticAnalyzer(),
+            lambda image, region: crop_source_image(image, region).image_base64,
+            max_zoom_targets=1, zoom_padding=0.0,
+            checklist_keys_for=lambda _: frozenset(),
+        )
+        result = asyncio.run(interpreter.interpret(
+            base64.b64encode(artifacts["png"]).decode("ascii"), Modality.CXR, [],
+        ))
+        if stages != ["coarse", "refine", "finalize"] or result.findings[0].bboxes != [box]:
+            raise RuntimeError("shared engine stage/coordinate contract failed")
+
     try:
         check("logging_init", logging_smoke)
         check("png_encode_decode", png_smoke)
         check("jpeg_decode", jpeg_smoke)
         check("font_render", font_smoke)
         check("review_export", review_smoke)
+        check("harness_contract", harness_contract_smoke)
+        check("harness_engine", harness_engine_smoke)
     finally:
         for handler in list(root_logger.handlers):
             root_logger.removeHandler(handler)

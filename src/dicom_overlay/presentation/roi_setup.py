@@ -6,7 +6,16 @@ from typing import Any, cast
 
 import structlog
 from PyQt6.QtCore import QPoint, QRect, Qt
-from PyQt6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QRegion,
+)
 from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 
 from dicom_overlay.application.roi import (
@@ -249,7 +258,15 @@ class ROISetupDialog(QDialog):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         painter.drawPixmap(self.rect(), self._screenshot)
+        rect = self._selection_rect()
+        # Keep the frozen source visible inside the chosen ROI. Clearing alpha
+        # on this opaque dialog turns the preview black on Windows; it does not
+        # reveal the screenshot underneath. Dim only the excluded region.
+        painter.save()
+        if rect is not None:
+            painter.setClipRegion(QRegion(self.rect()).subtracted(QRegion(rect)))
         painter.fillRect(self.rect(), QColor(0, 0, 0, 80))
+        painter.restore()
 
         # Draw target window boundary as visual guide
         if self._target_rect != self._base_rect:
@@ -262,12 +279,7 @@ class ROISetupDialog(QDialog):
                 self._target_rect.height,
             )
 
-        rect = self._selection_rect()
         if rect is not None:
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-            painter.fillRect(rect, QColor(0, 0, 0, 0))
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
-
             pen = QPen(QColor(0, 220, 120, 255), 3)
             painter.setPen(pen)
             painter.drawRect(rect)
@@ -314,9 +326,7 @@ def run_roi_setup(
 
     # Convert existing ROI margins (physical) to logical for display
     logical_roi = (
-        coordinate_frame.physical_roi_to_logical(existing_roi)
-        if existing_roi
-        else None
+        coordinate_frame.physical_roi_to_logical(existing_roi) if existing_roi else None
     )
 
     dialog = ROISetupDialog(

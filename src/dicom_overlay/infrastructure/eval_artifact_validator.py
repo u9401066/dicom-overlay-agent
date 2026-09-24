@@ -11,11 +11,6 @@ from typing import Any
 
 from PIL import Image
 
-from dicom_overlay.domain.ekg_layout import (
-    canonical_ekg_lead_name,
-    parse_ekg_lead_inventory,
-    parse_normalized_region,
-)
 from dicom_overlay.infrastructure.ecg_variant_corpus import (
     PartialEcgInputContract,
     is_partial_ecg_corpus_manifest,
@@ -31,6 +26,11 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     MIN_GATEWAY_PROTOCOL,
     OpenClawRuntimeError,
     parse_gateway_hello,
+)
+from medical_image_harness.ekg_layout import (
+    canonical_ekg_lead_name,
+    parse_ekg_lead_inventory,
+    parse_normalized_region,
 )
 
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"
@@ -1097,6 +1097,8 @@ def _verify_results(
 
 
 def _bbox_payload_digest(findings: list[object]) -> tuple[str, int]:
+    from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
+
     coordinates: list[list[str]] = []
     for finding in findings:
         if not isinstance(finding, dict):
@@ -1109,12 +1111,12 @@ def _bbox_payload_digest(findings: list[object]) -> tuple[str, int]:
                 continue
             try:
                 values = [
-                    math.floor(float(box[key]) * 10_000 + 0.5) / 10_000
+                    canonical_bbox_coordinate(float(box[key]))
                     for key in ("x", "y", "w", "h")
                 ]
             except (KeyError, TypeError, ValueError):
                 continue
-            coordinates.append([f"{value:.4f}" for value in values])
+            coordinates.append(values)
     coordinates.sort()
     encoded = json.dumps(coordinates, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest(), len(coordinates)

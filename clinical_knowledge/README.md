@@ -12,7 +12,7 @@ clinical_knowledge/rules/*.rule.yaml
           + legacy-inventory.yaml
                     │
                     ├─ schema + semantic governance gate
-                    ├─ generated/human-catalogue.md（完整人用鑑別流程）
+                    ├─ generated/human-catalogue.md（各條一致性規則的人用鑑別流程）
                     ├─ generated/agent-steps.md（同 step ID 的精簡 agent 流程）
                     ├─ domain/generated_clinical_rules.py（純資料 runtime）
                     └─ application-owned clinical-knowledge.sqlite（速查投影）
@@ -46,6 +46,11 @@ semantic validator allow-list 控制。Unknown key、unknown axis、錯誤 opera
 過期 clinical review、未映射 runtime 或失效 pytest node 都 fail closed。
 
 ## 人用流程與 agent 流程
+
+端到端的 [EKG 系統化共讀流程](../docs/clinical/ekg-reading-workflow.md) 補上
+品質、高風險優先、十六軸、鑑別、來源定位、challenge 與結論的十步人用／agent
+對照。它是待專科審查、尚未完整接入 runtime 的設計文件，不是已加入目前
+YAML 或 SQLite 的第八條規則，也不改動正在執行的 frozen cohort。
 
 [human-catalogue.md](generated/human-catalogue.md) 會列出每條規則的完整判讀與
 鑑別步驟，例如先核對 capture/lead/projection，再確認 morphology、比較 mimic、
@@ -134,8 +139,9 @@ Registry 只保存書目資料與本專案獨立撰寫的高階判讀流程，�
 ## 目前邊界
 
 - 現在有 7 條 deterministic consistency rules；這不是完整心電圖或胸片指南。
-- Critical-first crop allocation 是跨 finding 的 application policy，仍在 Python
-  中維持 budget、geometry 與 final-report invariants；它已列入 inventory 並由
+- Critical-first crop allocation 是跨 finding 的 execution policy，位於獨立
+  `medical_image_harness.multipass` Python engine；App 明確注入 checklist policy。
+  它維持 budget、geometry 與 final-report invariants，已列入 inventory 並由
   parity test 稽核，不得偽裝成單一醫學診斷規則。
 - Rule engine 只依模型已輸出的結構化內容檢查一致性，不會重新觀看影像或移動
   bbox；影像定位仍由原本的 bbox validator、ROI mapping 與人工 overlay review

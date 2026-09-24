@@ -1154,8 +1154,8 @@ def test_results_reject_ekg_bbox_outside_declared_lead(tmp_path: Path) -> None:
     result["modality"] = "EKG"
     result["layout"] = {
         "leads": [
-            {"name": "V4", "bbox": [0.0, 0.5, 1.0, 0.25]},
-            {"name": "V5", "bbox": [0.0, 0.75, 1.0, 0.25]},
+            {"name": "V4", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.25]},
+            {"name": "V5", "label_visible": True, "bbox": [0.0, 0.75, 1.0, 0.25]},
         ]
     }
     result["findings"][0]["regions"] = ["lead_V5"]

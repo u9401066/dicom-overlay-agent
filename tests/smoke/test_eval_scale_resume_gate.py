@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from dicom_overlay.domain.entities import Modality, Severity
 from dicom_overlay.infrastructure.eval_harness import EvalCase, _atomic_write_json
+from medical_image_harness.models import Modality, Severity
 
 if TYPE_CHECKING:
     from types import ModuleType

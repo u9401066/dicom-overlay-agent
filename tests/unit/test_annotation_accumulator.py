@@ -17,13 +17,8 @@ from dicom_overlay.application.annotation_accumulator import (
     max_severity,
     merge_findings,
 )
-from dicom_overlay.domain.entities import (
-    Finding,
-    FindingDelta,
-    FindingOp,
-    RegionRect,
-    Severity,
-)
+from dicom_overlay.domain.entities import FindingDelta, FindingOp
+from medical_image_harness.models import Finding, RegionRect, Severity
 
 
 def _finding(

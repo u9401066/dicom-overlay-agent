@@ -9,14 +9,6 @@ import pytest
 from dicom_overlay.application.interpretation_harness import (
     PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
 )
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
 from dicom_overlay.domain.hooks import (
     AnalyzeRequest,
     HookError,
@@ -30,6 +22,14 @@ from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
 from dicom_overlay.infrastructure.hooks.rate_limiter import RateLimiter
 from dicom_overlay.infrastructure.mcp_adapter import McpAdapter
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 

@@ -32,11 +32,11 @@ from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
 from dicom_overlay.application.interpretation_harness import (
     summarize_result_for_followup,
 )
-from dicom_overlay.application.multi_pass import (
-    MultiPassAnalyzer,
-    MultiPassInterpreter,
-)
 from dicom_overlay.application.overlay_agent import OverlayAgent, ReviewSnapshot
+from dicom_overlay.application.regional_conversation import (
+    RegionalConversations,
+    RegionalThread,
+)
 from dicom_overlay.application.review_chat import (
     ReviewChatResponse,
     build_region_review_prompt,
@@ -48,11 +48,8 @@ from dicom_overlay.application.rhythm_strip import RhythmStripRefiningAnalyzer
 from dicom_overlay.domain.entities import (
     AgentState,
     AppConfig,
-    Finding,
     FindingDelta,
     FindingOp,
-    Modality,
-    RegionRect,
     WindowRect,
 )
 from dicom_overlay.domain.modality_profile import (
@@ -95,9 +92,16 @@ from dicom_overlay.presentation.overlay_window import OverlayWindow
 from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
+from dicom_overlay.presentation.window_picker import WindowPickerDialog
+from medical_image_harness.models import Finding, Modality, RegionRect
+from medical_image_harness.multipass import (
+    MultiPassAnalyzer,
+    MultiPassInterpreter,
+)
+from medical_image_harness.protocols import StageTools
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.services import VisionAnalyzerService
+    from medical_image_harness.protocols import VisionAnalyzerService
 
 logger = structlog.get_logger("dicom_overlay")
 
@@ -155,11 +159,12 @@ class _SignalBridge(QObject):
 
     state_changed = pyqtSignal(object, object)
     analysis_result = pyqtSignal(object)
+    review_geometry_changed = pyqtSignal(object)
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
     prepare_capture = pyqtSignal()
     chat_done = pyqtSignal(str, str, int, int)
-    review_chat_done = pyqtSignal(str, object, int, object, object, int)
+    review_chat_done = pyqtSignal(str, object, int, object, object, int, str)
     review_apply_done = pyqtSignal(object, object)
     review_apply_failed = pyqtSignal(str)
     review_outcome_done = pyqtSignal(str)
@@ -672,6 +677,14 @@ def main() -> None:
     def build_multi_pass_analyzer(max_zoom_targets: int) -> HookedVisionAnalyzer:
         interpreter = MultiPassInterpreter(
             analyzer=openclaw_client,
+            checklist_keys_for=lambda modality: (
+                registry.resolve(modality.value).checklist_keys
+            ),
+            stage_tools=StageTools(
+                coarse="openclaw_vision_analysis",
+                refinement="crop_region_base64+openclaw_vision_analysis",
+                finalize="openclaw_report_reconciliation",
+            ),
             cropper=image_processor.crop_region_base64,
             bbox_calibrator=calibrate_ekg_bboxes,
             max_zoom_targets=max_zoom_targets,
@@ -748,14 +761,18 @@ def main() -> None:
 
     signals = _SignalBridge()
     _pending_review: list[
-        tuple[FindingDelta, int, dict[str, object], list[dict[str, object]]] | None
+        tuple[FindingDelta, int, dict[str, object], list[dict[str, object]], str] | None
     ] = [None]
     _chat_request_id = [0]
     _pending_user_region: dict[int, RegionRect] = {}
+    regional_conversations = RegionalConversations()
+    _pending_regional_threads: dict[int, RegionalThread] = {}
+    _active_region: list[tuple[RegionRect, str, bool] | None] = [None]
 
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
     agent.on_state_change = signals.state_changed.emit
     agent.on_analysis_result = signals.analysis_result.emit
+    agent.on_review_geometry_change = signals.review_geometry_changed.emit
     agent.on_pending_analysis = lambda _reason: signals.pending_analysis.emit(
         "New image ready. Click Analyze."
     )
@@ -782,10 +799,22 @@ def main() -> None:
         return agent.displayed_review_snapshot
 
     def on_state_change(_old: AgentState, new: AgentState) -> None:
+        if new in {
+            AgentState.CAPTURING,
+            AgentState.MONITORING,
+            AgentState.WAITING,
+            AgentState.ERROR,
+            AgentState.SETUP,
+        }:
+            regional_conversations.clear()
+            _pending_regional_threads.clear()
+            _active_region[0] = None
+            overlay.invalidate_review()
+            control_bar.set_interaction_mode("passive")
         control_bar.update_state(new)
         if new == AgentState.PAUSED:
             control_bar.set_paused(True)
-        elif new == AgentState.MONITORING:
+        elif new in {AgentState.MONITORING, AgentState.SETUP}:
             control_bar.set_paused(False)
 
     def on_analysis_result(
@@ -793,13 +822,22 @@ def main() -> None:
         *,
         announce: bool = True,
         preserve_user_regions: bool = False,
+        projection_only: bool = False,
     ):
+        current_snapshot = _current_review_snapshot()
+        if current_snapshot is None or current_snapshot.result is not result:
+            return  # Never render a queued result after invalidation/replacement.
         # Invalidate every in-flight follow-up before replacing the visible image.
-        _chat_request_id[0] += 1
-        _pending_review[0] = None
-        overlay.clear_chat()
-        if not preserve_user_regions:
-            overlay.clear_user_regions()
+        if not projection_only:
+            _chat_request_id[0] += 1
+            _pending_review[0] = None
+            overlay.clear_chat()
+            _active_region[0] = None
+            _pending_regional_threads.clear()
+            if not preserve_user_regions:
+                regional_conversations.clear()
+                overlay.clear_user_regions()
+        regional_conversations.bind(current_snapshot.image_base64)
         logger.info(
             "Result: %s severity=%s findings=%d",
             result.modality.value,
@@ -811,23 +849,20 @@ def main() -> None:
         highlights: list[tuple[int, int, int, int, str, str, str]] = []
         overlay_content_rect: tuple[int, int, int, int] | None = None
         coordinate_frame = None
-        if agent.target_window:
+        projection_window = current_snapshot.display_window or agent.target_window
+        projection_display = (
+            current_snapshot.display_frame
+            if current_snapshot.display_window
+            else agent.display_frame
+        )
+        if projection_window:
             coordinate_frame = overlay.position_over_window(
-                agent.target_window,
-                agent.display_frame,
+                projection_window,
+                projection_display,
+                preserve_panel_positions=projection_only,
             )
 
-        snapshot = agent.review_snapshot
-        content_rect = (
-            snapshot.capture_rect
-            if snapshot is not None and snapshot.result is result
-            else agent.last_capture_rect
-        )
-        if content_rect is None and agent.target_window:
-            try:
-                content_rect = agent._get_roi_rect()
-            except ValueError:
-                logger.exception("Cannot map result: ROI exceeds target display")
+        content_rect = current_snapshot.display_rect or current_snapshot.capture_rect
 
         projection_safe = bool(
             coordinate_frame is not None
@@ -888,7 +923,7 @@ def main() -> None:
         ):
             # Region percentages are relative to the ROI-cropped image,
             # so map them to the exact captured content area, not the window.
-            from dicom_overlay.domain.entities import Severity
+            from medical_image_harness.models import Severity
 
             for finding in result.findings:
                 # Normal findings stay in the report. Info findings with boxes
@@ -933,11 +968,10 @@ def main() -> None:
                                     finding.id,
                                 )
                             )
-        overlay.show_result(
-            result,
-            highlights,
-            content_rect=overlay_content_rect,
-        )
+        if projection_only:
+            overlay.reproject_result(highlights, content_rect=overlay_content_rect)
+            return
+        overlay.show_result(result, highlights, content_rect=overlay_content_rect)
         control_bar.set_pending_analysis(False)
         if announce and config.overlay.tts_enabled:
             speak_result(result.modality.value, result.severity.value, result.summary)
@@ -945,6 +979,17 @@ def main() -> None:
             # Same export path as the control-bar Export button; keeps batch
             # acceptance evidence identical to a manual clinician export.
             on_export_review()
+
+    def on_review_geometry_changed(snapshot: ReviewSnapshot) -> None:
+        current = _current_review_snapshot()
+        if current is None or current.image_base64 != snapshot.image_base64:
+            return  # A queued translation cannot restore an old image/report.
+        on_analysis_result(
+            current.result,
+            announce=False,
+            preserve_user_regions=True,
+            projection_only=True,
+        )
 
     def on_error(msg: str):
         if msg.startswith("New image ready"):
@@ -954,14 +999,39 @@ def main() -> None:
             speak_error(msg)
 
     def on_pending_analysis(msg: str) -> None:
+        regional_conversations.clear()
+        _active_region[0] = None
+        _pending_regional_threads.clear()
+        overlay.invalidate_review()
+        control_bar.set_interaction_mode("passive")
         control_bar.set_pending_analysis(True)
         control_bar.set_status(msg)
 
     signals.state_changed.connect(on_state_change)
     signals.analysis_result.connect(on_analysis_result)
+    signals.review_geometry_changed.connect(on_review_geometry_changed)
     signals.pending_analysis.connect(on_pending_analysis)
     signals.error_msg.connect(on_error)
     signals.prepare_capture.connect(overlay.hide_for_recapture)
+
+    def _display_configuration_changed(*_args) -> None:
+        # Hide immediately, including while paused; the bridge owns state/ROI.
+        overlay.invalidate_review()
+
+        async def _invalidate():
+            agent.invalidate_display_geometry()
+
+        bridge.submit(_invalidate())
+
+    def _watch_display(screen) -> None:
+        screen.geometryChanged.connect(_display_configuration_changed)
+        screen.logicalDotsPerInchChanged.connect(_display_configuration_changed)
+
+    for display in app.screens():
+        _watch_display(display)
+    app.screenAdded.connect(_watch_display)
+    app.screenAdded.connect(_display_configuration_changed)
+    app.screenRemoved.connect(_display_configuration_changed)
 
     # ─── Display timeout — single source of truth (overlay timer) ───
     def _on_display_expired() -> None:
@@ -1070,7 +1140,10 @@ def main() -> None:
         if roi is None:
             control_bar.set_status("ROI 設定已取消")
             return
-        save_roi_config(config_path, roi)
+        # A runtime-selected browser/viewer must not overwrite a different
+        # viewer's persisted calibration. Re-select and confirm ROI next launch.
+        if not screen_monitor.explicit_window_selected:
+            save_roi_config(config_path, roi)
         config.phi_roi = roi
 
         async def _roi():
@@ -1080,9 +1153,35 @@ def main() -> None:
         control_bar.set_status(
             f"ROI 已更新 top={roi.top} bottom={roi.bottom}"
             f" left={roi.left} right={roi.right}"
+            + ("（本次啟動）" if screen_monitor.explicit_window_selected else "")
         )
 
     signals.roi_setup_requested.connect(open_settings_roi_setup)
+
+    def choose_capture_window() -> None:
+        picker = WindowPickerDialog(
+            screen_monitor.available_capture_windows, parent=control_bar
+        )
+        if not picker.exec():
+            return
+        selected = picker.selected_window()
+        if selected is None:
+            return
+
+        async def _select() -> None:
+            agent.select_capture_window(selected)
+
+        future = bridge.submit(_select())
+
+        def _selected(f) -> None:
+            try:
+                f.result()
+            except Exception:
+                signals.error_msg.emit(
+                    "無法選取視窗，請等待目前判讀結束並確認視窗仍開啟。"
+                )
+
+        future.add_done_callback(_selected)
 
     def open_settings_dialog() -> None:
         dialog = SettingsDialog(
@@ -1097,6 +1196,7 @@ def main() -> None:
         dialog.trigger_mode_saved.connect(on_trigger_mode_changed)
         dialog.analysis_settings_saved.connect(on_analysis_settings_changed)
         dialog.roi_setup_requested.connect(open_settings_roi_setup)
+        dialog.capture_window_requested.connect(choose_capture_window)
         dialog.vision_test_requested.connect(_run_vision_test)
         dialog.exec()
 
@@ -1148,11 +1248,13 @@ def main() -> None:
             control_bar.set_status("Analyze an image before export")
             return
         try:
+            regional_conversations.bind(snapshot.image_base64)
             review_path = export_desktop_review(
                 image_base64=snapshot.image_base64,
                 result=snapshot.result,
                 output_root=app_base_dir() / "data" / "exports",
                 user_annotations=overlay.user_region_annotations,
+                regional_conversations=regional_conversations.export(),
             )
         except Exception:
             logger.exception("Desktop review export failed")
@@ -1164,6 +1266,7 @@ def main() -> None:
                 summary_panel=overlay.summary_panel,
                 control_bar=control_bar,
                 overlay_layer=overlay,
+                chat_panel=overlay.chat_panel,
             )
         except Exception:
             logger.exception("Review exported, but app widget capture failed")
@@ -1177,6 +1280,7 @@ def main() -> None:
     def _begin_chat_request() -> int:
         _chat_request_id[0] += 1
         _pending_user_region.clear()
+        _pending_regional_threads.clear()
         _pending_review[0] = None
         overlay.clear_chat_proposal()
         return _chat_request_id[0]
@@ -1189,6 +1293,8 @@ def main() -> None:
         revision: int,
     ) -> None:
         request_id = _begin_chat_request()
+        _active_region[0] = None
+        overlay.clear_chat()
         if agent.target_window:
             overlay.position_over_window(agent.target_window, agent.display_frame)
         overlay.show_chat_waiting(question)
@@ -1223,6 +1329,16 @@ def main() -> None:
         current_result = snapshot.result
         revision = snapshot.revision
         request_id = _begin_chat_request()
+        review_turn_id = uuid4().hex
+        regional_conversations.bind(snapshot.image_base64)
+        finding_id = selected_finding.id if selected_finding is not None else ""
+        regional_thread = regional_conversations.thread(selected_region, finding_id)
+        _pending_regional_threads[request_id] = regional_thread
+        _active_region[0] = (selected_region, finding_id, allow_add)
+        prior_regional_history = regional_thread.context()
+        overlay.chat_panel.set_regional_history(
+            regional_thread.transcript(), enabled=False
+        )
         if allow_add:
             _pending_user_region[request_id] = selected_region
         try:
@@ -1290,6 +1406,7 @@ def main() -> None:
                 selected_finding=selected_finding,
                 local_signal_audit=signal_audit,
                 refinement_evidence=refinement_evidence,
+                regional_history=prior_regional_history,
                 allow_add=allow_add,
             )
             (
@@ -1313,6 +1430,8 @@ def main() -> None:
         def _review_done(f):
             try:
                 raw_response, turn_trace = f.result()
+                if request_id != _chat_request_id[0]:
+                    return
                 response = parse_region_review_response(
                     raw_response,
                     selected_region=selected_region,
@@ -1328,6 +1447,7 @@ def main() -> None:
                         outcome="blocked" if response.warning else "no_change",
                         local_signal_audit=signal_audit,
                         regional_review_trace=turn_trace,
+                        review_turn_id=review_turn_id,
                     )
                     recorded_revision = agent.result_revision
                 signals.review_chat_done.emit(
@@ -1337,6 +1457,7 @@ def main() -> None:
                     signal_audit,
                     turn_trace,
                     request_id,
+                    review_turn_id,
                 )
             except Exception:
                 logger.exception("Regional review request failed")
@@ -1354,7 +1475,7 @@ def main() -> None:
             return
 
         question = text.strip()
-        logger.info("User chat question: %s", question)
+        logger.info("User chat submitted")
 
         snapshot = _current_review_snapshot()
         if snapshot is not None:
@@ -1383,6 +1504,27 @@ def main() -> None:
 
         future.add_done_callback(_chat_done)
 
+    def _show_saved_regional_thread(
+        snapshot: ReviewSnapshot,
+        region: RegionRect,
+        finding_id: str,
+        allow_add: bool,
+    ) -> bool:
+        regional_conversations.bind(snapshot.image_base64)
+        thread = regional_conversations.thread(region, finding_id)
+        if not thread.turns:
+            return False
+        _begin_chat_request()
+        _active_region[0] = (region, finding_id, allow_add)
+        if agent.target_window:
+            overlay.position_over_window(agent.target_window, agent.display_frame)
+        last = thread.turns[-1]
+        overlay.show_chat_response(
+            last.question, last.answer, regional_history=thread.transcript()
+        )
+        control_bar.set_status("Regional history; Send to continue")
+        return True
+
     def _ask_about_region(
         finding_id: str,
         label: str,
@@ -1398,6 +1540,17 @@ def main() -> None:
             control_bar.set_status("Analyze an image before regional QA")
             return
         title = label.strip() or "Selected region"
+        region = RegionRect(x=x, y=y, w=width, h=height)
+        selected_finding = match_selected_finding(
+            snapshot.result.findings,
+            finding_id=finding_id,
+            label=title,
+            selected_region=region,
+        )
+        if _show_saved_regional_thread(
+            snapshot, region, selected_finding.id if selected_finding else "", False
+        ):
+            return
         question, ok = QInputDialog.getText(
             control_bar,
             "Regional QA",
@@ -1447,6 +1600,9 @@ def main() -> None:
         if snapshot is None:
             control_bar.set_status("Analyze an image before regional QA")
             return
+        region = RegionRect(x=x, y=y, w=width, h=height)
+        if _show_saved_regional_thread(snapshot, region, "", True):
+            return
         question, ok = QInputDialog.getText(
             control_bar,
             "Reviewer annotation",
@@ -1483,6 +1639,45 @@ def main() -> None:
     overlay.user_region_created.connect(_ask_about_user_region)
     overlay.user_region_selected.connect(_ask_about_user_region)
 
+    def _continue_regional_chat(question: str) -> None:
+        snapshot = _current_review_snapshot()
+        target = _active_region[0]
+        if snapshot is None or target is None:
+            overlay.clear_chat()
+            control_bar.set_status("Select a region on the current image first")
+            return
+        region, finding_id, allow_add = target
+        selected = None
+        if finding_id:
+            matches = [
+                finding
+                for finding in snapshot.result.findings
+                if finding.id == finding_id
+            ]
+            if len(matches) != 1:
+                overlay.clear_chat()
+                _active_region[0] = None
+                control_bar.set_status(
+                    "Finding changed; select its current marker again"
+                )
+                return
+            selected = matches[0]
+        _submit_region_review(
+            question=question,
+            crop_base64=image_processor.crop_region_base64(
+                snapshot.image_base64, region
+            ),
+            source_crop_bytes=image_processor.crop_region_bytes(
+                snapshot.image_base64, region
+            ),
+            snapshot=snapshot,
+            selected_region=region,
+            selected_finding=selected,
+            allow_add=allow_add,
+        )
+
+    overlay.chat_panel.followup_requested.connect(_continue_regional_chat)
+
     def _show_chat_response(
         question: str,
         answer: str,
@@ -1506,6 +1701,7 @@ def main() -> None:
         signal_audit: dict[str, object],
         review_trace: list[dict[str, object]],
         request_id: int,
+        review_turn_id: str,
     ) -> None:
         if request_id != _chat_request_id[0]:
             return
@@ -1526,6 +1722,16 @@ def main() -> None:
         if response.warning:
             answer = f"{answer}\n\nReport update not available: {response.warning}"
 
+        thread = _pending_regional_threads.pop(request_id, None)
+        if thread is None or not regional_conversations.append(
+            thread,
+            question=question,
+            answer=answer,
+            proposal=response.proposal_summary,
+            review_turn_id=review_turn_id,
+        ):
+            return
+
         proposal_summary = ""
         if response.delta is not None:
             _pending_review[0] = (
@@ -1533,6 +1739,7 @@ def main() -> None:
                 revision,
                 signal_audit,
                 review_trace,
+                review_turn_id,
             )
             proposal_summary = response.proposal_summary
         else:
@@ -1543,6 +1750,7 @@ def main() -> None:
             question,
             answer,
             proposal_summary=proposal_summary,
+            regional_history=thread.transcript(),
         )
         control_bar.set_status(
             "Review report update" if proposal_summary else "Regional QA displayed"
@@ -1555,7 +1763,7 @@ def main() -> None:
             overlay.clear_chat_proposal(restart_timeout=True)
             control_bar.set_status("No current report update")
             return
-        delta, revision, signal_audit, review_trace = pending
+        delta, revision, signal_audit, review_trace, review_turn_id = pending
         control_bar.set_status("Applying reviewed report update...")
 
         async def _apply():
@@ -1564,6 +1772,7 @@ def main() -> None:
                 expected_revision=revision,
                 local_signal_audit=signal_audit,
                 regional_review_trace=review_trace,
+                review_turn_id=review_turn_id,
             )
 
         future = bridge.submit(_apply())
@@ -1580,8 +1789,19 @@ def main() -> None:
         future.add_done_callback(_done)
 
     def _on_review_apply_done(updated, delta: FindingDelta) -> None:
+        snapshot = _current_review_snapshot()
+        # The queued GUI callback may arrive after capture/image invalidation.
+        # An already-applied old result must not resurrect its overlay/history.
+        if snapshot is None or snapshot.result is not updated:
+            return
+        regional_conversations.bind(snapshot.image_base64)
         if delta.op is FindingOp.ADD:
             for box in delta.finding.bboxes:
+                regional_conversations.promote_manual_region(
+                    box,
+                    delta.finding.id,
+                    source_image_sha256=regional_conversations.image_sha256,
+                )
                 overlay.consume_user_region(box)
         on_analysis_result(
             updated,
@@ -1603,7 +1823,7 @@ def main() -> None:
         if pending is None:
             control_bar.set_status("Report unchanged")
             return
-        delta, revision, signal_audit, review_trace = pending
+        delta, revision, signal_audit, review_trace, review_turn_id = pending
         control_bar.set_status("Recording dismissed report update...")
 
         async def _record_dismissal():
@@ -1615,6 +1835,7 @@ def main() -> None:
                 user_confirmed=True,
                 proposed_operation=delta.op.value,
                 target_id=delta.finding.id,
+                review_turn_id=review_turn_id,
             )
 
         future = bridge.submit(_record_dismissal())
@@ -1647,7 +1868,15 @@ def main() -> None:
         control_bar.set_status("⚠ 聊天請求失敗")
         _pending_review[0] = None
         overlay.clear_chat_proposal()
-        overlay.clear_chat()
+        thread = _pending_regional_threads.pop(request_id, None)
+        if thread is not None and _current_review_snapshot() is not None:
+            overlay.show_chat_response(
+                "區域問答未完成",
+                "本次請求失敗，未新增判讀結論。可在下方重試；先前對話保留。",
+                regional_history=thread.transcript(),
+            )
+        else:
+            overlay.clear_chat()
 
     signals.chat_done.connect(_show_chat_response)
     signals.review_chat_done.connect(_show_review_chat_response)

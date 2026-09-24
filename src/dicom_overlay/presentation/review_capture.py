@@ -22,6 +22,7 @@ def capture_review_widgets(
     summary_panel: QWidget,
     control_bar: QWidget,
     overlay_layer: QWidget,
+    chat_panel: QWidget,
 ) -> None:
     """Save current GUI renderings alongside an explicit review export."""
     records: list[dict[str, object]] = []
@@ -29,6 +30,7 @@ def capture_review_widgets(
         ("summary-panel", summary_panel),
         ("control-bar", control_bar),
         ("overlay-layer", overlay_layer),
+        ("chat-panel", chat_panel),
     ):
         if not widget.isVisible():
             records.append({"widget": name, "status": "not_visible"})

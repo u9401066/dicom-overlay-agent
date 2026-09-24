@@ -4,13 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    Severity,
-)
 from dicom_overlay.domain.hooks import AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
     ModalityProfile,
@@ -20,6 +13,13 @@ from dicom_overlay.domain.modality_profile import (
 )
 from dicom_overlay.infrastructure.hooks.input_guard import InputGuard
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    Severity,
+)
 
 # ── ModalityProfile ──────────────────────────────────────────────────
 

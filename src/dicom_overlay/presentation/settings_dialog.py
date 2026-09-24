@@ -42,6 +42,7 @@ class SettingsDialog(QDialog):
     analysis_settings_saved = pyqtSignal(bool, int, bool)
     vision_test_requested = pyqtSignal(object)
     roi_setup_requested = pyqtSignal()
+    capture_window_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -119,9 +120,21 @@ class SettingsDialog(QDialog):
         form.addRow("", save_mode_btn)
 
         roi_btn = QPushButton("Set ROI")
-        roi_btn.clicked.connect(self.roi_setup_requested.emit)
+        roi_btn.clicked.connect(self._set_roi)
         form.addRow("", roi_btn)
+        window_btn = QPushButton("Choose image window")
+        window_btn.setObjectName("chooseCaptureWindow")
+        window_btn.clicked.connect(self._choose_capture_window)
+        form.addRow("", window_btn)
         return tab
+
+    def _choose_capture_window(self) -> None:
+        self.accept()
+        self.capture_window_requested.emit()
+
+    def _set_roi(self) -> None:
+        self.accept()
+        self.roi_setup_requested.emit()
 
     def _build_provider_tab(self) -> QWidget:
         tab = QWidget()

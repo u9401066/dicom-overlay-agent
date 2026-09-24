@@ -10,7 +10,7 @@ from dicom_overlay.application.rhythm_strip import (
     refine_rhythm_strip,
     resolve_rhythm_strip_region,
 )
-from dicom_overlay.domain.entities import (
+from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
     Finding,

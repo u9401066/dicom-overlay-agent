@@ -2,7 +2,7 @@
 
 import pytest
 
-from dicom_overlay.domain.ekg_layout import (
+from medical_image_harness.ekg_layout import (
     STANDARD_EKG_LEADS,
     normalize_ekg_row_strip_layout,
     parse_ekg_lead_inventory,
@@ -72,6 +72,33 @@ def test_inventory_rejects_out_of_bounds_bbox() -> None:
     assert inventory.complete is False
     assert inventory.malformed_entries == 1
     assert "lead_I" in inventory.missing_names
+
+
+@pytest.mark.parametrize("visibility", [None, False, 0, 1, "true", "false", [], {}])
+def test_inventory_requires_explicit_boolean_visible_label(visibility: object) -> None:
+    layout = _layout(["I"])
+    if visibility is None:
+        layout["leads"][0].pop("label_visible")
+    else:
+        layout["leads"][0]["label_visible"] = visibility
+    inventory = parse_ekg_lead_inventory(layout)
+    assert inventory.leads == ()
+    assert inventory.malformed_entries == 1
+    assert "lead_I" in inventory.missing_names
+
+
+@pytest.mark.parametrize("pixel_evidence", [None, {
+    "method": "local_black_ink_row_periodicity_v2", "status": "ok",
+    "is_12_row_strip": True, "detected_row_count": 12, "consistent_gap_count": 11,
+}])
+def test_row_normalizer_does_not_invent_missing_label_visibility(pixel_evidence) -> None:
+    layout = _layout(list(STANDARD_EKG_LEADS))
+    for lead in layout["leads"]:
+        lead.pop("label_visible")
+    normalized, repaired = normalize_ekg_row_strip_layout(layout, image_evidence=pixel_evidence)
+    assert not repaired
+    assert normalized == layout
+    assert not parse_ekg_lead_inventory(normalized).leads
 
 
 def test_inventory_accepts_object_shaped_normalized_bboxes() -> None:

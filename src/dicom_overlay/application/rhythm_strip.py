@@ -30,21 +30,21 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from dicom_overlay.application.multi_pass import (
-    DEFAULT_MIN_FOLLOWUP_BUDGET_SEC,
-    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
-    pad_region,
-    remap_bbox,
-)
-from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
-from dicom_overlay.domain.entities import (
+from medical_image_harness.ekg_layout import parse_ekg_lead_inventory
+from medical_image_harness.models import (
     AnalysisResult,
     Finding,
     Modality,
     RegionRect,
     Severity,
 )
-from dicom_overlay.domain.services import VisionAnalyzerService
+from medical_image_harness.multipass import (
+    DEFAULT_MIN_FOLLOWUP_BUDGET_SEC,
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+    pad_region,
+    remap_bbox,
+)
+from medical_image_harness.protocols import VisionAnalyzerService
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

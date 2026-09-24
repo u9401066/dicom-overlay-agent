@@ -1,6 +1,6 @@
 # Clinical knowledge catalogue
 
-Registry SHA-256: `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`
+Registry SHA-256: `0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1`
 Registry digest scope: `canonical-input-documents-v1`
 
 ## 明確氣胸宣稱卻低估嚴重度

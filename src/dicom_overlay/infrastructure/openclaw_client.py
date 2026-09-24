@@ -6,7 +6,6 @@ import asyncio
 import base64
 import hashlib
 import json
-import math
 import os
 import platform
 import re
@@ -30,30 +29,15 @@ if TYPE_CHECKING:
 from dicom_overlay.application.interpretation_harness import (
     EKG_LVH_BALANCE_GUIDANCE,
     EKG_PRECORDIAL_REVIEW_GUIDANCE,
-    PENDING_MULTIPASS_REASON,
     PROFESSIONAL_CO_READER_GUIDANCE,
     build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
 )
-from dicom_overlay.application.multi_pass import (
-    RefinementAction,
-    RefinementDelta,
-    RefinementResult,
-)
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
 )
-from dicom_overlay.domain.services import VisionAnalyzerService
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
@@ -62,6 +46,23 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     OpenClawRuntimeError,
     build_openclaw_chat_frame,
     parse_gateway_hello,
+)
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
+from medical_image_harness.multipass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
+)
+from medical_image_harness.protocols import (
+    PENDING_MULTIPASS_REASON,
+    VisionAnalyzerService,
 )
 
 logger = structlog.get_logger(__name__)
@@ -3469,11 +3470,10 @@ def _retain_unlocalized_refinement_semantics(
 
 
 def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
-    def js_round(value: float) -> float:
-        return math.floor(value * 10_000 + 0.5) / 10_000
+    from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
 
     canonical = sorted(
-        [f"{js_round(value):.4f}" for value in (box.x, box.y, box.w, box.h)]
+        [canonical_bbox_coordinate(value) for value in (box.x, box.y, box.w, box.h)]
         for box in boxes
     )
     encoded = json.dumps(canonical, separators=(",", ":")).encode("utf-8")

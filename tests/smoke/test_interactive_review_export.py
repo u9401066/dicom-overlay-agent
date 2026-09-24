@@ -11,17 +11,11 @@ from PIL import Image
 
 from dicom_overlay.application.overlay_agent import OverlayAgent
 from dicom_overlay.application.review_chat import parse_region_review_response
-from dicom_overlay.domain.entities import (
-    AgentState,
-    AnalysisResult,
-    AppConfig,
-    Modality,
-    RegionRect,
-    Severity,
-)
+from dicom_overlay.domain.entities import AgentState, AppConfig
 from dicom_overlay.infrastructure.desktop_review_exporter import (
     export_desktop_review,
 )
+from medical_image_harness.models import AnalysisResult, Modality, RegionRect, Severity
 
 
 class _UnusedDependency:

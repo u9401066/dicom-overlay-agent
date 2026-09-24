@@ -50,7 +50,9 @@ hashing uses .NET SHA-256 directly. There is no fallback to an unverified packag
   1,420 passed, six explicit skips, one failure.
 - A new locked `npm ci --ignore-scripts` followed immediately by the same helper
   and real staging/workspace checks also passes: **9 passed in 117.93 s**.
-  The complete App regression is being rerun before promotion.
+  Complete App regression then passes **1,429 tests / six explicit skips in
+  186.95 s** in the separate direct-model worktree. Candidate preparation fix
+  `a7d8fb4` also passes CI 34496955373 and its associated secret scans.
 
 This changes install/build preparation only, not image prompts, ROI, diagnosis,
 model selection or the OpenClaw-owned inference loop. It is not real candidate

@@ -1,22 +1,23 @@
 # DICOM Overlay Agent — 系統規格書
 
 **Version:** 0.4.7
-**Date:** 2026-09-10
+**Date:** 2026-09-24
 **Author:** 寧寧 (AI Research Assistant, KMUH Anesthesiology)
 
 ---
 
 ## 0. Current Implementation Binding
 
-### 0.1 2026-09-10 acceptance binding
+### 0.1 2026-09-24 acceptance binding
 
 本輪交付不得只以 mock、headless 或單元測試代替產品驗收，必須同時留下：
 
 - Windows 封裝 GUI 實際啟動、OpenClaw Gateway ready、測試影像在 viewer 中
   可見，以及 overlay/report 實際渲染的桌面截圖證據。
 - 精確模型路由 `openai/gpt-6-astra`（底層 model id
-  `gpt-6-astra`、reasoning effort `low`）的真實影像交易、每階段延遲及 usage receipts；
-  本輪不再比較 Luna high。Public session token snapshots 不是 lifetime billing ledger，
+  `gpt-6-astra`、reasoning effort `medium`）的真實影像交易、每階段延遲及 usage receipts；
+  歷史 low 證據不得改標為 medium。GPT-6 Luna xhigh 是使用者允許的替代選項，
+  不是靜默 fallback。Public session token snapshots 不是 lifetime billing ledger，
   缺漏或取消階段不能當作零用量，API 等值估算與 subscription 扣款分開；
   若外部帳號、訂閱或額度阻擋，必須保留 provider receipt 並明確標成 blocked，
   不得用 mock 結果替代。
@@ -94,13 +95,13 @@
   state schema rollback 與 portable size gate 尚未閉合，因此暫緩全面升級，維持
   `2026.7.1-2` pin。
 
-執行細節以 [`ARCHITECTURE.md`](ARCHITECTURE.md)、
-[`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md) 與
-[`docs/verification-2026-09-02.md`](docs/verification-2026-09-02.md)、
-[`docs/verification-2026-09-10.md`](docs/verification-2026-09-10.md)、
-[`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md)、
-[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md) 及
-[`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)
+執行細節以 [`docs/architecture/overview.md`](overview.md)、
+[`docs/operations/real-desktop-tests.md`](../operations/real-desktop-tests.md) 與
+[`docs/evidence/2026-09/verification-2026-09-02.md`](../evidence/2026-09/verification-2026-09-02.md)、
+[`docs/evidence/2026-09/verification-2026-09-10.md`](../evidence/2026-09/verification-2026-09-10.md)、
+[`docs/evaluation/cohorts.md`](../evaluation/cohorts.md)、
+[`docs/evidence/2026-09/openclaw-2x-decision-2026-09-02.md`](../evidence/2026-09/openclaw-2x-decision-2026-09-02.md) 及
+[`docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`](../evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md)
 為準。
 
 ---
@@ -627,7 +628,7 @@ review/bbox 如何一致。Agent workflow 使用相同 step ID 與順序，只�
 Schema、generated-view 與 SQLite parity 是 software gate；仍須由相關專科 reviewer
 審查規則內容、來源定位、review date 與 severity policy，並由法務確認引用／授權。
 七條規則不是完整 ECG/CXR guideline。完整維護命令與稽核邊界見
-[`clinical_knowledge/README.md`](clinical_knowledge/README.md)。
+[`clinical_knowledge/README.md`](../../clinical_knowledge/README.md)。
 
 ---
 

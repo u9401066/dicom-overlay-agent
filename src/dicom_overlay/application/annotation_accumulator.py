@@ -25,13 +25,8 @@ from __future__ import annotations
 
 import dataclasses
 
-from dicom_overlay.domain.entities import (
-    Finding,
-    FindingDelta,
-    FindingOp,
-    RegionRect,
-    Severity,
-)
+from dicom_overlay.domain.entities import FindingDelta, FindingOp
+from medical_image_harness.models import Finding, RegionRect, Severity
 
 # Higher rank = more clinically urgent. Used so a merge keeps the *most* severe
 # label and never downgrades it by accident.

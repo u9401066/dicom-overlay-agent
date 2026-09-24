@@ -6,15 +6,17 @@ import json
 from typing import TYPE_CHECKING, cast
 
 import structlog
-from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen, QResizeEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -22,15 +24,14 @@ from PyQt6.QtWidgets import (
 from dicom_overlay.presentation.capture_safety import protect_widget_from_capture
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.entities import (
+    from dicom_overlay.domain.entities import DisplayFrame, WindowRect
+    from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
+    from medical_image_harness.models import (
         AnalysisResult,
         ChecklistItem,
-        DisplayFrame,
         RegionRect,
         UserRegionAnnotation,
-        WindowRect,
     )
-    from dicom_overlay.infrastructure.overlay_geometry import OverlayCoordinateFrame
 
 logger = structlog.get_logger(__name__)
 
@@ -50,6 +51,34 @@ _REPORT_TEXT_COLORS = {
     "info": "#c8ced9",
 }
 _USER_REGION_HIGHLIGHT_ID = "__user_region__"
+
+
+def _review_heading(result: AnalysisResult) -> str:
+    """Do not present absence of a confirmed abnormality as a normal assessment."""
+    from medical_image_harness.ekg_layout import parse_ekg_lead_inventory
+    from medical_image_harness.models import Severity
+
+    levels = {
+        result.severity,
+        *(finding.severity for finding in result.findings),
+        *(item.status for item in result.checklist.values()),
+    }
+    if Severity.CRITICAL in levels:
+        return "CRITICAL — incomplete assessment" if result.incomplete else "CRITICAL"
+    if Severity.WARNING in levels:
+        return "WARNING — incomplete assessment" if result.incomplete else "WARNING"
+    limited = (
+        result.incomplete
+        or result.review_required
+        or bool(result.validation_warnings)
+        or (
+            result.modality.value == "EKG"
+            and not parse_ekg_lead_inventory(result.layout).complete
+        )
+    )
+    if limited:
+        return "INDETERMINATE — review required"
+    return "REVIEW FINDINGS" if Severity.INFO in levels else "NORMAL"
 
 
 def _summarize_process_trace(
@@ -319,14 +348,26 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
 
     def update_result(self, result: AnalysisResult) -> None:
         """Update panel with new analysis result."""
-        from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
-        from dicom_overlay.domain.entities import Severity
         from dicom_overlay.domain.modality_profile import get_active_registry
+        from medical_image_harness.ekg_layout import parse_ekg_lead_inventory
+        from medical_image_harness.models import Severity
 
         profile = get_active_registry().resolve(result.modality.value)
-        self._title_label.setText(
-            f"{profile.icon} {profile.resolved_display_name()} Analysis"
-        )
+        display_name = profile.resolved_display_name()
+        if result.modality.value == "EKG":
+            # A modality profile describes a capability, not the completeness of
+            # this capture. Missing/hidden labels cannot substantiate 12 leads.
+            inventory = parse_ekg_lead_inventory(result.layout)
+            declared_format = (
+                str(result.layout.get("format", "")).strip().casefold()
+                if isinstance(result.layout, dict)
+                else ""
+            )
+            if declared_format == "partial":
+                display_name = "Partial EKG"
+            elif not inventory.complete:
+                display_name = "EKG"
+        self._title_label.setText(f"{profile.icon} {display_name} Analysis")
 
         self._clear_layout(self._findings_layout)
         self._clear_layout(self._checklist_layout)
@@ -385,7 +426,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             if value
         )
         self._summary_label.setText(
-            f"{result.severity.value.upper()}\n{result.summary}"
+            f"{_review_heading(result)}\n{result.summary}"
             + (f"\n{metadata}" if metadata else "")
         )
 
@@ -849,6 +890,7 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
 
     proposal_accepted = pyqtSignal()
     proposal_dismissed = pyqtSignal()
+    followup_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -873,7 +915,15 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         self._title_label = QLabel("💬 AI 對話")
         self._title_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         self._title_label.setStyleSheet("color: white; padding-bottom: 4px;")
-        layout.addWidget(self._title_label)
+        title_row = QHBoxLayout()
+        title_row.addWidget(self._title_label, stretch=1)
+        hide_button = QPushButton("Hide")
+        hide_button.setToolTip(
+            "Hide this panel; regional history stays until the image changes"
+        )
+        hide_button.clicked.connect(self.hide)
+        title_row.addWidget(hide_button)
+        layout.addLayout(title_row)
 
         sep = QLabel("─" * 36)
         sep.setStyleSheet("color: #555;")
@@ -940,7 +990,43 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         action_layout.addWidget(self._apply_proposal_btn)
         self._proposal_actions.setVisible(False)
         layout.addWidget(self._proposal_actions)
+        self._history = QTextEdit()
+        self._history.setObjectName("regionalHistory")
+        self._history.setReadOnly(True)
+        self._history.setAcceptRichText(False)
+        self._history.setMaximumHeight(150)
+        self._history.setAccessibleName("This region's conversation history")
+        self._history.hide()
+        layout.addWidget(self._history)
+        self._followup = QWidget()
+        followup_layout = QHBoxLayout(self._followup)
+        followup_layout.setContentsMargins(0, 0, 0, 0)
+        self._followup_input = QLineEdit()
+        self._followup_input.setObjectName("regionalFollowupInput")
+        self._followup_input.setPlaceholderText("繼續詢問此區域…")
+        self._followup_input.setMaxLength(4000)
+        self._followup_input.returnPressed.connect(self._send_followup)
+        followup_layout.addWidget(self._followup_input)
+        self._followup_send = QPushButton("Send")
+        self._followup_send.setObjectName("regionalFollowupSend")
+        self._followup_send.clicked.connect(self._send_followup)
+        followup_layout.addWidget(self._followup_send)
+        self._followup.hide()
+        layout.addWidget(self._followup)
         protect_widget_from_capture(self)
+
+    def set_regional_history(self, text: str, *, enabled: bool) -> None:
+        self._followup_input.clear()
+        self._history.setPlainText(text)
+        self._history.setVisible(bool(text))
+        self._followup.setVisible(True)
+        self._followup.setEnabled(enabled)
+
+    def _send_followup(self) -> None:
+        question = self._followup_input.text().strip()
+        if question and self._followup.isEnabled() and not self._followup.isHidden():
+            self._followup_input.clear()
+            self.followup_requested.emit(question)
 
     def show_chat(
         self,
@@ -955,6 +1041,7 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         self.setVisible(True)
 
     def show_waiting(self, question: str) -> None:
+        self._followup.setEnabled(False)
         self._question_label.setText(f"Q: {question}")
         self._answer_label.setText("思考中…")
         self._set_proposal("")
@@ -980,6 +1067,10 @@ class ChatPanel(_DraggableWindowMixin, QWidget):
         self.proposal_dismissed.emit()
 
     def clear(self) -> None:
+        self._history.clear()
+        self._history.hide()
+        self._followup_input.clear()
+        self._followup.hide()
         self._question_label.setText("")
         self._answer_label.setText("")
         self._set_proposal("")
@@ -1030,6 +1121,7 @@ class OverlayWindow(QWidget):
         self._display_duration_sec = 30
         self._critical_persist = True
         self._current_severity = "normal"
+        self._regional_chat_persistent = False
         self._interaction_mode = "passive"
         self._content_rect: tuple[int, int, int, int] | None = None
         self._coordinate_frame: OverlayCoordinateFrame | None = None
@@ -1076,7 +1168,7 @@ class OverlayWindow(QWidget):
 
     @property
     def user_region_annotations(self) -> list[UserRegionAnnotation]:
-        from dicom_overlay.domain.entities import RegionRect, UserRegionAnnotation
+        from medical_image_harness.models import RegionRect, UserRegionAnnotation
 
         annotations: list[UserRegionAnnotation] = []
         for values in self._user_regions:
@@ -1188,6 +1280,8 @@ class OverlayWindow(QWidget):
         self,
         rect: WindowRect,
         display_frame: DisplayFrame | None = None,
+        *,
+        preserve_panel_positions: bool = False,
     ) -> OverlayCoordinateFrame:
         """Position the overlay over the display containing the viewer.
 
@@ -1227,7 +1321,10 @@ class OverlayWindow(QWidget):
                 logical.height,
             )
 
+        unchanged_frame = self._coordinate_frame == frame
         self._coordinate_frame = frame
+        if preserve_panel_positions and unchanged_frame:
+            return frame
         sw, sh = logical.width, logical.height
         screen_x, screen_y = logical.left, logical.top
 
@@ -1277,6 +1374,20 @@ class OverlayWindow(QWidget):
         # Results persist until dismissed or new image triggers a new analysis.
         # No auto-hide timer.
 
+    def reproject_result(
+        self,
+        highlights: list[tuple[int, int, int, int, str, str, str]],
+        *,
+        content_rect: tuple[int, int, int, int] | None,
+    ) -> None:
+        """Move existing markers without clearing conversation or reopening panels."""
+        self._selection_start = None
+        self._draft_rect = None
+        self._highlights = highlights
+        self._content_rect = content_rect
+        self._refresh_user_region_highlights()
+        self.update()
+
     def clear_result(self) -> None:
         self.summary_panel.clear()
         self._highlights.clear()
@@ -1305,6 +1416,12 @@ class OverlayWindow(QWidget):
         self._content_rect = None
         self.hide()
 
+    def invalidate_review(self) -> None:
+        """Silently remove old-image results without triggering another analysis."""
+        self.clear_result()
+        self.hide_for_recapture()
+        self.set_interaction_mode("passive")
+
     def show_chat_waiting(self, question: str) -> None:
         """Show chat panel with 'thinking' placeholder."""
         self._chat_timer.stop()
@@ -1320,6 +1437,7 @@ class OverlayWindow(QWidget):
         answer: str,
         *,
         proposal_summary: str = "",
+        regional_history: str | None = None,
     ) -> None:
         """Show chat Q&A on overlay."""
         self.chat_panel.show_chat(
@@ -1327,12 +1445,15 @@ class OverlayWindow(QWidget):
             answer,
             proposal_summary=proposal_summary,
         )
+        self._regional_chat_persistent = regional_history is not None
+        if regional_history is not None:
+            self.chat_panel.set_regional_history(regional_history, enabled=True)
         protect_widget_from_capture(self.chat_panel)
         self.setWindowOpacity(1.0)
         self.show()
         protect_widget_from_capture(self)
         # A pending report update must stay available for an explicit decision.
-        if proposal_summary:
+        if proposal_summary or self._regional_chat_persistent:
             self._chat_timer.stop()
         else:
             self._chat_timer.start(self._display_duration_sec * 1000)
@@ -1341,13 +1462,18 @@ class OverlayWindow(QWidget):
         """Remove pending proposal controls after apply, dismiss, or image change."""
 
         self.chat_panel.clear_proposal()
-        if restart_timeout and self.chat_panel.isVisible():
+        if (
+            restart_timeout
+            and self.chat_panel.isVisible()
+            and not self._regional_chat_persistent
+        ):
             self._chat_timer.start(self._display_duration_sec * 1000)
 
     def clear_chat(self) -> None:
         """Dismiss only chat state, preserving the current report and boxes."""
 
         self._chat_timer.stop()
+        self._regional_chat_persistent = False
         self.chat_panel.clear()
 
     def _fade_out(self) -> None:
@@ -1447,11 +1573,25 @@ class OverlayWindow(QWidget):
     def paintEvent(self, a0: object) -> None:
         """Draw region highlights with labels (spec §3.4)."""
         del a0
-        if not self._highlights and self._draft_rect is None:
+        marking_content = (
+            self._interaction_mode == "annotate" and self._content_rect is not None
+        )
+        if not self._highlights and self._draft_rect is None and not marking_content:
             return
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        if marking_content:
+            # Windows layered-window hit testing passes alpha-zero pixels to
+            # the window underneath even without WindowTransparentForInput.
+            # Give the *captured ROI*, not just existing AI boxes, a nonzero
+            # input surface. Outside it stays transparent; passive mode still
+            # passes every click through. This does not expand capture scope.
+            assert self._content_rect is not None
+            content = QRect(*self._content_rect).intersected(self.rect())
+            if not content.isEmpty():
+                painter.fillRect(content, QColor(0, 0, 0, 1))
 
         for x, y, w, h, severity, label, _finding_id in self._highlights:
             color = SEVERITY_COLORS.get(severity, SEVERITY_COLORS["info"])

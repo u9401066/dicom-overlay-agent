@@ -25,6 +25,10 @@ datas = [
     *optional_tree("clinical_knowledge", "clinical_knowledge"),
     *optional_file("build/clinical-knowledge.sqlite", "clinical_knowledge"),
     *optional_tree("openclaw/workspace", "openclaw/workspace"),
+    # Canonical public contract resources, pinned by the harness gitlink.
+    ("third_party/medical-image-agent-harness/schemas", "medical_image_harness/schemas"),
+    ("third_party/medical-image-agent-harness/.agents/skills/medical-image-reading",
+     "medical_image_harness/skills/medical-image-reading"),
     *optional_tree("build/openclaw-runtime/openclaw", "openclaw"),
     # Core 4: bundle the portable Node.js runtime when present so the portable
     # bundle is zero-install. Fetch it with scripts\fetch-node.ps1.

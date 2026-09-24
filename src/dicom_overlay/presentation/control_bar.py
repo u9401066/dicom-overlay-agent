@@ -101,7 +101,9 @@ class ControlBarWindow(QWidget):
 
         self._annotate_btn = self._button("Mark")
         self._annotate_btn.setCheckable(True)
-        self._annotate_btn.setToolTip("Draw a region for focused AI review")
+        self._annotate_btn.setToolTip(
+            "Draw anywhere in the captured image area, including outside AI boxes"
+        )
         self._annotate_btn.toggled.connect(
             lambda checked: self._toggle_interaction("annotate", checked)
         )

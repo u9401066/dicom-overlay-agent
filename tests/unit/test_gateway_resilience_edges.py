@@ -9,13 +9,6 @@ from typing import Any
 import pytest
 import websockets
 
-from dicom_overlay.domain.entities import (
-    AnalysisResult,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
 from dicom_overlay.infrastructure import openclaw_client as openclaw_client_module
 from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 from dicom_overlay.infrastructure.openclaw_client import (
@@ -23,6 +16,13 @@ from dicom_overlay.infrastructure.openclaw_client import (
     OpenClawClient,
     _bbox_coordinates_digest,
     probe_openclaw_gateway,
+)
+from medical_image_harness.models import (
+    AnalysisResult,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
 )
 
 

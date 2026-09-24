@@ -11,7 +11,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from dicom_overlay.domain.entities import RegionRect, ROICrop, WindowRect
+from dicom_overlay.domain.entities import ROICrop, WindowRect
+from medical_image_harness.models import RegionRect
 
 
 @dataclass(frozen=True)

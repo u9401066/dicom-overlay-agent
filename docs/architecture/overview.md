@@ -1,11 +1,16 @@
 # Architecture
 
+Current navigation: [component owners](components.md), [documentation index](../README.md).
+The September 24 source directly imports the independent current engine; the
+active model is Astra medium. See the [new package/GUI checkpoint](../evidence/2026-09/astra-medium-2026-09-24.md).
+The older versioned measurements below retain their original scope.
+
 本文件描述 Unreleased `0.4.7`（更新至 2026-09-10）的桌面程式、OpenClaw agent、MultiPass
 影像工具、座標投影與 MEETI 評估邊界。歷史 paired 結果以
-[`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md)
+[`docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`](../evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md)
 為準；本輪實機證據與尚待完成項目以
-[`docs/verification-2026-09-10.md`](docs/verification-2026-09-10.md)、
-[`REAL_TEST_RUNBOOK.md`](REAL_TEST_RUNBOOK.md) 及實驗目錄內的機器可讀 state
+[`docs/evidence/2026-09/verification-2026-09-10.md`](../evidence/2026-09/verification-2026-09-10.md)、
+[`docs/operations/real-desktop-tests.md`](../operations/real-desktop-tests.md) 及實驗目錄內的機器可讀 state
 為準。`0.4.7` 目前只有 source metadata，沒有 Git tag 或 GitHub Release。
 
 ## Runtime Overview
@@ -45,6 +50,14 @@ Python 桌面程式不匯入 OpenClaw plugin SDK 私有 API，只使用公開 Ga
 
 ## Layer Boundaries
 
+The direct-integration branch obtains image-reading model classes from the pinned
+public `medical_image_harness.models` package. App callers import them directly;
+`domain/entities.py` retains only product-owned geometry/configuration/lifecycle
+and edit types, with no compatibility exports. Current orchestration/transport
+and 16-key draft behavior remain unchanged. Canonical evidence assembly and full
+engine extraction are not yet complete; see
+[direct integration scope](direct-harness-integration.md).
+
 | Layer | Responsibility |
 |---|---|
 | `domain/` | `AnalysisResult`、finding/bbox、EKG layout、delta 與純規則；不依賴 GUI、網路或 OpenClaw |
@@ -62,7 +75,7 @@ Subscription-backed inference follows a deliberately narrow path:
    authentication source, not an agent handoff target.
 2. The pinned official `@openclaw/codex` `2026.7.1-1` migration provider is
    staged into the OpenClaw runtime as `oauth_migration_only`.
-3. [`codex_subscription_auth.py`](src/dicom_overlay/infrastructure/codex_subscription_auth.py)
+3. [`codex_subscription_auth.py`](../../src/dicom_overlay/infrastructure/codex_subscription_auth.py)
    copies only auth/model-cache inputs to a temporary directory, invokes the
    OpenClaw migration command, removes the temporary plugin configuration and
    deletes the temporary source.
@@ -165,7 +178,7 @@ The live medical-image tool allowlist is intentionally small:
 
 ECGFounder Torch/checkpoint files stay outside the portable bundle. The full
 contract, pinned hashes, eligibility rules and research metrics are in
-[`docs/ecgfounder-tool.md`](docs/ecgfounder-tool.md).
+[`docs/integrations/ecgfounder-tool.md`](../integrations/ecgfounder-tool.md).
 
 ## Coordinates And Review Export
 
@@ -213,7 +226,7 @@ The full cohort has 9,922 ordered image cases. Evaluation uses two manifests:
   fields available during inference;
 - `full-9922.gold.json`: opened only after inference to score the saved result.
 
-[`run-meeti-paired-experiment.py`](scripts/run-meeti-paired-experiment.py) runs a
+[`run-meeti-paired-experiment.py`](../../scripts/run-meeti-paired-experiment.py) runs a
 minimal one-look baseline and then a clinical MultiPass+matched-ECGFounder
 candidate. Both arms must share manifest hashes, case order, model, OpenClaw
 runtime, source/scorer/protocol fingerprint and agent ownership. State is written
@@ -240,7 +253,7 @@ aggregate score, speed claim, or population accuracy may be reported.
 The answer-free partial-ECG v2 corpus has eight deterministic transformations.
 An 8/8 mock result proves only manifest/image hashing, partial-input propagation,
 schema, and bbox plumbing. It has not completed the real App/Luna path and has no
-diagnostic score. See [`docs/evaluation-cohorts.md`](docs/evaluation-cohorts.md).
+diagnostic score. See [`docs/evaluation/cohorts.md`](../evaluation/cohorts.md).
 
 ## Clinical Knowledge Projection
 
@@ -258,10 +271,10 @@ software parity only. A qualified specialist still has to approve clinical
 content/review dates, and legal review still has to approve source licensing.
 The rule engine checks consistency of model-produced structured text; it does
 not independently diagnose pixels or move bboxes. See
-[`clinical_knowledge/README.md`](clinical_knowledge/README.md).
+[`clinical_knowledge/README.md`](../../clinical_knowledge/README.md).
 
 Historical completed results under their original protocol are documented in
-[`docs/meeti-openclaw-experiments-2026-08-09.md`](docs/meeti-openclaw-experiments-2026-08-09.md).
+[`docs/evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md`](../evidence/2026-08/meeti-openclaw-experiments-2026-08-09.md).
 
 ## Portable Runtime
 
@@ -290,7 +303,7 @@ probe, but is not adopted. Its core unpacked footprint measured 196.68 MiB versu
 83.43 MiB for the pinned baseline; OAuth/config migration and state-schema
 rollback also remain open. The pin therefore stays at `2026.7.1-2`; the full
 decision and upgrade gates are in
-[`docs/openclaw-2x-decision-2026-09-02.md`](docs/openclaw-2x-decision-2026-09-02.md).
+[`docs/evidence/2026-09/openclaw-2x-decision-2026-09-02.md`](../evidence/2026-09/openclaw-2x-decision-2026-09-02.md).
 
 ## Development Context
 

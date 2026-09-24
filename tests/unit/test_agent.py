@@ -9,17 +9,12 @@ import pytest
 
 from dicom_overlay.domain.entities import (
     AgentState,
-    AnalysisResult,
     AppConfig,
-    ChecklistItem,
+    CaptureWindow,
     DisplayFrame,
-    Finding,
     FindingDelta,
     FindingOp,
-    Modality,
-    RegionRect,
     ROICrop,
-    Severity,
     TriggerMode,
     WindowRect,
 )
@@ -27,8 +22,16 @@ from dicom_overlay.domain.services import (
     ImageProcessorService,
     RegionMapperService,
     ScreenMonitorService,
-    VisionAnalyzerService,
 )
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
+from medical_image_harness.protocols import VisionAnalyzerService
 
 # --- Mock implementations ---
 
@@ -221,10 +224,60 @@ class TestOverlayAgent:
         assert agent.state == AgentState.INIT
 
     @pytest.mark.asyncio
+    async def test_selecting_external_window_requires_new_roi_before_any_capture(
+        self, agent, agent_deps, monkeypatch
+    ):
+        monitor = agent_deps["screen_monitor"]
+        new_rect = WindowRect(20, 30, 1200, 800)
+        monkeypatch.setattr(monitor, "select_capture_window", lambda _: new_rect)
+        agent._state = AgentState.DISPLAYING
+        agent._last_result = agent_deps["vision_analyzer"].result
+        agent._last_image_base64 = "old"
+        previous_revision = agent.result_revision
+        agent.select_capture_window(
+            CaptureWindow(1, 101, "Browser", "Synthetic browser")
+        )
+        assert agent.state is AgentState.SETUP
+        assert agent.target_window == new_rect
+        assert not agent.has_roi_config()
+        assert agent.review_snapshot is None
+        assert agent.last_image_base64 == ""
+        assert agent.result_revision == previous_revision + 1
+        await agent.trigger_manual()
+        assert monitor.capture_rects == []
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    @pytest.mark.parametrize(
+        "state", [AgentState.INIT, AgentState.CAPTURING, AgentState.ANALYZING]
+    )
+    def test_cannot_switch_target_during_active_startup_or_read(
+        self, agent, monkeypatch, state
+    ):
+        selected = []
+        monkeypatch.setattr(
+            agent._monitor, "select_capture_window", lambda row: selected.append(row)
+        )
+        agent._state = state
+        roi = agent._config.phi_roi
+        with pytest.raises(RuntimeError, match="Wait"):
+            agent.select_capture_window(
+                CaptureWindow(1, 101, "Browser", "Synthetic browser")
+            )
+        assert agent._config.phi_roi is roi
+        assert selected == []
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("blocked_check", [1, 2])
-    @pytest.mark.parametrize("reason", ["viewer_roi_obstructed", "roi_outside_viewer_client"])
+    @pytest.mark.parametrize(
+        "reason", ["viewer_roi_obstructed", "roi_outside_viewer_client"]
+    )
     async def test_capture_obstruction_before_or_after_screenshot_never_sends(
-        self, agent, agent_deps, monkeypatch, blocked_check, reason,
+        self,
+        agent,
+        agent_deps,
+        monkeypatch,
+        blocked_check,
+        reason,
     ):
         from dicom_overlay.domain.services import CaptureBlockedError
 
@@ -287,6 +340,7 @@ class TestOverlayAgent:
                 note="Reviewer accepted regional re-check",
             ),
             expected_revision=4,
+            review_turn_id="a" * 32,
             local_signal_audit={
                 "status": "ok",
                 "ink_pixel_ratio": 0.12,
@@ -308,6 +362,7 @@ class TestOverlayAgent:
         assert any("initial checklist" in reason for reason in updated.review_reasons)
         assert any("Reconcile" in step for step in updated.next_steps)
         assert updated.analysis_trace[-1]["stage"] == "interactive_review"
+        assert updated.analysis_trace[-1]["review_turn_id"] == "a" * 32
         assert updated.analysis_trace[-1]["user_confirmed"] is True
         assert updated.analysis_trace[-1]["bbox_source"] == (
             "selected_finding_existing_bbox"
@@ -331,7 +386,10 @@ class TestOverlayAgent:
         }
         assert agent.result_revision == 5
 
-    def test_regional_no_change_is_recorded_without_mutating_findings(self, agent):
+    @pytest.mark.parametrize("outcome", ["blocked", "no_change", "dismissed"])
+    def test_regional_no_change_is_recorded_without_mutating_findings(
+        self, agent, outcome
+    ):
         from dicom_overlay.application.overlay_agent import ReviewSnapshot
 
         finding = Finding(
@@ -361,7 +419,9 @@ class TestOverlayAgent:
 
         updated = agent.record_regional_review_outcome(
             expected_revision=8,
-            outcome="blocked",
+            outcome=outcome,
+            review_turn_id="b" * 32,
+            user_confirmed=outcome == "dismissed",
             local_signal_audit={
                 "status": "ok",
                 "low_signal": True,
@@ -380,10 +440,11 @@ class TestOverlayAgent:
         assert updated.findings == [finding]
         assert updated.analysis_trace[-1] == {
             "stage": "interactive_review",
-            "status": "blocked",
+            "status": outcome,
             "tool": "openclaw_region_followup",
             "operation": "none",
-            "user_confirmed": False,
+            "user_confirmed": outcome == "dismissed",
+            "review_turn_id": "b" * 32,
             "local_signal_audit": {"status": "ok", "low_signal": True},
             "regional_turns": [
                 {
@@ -397,6 +458,25 @@ class TestOverlayAgent:
         assert agent.review_snapshot is not None
         assert agent.review_snapshot.result is updated
         assert agent.review_snapshot.revision == 9
+
+        # Even a caller holding the new revision cannot finalize this turn twice.
+        with pytest.raises(ValueError, match="already has a recorded outcome"):
+            agent.record_regional_review_outcome(
+                expected_revision=9, outcome="no_change", review_turn_id="b" * 32
+            )
+        with pytest.raises(ValueError, match="already has a recorded outcome"):
+            agent.apply_finding_delta(
+                FindingDelta(op=FindingOp.RETRACT, finding=finding),
+                expected_revision=9,
+                review_turn_id="b" * 32,
+            )
+        for invalid in ["private free text", "A" * 32]:
+            with pytest.raises(ValueError, match="32 lowercase"):
+                agent.record_regional_review_outcome(
+                    expected_revision=9, outcome="no_change", review_turn_id=invalid
+                )
+        assert agent.last_result is updated
+        assert agent.result_revision == 9
 
     def test_reviewer_retract_records_static_region_fallback(self, agent):
         original = Finding(
@@ -765,6 +845,163 @@ class TestOverlayAgent:
     async def test_default_trigger_mode_is_hybrid(self, agent):
         assert agent.trigger_mode == TriggerMode.HYBRID
 
+    @pytest.mark.parametrize("origin", [0, -1920])
+    async def test_translation_updates_projection_without_rewriting_acquisition(
+        self, agent, agent_deps, origin
+    ):
+        monitor = agent_deps["screen_monitor"]
+        monitor.display = DisplayFrame(WindowRect(origin, 0, 1920, 1080))
+        monitor.window = WindowRect(origin + 30, 40, 1000, 700)
+        await agent.start()
+        await agent.tick()
+        await agent.trigger_manual()
+        original = agent.displayed_review_snapshot
+        assert original is not None
+        updates = []
+        agent.on_review_geometry_change = updates.append
+        agent._display_enter_time = 0
+        agent._last_hash = monitor.hash_value
+        capture_count = len(monitor.capture_rects)
+        for left, top in [(300, 100), (450, 120)]:
+            monitor.window = WindowRect(origin + left, top, 1000, 700)
+            await agent._tick_displaying()
+            current = agent.displayed_review_snapshot
+            assert current is not None
+            assert current.capture_rect == original.capture_rect
+            assert current.image_base64 == original.image_base64
+            assert current.result is original.result
+            assert current.revision == original.revision
+            assert current.display_rect == WindowRect(
+                original.capture_rect.left + left - 30,
+                original.capture_rect.top + top - 40,
+                original.capture_rect.width,
+                original.capture_rect.height,
+            )
+            assert current.display_window == monitor.window
+            assert len(monitor.capture_rects) == capture_count
+        await agent._tick_displaying()  # No duplicate signal for unchanged geometry.
+        assert len(updates) == 2
+        assert updates[-1] is agent.displayed_review_snapshot
+        assert agent.last_capture_rect == original.capture_rect
+        assert agent_deps["vision_analyzer"].analyze_calls == 1
+        assert agent.has_roi_config()
+
+    @pytest.mark.parametrize("change", ["resize", "monitor", "outside", "unknown"])
+    async def test_geometry_reflow_invalidates_before_hash_or_followup(
+        self, agent, agent_deps, change
+    ):
+        monitor = agent_deps["screen_monitor"]
+        monitor.display = DisplayFrame(WindowRect(0, 0, 1920, 1080))
+        monitor.window = WindowRect(30, 40, 1000, 700)
+        await agent.start()
+        await agent.tick()
+        await agent.trigger_manual()
+        original = agent.displayed_review_snapshot
+        assert original is not None
+        captures = len(monitor.capture_rects)
+        if change == "resize":
+            monitor.window = WindowRect(30, 40, 1100, 700)
+        elif change == "monitor":
+            monitor.display = DisplayFrame(WindowRect(-1920, 0, 1920, 1080))
+            monitor.window = WindowRect(-1500, 40, 1000, 700)
+        elif change == "unknown":
+            monitor.display = None
+        else:
+            monitor.window = WindowRect(1800, 40, 1000, 700)
+        await agent._tick_displaying()
+        assert agent.state is AgentState.SETUP
+        assert agent.displayed_review_snapshot is None and agent.review_snapshot is None
+        assert not agent.has_roi_config()
+        assert len(monitor.capture_rects) == captures
+        assert agent_deps["vision_analyzer"].analyze_calls == 1
+        with pytest.raises(RuntimeError, match="No analysis result"):
+            agent.record_regional_review_outcome(
+                expected_revision=original.revision, outcome="no_change"
+            )
+
+    @pytest.mark.parametrize("change", ["translate", "resize", "lost", "dpi"])
+    async def test_geometry_is_rechecked_before_publishing_slow_analysis(
+        self, agent_deps, change
+    ):
+        from dicom_overlay.application.overlay_agent import OverlayAgent
+
+        analyzer = BlockingVisionAnalyzer()
+        agent_deps["vision_analyzer"] = analyzer
+        monitor = agent_deps["screen_monitor"]
+        monitor.window = WindowRect(30, 40, 1000, 700)
+        monitor.display = DisplayFrame(WindowRect(0, 0, 1920, 1080))
+        agent = OverlayAgent(config=AppConfig(phi_roi=_configured_roi()), **agent_deps)
+        published = []
+        agent.on_analysis_result = lambda _: published.append(
+            agent.displayed_review_snapshot
+        )
+        await agent.start()
+        await agent.tick()
+        task = asyncio.create_task(agent.trigger_manual())
+        await analyzer.entered.wait()
+        if change == "translate":
+            monitor.window = WindowRect(300, 100, 1000, 700)
+        elif change == "resize":
+            monitor.window = WindowRect(30, 40, 1100, 700)
+        elif change == "lost":
+            monitor.window = None
+        else:
+            agent.invalidate_display_geometry()
+        analyzer.release.set()
+        await task
+        if change == "translate":
+            assert len(published) == 1
+            assert (
+                published[0].display_rect.left - published[0].capture_rect.left == 270
+            )
+            assert agent.state is AgentState.DISPLAYING
+        else:
+            assert not published
+            assert agent.displayed_review_snapshot is None
+            assert agent.state is (
+                AgentState.WAITING if change == "lost" else AgentState.SETUP
+            )
+
+    async def test_dpi_invalidation_during_capture_hide_beat_sends_no_image(
+        self, agent, agent_deps
+    ):
+        monitor = agent_deps["screen_monitor"]
+        monitor.window = WindowRect(30, 40, 1000, 700)
+        await agent.start()
+        await agent.tick()
+        agent.on_before_capture = agent.invalidate_display_geometry
+        await agent.trigger_manual()
+        assert agent.state is AgentState.SETUP
+        assert not monitor.capture_rects
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    async def test_display_change_while_paused_requires_roi_on_resume(self, agent):
+        agent._state = AgentState.PAUSED
+        agent.invalidate_display_geometry()
+        assert agent.state is AgentState.PAUSED
+        assert not agent.has_roi_config()
+        agent.resume()
+        assert agent.state is AgentState.SETUP
+
+    async def test_auto_mode_restarts_only_after_fresh_roi_confirmation(
+        self, agent, agent_deps
+    ):
+        monitor = agent_deps["screen_monitor"]
+        monitor.window = WindowRect(30, 40, 1000, 700)
+        await agent.start()
+        await agent.tick()
+        await agent.trigger_manual()
+        agent.set_trigger_mode(TriggerMode.AUTO)
+        agent.invalidate_display_geometry()
+        await agent.tick()
+        assert agent_deps["vision_analyzer"].analyze_calls == 1
+        assert agent.last_result is None
+        agent.on_roi_setup_complete(_configured_roi(width=1000, height=700))
+        await agent.tick()  # WAITING -> MONITORING
+        await agent.tick()
+        assert agent.state is AgentState.DISPLAYING
+        assert agent_deps["vision_analyzer"].analyze_calls == 2
+
     @pytest.mark.asyncio
     async def test_hybrid_mode_detects_change_without_auto_analyzing(
         self, agent, agent_deps
@@ -1081,6 +1318,7 @@ class TestOverlayAgent:
         assert agent.last_capture_rect == expected
         assert monitor.capture_rects[-1] == expected
 
+
 @pytest.mark.asyncio
 async def test_auto_mode_analyzes_initial_stable_image():
     """AUTO mode must analyze a study already visible when monitoring starts.
@@ -1143,6 +1381,7 @@ async def test_auto_mode_initial_trigger_is_one_shot():
     agent._last_hash = ""
     await agent.tick()
     assert analyzer.analyze_calls == 1
+
 
 @pytest.mark.asyncio
 async def test_auto_mode_recovers_initial_trigger_after_reconnect():
@@ -1219,6 +1458,7 @@ async def test_auto_mode_initial_retry_is_capped_for_charge_safety():
     await agent.tick()
     assert agent._initial_auto_attempts == 3
     assert analyzer.analyze_calls == 0
+
 
 class _TimeoutOnceAnalyzer(MockVisionAnalyzer):
     """Fail the first analysis with a timeout, then behave normally."""

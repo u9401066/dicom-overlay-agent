@@ -7,18 +7,21 @@ import math
 import os
 import statistics
 from collections.abc import Callable, Iterable
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import mss
 import structlog
 from PIL import Image, ImageChops, ImageFilter
 
-from dicom_overlay.domain.entities import DisplayFrame, RegionRect, WindowRect
+from dicom_overlay.domain.entities import CaptureWindow, DisplayFrame, WindowRect
 from dicom_overlay.domain.services import (
     CaptureBlockedError,
     ImageProcessorService,
     ScreenMonitorService,
 )
+
+if TYPE_CHECKING:
+    from medical_image_harness.models import RegionRect
 
 logger = structlog.get_logger(__name__)
 
@@ -135,9 +138,24 @@ class ScreenMonitor(ScreenMonitorService):
         self._target_hwnd: int | None = None
         self._target_rect: WindowRect | None = None
         self._target_pid: int | None = None
+        self._selected_window: CaptureWindow | None = None
+        self._selected_window_invalidated = False
         logger.info("Hash algorithm: %s", algo)
 
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
+        if self._selected_window is not None:
+            # Never fall back to another matching window after explicit selection.
+            if self._selected_window_invalidated:
+                return None
+            try:
+                return self._selected_window_rect(self._selected_window)
+            except CaptureBlockedError as exc:
+                if str(exc) == "selected_window_identity_changed":
+                    self._selected_window_invalidated = True
+                self._target_hwnd = None
+                self._target_rect = None
+                self._target_pid = None
+                return None
         if not HAS_WIN32 or win32gui is None or win32process is None:
             return None
 
@@ -150,7 +168,9 @@ class ScreenMonitor(ScreenMonitorService):
             self._target_hwnd = None
             return None
 
-        def _candidate(hwnd: int) -> tuple[tuple[int, int, int, int], WindowRect] | None:
+        def _candidate(
+            hwnd: int,
+        ) -> tuple[tuple[int, int, int, int], WindowRect] | None:
             if not gui.IsWindowVisible(hwnd):
                 return None
             is_iconic = getattr(gui, "IsIconic", None)
@@ -197,7 +217,9 @@ class ScreenMonitor(ScreenMonitorService):
             existing = _candidate(self._target_hwnd)
             if existing is not None:
                 self._target_rect = existing[1]
-                self._target_pid = process.GetWindowThreadProcessId(self._target_hwnd)[1]
+                self._target_pid = process.GetWindowThreadProcessId(self._target_hwnd)[
+                    1
+                ]
                 return existing[1]
             self._target_hwnd = None
 
@@ -222,6 +244,84 @@ class ScreenMonitor(ScreenMonitorService):
         self._target_pid = process.GetWindowThreadProcessId(hwnd)[1]
         return result
 
+    @property
+    def explicit_window_selected(self) -> bool:
+        return self._selected_window is not None
+
+    def available_capture_windows(self) -> list[CaptureWindow]:
+        """List visible external windows locally; never log or save their titles."""
+        if not HAS_WIN32 or win32gui is None or win32process is None:
+            return []
+        choices: list[CaptureWindow] = []
+
+        def visit(hwnd: int, _: object) -> None:
+            try:
+                choice = CaptureWindow(
+                    hwnd,
+                    win32process.GetWindowThreadProcessId(hwnd)[1],
+                    win32gui.GetClassName(hwnd),
+                    win32gui.GetWindowText(hwnd).strip(),
+                )
+                if choice.title and self._read_selected_rect(choice) is not None:
+                    choices.append(choice)
+            except Exception:
+                # Windows may close while enumerating; their titles aren't diagnostics.
+                return
+
+        win32gui.EnumWindows(visit, None)
+        return sorted(choices, key=lambda choice: choice.title.casefold())
+
+    def _read_selected_rect(self, window: CaptureWindow) -> WindowRect:
+        if not HAS_WIN32 or win32gui is None or win32process is None:
+            raise CaptureBlockedError("window_selection_unavailable")
+        hwnd = window.window_id
+        try:
+            if (
+                not win32gui.IsWindow(hwnd)
+                or win32process.GetWindowThreadProcessId(hwnd)[1] != window.process_id
+                or win32gui.GetClassName(hwnd) != window.window_class
+            ):
+                raise CaptureBlockedError("selected_window_identity_changed")
+            if window.window_class in {
+                "Progman",
+                "WorkerW",
+                "Shell_TrayWnd",
+                "Shell_SecondaryTrayWnd",
+            }:
+                raise CaptureBlockedError("desktop_shell_is_not_an_image_window")
+            if win32gui.GetWindow(
+                hwnd, 4
+            ):  # GW_OWNER: transient popups aren't image windows.
+                raise CaptureBlockedError("owned_popup_is_not_an_image_window")
+            if (
+                not win32gui.IsWindowVisible(hwnd)
+                or win32gui.IsIconic(hwnd)
+                or _window_is_cloaked(hwnd)
+                or window.process_id in self._excluded_process_ids
+            ):
+                raise CaptureBlockedError("selected_window_unavailable")
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            if right - left <= 100 or bottom - top <= 100:
+                raise CaptureBlockedError("selected_window_too_small")
+            return WindowRect(left, top, right - left, bottom - top)
+        except CaptureBlockedError:
+            raise
+        except Exception as exc:
+            raise CaptureBlockedError("selected_window_unavailable") from exc
+
+    def _selected_window_rect(self, window: CaptureWindow) -> WindowRect:
+        rect = self._read_selected_rect(window)
+        self._target_hwnd = window.window_id
+        self._target_pid = window.process_id
+        self._target_rect = rect
+        return rect
+
+    def select_capture_window(self, window: CaptureWindow) -> WindowRect:
+        rect = self._selected_window_rect(window)
+        self._selected_window = window
+        self._selected_window_invalidated = False
+        return rect
+
     def verify_capture_target(self, rect: WindowRect) -> None:
         """Fail closed on visible top-level intersections, without reading titles.
 
@@ -241,7 +341,13 @@ class ScreenMonitor(ScreenMonitorService):
             raise CaptureBlockedError("viewer_not_selected")
         gui = win32gui
         try:
-            if not gui.IsWindowVisible(hwnd) or gui.IsIconic(hwnd) or _window_is_cloaked(hwnd):
+            if self._selected_window is not None:
+                self._read_selected_rect(self._selected_window)
+            if (
+                not gui.IsWindowVisible(hwnd)
+                or gui.IsIconic(hwnd)
+                or _window_is_cloaked(hwnd)
+            ):
                 raise CaptureBlockedError("viewer_not_visible")
             if win32process.GetWindowThreadProcessId(hwnd)[1] != self._target_pid:
                 raise CaptureBlockedError("viewer_identity_changed")
@@ -250,29 +356,41 @@ class ScreenMonitor(ScreenMonitorService):
             if current != self._target_rect:
                 raise CaptureBlockedError("viewer_geometry_changed")
             if (
-                rect.width <= 0 or rect.height <= 0
-                or rect.left < left or rect.top < top
-                or rect.right > right or rect.bottom > bottom
+                rect.width <= 0
+                or rect.height <= 0
+                or rect.left < left
+                or rect.top < top
+                or rect.right > right
+                or rect.bottom > bottom
             ):
                 raise CaptureBlockedError("roi_outside_viewer")
             # Outer-window containment is insufficient: proportional ROI
             # scaling can enter a fixed-size titlebar after a viewer resize.
             # ClientToScreen returns device coordinates, including negatives;
             # do not multiply them by Qt's device-pixel ratio again.
-            client_left, client_top, client_right, client_bottom = gui.GetClientRect(hwnd)
-            client_left, client_top = gui.ClientToScreen(hwnd, (client_left, client_top))
+            client_left, client_top, client_right, client_bottom = gui.GetClientRect(
+                hwnd
+            )
+            client_left, client_top = gui.ClientToScreen(
+                hwnd, (client_left, client_top)
+            )
             client_right, client_bottom = gui.ClientToScreen(
                 hwnd, (client_right, client_bottom)
             )
             if (
-                client_right <= client_left or client_bottom <= client_top
-                or client_left < left or client_top < top
-                or client_right > right or client_bottom > bottom
+                client_right <= client_left
+                or client_bottom <= client_top
+                or client_left < left
+                or client_top < top
+                or client_right > right
+                or client_bottom > bottom
             ):
                 raise CaptureBlockedError("viewer_client_geometry_invalid")
             if (
-                rect.left < client_left or rect.top < client_top
-                or rect.right > client_right or rect.bottom > client_bottom
+                rect.left < client_left
+                or rect.top < client_top
+                or rect.right > client_right
+                or rect.bottom > client_bottom
             ):
                 # Never silently intersect, move, or expand the selected ROI.
                 raise CaptureBlockedError("roi_outside_viewer_client")
@@ -284,13 +402,18 @@ class ScreenMonitor(ScreenMonitorService):
                 if hwnd in visited:
                     raise CaptureBlockedError("unstable_window_order")
                 visited.add(hwnd)
-                if not gui.IsWindowVisible(hwnd) or gui.IsIconic(hwnd) or _window_is_cloaked(hwnd):
-                    continue
-                other_left, other_top, other_right, other_bottom = gui.GetWindowRect(hwnd)
                 if (
-                    max(rect.left, other_left) < min(rect.right, other_right)
-                    and max(rect.top, other_top) < min(rect.bottom, other_bottom)
+                    not gui.IsWindowVisible(hwnd)
+                    or gui.IsIconic(hwnd)
+                    or _window_is_cloaked(hwnd)
                 ):
+                    continue
+                other_left, other_top, other_right, other_bottom = gui.GetWindowRect(
+                    hwnd
+                )
+                if max(rect.left, other_left) < min(rect.right, other_right) and max(
+                    rect.top, other_top
+                ) < min(rect.bottom, other_bottom):
                     raise CaptureBlockedError("viewer_roi_obstructed")
             raise CaptureBlockedError("unstable_window_order")
         except CaptureBlockedError:
@@ -370,6 +493,16 @@ class ImageProcessor(ImageProcessorService):
     # pixels, keeping small lesions legible for the closer look.
     _MIN_CROP_EDGE_PX = 512
     _MIN_SOURCE_SIGNAL_EDGE_PX = 64
+
+    def same_image_pixels(self, original: bytes, current: bytes) -> bool:
+        """Compare exact decoded RGBA pixels, not a low-resolution image hash."""
+        with (
+            Image.open(io.BytesIO(original)) as first,
+            Image.open(io.BytesIO(current)) as second,
+        ):
+            return first.size == second.size and (
+                first.convert("RGBA").tobytes() == second.convert("RGBA").tobytes()
+            )
 
     def crop_roi(
         self, image_data: bytes, top: int, bottom: int, left: int, right: int
@@ -624,10 +757,7 @@ class ImageProcessor(ImageProcessorService):
         gaps = [peaks[index] - peaks[index - 1] for index in range(1, len(peaks))]
         median_gap = statistics.median(gaps) if gaps else 0.0
         consistent_gap_count = (
-            sum(
-                0.65 * median_gap <= gap <= 1.55 * median_gap
-                for gap in gaps
-            )
+            sum(0.65 * median_gap <= gap <= 1.55 * median_gap for gap in gaps)
             if median_gap > 0.0
             else 0
         )
@@ -650,9 +780,7 @@ class ImageProcessor(ImageProcessorService):
             "vertical_span_ratio": round(span_ratio, 6),
             "black_threshold_max_rgb": 110,
             "minimum_peak_ink_ratio": round(minimum_peak_ink_ratio, 6),
-            "minimum_horizontal_coherence_ratio": (
-                minimum_horizontal_coherence_ratio
-            ),
+            "minimum_horizontal_coherence_ratio": (minimum_horizontal_coherence_ratio),
             "smoothing_window_rows": smoothing_window_rows,
             "edge_guard_ratio": round(edge_guard / height, 6),
         }

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from dicom_overlay.domain.entities import Modality, RegionRect, WindowRect
 from dicom_overlay.domain.services import RegionMapperService
+from medical_image_harness.models import Modality, RegionRect
+
+if TYPE_CHECKING:
+    from dicom_overlay.domain.entities import WindowRect
 
 logger = structlog.get_logger(__name__)
 

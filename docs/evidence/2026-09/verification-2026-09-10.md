@@ -99,7 +99,7 @@ clinical release, release tag, or new packaged binary.
 GitHub secret scanning and push protection are enabled. The one historical
 Gateway-token disclosure has an exact documented Gitleaks baseline; it is not
 present in active config/environment or current documentation. Git history
-has not been rewritten. See [SECURITY.md](../SECURITY.md).
+has not been rewritten. See [SECURITY.md](../../../SECURITY.md).
 
 Outstanding release gates: ≥100 distinct real Astra cases with source/model
 identity and honest clinical scoring, real partial-lead tests, visual bbox/DPI
