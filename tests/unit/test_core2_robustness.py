@@ -19,12 +19,6 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from dicom_overlay.application.multi_pass import (
-    MultiPassInterpreter,
-    RefinementAction,
-    RefinementDelta,
-    RefinementResult,
-)
 from dicom_overlay.domain.entities import AppConfig
 from dicom_overlay.domain.hooks import AnalyzeRequest
 from dicom_overlay.infrastructure.hooks.output_validator import OutputValidator
@@ -50,6 +44,12 @@ from medical_image_harness.models import (
     Modality,
     RegionRect,
     Severity,
+)
+from medical_image_harness.multipass import (
+    MultiPassInterpreter,
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
 )
 
 

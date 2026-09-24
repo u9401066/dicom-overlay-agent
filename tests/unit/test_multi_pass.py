@@ -12,7 +12,15 @@ import dataclasses
 
 import pytest
 
-from dicom_overlay.application.multi_pass import (
+from medical_image_harness.models import (
+    AnalysisResult,
+    ChecklistItem,
+    Finding,
+    Modality,
+    RegionRect,
+    Severity,
+)
+from medical_image_harness.multipass import (
     AnalysisSlaTimeout,
     MultiPassAnalyzer,
     MultiPassInterpreter,
@@ -46,16 +54,8 @@ from dicom_overlay.application.multi_pass import (
     select_hypothesis_crop_region,
     select_zoom_targets,
 )
-from dicom_overlay.domain.modality_profile import get_active_registry
-from dicom_overlay.domain.services import VisionAnalyzerService
-from medical_image_harness.models import (
-    AnalysisResult,
-    ChecklistItem,
-    Finding,
-    Modality,
-    RegionRect,
-    Severity,
-)
+from medical_image_harness.profiles import get_active_registry
+from medical_image_harness.protocols import VisionAnalyzerService
 
 
 def _result(findings: list[Finding]) -> AnalysisResult:
@@ -1672,10 +1672,10 @@ def test_final_report_can_revise_clinical_fields_with_locked_geometry() -> None:
 
 @pytest.mark.parametrize("limitation", ["", "Lead V1 missing", "Preliminary triage; review pending"])
 def test_final_report_resolves_only_exact_workflow_marker(limitation):
-    from dicom_overlay.application.interpretation_harness import (
+    from medical_image_harness.profiles import get_active_registry
+    from medical_image_harness.protocols import (
         PENDING_MULTIPASS_REASON,
     )
-    from dicom_overlay.domain.modality_profile import get_active_registry
 
     draft = _result([])
     draft.incomplete = True
@@ -1693,7 +1693,7 @@ def test_final_report_resolves_only_exact_workflow_marker(limitation):
 
 
 def test_incomplete_final_checklist_cannot_resolve_workflow_marker():
-    from dicom_overlay.application.interpretation_harness import (
+    from medical_image_harness.protocols import (
         PENDING_MULTIPASS_REASON,
     )
 
@@ -1708,10 +1708,10 @@ def test_incomplete_final_checklist_cannot_resolve_workflow_marker():
 
 
 def test_final_limitations_remain_after_workflow_resolution():
-    from dicom_overlay.application.interpretation_harness import (
+    from medical_image_harness.profiles import get_active_registry
+    from medical_image_harness.protocols import (
         PENDING_MULTIPASS_REASON,
     )
-    from dicom_overlay.domain.modality_profile import get_active_registry
 
     draft = _result([])
     draft.incomplete = True
@@ -1797,7 +1797,7 @@ class TestMultiPassInterpreter:
         # timer race. Real timeout/cancellation behavior has separate tests.
         observed_time = [0.0]
         monkeypatch.setattr(
-            "dicom_overlay.application.multi_pass._SLA_RETURN_BUFFER_SEC",
+            "medical_image_harness.multipass._SLA_RETURN_BUFFER_SEC",
             0.1,
         )
 
@@ -2619,6 +2619,8 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         "removed_unlocalized_rhythm_strip"
     )
 
+
+class TestMultiPassRefinementSafety:
     async def test_ekg_budget_keeps_one_hypothesis_and_two_discovery_probes(self):
         coarse = _ekg_row_layout_result(
             [
@@ -2940,7 +2942,9 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         result = await interpreter.interpret("img", Modality.EKG, [])
 
         assert result.findings == []
-        assert result.severity is Severity.INFO
+        # A workflow timeout does not manufacture a clinical abnormality.
+        # Incomplete/review flags below carry the unresolved safety state.
+        assert result.severity is Severity.NORMAL
         assert result.incomplete is True
         assert result.review_required is True
         assert any(
@@ -3601,7 +3605,7 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert analyzer.zoom_calls == 1
         assert out.findings[0].detail == "coarse"
 
-    async def test_local_candidate_refines_abnormal_finding_without_bbox(self):
+    async def test_local_candidate_cannot_confirm_unlocalized_whole_roi_finding(self):
         coarse = _result(
             [
                 _finding(
@@ -3640,13 +3644,11 @@ def test_unavailable_unlocalized_rhythm_strip_region_is_removed() -> None:
         assert cropper.regions == [candidate]
         refined = out.findings[0]
         assert refined.id == "f1"
-        assert refined.detail == "candidate crop confirms opacity"
-        assert refined.bboxes
-        bbox = refined.bboxes[0]
-        assert bbox.x == pytest.approx(0.3)
-        assert bbox.y == pytest.approx(0.3)
-        assert bbox.w == pytest.approx(0.2)
-        assert bbox.h == pytest.approx(0.2)
+        assert refined == coarse.findings[0]
+        guard = next(e for e in out.analysis_trace
+            if e.get("status") == "partial_crop_confirmation_blocked")
+        assert guard["source_was_unlocalized"] is True
+        assert guard["decision_applied"] is False
 
     async def test_normal_safety_probe_can_be_disabled(self):
         coarse = _result([])
@@ -4108,7 +4110,7 @@ class TestMultiPassAnalyzer:
         await adapter.disconnect()
 
     async def test_is_a_vision_analyzer_service(self):
-        from dicom_overlay.domain.services import VisionAnalyzerService
+        from medical_image_harness.protocols import VisionAnalyzerService
 
         inner = _FakeAnalyzer([_result([])])
         interp = MultiPassInterpreter(inner, _RecordingCropper())

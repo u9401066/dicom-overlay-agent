@@ -13,11 +13,6 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QLabel
 
-from dicom_overlay.application.multi_pass import (
-    RefinementAction,
-    RefinementDelta,
-    apply_refinement_delta,
-)
 from dicom_overlay.presentation.control_bar import ControlBarWindow
 from dicom_overlay.presentation.overlay_window import (
     ChatPanel,
@@ -31,6 +26,11 @@ from medical_image_harness.models import (
     Modality,
     RegionRect,
     Severity,
+)
+from medical_image_harness.multipass import (
+    RefinementAction,
+    RefinementDelta,
+    apply_refinement_delta,
 )
 
 

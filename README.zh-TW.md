@@ -9,7 +9,15 @@
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 （9 月 10 日已公開部署並完成瀏覽器驗證；屬開發證據，不是臨床正式版本）。
 
-## 開發證據 — 2026-09-11（尚未發布）
+## 開發證據（尚未發布）
+
+2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
+ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。
+補回 38 個原本未被 pytest 收集的 edge cases；canonical evidence 組裝、完整
+plugin 拆分與新版實機驗收尚未完成。不同廠牌／老式機器 ECG 圖片會另列驗收組，
+不能用目前標準樣式的結果推論全部適用。見[本次接線與驗證範圍](docs/shared-engine-2026-09-24.md)。
+
+以下為 9 月 11 日封存的實機證據，並非新版 engine 的實機結果：
 
 目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
 `openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由。
@@ -321,7 +329,7 @@ scripts\build-exe.bat        # PyInstaller → dist\DICOMOverlayAgent\
   但不允許任何 `ADD`／`REVISE`／`RETRACT` 改動報告；成功套用會在報告、Process trace、
   JSON 與標框 PNG 保留 `interactive_ai_review` provenance。不同診斷即使框重疊，
   也不會再只因 IoU 高就被誤合併。
-- **多趟放大** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
+- **多趟放大** — [`multipass.py`](third_party/medical-image-agent-harness/src/medical_image_harness/multipass.py)
   以完整 ROI 解析度重讀異常區域以精修 bbox。由於唯一輸入是螢幕截圖（≤4K），
   若某區域在截到的像素中太小，數位放大無意義；此時改以 `zoom_hints` 提示，
   請醫師在 DICOM viewer 內放大後重新截圖。

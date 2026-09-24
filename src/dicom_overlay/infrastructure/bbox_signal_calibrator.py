@@ -8,7 +8,7 @@ import io
 
 from PIL import Image
 
-from dicom_overlay.domain.ekg_layout import (
+from medical_image_harness.ekg_layout import (
     canonical_ekg_lead_name,
     parse_ekg_lead_inventory,
 )

@@ -12,16 +12,16 @@ from typing import TYPE_CHECKING, cast
 import structlog
 
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
-from dicom_overlay.domain.services import VisionAnalyzerService
+from medical_image_harness.protocols import VisionAnalyzerService
 
 if TYPE_CHECKING:
-    from dicom_overlay.application.multi_pass import RefinementResult
     from medical_image_harness.models import (
         AnalysisResult,
         Finding,
         Modality,
         RegionRect,
     )
+    from medical_image_harness.multipass import RefinementResult
 
 logger = structlog.get_logger(__name__)
 

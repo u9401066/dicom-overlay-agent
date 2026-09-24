@@ -16,7 +16,6 @@ from PIL import Image
 from dicom_overlay.application.interpretation_harness import (
     PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
 )
-from dicom_overlay.application.multi_pass import RefinementResult
 from dicom_overlay.infrastructure.ecg_variant_corpus import build_variant_corpus
 from dicom_overlay.infrastructure.eval_harness import EvalCase, score_case
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
@@ -27,6 +26,7 @@ from medical_image_harness.models import (
     RegionRect,
     Severity,
 )
+from medical_image_harness.multipass import RefinementResult
 
 
 def _load_run_eval_module():
@@ -215,6 +215,42 @@ def test_git_identity_hashes_untracked_source_contents(tmp_path: Path) -> None:
     assert before["worktree_file_count"] == 2
     assert after["worktree_file_count"] == 2
     assert before["worktree_content_sha256"] != after["worktree_content_sha256"]
+
+
+def test_submodule_identity_covers_dirty_and_untracked_source(tmp_path):
+    module = _load_run_eval_module()
+    nested = tmp_path / "public-harness"
+    nested.mkdir()
+    def git(*args):
+        subprocess.run(["git", *args], cwd=nested, check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    source = nested / "src/engine.py"
+    source.parent.mkdir()
+    source.write_text("VERSION = 1\n", encoding="utf-8")
+    git("add", "src/engine.py")
+    git("commit", "-qm", "synthetic")
+    before = module._git_identity(nested, source_paths=("src",))
+    source.write_text("VERSION = 2\n", encoding="utf-8")
+    dirty = module._git_identity(nested, source_paths=("src",))
+    source.with_name("guard.py").write_text("GUARD = True\n", encoding="utf-8")
+    untracked = module._git_identity(nested, source_paths=("src",))
+    assert before["available"] and dirty["available"] and untracked["available"]
+    assert before["commit"] == dirty["commit"] == untracked["commit"]
+    assert not before["dirty"] and dirty["dirty"] and untracked["dirty"]
+    assert len({r["worktree_content_sha256"] for r in (before, dirty, untracked)}) == 3
+    assert untracked["worktree_file_count"] == 2
+    assert not module._git_identity(source.parent, source_paths=("engine.py",))["available"]
+
+
+def test_protocol_fingerprint_rejects_missing_public_harness(tmp_path):
+    module = _load_run_eval_module()
+    with pytest.raises(module.ProtocolFingerprintError, match="not initialized"):
+        module._build_protocol_fingerprint(
+            manifest_path=tmp_path / "manifest.json", cases=[], model_id="synthetic",
+            mode="mock", flags={}, repo_root=tmp_path, env={},
+        )
 
 
 def test_make_client_uses_eval_timeout_for_inference() -> None:
@@ -799,6 +835,15 @@ def test_pending_cases_can_retry_only_persisted_errors(tmp_path: Path) -> None:
     assert skipped == 1
 
 
+def test_protocol_fingerprint_covers_the_extracted_harness():
+    module = _load_run_eval_module()
+    root = "third_party/medical-image-agent-harness"
+    assert {f"{root}/src", f"{root}/schemas", f"{root}/pyproject.toml",
+            f"{root}/.agents/skills/medical-image-reading"} <= set(module._PROTOCOL_SOURCE_PATHS)
+    assert f"{root}/src/medical_image_harness/multipass.py" in module._PROMPT_SOURCE_PATHS
+    assert all((module._REPO_ROOT / path).is_file() for path in module._PROMPT_SOURCE_PATHS)
+
+
 def _fingerprint(module, *, model: str, image_sha256: str) -> dict:
     protocol = {
         "model": {"id": model},
@@ -1096,6 +1141,9 @@ def test_mock_run_and_resume_leave_full_canonical_scorecard(tmp_path: Path) -> N
     )
     scorecard = json.loads((output / "scorecard.json").read_text(encoding="utf-8"))
     protocol = fingerprint["protocol"]
+    assert protocol["public_harness_source"]["available"] is True
+    assert protocol["public_harness_source"]["worktree_file_count"] > 0
+    assert len(protocol["public_harness_source"]["worktree_content_sha256"]) == 64
     assert protocol["source"]["commit"]
     assert isinstance(protocol["source"]["dirty"], bool)
     assert len(protocol["source"]["worktree_content_sha256"]) == 64

@@ -11,11 +11,6 @@ from typing import Any
 
 from PIL import Image
 
-from dicom_overlay.domain.ekg_layout import (
-    canonical_ekg_lead_name,
-    parse_ekg_lead_inventory,
-    parse_normalized_region,
-)
 from dicom_overlay.infrastructure.ecg_variant_corpus import (
     PartialEcgInputContract,
     is_partial_ecg_corpus_manifest,
@@ -31,6 +26,11 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     MIN_GATEWAY_PROTOCOL,
     OpenClawRuntimeError,
     parse_gateway_hello,
+)
+from medical_image_harness.ekg_layout import (
+    canonical_ekg_lead_name,
+    parse_ekg_lead_inventory,
+    parse_normalized_region,
 )
 
 _PROTOCOL_FINGERPRINT_NAME = "protocol-fingerprint.json"

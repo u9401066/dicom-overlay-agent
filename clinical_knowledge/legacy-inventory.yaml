@@ -52,11 +52,12 @@ entries:
   - legacy_id: critical-triage-guard
     layer: application_guard
     status: intentional_local
-    source: src/dicom_overlay/application/multi_pass.py
+    source: third_party/medical-image-agent-harness/src/medical_image_harness/multipass.py
     locator: select_critical_triage_candidates
     parity_test: tests/unit/test_multi_pass.py::TestCriticalTriagePlanning
     note: >-
-      Cross-finding execution policy remains Python because it allocates crop
+      Cross-finding execution policy lives in the pinned public harness Python
+      engine because it allocates crop
       budget and preserves final-report invariants; its clinical intent and
       deferred-axis behavior are catalogued separately and regression tested.
   - legacy_id: professional-co-reader-prompt

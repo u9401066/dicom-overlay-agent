@@ -16,10 +16,6 @@ from dicom_overlay.application.annotation_accumulator import (
     AnnotationAccumulator,
     max_severity,
 )
-from dicom_overlay.application.multi_pass import (
-    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
-    AnalysisSlaTimeout,
-)
 from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
 from dicom_overlay.domain.entities import (
     AgentState,
@@ -37,6 +33,10 @@ from medical_image_harness.models import (
     RegionRect,
     Severity,
 )
+from medical_image_harness.multipass import (
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+    AnalysisSlaTimeout,
+)
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import AppConfig, ROICrop
@@ -44,9 +44,9 @@ if TYPE_CHECKING:
         ImageProcessorService,
         RegionMapperService,
         ScreenMonitorService,
-        VisionAnalyzerService,
     )
     from dicom_overlay.infrastructure.gateway_manager import GatewayManager
+    from medical_image_harness.protocols import VisionAnalyzerService
 
 logger = structlog.get_logger(__name__)
 

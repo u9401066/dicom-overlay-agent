@@ -220,6 +220,7 @@ def test_package_runtime_smoke_handles_windowed_logging_and_image_surfaces(
             "font_render": True,
             "review_export": True,
             "harness_contract": True,
+            "harness_engine": True,
         },
         "failures": [],
     }

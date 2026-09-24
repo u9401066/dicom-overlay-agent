@@ -303,7 +303,7 @@ def _guardrail_state(result: AnalysisResult) -> dict[str, Any]:
 def _current_guardrail_provenance(clinical_engine: Any) -> dict[str, Any]:
     files = (
         "src/dicom_overlay/domain/clinical_rules.py",
-        "src/dicom_overlay/domain/ekg_layout.py",
+        "third_party/medical-image-agent-harness/src/medical_image_harness/ekg_layout.py",
         "src/dicom_overlay/infrastructure/clinical_rule_loader.py",
         "src/dicom_overlay/infrastructure/hooks/clinical_consistency.py",
         "src/dicom_overlay/infrastructure/hooks/output_validator.py",
@@ -328,7 +328,7 @@ def _current_guardrail_provenance(clinical_engine: Any) -> dict[str, Any]:
 def _current_scorer_provenance() -> dict[str, Any]:
     files = (
         "scripts/rebuild-eval-scorecard.py",
-        "src/dicom_overlay/domain/ekg_layout.py",
+        "third_party/medical-image-agent-harness/src/medical_image_harness/ekg_layout.py",
         "src/dicom_overlay/domain/modality_profile.py",
         "src/dicom_overlay/infrastructure/eval_harness.py",
         "src/dicom_overlay/infrastructure/hooks/output_validator.py",

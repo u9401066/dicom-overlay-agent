@@ -134,8 +134,9 @@ Registry 只保存書目資料與本專案獨立撰寫的高階判讀流程，�
 ## 目前邊界
 
 - 現在有 7 條 deterministic consistency rules；這不是完整心電圖或胸片指南。
-- Critical-first crop allocation 是跨 finding 的 application policy，仍在 Python
-  中維持 budget、geometry 與 final-report invariants；它已列入 inventory 並由
+- Critical-first crop allocation 是跨 finding 的 execution policy，位於獨立
+  `medical_image_harness.multipass` Python engine；App 明確注入 checklist policy。
+  它維持 budget、geometry 與 final-report invariants，已列入 inventory 並由
   parity test 稽核，不得偽裝成單一醫學診斷規則。
 - Rule engine 只依模型已輸出的結構化內容檢查一致性，不會重新觀看影像或移動
   bbox；影像定位仍由原本的 bbox validator、ROI mapping 與人工 overlay review

@@ -45,20 +45,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer  # noqa: E402
-from dicom_overlay.application.multi_pass import (  # noqa: E402
-    DEFAULT_FIRST_REFINEMENT_SLA_SEC,
-    DEFAULT_INITIAL_RESPONSE_SLA_SEC,
-    DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
-    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
-    MultiPassAnalyzer,
-    MultiPassInterpreter,
-)
 from dicom_overlay.application.rhythm_strip import (  # noqa: E402
     refine_rhythm_strip,
     resolve_rhythm_strip_region,
 )
 from dicom_overlay.domain.modality_profile import get_active_registry  # noqa: E402
-from dicom_overlay.domain.services import VisionAnalyzerService  # noqa: E402
 from dicom_overlay.infrastructure.bbox_signal_calibrator import (  # noqa: E402
     calibrate_ekg_bboxes,
 )
@@ -99,6 +90,18 @@ from dicom_overlay.infrastructure.openclaw_client import (  # noqa: E402
 )
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor  # noqa: E402
 from medical_image_harness.models import Modality, RegionRect, Severity  # noqa: E402
+from medical_image_harness.multipass import (  # noqa: E402
+    DEFAULT_FIRST_REFINEMENT_SLA_SEC,
+    DEFAULT_INITIAL_RESPONSE_SLA_SEC,
+    DEFAULT_MAX_EKG_SYSTEMATIC_PROBES,
+    DEFAULT_TOTAL_ANALYSIS_SLA_SEC,
+    MultiPassAnalyzer,
+    MultiPassInterpreter,
+)
+from medical_image_harness.protocols import (  # noqa: E402
+    StageTools,
+    VisionAnalyzerService,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -111,6 +114,10 @@ _PROTOCOL_FINGERPRINT_SCHEMA_VERSION = 1
 _ECG_FOUNDER_MODEL_ID = "PKUDigitalHealth/ECGFounder"
 _PROTOCOL_SOURCE_PATHS = (
     "src/dicom_overlay",
+    "third_party/medical-image-agent-harness/src",
+    "third_party/medical-image-agent-harness/schemas",
+    "third_party/medical-image-agent-harness/.agents/skills/medical-image-reading",
+    "third_party/medical-image-agent-harness/pyproject.toml",
     "scripts/run-eval.py",
     "scripts/rebuild-eval-scorecard.py",
     "scripts/export-eval-annotations.py",
@@ -131,9 +138,11 @@ _ECG_FOUNDER_CHECKPOINT_SHA256 = (
 _PROMPT_SOURCE_PATHS = (
     "src/dicom_overlay/application/hooked_analyzer.py",
     "src/dicom_overlay/application/interpretation_harness.py",
-    "src/dicom_overlay/application/multi_pass.py",
+    "third_party/medical-image-agent-harness/src/medical_image_harness/multipass.py",
+    "third_party/medical-image-agent-harness/src/medical_image_harness/protocols.py",
+    "third_party/medical-image-agent-harness/src/medical_image_harness/models.py",
     "src/dicom_overlay/application/rhythm_strip.py",
-    "src/dicom_overlay/domain/ekg_layout.py",
+    "third_party/medical-image-agent-harness/src/medical_image_harness/ekg_layout.py",
     "src/dicom_overlay/infrastructure/bbox_signal_calibrator.py",
     "src/dicom_overlay/infrastructure/clinical_rule_loader.py",
     "src/dicom_overlay/infrastructure/hooks/clinical_consistency.py",
@@ -370,7 +379,9 @@ def _path_for_fingerprint(path: Path, root: Path) -> str:
         return path.resolve().as_posix()
 
 
-def _git_identity(repo_root: Path) -> dict[str, Any]:
+def _git_identity(
+    repo_root: Path, *, source_paths: tuple[str, ...] = _PROTOCOL_SOURCE_PATHS,
+) -> dict[str, Any]:
     def run(*args: str) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(
             ["git", *args],
@@ -381,12 +392,13 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         )
 
     commit_result = run("rev-parse", "HEAD")
+    root_result = run("rev-parse", "--show-toplevel")
     status_result = run(
         "status",
         "--porcelain",
         "--untracked-files=all",
         "--",
-        *_PROTOCOL_SOURCE_PATHS,
+        *source_paths,
     )
     diff_result = run(
         "diff",
@@ -394,7 +406,7 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         "--no-ext-diff",
         "HEAD",
         "--",
-        *_PROTOCOL_SOURCE_PATHS,
+        *source_paths,
     )
     files_result = run(
         "ls-files",
@@ -403,18 +415,19 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         "--exclude-standard",
         "-z",
         "--",
-        *_PROTOCOL_SOURCE_PATHS,
+        *source_paths,
     )
     available = all(
         result.returncode == 0
-        for result in (commit_result, status_result, diff_result, files_result)
+        for result in (commit_result, root_result, status_result, diff_result, files_result)
     )
+    available = available and Path(os.fsdecode(root_result.stdout).strip()).resolve() == repo_root.resolve()
     if not available:
         return {
             "available": False,
             "commit": "unknown",
             "dirty": None,
-            "scope": list(_PROTOCOL_SOURCE_PATHS),
+            "scope": list(source_paths),
             "tracked_diff_sha256": "",
             "worktree_content_sha256": "",
             "worktree_file_count": 0,
@@ -440,7 +453,7 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         "available": True,
         "commit": commit_result.stdout.decode("ascii", errors="replace").strip(),
         "dirty": bool(status_result.stdout.strip()),
-        "scope": list(_PROTOCOL_SOURCE_PATHS),
+        "scope": list(source_paths),
         "worktree_status_sha256": hashlib.sha256(status_result.stdout).hexdigest(),
         "tracked_diff_sha256": hashlib.sha256(diff_result.stdout).hexdigest(),
         "worktree_content_sha256": content_digest.hexdigest(),
@@ -566,8 +579,19 @@ def _build_protocol_fingerprint(
     config_path_text = environment.get("OPENCLAW_CONFIG_PATH", "")
     config_path = Path(config_path_text) if config_path_text else None
     config_identity = _openclaw_config_identity(config_path)
+    # Parent git ls-files does not recurse into submodules. Fingerprint the
+    # actual public source independently, including dirty/untracked source.
+    harness_root = repo_root / "third_party/medical-image-agent-harness"
+    if not harness_root.is_dir():
+        raise ProtocolFingerprintError("public harness source is not initialized")
+    harness_identity = _git_identity(harness_root, source_paths=(
+        "src", "schemas", ".agents/skills/medical-image-reading", "pyproject.toml",
+    ))
+    if not harness_identity["available"] or not harness_identity["worktree_file_count"]:
+        raise ProtocolFingerprintError("public harness source identity is unavailable")
     protocol = {
         "source": _git_identity(repo_root),
+        "public_harness_source": harness_identity,
         "model": {
             "id": model_id,
             "gateway_mode": mode,
@@ -1259,6 +1283,12 @@ def _build_multi_pass_analyzer(
     )
     interpreter = MultiPassInterpreter(
         analyzer=counter,
+        checklist_keys_for=lambda modality: get_active_registry().resolve(modality.value).checklist_keys,
+        stage_tools=StageTools(
+            coarse="openclaw_vision_analysis",
+            refinement="crop_region_base64+openclaw_vision_analysis",
+            finalize="openclaw_report_reconciliation",
+        ),
         cropper=cropper,
         bbox_calibrator=calibrate_ekg_bboxes,
         ekg_row_strip_detector=ekg_row_strip_detector,

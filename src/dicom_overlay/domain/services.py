@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import DisplayFrame, WindowRect
-    from medical_image_harness.models import AnalysisResult, Modality, RegionRect
+    from medical_image_harness.models import Modality, RegionRect
 
 
 class CaptureBlockedError(RuntimeError):
@@ -78,35 +78,6 @@ class ImageProcessorService(ABC):
     @abstractmethod
     def image_size(self, image_data: bytes) -> tuple[int, int]:
         """Return ``(width, height)`` for PNG image bytes."""
-
-
-class VisionAnalyzerService(ABC):
-    """Sends images to Vision API for analysis (spec §3.3)."""
-
-    @abstractmethod
-    async def analyze(
-        self,
-        image_base64: str,
-        modality: Modality,
-        valid_regions: list[str],
-    ) -> AnalysisResult:
-        """Analyze an image and return structured findings."""
-
-    @abstractmethod
-    async def chat(self, message: str) -> str:
-        """Send a free-text question and return the AI's text response."""
-
-    @abstractmethod
-    async def connect(self) -> None:
-        """Establish connection to the analysis backend."""
-
-    @abstractmethod
-    async def disconnect(self) -> None:
-        """Close connection to the analysis backend."""
-
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Check if the connection is active."""
 
 
 class RegionMapperService(ABC):

@@ -8,7 +8,6 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
 from dicom_overlay.domain.modality_profile import default_registry
 from dicom_overlay.infrastructure.hooks.output_validator import (
     EKG_RESULT_LAYOUT_FORMATS,
@@ -20,6 +19,7 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     OpenClawRuntimeError,
     parse_gateway_hello,
 )
+from medical_image_harness.ekg_layout import parse_ekg_lead_inventory
 
 if TYPE_CHECKING:
     from pathlib import Path

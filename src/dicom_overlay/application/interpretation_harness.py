@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from medical_image_harness.protocols import PENDING_MULTIPASS_REASON
+
 if TYPE_CHECKING:
     from medical_image_harness.models import AnalysisResult, Modality, Severity
 
@@ -14,7 +16,6 @@ if TYPE_CHECKING:
 # clinical region name: prompts must keep ``finding.regions`` empty while still
 # giving InputGuard a non-empty, fail-closed scope.
 PARTIAL_ECG_VISIBLE_PIXELS_SCOPE = "partial_ecg_visible_pixels_no_named_leads"
-PENDING_MULTIPASS_REASON = "pending_multipass_review"
 
 # This is a shape example, not a claim about any attached image's visible leads.
 EKG_PARTIAL_LAYOUT_EXAMPLE = (

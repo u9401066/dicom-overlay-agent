@@ -32,10 +32,6 @@ from dicom_overlay.application.hooked_analyzer import HookedVisionAnalyzer
 from dicom_overlay.application.interpretation_harness import (
     summarize_result_for_followup,
 )
-from dicom_overlay.application.multi_pass import (
-    MultiPassAnalyzer,
-    MultiPassInterpreter,
-)
 from dicom_overlay.application.overlay_agent import OverlayAgent, ReviewSnapshot
 from dicom_overlay.application.review_chat import (
     ReviewChatResponse,
@@ -93,9 +89,14 @@ from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
 from medical_image_harness.models import Finding, Modality, RegionRect
+from medical_image_harness.multipass import (
+    MultiPassAnalyzer,
+    MultiPassInterpreter,
+)
+from medical_image_harness.protocols import StageTools
 
 if TYPE_CHECKING:
-    from dicom_overlay.domain.services import VisionAnalyzerService
+    from medical_image_harness.protocols import VisionAnalyzerService
 
 logger = structlog.get_logger("dicom_overlay")
 
@@ -670,6 +671,12 @@ def main() -> None:
     def build_multi_pass_analyzer(max_zoom_targets: int) -> HookedVisionAnalyzer:
         interpreter = MultiPassInterpreter(
             analyzer=openclaw_client,
+            checklist_keys_for=lambda modality: registry.resolve(modality.value).checklist_keys,
+            stage_tools=StageTools(
+                coarse="openclaw_vision_analysis",
+                refinement="crop_region_base64+openclaw_vision_analysis",
+                finalize="openclaw_report_reconciliation",
+            ),
             cropper=image_processor.crop_region_base64,
             bbox_calibrator=calibrate_ekg_bboxes,
             max_zoom_targets=max_zoom_targets,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from dicom_overlay.domain.ekg_layout import (
+from medical_image_harness.ekg_layout import (
     STANDARD_EKG_LEADS,
     normalize_ekg_row_strip_layout,
     parse_ekg_lead_inventory,

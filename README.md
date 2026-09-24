@@ -155,9 +155,11 @@ dicom-overlay-agent/
 
 ## 🚀 Quick Start
 
-This integration branch directly consumes the pinned public harness model types;
-it does not retain the old App model imports. Full engine extraction and canonical
-evidence assembly are still in progress. See the
+This integration branch directly consumes the pinned public models, current
+multi-pass engine, ECG layout parser and analyzer port, without local forwarding
+modules. Canonical evidence assembly and the remaining plugin extraction are still
+in progress. Diverse vendor/legacy-device ECG styles require separate actual GUI
+acceptance; the standard-style cohort does not establish generalization. See the
 [integration scope and verification boundary](docs/direct-harness-integration.md).
 
 ### Run from source (Windows)
@@ -232,7 +234,7 @@ The physician reads the original image; the agent annotates *on top* of it.
   `interactive_ai_review` provenance in the report, Process trace, JSON, and
   annotated PNG export. Overlapping boxes with different diagnostic labels are
   preserved as separate findings.
-- **Multi-pass review** — [`multi_pass.py`](src/dicom_overlay/application/multi_pass.py)
+- **Multi-pass review** — [`multipass.py`](third_party/medical-image-agent-harness/src/medical_image_harness/multipass.py)
   re-reads abnormal regions at full ROI resolution and reserves part of the
   bounded crop budget for layout-derived EKG limb/precordial discovery probes,
   so later turns can find an omission that had no coarse-pass bbox. Because the

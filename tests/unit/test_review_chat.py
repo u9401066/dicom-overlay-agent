@@ -10,11 +10,6 @@ from unittest.mock import AsyncMock
 import pytest
 from PIL import Image
 
-from dicom_overlay.application.multi_pass import (
-    RefinementAction,
-    RefinementDelta,
-    RefinementResult,
-)
 from dicom_overlay.application.review_chat import (
     build_region_review_prompt,
     match_selected_finding,
@@ -25,6 +20,11 @@ from dicom_overlay.domain.entities import FindingOp
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
 from medical_image_harness.models import Finding, RegionRect, Severity
+from medical_image_harness.multipass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
+)
 
 
 def _finding(

@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-24 Shared engine wired; regression and fresh package work ongoing
+
+- Continued the September 11 extraction in the direct worktree. Public PR #2 now
+  pins 3c7645ec2c41364e8ae521416ae758ddb81ea7c3, 445 synthetic tests / 87.06%
+  coverage, Ruff/boundary/wheel/sdist PASS. Original a118b88 public CI runs passed;
+  the follow-up direct-enum-definition CI 35973556494 / 35973562338 both pass.
+  Public PR #2 merged as 13ef25ffb60ae0b343eed3744cca74b5b190bfe5; the App
+  pins its tested 3c7645e ancestor. Final App target checks: 297 PASS / three
+  explicit frozen-bundle opt-in skips (13.03 s).
+- App now directly imports public multi-pass/layout/lifecycle; local engine/parser
+  files and lifecycle duplicate removed, no forwarding shims. Desktop/eval inject
+  existing host checklist/trace policy. 38 previously uncollected parametrized
+  tests restored and AST collection guards added. Six registry/SQLite failures
+  resolved by source-map update and regenerated digests; 21 related tests pass.
+- Independent public-source Git/content fingerprint added; parent Git does not
+  recurse into submodules. New offline package smoke exercises the real public
+  engine with synthetic crop/refine/final, not clinical inference. Full App suite
+  passes 1582 / five explicit skips in 265.75 s. Final enum/pin follow-up is checked
+  separately; fresh frozen GUI acceptance remains open.
+- Prior App/Gateway are no longer running on September 24; real GUI must restart.
+  Preserve all old sealed/cohort/raw artifacts. Added requested vendor/legacy ECG
+  style groups to unclosed acceptance, not a broad generalized capability claim.
+- Audit: docs/shared-engine-2026-09-24.md. No new binary release or license choice.
+
 ## 2026-09-11 Public Pages deployed and browser-verified
 
 - Docs-only PR #18 passed CI 34508568445 and both secret scans, merged as

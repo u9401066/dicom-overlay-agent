@@ -1,7 +1,21 @@
-# Progress (Updated: 2026-09-10)
+# Progress (Updated: 2026-09-24)
 
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
+
+## 2026-09-24 Independent engine integration in progress
+
+- Public current engine/layout/ports: 445 synthetic checks, 87.06% coverage;
+  package/boundary/secret checks pass. Direct App ownership now wired without
+  forwarding modules; 38 previously nested cases restored to collection.
+- Clinical inventory path and generated digests corrected (21 checks PASS).
+  Submodule-aware evaluation fingerprint and actual public-engine frozen smoke
+  added. Full App regression: 1582 PASS / five explicit skips (265.75 s), with the
+  final enum/pin follow-up checked separately. Fresh binary/real-GUI acceptance
+  remains distinct and unclosed.
+- Diverse vendor and legacy-machine ECG styles added to required groupwise actual
+  visual acceptance. Existing 121-case failed baseline and historical binary
+  receipts are immutable; no new clinical-success claim.
 
 ## 2026-09-10 Real Astra acceptance / security work in progress
 

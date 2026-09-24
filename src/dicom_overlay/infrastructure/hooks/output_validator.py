@@ -11,15 +11,15 @@ import structlog
 from dicom_overlay.application.interpretation_harness import (
     PARTIAL_ECG_VISIBLE_PIXELS_SCOPE,
 )
-from dicom_overlay.domain.ekg_layout import (
-    normalize_ekg_row_strip_layout,
-    parse_ekg_lead_inventory,
-    parse_normalized_region,
-)
 from dicom_overlay.domain.hooks import AnalyzeHook, AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
+)
+from medical_image_harness.ekg_layout import (
+    normalize_ekg_row_strip_layout,
+    parse_ekg_lead_inventory,
+    parse_normalized_region,
 )
 from medical_image_harness.models import AnalysisResult, RegionRect, Severity
 

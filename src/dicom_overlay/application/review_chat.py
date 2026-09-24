@@ -19,7 +19,7 @@ from dicom_overlay.domain.entities import FindingDelta, FindingOp
 from medical_image_harness.models import Finding, RegionRect, Severity
 
 if TYPE_CHECKING:
-    from dicom_overlay.application.multi_pass import RefinementResult
+    from medical_image_harness.multipass import RefinementResult
 
 _ALLOWED_CONFIDENCE = {"", "low", "medium", "high"}
 _MAX_ANSWER_CHARS = 8_000

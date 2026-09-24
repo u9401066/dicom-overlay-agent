@@ -29,22 +29,15 @@ if TYPE_CHECKING:
 from dicom_overlay.application.interpretation_harness import (
     EKG_LVH_BALANCE_GUIDANCE,
     EKG_PRECORDIAL_REVIEW_GUIDANCE,
-    PENDING_MULTIPASS_REASON,
     PROFESSIONAL_CO_READER_GUIDANCE,
     build_coarse_analysis_prompt,
     build_initial_analysis_prompt,
     build_minimal_control_prompt,
 )
-from dicom_overlay.application.multi_pass import (
-    RefinementAction,
-    RefinementDelta,
-    RefinementResult,
-)
 from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
 )
-from dicom_overlay.domain.services import VisionAnalyzerService
 from dicom_overlay.infrastructure.env_file import read_env_file
 from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
@@ -61,6 +54,15 @@ from medical_image_harness.models import (
     Modality,
     RegionRect,
     Severity,
+)
+from medical_image_harness.multipass import (
+    RefinementAction,
+    RefinementDelta,
+    RefinementResult,
+)
+from medical_image_harness.protocols import (
+    PENDING_MULTIPASS_REASON,
+    VisionAnalyzerService,
 )
 
 logger = structlog.get_logger(__name__)

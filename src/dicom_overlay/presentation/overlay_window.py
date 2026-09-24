@@ -318,8 +318,8 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
 
     def update_result(self, result: AnalysisResult) -> None:
         """Update panel with new analysis result."""
-        from dicom_overlay.domain.ekg_layout import parse_ekg_lead_inventory
         from dicom_overlay.domain.modality_profile import get_active_registry
+        from medical_image_harness.ekg_layout import parse_ekg_lead_inventory
         from medical_image_harness.models import Severity
 
         profile = get_active_registry().resolve(result.modality.value)

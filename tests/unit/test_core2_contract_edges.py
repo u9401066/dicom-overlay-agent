@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from dicom_overlay.domain.ekg_layout import STANDARD_EKG_LEADS
 from dicom_overlay.domain.entities import WindowRect
 from dicom_overlay.domain.hooks import AnalyzeRequest, HookError
 from dicom_overlay.domain.modality_profile import default_registry
@@ -23,6 +22,7 @@ from dicom_overlay.infrastructure.image_harness_validator import (
     verify_image_harness_artifacts,
 )
 from dicom_overlay.infrastructure.openclaw_runtime import build_openclaw_chat_frame
+from medical_image_harness.ekg_layout import STANDARD_EKG_LEADS
 from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,

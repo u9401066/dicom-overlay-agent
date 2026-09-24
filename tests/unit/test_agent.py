@@ -21,7 +21,6 @@ from dicom_overlay.domain.services import (
     ImageProcessorService,
     RegionMapperService,
     ScreenMonitorService,
-    VisionAnalyzerService,
 )
 from medical_image_harness.models import (
     AnalysisResult,
@@ -31,6 +30,7 @@ from medical_image_harness.models import (
     RegionRect,
     Severity,
 )
+from medical_image_harness.protocols import VisionAnalyzerService
 
 # --- Mock implementations ---
 
