@@ -97,6 +97,12 @@ fails after availability returned, the true handoff record remains intact but
 `final_result` remains absent. The GUI must distinguish the prepared preview from
 an export-enabled canonical result. It must never enable signing/clinical writeback.
 
+A concrete [Qt review presenter](scientific-review-presentation.md) is now
+implemented and natively exercised with synthetic content, including the actual
+async-session/Qt handoff boundary. It is not yet connected to the App's default
+analysis/publication route. Its source/revision guard and invalidation signal
+must be bound to the existing image-change protection when that integration lands.
+
 For `non_diagnostic` QC, `read_blind()` returns `None`, records an explicit skipped
 blind pass and makes **no second model request**. `quality` remains inspectable;
 this is not a normal report or a completed human handoff. Invalid QC/draft, transport

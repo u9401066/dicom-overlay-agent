@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, cast
 
 import structlog
@@ -52,6 +51,37 @@ _REPORT_TEXT_COLORS = {
     "info": "#c8ced9",
 }
 _USER_REGION_HIGHLIGHT_ID = "__user_region__"
+
+
+def _image_quality_text(quality: str | dict[str, object]) -> str:
+    """Readable QC without changing the underlying scientific quality record."""
+    if isinstance(quality, str):
+        return quality
+    adequacy = {
+        "diagnostic": "可判讀",
+        "limited": "部分可判讀",
+        "non_diagnostic": "不可判讀",
+    }.get(str(quality.get("adequacy", "")), "品質狀態未提供")
+    lines = [adequacy]
+    detail = quality.get("detail")
+    if isinstance(detail, str) and detail:
+        lines.append(detail)
+    for key, label in (
+        ("issues", "限制"),
+        ("views_present", "可見視角／導程"),
+        ("views_required", "所需視角／導程"),
+    ):
+        values = quality.get(key)
+        entries = (
+            [item for item in values if isinstance(item, str) and item]
+            if isinstance(values, list)
+            else []
+        )
+        if entries:
+            lines.append(f"{label}：" + "、".join(entries))
+        elif key != "issues":
+            lines.append(f"{label}：未提供，不能推定完整")
+    return "\n".join(lines)
 
 
 def _review_heading(result: AnalysisResult) -> str:
@@ -524,11 +554,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             self._findings_layout.addWidget(empty)
 
         if result.image_quality:
-            quality = (
-                json.dumps(result.image_quality, ensure_ascii=False)
-                if isinstance(result.image_quality, dict)
-                else result.image_quality
-            )
+            quality = _image_quality_text(result.image_quality)
             quality_label = _WrappingReportLabel(f"Image quality: {quality}")
             quality_label.setWordWrap(True)
             quality_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -558,6 +584,11 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 lead_text += (
                     f"\nMalformed/hidden entries: {inventory.malformed_entries}"
                 )
+            if result.workflow_events and not result.layout:
+                lead_text = (
+                    "Lead layout not supplied. See the quality gate and observations; "
+                    "missing layout metadata does not prove that all leads are absent."
+                )
             layout_label = _WrappingReportLabel(lead_text)
             layout_label.setWordWrap(True)
             layout_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -573,6 +604,11 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 f"{process_summary['model_turns']} model turn(s) | "
                 f"{process_summary['crop_reads']} source crop read(s)"
             ]
+            if result.workflow_events:
+                summary_lines = [
+                    f"Recorded workflow: {len(result.workflow_events)} stage(s)",
+                    "Model usage requires separate receipts; not inferred from stage count.",
+                ]
             registered_tools = process_summary["registered_tools"]
             if isinstance(registered_tools, list) and registered_tools:
                 summary_lines.append("Registered tools: " + ", ".join(registered_tools))

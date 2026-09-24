@@ -1,5 +1,34 @@
 # Active Context
 
+## 2026-09-25 — concrete Qt scientific review presenter, native component proof
+
+- New presentation/scientific_review.py: inherited frameless/topmost/draggable
+  SummaryPanel + Observations/Evidence tabs; queued signal from AsyncBridge to Qt
+  paints validated detached preflight snapshot before source/run/content receipt.
+  Required is_current guard before render/ack and100ms while visible; hide/close,
+  cancellation, timeout, content change or explicit invalidation clears and revokes.
+  No signing/export, no unconditional production scope guard, no HTML rendering.
+- Full session-to-real-Qt callback test still uses synthetic Gateway. Not wired
+  into default __main__; next integrate at agent post-geometry/pixel validation,
+  separate prepared/final publication, preserve source/revision/ROI protections.
+- Native Windows150% component shown; actual Win32 close click clears/revokes.
+  First1pass2.65s screenshots exposed raw quality JSON; changed to readable QC.
+  Second1pass0.74s; report visually rechecked, observation/evidence hashes unchanged.
+  Private Ctemp/dicom-scientific-review-ui-20260925-055639 and-055931 (no overwrite).
+  No whole-App/model acceptance, paid inference, new EXE or clinical-score claim.
+- Real first-test defect: Qt teardown event accessed cleared wrapper attributes;
+  event filter guarded lifecycle. Test assumptions fixed for title+summary text,
+  no-paint stub content binding and title-cased Process stages. Focused74pass2.73s.
+- Scientific Process no longer infers zero model usage from workflow metadata;
+  missing scientific layout is not evidence all12leads absent. Underlying quality,
+  provenance and draft unmodified. Legacy text/report/geometry checks stay green.
+- Ruff/format and presenter mypy pass. Full suite8481 terminal0:2354pass8skip
+  408.18s. After full run, two-line guard prevents restarting timer after close
+  during render; new regression+focused75pass2.92s. Do not invent2355 full-run count.
+  Docs12pass0.10s; initialstaged47.33KB secret scan clean. d7bd172 both CI36063757958/36063754170 and secret scans
+  36063757965/36063754176 all completed success.
+- Evidence:docs/evidence/2026-09/qt-scientific-review-2026-09-25.md.
+
 ## 2026-09-25 — scientific second look, content preflight and bound handoff
 
 - Public6152ab01d240c9b96698ff39e6a37ac35fa28275 adds separate preflight API:

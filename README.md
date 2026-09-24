@@ -93,6 +93,10 @@ Content preflight and a run/source/content-bound review-availability callback no
 precede full canonical validation. These stages are tested with synthetic replies;
 the real App presenter, independent classifier and default desktop activation
 remain open. See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
+The concrete [Qt review surface](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)
+now paints observation/evidence tabs before acknowledging availability, with
+native 150%-DPI synthetic-window and real-mouse close/revocation checks. This is
+component evidence, not yet default App/OpenClaw staged-pipeline acceptance.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
