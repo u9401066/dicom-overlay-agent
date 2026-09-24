@@ -9,6 +9,9 @@ checks pass. Opt-in only, synthetic-tested, no new clinical/live-model acceptanc
 An [actual App follow-up](evidence/2026-09/native-scientific-startup-2026-09-25.md)
 found and corrected a missing transport-receipt opt-in before the first model
 request; successful live scientific interpretation is not yet established.
+The next real run exposed canonical session naming; after correction, QC advances
+to blind reading, where multi-observation checklist references still fail the
+current single-ID contract. Exact long-response persistence is also still open.
 
 ## Current checkpoint — September 24, 2026
 

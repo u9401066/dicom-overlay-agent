@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — actual canonical sessions work; blind multi-reference gate remains
+
+- Three actual clean-source App runs found two fixed integration defects. Third
+  run accepted QC and sent blind pass, but comma-joined checklist references fail
+  the current one-observation contract. Two Astra-medium turns verified, no final
+  report, localization or five-stage acceptance. Public history truncates long
+  output; durable full visible-response retention and typed multi-reference
+  support remain next required work, not a reason to relax the evidence gate.
+- All three Apps/Gateways closed through UI and sealed; Viewer retained. Full
+  canonical-session suite2384pass8skip417.52s, docs12pass, focused195pass, Ruff/
+  mypy/secrets pass. No new EXE, clinical result improvement or baseline changes.
+
 ## 2026-09-25 — actual quality response and canonical Gateway session names
 
 - One actual Astra-medium QC response received via App but transport identity

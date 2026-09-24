@@ -102,6 +102,10 @@ now uses `--scientific-review --deidentified-input`, two pixel checks, queued Qt
 handoff and validated canonical export. It is synthetic-tested, not live-model
 accepted, and does not yet integrate the legacy clinical-rule hooks. Regional edits
 remain review drafts requiring reconciliation; the default workflow is unchanged.
+Initial [actual App runs](docs/evidence/2026-09/native-scientific-startup-2026-09-25.md)
+fixed missing receipt collection and canonical session naming. QC now advances
+to blind reading, but multi-observation checklist references still block final
+publication; complete live five-stage acceptance has not been achieved.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

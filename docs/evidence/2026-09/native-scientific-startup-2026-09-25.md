@@ -99,3 +99,60 @@ in9.35s; client mypy/Ruff pass. The previous receipt-option source full run was
 App Quit was invoked through its real control; App/launcher/Gateway and18796
 listener were confirmed absent afterward. Do not restart this sealed runtime.
 Corrected live five-stage execution is still pending in a third isolated runtime.
+
+## Third actual run: quality accepted, checklist reference gate stops blind pass
+
+Clean `88556d2` used a third isolated runtime,
+`C:/Users/Ericlab/AppData/Local/Temp/dicom-scientific-desktop-20260925-session-key`.
+App19576/launcher28316/Gateway6688 again used Viewer7832, actual Open dialog and
+Analyze. This time the quality reply passed transport and QC, and the App sent
+the blind-pass request. The run stopped after57.040s at
+`unsupported_checklist_observation`, before localization, reconciliation,
+second look, Qt handoff or report export.
+
+Public usage/history and matching runtime session IDs verify two Astra-medium
+turns, not five: QC `a48c13f5-6e87-4d89-8aa4-cb359c2c3d4f` (log55) and blind
+`94d03518-0173-4be6-970f-fe9ea0d2d0d3` (log208). Snapshots preserve QC
+inputTokens6728/outputTokens203/totalTokens6728 and blind
+inputTokens8978/outputTokens2095/totalTokens8978 literally; these are not a billing
+ledger or additive monetary charges. No optional classifier was run.
+
+The visible blind response links several checklist entries using comma-separated
+IDs: ischemia and t_wave use `o5, o6`, qrs_duration and st_segment use `o3, o7`,
+rhythm uses `o1, o2`. Those are not single existing observation IDs. Both the
+current public canonical validator and App draft decoder require a single ID in
+`ChecklistItem.evidence`, although its JSON Schema only describes a string. This
+is a reference-representation mismatch, not evidence of clinical correctness or
+of a clinically false observation.
+
+The public history truncates the longer blind text (the returned string ends
+midway through next_steps and includes a truncation marker). It cannot replay
+the complete original JSON; it was not repaired or credited as a complete raw
+receipt. Exact full output persistence remains an integration gap. The shown
+checklist fields and the actual App exception support the narrower diagnosis.
+
+Next work must explicitly model multi-observation references across public types,
+schema, semantic validation, prompt and App adapter, while retaining strict
+resolved/supported-observation checks and legacy compatibility. Existing receipts
+must remain unchanged; acceptance needs a fresh real App run. Full five-stage,
+native localization, report UI and regional QA under this mode remain unverified.
+
+The public receipt query sent zero additional model requests. App Quit used its
+actual UI, and App/launcher/Gateway and18796 listener were confirmed absent.
+Viewer was retained. Never restart this third sealed runtime either.
+
+- Attempt receipt SHA-256:
+  `f2f0397d241caac25b33059ccdee6780f51c37aa9f1576a71b09b0435ca131b8`.
+- Public usage receipt SHA-256:
+  `cc158d978af905c879fe2ebc19216c460c22eb565674c557ac5e0ce056167d34`.
+- Private public-query directory: `public-evidence-20260924-230743` under the
+  third runtime's parent. It contains a visible-history projection, not the full
+  original Gateway stream, and must not be published with its private config.
+
+Final canonical-session source full suite: **2384 passed /8 skipped in417.52s**,
+session91342 terminal0. Documentation12pass0.10s, client mypy/Ruff and staged
+10.32KB secret scan pass. Earlier53a32a8 both CI+secret runs completed success.
+Canonical-session88556d2 CI36070777879/36070773640 and secret scans
+36070777815/36070773698 also completed successfully. Final documentation-only
+checkpoint recheck:12 passed in0.09s; `git diff --check` clean.
+No new EXE, clinical-score improvement or completed five-stage App claim.

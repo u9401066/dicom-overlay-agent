@@ -1,5 +1,39 @@
 # Active Context
 
+## 2026-09-25 — third real App reaches blind pass, multi-observation references open
+
+- Clean88556d21b799e8364d21ad168b7d8a3436facf4c, fresh private
+  Ctemp/dicom-scientific-desktop-20260925-session-key; App19576/launcher28316/
+  Gateway6688/Viewer7832, port18796. Actual file dialog+Analyze, same authorized
+  partial ROI1500x864 at30,30. QC accepted; blind rejected57.040s at
+  unsupported_checklist_observation. No localization/reconcile/secondlook/handoff
+  or report/export. Three real attempts this turn:0,1,2 model requests respectively;
+  these counts do not establish monetary charges.
+- Public sessions+history/runtime verify both Astra medium. QC runa48c13f5...
+  /session6467aa47... log55; blind94d03518.../sessionc1940c5e... log208. See full
+  IDs, usage snapshots and hashes in native-scientific-startup evidence.
+- Visible blind checklist has comma-joined observation IDs (o5,o6 etc), but
+  public ChecklistItem.evidence and App decoder require ONE exact observation ID.
+  Schema only string, prompt says cite IDs. Need explicit typed multi-observation
+  references across public model/schema/validator/skill+prompt and host adapter;
+  preserve legacy compatibility and strict supported/resolved references. Do not
+  discard references or rewrite old response to make it pass. No prompt-only
+  one-ID simplification implemented; no clinical correctness claim from this.
+- Public chat.history truncates long blind JSON at next_steps; no complete raw
+  output replay exists after App exit. Add durable exact visible-response receipts
+  at host boundary before further live diagnosis; no PHI/global logs/git leakage.
+  Collector filters thinking blocks, query-only private config avoids token argv.
+- Actual Quit stopped App/launcher/Gateway; no18796listener. All THREE runtimes
+  are sealed and must never restart (Gateway truncates logs). Viewer7832 retained.
+- Final full91342 terminal0:2384pass8skip417.52s. Docs12pass0.10s; focused195pass,
+  client mypy/Ruff, staged10.32KB secrets clean. 88556d2 remote CI36070777879/
+  36070773640 and secret scans36070777815/36070773698 completed success;
+  53a32a8 both CI36069820478/36069815151 and secrets20453/15269 success.
+- Next: multi-reference contract + durable output retention, then fresh actual
+  five-stage App test. Current mode remains development-only, skips legacyclinical
+  hooks; independent waveform matching/classifier, quality-only UI, new EXE,
+  clinical acceptance and all broader goal requirements still open.
+
 ## 2026-09-25 — actual QC received, canonical session-name correction
 
 - Clean53a32a8 App9468/launcher14048/Gateway24572/Viewer7832, new private
