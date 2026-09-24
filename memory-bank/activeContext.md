@@ -21,6 +21,10 @@
   remains synthetic. No native desktop focus or model request used for this QA.
 - Separate site branch targets main because Pages permits only main; deployment
   and live-site verification remain pending at this commit. No binary publication.
+- PR 19 review follow-up: label main-low vs development-medium in both provider
+  tables; pin setup checkout to ebbe2a5 and require uv sync --locked. Expanded
+  headless QA also passes at 320x740. eff8d96 CI and secret scans passed; review
+  identified these documentation corrections before merge.
 
 ## 2026-09-11 Public evidence checkpoint (docs/site only)
 

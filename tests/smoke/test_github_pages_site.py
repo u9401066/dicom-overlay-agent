@@ -161,7 +161,7 @@ def test_pages_site_reports_public_repository_and_absent_release() -> None:
 def test_pages_public_setup_uses_real_subscription_and_harness_commands() -> None:
     docs = (SITE_ROOT / "docs.html").read_text(encoding="utf-8")
 
-    assert "uv sync --all-extras" in docs
+    assert "uv sync --locked --all-extras" in docs
     assert "codex login" in docs
     assert "OpenAI GPT-6 Astra via Codex Subscription" in docs
     assert "openai/gpt-6-astra" in docs
@@ -224,6 +224,7 @@ def test_current_site_distinguishes_source_package_and_actual_interaction():
         "regional-conversations.json", "still needs native retesting",
         "No 100-case medium clinical cohort has passed",
         "git submodule update --init --recursive",
+        "git checkout --detach ebbe2a5e0c883126da40c62e2d6d88195698a381",
         "--branch agent/direct-harness-models-20260910",
         "--bundle dist\\DICOMOverlayAgent",
         "Sealed Astra-low baseline: 121 primary cases scored",
@@ -231,6 +232,12 @@ def test_current_site_distinguishes_source_package_and_actual_interaction():
     ):
         assert text in docs
     assert "complete Astra real-App cohort is still pending" not in docs
+    assert "main baseline: low; current development branch: medium" in (
+        REPO_ROOT / "README.md"
+    ).read_text("utf-8")
+    assert "main 基準：low；目前開發分支：medium" in (
+        REPO_ROOT / "README.zh-TW.md"
+    ).read_text("utf-8")
 
 
 def test_all_local_navigation_fragments_exist():

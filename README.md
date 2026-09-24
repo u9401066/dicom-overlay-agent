@@ -59,7 +59,7 @@ billing. All keep the multimodal agent loop inside OpenClaw:
 
 | Settings profile | Authentication / transport | Model | Billing evidence |
 | --- | --- | --- | --- |
-| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | native OpenClaw `openai-chatgpt-responses`; local Codex sign-in; low reasoning effort; no Platform API key | `openai/gpt-6-astra` | subscription usage; cancelled/unreported turns are not zero usage |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | native OpenClaw `openai-chatgpt-responses`; local Codex sign-in; **main baseline: low; current development branch: medium** (see checkpoint above); no Platform API key | `openai/gpt-6-astra` | subscription usage; cancelled/unreported turns are not zero usage |
 | `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | local ChatGPT/Codex OAuth migrated into native OpenClaw `openai-chatgpt-responses`; no `OPENAI_API_KEY`, no Codex agent runtime | `openai/gpt-5.6-luna` | subscription usage; token cost below is only an API-equivalent estimate |
 | `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` through OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | normal Platform API billing |
 

@@ -93,8 +93,9 @@
             <pre><code>git clone --recurse-submodules --branch agent/direct-harness-models-20260910 ^
   https://github.com/u9401066/dicom-overlay-agent.git
 cd dicom-overlay-agent
+git checkout --detach ebbe2a5e0c883126da40c62e2d6d88195698a381
 git submodule update --init --recursive
-uv sync --all-extras
+uv sync --locked --all-extras
 scripts\install-openclaw-local.bat
 start.bat</code></pre>
             <p>
