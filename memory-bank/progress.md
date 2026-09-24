@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Native Mark, independent regional histories and Viewer movement
+
+- Clean source 55ec9c9 actually launched with owned Viewer and subscription
+  OpenClaw. Exposed partial case: 91.064s analysis, ROI MAE 0, INDETERMINATE UI.
+- Physical drag outside AI box opens manual QA; two manual turns plus one f1
+  turn remain distinct and join no_change audit IDs. Reopen is local/no call.
+- Actual +200,+120 Viewer translation: both fills follow within 1px at 150%
+  scaling; source/history/chat/summary unchanged. Actual resize hides stale
+  review, requests safe ROI and prevents stale Export. Ten stages bound to
+  Astra medium; no clinical accuracy or new EXE claim. All 55ec9c9 CI/secrets pass.
+- Evidence: docs/evidence/2026-09/native-regional-projection-2026-09-24.md.
+
 ## 2026-09-24 Current projection separated from acquisition geometry
 
 - Source now follows same-display translation without another model call or

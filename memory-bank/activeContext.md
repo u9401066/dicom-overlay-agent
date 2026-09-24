@@ -1,5 +1,24 @@
 # Active Context
 
+## 2026-09-24 Actual native regional QA and projection at 55ec9c9
+
+- Real clean source App + owned Qt Viewer + existing isolated subscription
+  runtime, exposed partial case 119. Actual file dialog/Analyze/Export; 91.064s
+  analysis, 99.939s workflow, ROI MAE 0. No unrestricted desktop capture.
+- Actual mouse Mark starts outside AI box; manual Q1/Q2 and separate existing
+  f1 question answered. Reopening manual box returns its two-turn history with
+  no model request. Three host turn IDs bind to no_change/unconfirmed outcomes.
+- Viewer translated +200,+120 physical px at 150% scale; actual exported AI
+  and manual fills follow within 1px. Source/history/chat/summary identical.
+  Shrink invalidates review, requests ROI and blocks stale Export.
+- Ten model stages verified Astra medium via public usage/runtime bindings;
+  no API key or model substitution. Exposed case, not a clinical accuracy pass.
+- App/Viewer and owned Gateway shut down; their PIDs/listener are gone.
+  55ec9c9 CI and secret scans all success.
+  Not included in preserved 6e6734e EXE. Browser/DPI/new blind cohort, native
+  promotion/dismissal and mid-analysis image replacement remain open.
+- Evidence: docs/evidence/2026-09/native-regional-projection-2026-09-24.md.
+
 ## 2026-09-24 Viewer translation projection source correction
 
 - Snapshot acquisition rectangle stays immutable; separate current display

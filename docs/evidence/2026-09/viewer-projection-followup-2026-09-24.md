@@ -68,6 +68,8 @@ expansion or public-harness submodule change. The four-core boundary remains:
 application owns snapshot lifecycle; presentation owns Qt projection; domain
 types do not import GUI/network code; interpretation stays with OpenClaw.
 
-Native Viewer/browser movement, actual mixed-DPI monitor behavior, visual latency,
+Follow-up: [actual native regional QA and same-display Viewer movement](native-regional-projection-2026-09-24.md)
+now verifies the source App at 150% scaling, including resize invalidation.
+Native browser movement, actual mixed-DPI monitor behavior, visual latency,
 fresh source-App/model acceptance and >=100 current-model real-GUI clinical cases
 remain required. These source tests are not new clinical cases or a binary release.
