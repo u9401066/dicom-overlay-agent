@@ -11,7 +11,9 @@
 - Native sanitized digest bytes retained for JS/Python small-number compatibility;
   independent desktop matching and saved blind/tool reconciliation remain open.
 - Focused135pass17.11s; documentation/eval-validator/scientific-session65pass2.25s;
-  targeted mypy/Ruff/format pass. Final full regression pending.
+  targeted mypy/Ruff/format pass. Fresh full2189pass/7skip377.36s (22165terminal0).
+  Source2dd4f9e pushed; remote secret scans/four compatibility jobs pass, full CI
+  still running when local results were recorded. Staged40.94KB no leaks.
 - Old120-case score/seal unchanged, previous candidate CI green. No paid model,
   actual new GUI, package-size measurement, EXE or clinical acceptance in this step.
   Evidence:docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md.

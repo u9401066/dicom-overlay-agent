@@ -1,6 +1,6 @@
 # Waveform evidence must be checked before a later image prompt
 
-September 25, 2026. Source candidate based on `1b1f28c`; this is an evidence-boundary
+September 25, 2026. Source correction `2dd4f9e`, based on `1b1f28c`; this is an evidence-boundary
 correction, not desktop waveform activation, clinical acceptance or a new EXE.
 
 ## Integration findings
@@ -81,7 +81,23 @@ It cannot establish improved diagnosis recall, current-EXE usability or end-to-e
 independent waveform assistance. The earlier regional Mark/QA native evidence and
 the failed sealed 120-case clinical baseline are unchanged.
 
-Verification results are recorded below after the final regression finishes.
+Final local verification, Python 3.13.12, Node 24.18 and offscreen Qt:
+
+- **2,189 passed / seven explicit conditional skips in 377.36 s**, fresh complete
+  run after all source/test changes (process session 22165, terminal exit 0).
+- Focused client/native plugin checks: **135 passed in 17.11 s**, including 38
+  new unit cases and six new native numerical-format cases.
+- Documentation links, existing evaluation validator and scientific session:
+  **65 passed in 2.25 s**. Targeted mypy, Ruff and formatting checks passed.
+- Staged secret scan: 40.94 KB checked, no leaks. Both remote secret scans for
+  `2dd4f9e` passed; all four Windows/Linux Python 3.11/3.12 compatibility jobs
+  passed. Full remote CI was still running when this local result was recorded.
+
+The seven skips remain the optional repo-local Node directory, private frozen
+cohort, three packaged-runtime opt-ins and two native Windows capture/input
+opt-ins. They are not new GUI or packaged acceptance. An oversized synthetic
+pytest parameter initially exceeded Windows fixture-name constraints; a bounded
+test ID fixed the runner without reducing the tested 512 KiB limit or payload.
 
 Only standard-library host code was added; Torch/NumPy/SciPy remain in the optional
 sidecar, outside the bundle. ROI, overlay mapping, clinical result schema and the

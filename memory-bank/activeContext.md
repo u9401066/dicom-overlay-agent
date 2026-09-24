@@ -19,8 +19,11 @@
   refine send/receive exercised with synthetic Gateway; one send/no parse retries.
   Large synthetic pytest parameter needed a bounded ID on Windows; fixed fixture
   ID, not the tested payload/size limit. Ruff/format/targeted mypy pass.
-- Docs/legacy eval validator/scientific session checks65pass2.25s. Full final
-  regression pending. Previous1b1f28c both CI/secrets completed successfully.
+- Docs/legacy eval validator/scientific session checks65pass2.25s. Fresh final full
+  2189pass/7skip377.36s, session22165terminal0 after all code/test changes. Source
+  fix2dd4f9e pushed. Both source secret scans green, four compatibility jobs green;
+  full remoteCI36053906438/36053897226 still running at local-result checkpoint.
+  Previous1b1f28c both CI/secrets completed successfully. Staged40.94KB no leaks.
 - Frozen120-case seal57aeb9d... and score6532f1ec... rehashed unchanged; no scorer,
   historical validation implementation, source files or private results rewritten.
   No paid inference, new native App run, EXE, waveform activation or accuracy claim.
