@@ -1,5 +1,18 @@
 # Active Context
 
+## 2026-09-25 — CI fixed-pin follow-up during fresh App startup
+
+- Remote20e2690 CI36073119191 failed only test_public_harness_model_boundary's
+  stale literal6152ab0 (both OS jobs). Local2410pass occurred before submodule
+  commit changed HEAD, so did not prove the final committed pin assertion.
+- Updated expected pin + current architecture doc to d9798da without weakening
+  fixed-pin check; boundary/docs31pass1.79s. New full1904 running.
+- Fresh confirm-graph runtime started source1eb0565, launcher14196/App5404;
+  no prior auth/logs reused. Pending real run. Only tests/docs changed during
+  startup; production/schema/skill fingerprints unchanged. Never restart sealed
+  multiref runtime to perform this retest.
+
+
 ## 2026-09-25 — actual four-turn multireference replay; confirm graph prompt
 
 - Actual clean20e2690 App26484/launcher36668/Gateway34584/Viewer7832 in fresh

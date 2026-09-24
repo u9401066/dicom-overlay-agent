@@ -1,5 +1,12 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-25 — CI pin assertion correction
+
+- Remote20e2690 exposed old6152ab0 expected pin; public submodule now d9798da.
+  Updated literal and architecture doc,31 boundary/docs tests pass. Fixed-pin
+  invariant retained. Full1904 running; fresh actual App startup in progress.
+
+
 ## 2026-09-25 — actual multireference success, reconciliation decision failure
 
 - Clean20e2690 actual App advanced through QC/blind/native bbox binding, then

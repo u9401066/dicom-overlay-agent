@@ -117,3 +117,10 @@ observations for confirm/revise. It permits correction via revise, never automat
 rewriting of an old decision. Validator unchanged. Six synthetic anatomy/text/
 question decision cases and a prompt invariant were added; reconciliation/session/
 handoff/main:111 passed in6.76s, mypy/Ruff pass. Fresh live verification pending.
+
+Remote20e2690 CI36073119191 exposed an outdated fixed-pin test literal on both
+Ubuntu and Windows. The earlier local full run had evaluated that assertion
+before the submodule commit changed HEAD, so it did not establish final committed
+CI acceptance. Updated the expected pin and current architecture document to
+d9798da, preserving the strict pin check. Boundary/documentation31pass1.79s;
+fresh full regression is running. No clinical/runtime validation gate was relaxed.

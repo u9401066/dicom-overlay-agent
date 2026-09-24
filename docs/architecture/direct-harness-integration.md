@@ -8,7 +8,7 @@ cohorts and separately verified binaries remain unchanged.
 ## One owner for image-reading models
 
 The public [medical-image-agent-harness](https://github.com/u9401066/medical-image-agent-harness)
-is pinned as a submodule at `6152ab01d240c9b96698ff39e6a37ac35fa28275`.
+is pinned as a submodule at `d9798dae0cf4ac3e25578da127801bce6d4391b3`.
 The desktop opts into two-turn EKG lead-group coverage for a complete, explicitly
 labeled inventory, preserving critical-first and independent-attention routes.
 The public default remains off; older frozen batches and the evaluation runner
