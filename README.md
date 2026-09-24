@@ -87,9 +87,12 @@ The opt-in [image evidence request API](docs/architecture/gateway-evidence-captu
 now connects Gateway requests to original output receipts, without the legacy
 parser or automatic paid parse retries. Actual staged desktop acceptance is pending.
 An [executable stage adapter](docs/architecture/scientific-image-session.md) now
-runs intake, QC and blind reading; non-diagnostic inputs make no blind-read request.
-This remains an intermediate draft, without completed localization/reconciliation
-or default desktop activation.
+runs intake, QC, blind reading, native localization, reconciliation and a separate
+source-image second look; non-diagnostic inputs make no blind-read request.
+Content preflight and a run/source/content-bound review-availability callback now
+precede full canonical validation. These stages are tested with synthetic replies;
+the real App presenter, independent classifier and default desktop activation
+remain open. See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

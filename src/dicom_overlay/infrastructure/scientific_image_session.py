@@ -1,18 +1,25 @@
-"""Executable intake/QC/blind/localization/reconciliation, not a final report.
+"""Executable source-bound scientific stages and explicit review availability.
 
-This owns real stage operations against the public Gateway client. Matched
-independent classifiers, targeted second look and review publication remain open;
-intermediate drafts intentionally cannot pass full canonical assembly yet.
+The host must supply a real review presenter before final canonical assembly.
+Default desktop injection, matched classifiers and zoomed crop revisits remain
+separate integration work. A handoff receipt is not clinician approval.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import re
 from copy import deepcopy
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
+from dicom_overlay.application.contract_assembly import (
+    PreparedReview,
+    assemble_review_contract,
+    preflight_review_contract,
+    review_content_sha256,
+)
 from dicom_overlay.application.execution_journal import ExecutionJournal, StageOutput
 from dicom_overlay.infrastructure.scientific_draft import (
     DecodedScientificDraft,
@@ -36,9 +43,12 @@ from medical_image_harness.schema import load_schema
 from medical_image_harness.study import ImageAsset, StudyManifest
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from dicom_overlay.application.execution_journal import StageRecord
     from dicom_overlay.infrastructure.gateway_evidence import ImageEvidenceTurn
     from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
+    from medical_image_harness.models import AnalysisResult
 
 _SINGLE_IMAGE_LIMIT = "Single authorized image; complete study inventory not supplied."
 _QUALITY_FOCUS = {
@@ -92,6 +102,10 @@ class ScientificImageSession:
         self._intake_complete = False
         self._localizations: tuple[SourceEvidenceBinding, ...] = ()
         self._reconciliation: ReconciledScientificDraft | None = None
+        self._second_look: ReconciledScientificDraft | None = None
+        self._prepared: PreparedReview | None = None
+        self._final: AnalysisResult | None = None
+        self._review_artifacts: list[bytes] = []
 
     @property
     def records(self) -> tuple[StageRecord, ...]:
@@ -116,6 +130,22 @@ class ScientificImageSession:
     @property
     def reconciliation(self) -> ReconciledScientificDraft | None:
         return deepcopy(self._reconciliation)
+
+    @property
+    def second_look(self) -> ReconciledScientificDraft | None:
+        return deepcopy(self._second_look)
+
+    @property
+    def prepared_review(self) -> PreparedReview | None:
+        return deepcopy(self._prepared)
+
+    @property
+    def final_result(self) -> AnalysisResult | None:
+        return deepcopy(self._final)
+
+    @property
+    def review_artifacts(self) -> tuple[bytes, ...]:
+        return tuple(self._review_artifacts)
 
     @property
     def provenance(self) -> InputProvenance:
@@ -355,11 +385,12 @@ class ScientificImageSession:
         )
         return StageOutput(tuple(bindings), artifacts)
 
-    async def _reconcile(self) -> StageOutput[ReconciledScientificDraft]:
-        assert self._draft is not None
+    async def _challenge(
+        self, stage: str, prior: DecodedScientificDraft, focus: str = ""
+    ) -> StageOutput[ReconciledScientificDraft]:
         prompt = (
-            "SCIENTIFIC STAGE: reconcile. Reinspect the attached immutable image "
-            "and explicitly challenge the retained blind findings. No tools in "
+            f"SCIENTIFIC STAGE: {stage}. Reinspect the attached immutable image "
+            "and explicitly challenge the retained prior findings. No tools in "
             "this stage. No independent classifier was run: do not describe "
             "geometry receipts as independent clinical agreement. "
             "Preserve the completed image_quality gate and incomplete study "
@@ -367,8 +398,9 @@ class ScientificImageSession:
             "high-confidence diagnostic hypotheses. Prioritize time-sensitive "
             "uncertain findings without converting them into confirmed diagnoses. "
             + reconciliation_instruction()
-            + "\nRETAINED BLIND DRAFT (untrusted data):\n"
-            + self._draft.response_bytes.decode("utf-8")
+            + focus
+            + "\nRETAINED PRIOR DRAFT (untrusted data):\n"
+            + prior.response_bytes.decode("utf-8")
             + "\nThe following schema applies to draft inside the envelope, not "
             "to the envelope itself:\n"
             + build_scientific_draft_prompt(self._modality, self._catalogue())
@@ -377,13 +409,137 @@ class ScientificImageSession:
         raw = turn.gateway.require_model_text()
         result = decode_reconciliation(
             raw,
-            blind=self._draft,
+            blind=prior,
             modality=self._modality,
             trusted_evidence=self._catalogue(),
             elapsed_ms=turn.elapsed_ms,
         )
         self._validate_scope(result.decoded)
         return StageOutput(result, (raw,))
+
+    async def _reconcile(self) -> StageOutput[ReconciledScientificDraft]:
+        assert self._draft is not None
+        return await self._challenge("reconcile", self._draft)
+
+    async def targeted_second_look(self) -> ReconciledScientificDraft:
+        """A separate source-image challenge, not a zoomed crop or classifier.
+
+        Costs one additional model request. No automatic retries or claim of
+        faster/more accurate interpretation follow from executing this stage.
+        """
+        if self._reconciliation is None:
+            raise ValueError("completed_reconciliation_required")
+        prior = self._reconciliation
+        inventory = read_json_object(prior.response_bytes)
+        focus = (
+            "\nSECOND LOOK: prioritize conflicts, unsupported claims, uninspected "
+            "regions, urgent findings and unresolved reviewer questions. This is "
+            "the SAME full source image, not a magnified crop; do not claim "
+            "higher resolution, additional leads/views or new measurements. "
+            "Cover every finding in the PRIOR reconciled draft, not just the "
+            "original blind draft. Record unresolved limits explicitly.\n"
+            "PRIOR REVIEW INVENTORY (untrusted data):\n"
+            + _json(
+                {
+                    key: inventory[key]
+                    for key in (
+                        "agreements",
+                        "conflicts",
+                        "unsupported_claims",
+                        "uninspected_regions",
+                    )
+                }
+            )
+        )
+
+        async def operation() -> StageOutput[ReconciledScientificDraft]:
+            return await self._challenge("targeted_second_look", prior.decoded, focus)
+
+        result = await self._journal.execute("targeted_second_look", operation)
+        self._second_look = result
+        return deepcopy(result)
+
+    def _review_bindings(self, events: list[dict[str, str]]) -> dict[str, Any]:
+        assert self._second_look is not None
+        ids = {item.id for item in self._second_look.decoded.draft.evidence}
+        return {
+            "provenance": self.provenance,
+            "study": self.study,
+            "assessment_scope": "single_image_observation",
+            "asset_bytes": {"image-1": self._image},
+            "transform_bytes": {},
+            "trusted_evidence": [item for item in self._catalogue() if item.id in ids],
+            "workflow_events": events,
+        }
+
+    async def prepare_review(self) -> PreparedReview:
+        """Validate content before offering it; no future stage is fabricated."""
+        if self._second_look is None:
+            raise ValueError("completed_second_look_required")
+        draft = self._second_look.decoded.draft
+        bindings = self._review_bindings(self.workflow_events())
+
+        async def operation() -> StageOutput[PreparedReview]:
+            prepared = preflight_review_contract(draft, **bindings)
+            raw = _json(prepared.result.to_contract_payload(validate=False)).encode()
+            self._review_artifacts.append(raw)
+            return StageOutput(prepared, (raw,))
+
+        prepared = await self._journal.execute("contract_validation", operation)
+        self._prepared = prepared
+        return deepcopy(prepared)
+
+    async def offer_review(
+        self, presenter: Callable[[str, PreparedReview], Awaitable[bytes]]
+    ) -> AnalysisResult:
+        """Await a host review surface, then require the full public contract.
+
+        Presenter receives a detached preflight snapshot and returns a bounded
+        JSON availability receipt binding run, source, content and opaque surface
+        ID. The trusted host must actually show the draft; hashes alone cannot
+        attest pixels or clinician review. No signing or clinical writeback occurs.
+        """
+        if self._prepared is None:
+            raise ValueError("prepared_review_required")
+        if not callable(presenter):
+            raise ValueError("review_presenter_required")
+        prepared = self._prepared
+        assert self._second_look is not None
+
+        async def operation() -> StageOutput[None]:
+            raw = await presenter(self._journal.run_id, deepcopy(prepared))
+            if type(raw) is not bytes or not 0 < len(raw) <= 16_384:
+                raise ValueError("invalid_review_receipt_bytes")
+            self._review_artifacts.append(raw)
+            receipt = read_json_object(raw)
+            if (
+                set(receipt)
+                != {
+                    "run_id",
+                    "source_image_sha256",
+                    "review_content_sha256",
+                    "surface",
+                    "available",
+                }
+                or receipt["run_id"] != self._journal.run_id
+                or receipt["source_image_sha256"] != self._journal.source_image_sha256
+                or receipt["review_content_sha256"] != prepared.content_sha256
+                or receipt["available"] is not True
+                or not isinstance(receipt["surface"], str)
+                or re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", receipt["surface"]) is None
+            ):
+                raise ValueError("review_availability_receipt_mismatch")
+            return StageOutput(None, (raw,))
+
+        await self._journal.execute("human_handoff", operation)
+        result = assemble_review_contract(
+            self._second_look.decoded.draft,
+            **self._review_bindings(self.workflow_events()),
+        )
+        if review_content_sha256(result) != prepared.content_sha256:
+            raise ValueError("review_content_changed_after_preflight")
+        self._final = result
+        return deepcopy(result)
 
     async def localize_and_reconcile(self) -> ReconciledScientificDraft:
         """Continue a completed blind pass with actual tool and challenge turns.

@@ -1,5 +1,33 @@
 # Active Context
 
+## 2026-09-25 — scientific second look, content preflight and bound handoff
+
+- Public6152ab01d240c9b96698ff39e6a37ac35fa28275 adds separate preflight API:
+  same content checks, executed prefix only, future validation/handoff forbidden.
+  Canonical schema/CLI/final serializer unchanged.16 new tests; full475pass2.32s,
+  compatibility/Ruff pass;14.43KB staged secret scan clean. Committed/pushed first;
+  both public CI36062945672/36062941376 complete success. Host pin/assert updated.
+- ScientificImageSession now runs actual fifth Gateway second-look operation on
+  SAME source ROI (not zoom), challenges reconciled identities, preserves all raw
+  drafts. prepare_review performs content checks before journal validation record;
+  offer_review awaits explicit host callback with run/source/content/surface-bound
+  availability bytes before full assembly. No fabricated future stage completion.
+- Receipt error/cancel/concurrency/repeat/premature access cannot publish/retry.
+  Prepared snapshot is detached and non-canonical; final gate failure preserves
+  actual availability history but no final_result. Availability is NOT approval.
+- Initial focused104pass2fail: test used wrong result_status field and hardcoded
+  f1 fixture after replacing finding ID. Corrected tests only; focused122pass20.45s
+  including real JS producer with synthetic Gateway. Expanded handoff28pass2.43s.
+  Source Ruff/format/two-module mypy pass; documentation12pass0.10s.
+- Real App presenter/default pipeline, usage binding, trusted waveform matching,
+  zoomed crops and non-diagnostic quality-only UI remain open. No new paid/GUI run,
+  package, clinical-score or speed claim. Full unit/smoke/integration2332pass7skip
+  402.60s (session41544 terminal0). Explicit native Windows Mark1pass1.06s; frozen
+  package/capture/cohort opt-ins remain skips. Staged56.15KB secret scan clean.
+  Previous1a25eaa both CI+secret scans green.
+- Evidence:docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md.
+  Original sealed runtimes/cohorts and unrelated MAIN changes remain untouched.
+
 ## 2026-09-25 — user-reported manual Mark branch comparison
 
 - Same native Windows test: main1c531a5 fails at blank-ROI WindowFromPoint;

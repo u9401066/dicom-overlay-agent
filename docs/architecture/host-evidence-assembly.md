@@ -27,6 +27,16 @@ required events, truthful partial-study scope or review state fail closed.
 The original draft/trace/inputs remain unchanged and do not alias the result.
 Validation exceptions expose fixed categories, not source/model text in logs.
 
+`preflight_review_contract` shares those independent binding checks but calls the
+separate public preflight validator against an executed prefix. Future validation
+and handoff events are forbidden. It returns a detached `PreparedReview` plus a
+content fingerprint, not a canonically complete result. After a real presenter
+returns a source/run/content-bound availability receipt, the stage adapter calls
+the unchanged `assemble_review_contract` with actual completed journal events.
+Content fingerprints must agree. No optional final-validation bypass was added.
+See the [executable lifecycle](scientific-image-session.md); actual desktop
+presenter injection is still required.
+
 Model-supplied or previously assembled host fields are rejected, not overwritten.
 There is no code path that manufactures observations from finding prose, adds
 normal checklist entries, sets a model box's `verified` flag, guesses study

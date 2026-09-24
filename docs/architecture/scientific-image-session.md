@@ -1,11 +1,12 @@
-# Executable intake, blind pass, native localization and reconciliation
+# Executable scientific stages and review-availability boundary
 
 `infrastructure.scientific_image_session.ScientificImageSession` connects actual
 stage operations to the [execution journal](execution-journal.md),
 [Gateway image request API](gateway-evidence-capture.md) and
 [strict scientific decoder](scientific-model-draft.md), then optionally continues
-through actual native geometry and explicit finding challenge turns. This is an **intermediate
-pipeline**, not a completed report, default App mode or clinical release.
+through native geometry, explicit finding challenge and second-look turns. A
+separate preflight and host review-availability callback permit final canonical
+assembly. This is **not the default App pipeline**, clinical approval or a release.
 
 ## Implemented sequence
 
@@ -60,8 +61,41 @@ strictly decoded nested draft (whose bytes are a canonical JSON projection).
 blind response remains immutable and box-free; a later client send cannot replace
 the prior tool text/audit snapshot. Repeated/concurrent continuation, failure or
 cancellation cannot silently start a paid retry. These stages make four model
-requests total for readable inputs, before any future targeted second look;
+requests before the separately invoked targeted second look;
 this is request accounting, not a measured speed or accuracy improvement.
+
+6. **Second look:** `targeted_second_look()` makes one new request against the same
+   immutable full ROI, focusing on the reconciliation's conflicts, unsupported
+   claims, uninspected regions and urgent/reviewer questions. Its decisions must
+   cover the immediately preceding reconciled findings, including newly added
+   identities. It is not a crop/zoom and cannot claim better resolution. The raw
+   blind, reconciliation and second-look replies remain separate and immutable.
+   This brings readable runs to five model requests, not a latency improvement.
+7. **Content preflight:** `prepare_review()` binds actual host source/study/evidence
+   and the executed six-stage prefix. The public preflight API checks scientific
+   content without accepting or inventing future validation/handoff events. Only
+   after that callback returns does the journal complete `contract_validation`.
+   `PreparedReview.result` is a detached snapshot; full canonical serialization
+   still rejects its deliberately incomplete workflow. A content SHA binds all
+   canonical fields except the subsequently appended execution trace.
+8. **Review availability:** `offer_review(presenter)` awaits the trusted host's
+   actual presentation operation with a detached prepared snapshot. It requires
+   UTF-8 JSON bytes (maximum 16 KiB) containing exactly `run_id`,
+   `source_image_sha256`, `review_content_sha256`, `surface`, and `available`.
+   The first three must match this session/content, `surface` is an opaque
+   1–64-character ASCII alphanumeric/underscore/hyphen ID (not a window title),
+   and `available` must be exactly true. Only a successfully checked callback
+   completes `human_handoff`. The original full public assembler then validates
+   actual completed events and unchanged content before setting `final_result`.
+
+There is no default/no-op presenter. A trusted host can still lie about displaying
+content; these receipts are bindings, not independent screen observation or human
+approval. Tests using synthetic callbacks are not GUI acceptance. Cancellation,
+duplicate/concurrent calls, malformed/mismatched receipts and presenter exceptions
+cannot publish a canonical result or trigger paid retries. If final validation
+fails after availability returned, the true handoff record remains intact but
+`final_result` remains absent. The GUI must distinguish the prepared preview from
+an export-enabled canonical result. It must never enable signing/clinical writeback.
 
 For `non_diagnostic` QC, `read_blind()` returns `None`, records an explicit skipped
 blind pass and makes **no second model request**. `quality` remains inspectable;
@@ -111,7 +145,8 @@ provider actions. Fresh sessions and absence of host-supplied expert/label data
 do not replace live tool-event fidelity and runtime policy verification. The
 native text/source adapter and independent-tool stages remain separate work.
 
-`records`, `turns`, `quality`, `blind_draft`, `localizations`, `reconciliation`, `study`, `provenance` and
+`records`, `turns`, `quality`, `blind_draft`, `localizations`, `reconciliation`,
+`second_look`, `prepared_review`, `final_result`, `review_artifacts`, `study`, `provenance` and
 `source_evidence` expose immutable receipts or independent copies. Original
 successful transport replies are kept before stage decoding, so invalid model
 JSON is retained as a failed attempt rather than replaced by a repaired result.
@@ -128,19 +163,21 @@ be supplied by the eventual host usage-receipt path. No model is substituted her
 
 The journal records actual intake/QC/blind operations and, when explicitly
 continued, native-geometry and reconciliation operations. It never labels these
-as independent waveform classification. There are no invented targeted second
-look, full validation or human-handoff completions. `to_contract_payload()` still
-rejects this unassembled draft. The adapter is not injected into the App's legacy
-hooks or exporters.
+as independent waveform classification. Second look, content validation and
+handoff are recorded only after their actual callbacks return. Intermediate
+drafts continue to fail full serialization. The adapter is not injected into the
+App's legacy hooks or exporters.
 
-Next integration must add optional trusted matched external evidence, targeted
-revisits/crops, full public assembly, review availability and guarded App
-publication. Non-diagnostic QC needs a truthful quality-only review presentation.
+Next integration must add optional trusted matched external evidence, zoomed
+revisits/crops, a real App review presenter and guarded scientific publication.
+Non-diagnostic QC needs a truthful quality-only review presentation; this adapter
+does not manufacture observations from QC to satisfy a final clinical ledger.
 The current frozen cohort must remain on its original source. Actual candidate
 GUI/model, legacy/vendor/truncated ECG, DPI and current-EXE acceptance remain open.
 
 ## Verification scope
 
+Current checkpoint: [second look, preflight and handoff evidence](../evidence/2026-09/scientific-review-handoff-2026-09-25.md).
 Continuation checkpoint: [native localization and reconciliation evidence](../evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md).
 The following counts describe the earlier intake/QC/blind-only checkpoint.
 

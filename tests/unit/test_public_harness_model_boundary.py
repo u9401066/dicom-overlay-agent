@@ -105,7 +105,7 @@ def test_submodule_pin_and_packaged_contract_resources_exist():
         timeout=10,
     )
     assert (harness / "src/medical_image_harness/py.typed").is_file()
-    assert result.stdout.strip() == "f0f486229cd057c291dd2a66f036f1ce796a42b6"
+    assert result.stdout.strip() == "6152ab01d240c9b96698ff39e6a37ac35fa28275"
 
 
 def test_engine_layout_and_analyzer_port_have_no_app_duplicates():

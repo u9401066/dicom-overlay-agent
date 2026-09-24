@@ -83,7 +83,7 @@ Source branches/PRs are development checkpoints, not approved medical releases.
 | Bind native bbox receipts to actual source/crop pixels (isolated component) | [Native source evidence](architecture/native-source-evidence.md) |
 | Preserve original visible Gateway model/tool text (opt-in; live acceptance pending) | [Gateway evidence capture](architecture/gateway-evidence-capture.md) |
 | Record real stage execution, failure and cancellation (isolated component) | [Host execution journal](architecture/execution-journal.md) |
-| Execute source intake, quality gate and blind reading (intermediate candidate) | [Scientific image session](architecture/scientific-image-session.md) |
+| Execute scientific stages, content preflight and bound review availability (not desktop-wired) | [Scientific image session](architecture/scientific-image-session.md) |
 | Interpret dataset metrics | [Cohorts and denominators](evaluation/cohorts.md) |
 | Seal and score the completed medium GUI batch without rerunning inference | [Verified desktop batch scoring](evaluation/verified-desktop-batch.md) |
 | Audit privacy, licensing and contributors | [Security](../SECURITY.md), [notices](../THIRD_PARTY_NOTICES.md), [contributing](../CONTRIBUTING.md) |

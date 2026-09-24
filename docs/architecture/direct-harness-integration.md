@@ -8,7 +8,7 @@ cohorts and separately verified binaries remain unchanged.
 ## One owner for image-reading models
 
 The public [medical-image-agent-harness](https://github.com/u9401066/medical-image-agent-harness)
-is pinned as a submodule at `f0f486229cd057c291dd2a66f036f1ce796a42b6`.
+is pinned as a submodule at `6152ab01d240c9b96698ff39e6a37ac35fa28275`.
 The desktop opts into two-turn EKG lead-group coverage for a complete, explicitly
 labeled inventory, preserving critical-first and independent-attention routes.
 The public default remains off; older frozen batches and the evaluation runner
@@ -50,8 +50,10 @@ resolving geometry from host evidence IDs. It is not activated in desktop infere
 the [host execution journal](execution-journal.md) now records actual callbacks,
 and the opt-in image request API returns original visible output under the send
 lock. Remaining clinical stage operations and desktop wiring remain work. The
-first [executable stage adapter](scientific-image-session.md) now runs intake,
-QC and blind reading; reconciliation, localization and publication remain open. The
+[executable stage adapter](scientific-image-session.md) now runs intake, QC, blind
+reading, native localization, reconciliation and source-image second look, with
+preflight and explicit review-availability callbacks before final validation.
+Actual App presenter injection and guarded scientific publication remain open. The
 [native source adapter](native-source-evidence.md) additionally verifies exact
 tool receipts and App crop bytes. The opt-in
 [Gateway collector](gateway-evidence-capture.md) preserves visible text at the

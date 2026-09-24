@@ -17,6 +17,7 @@ from tests.unit.test_image_evidence_turn import SOURCE, Gateway, connected
 from tests.unit.test_scientific_draft import draft_request as draft_request
 from tests.unit.test_scientific_image_session import replies as replies
 from tests.unit.test_scientific_reconciliation import envelope
+from tests.unit.test_scientific_review_handoff import receipt
 
 from dicom_overlay.infrastructure.scientific_image_session import ScientificImageSession
 from medical_image_harness.models import Modality
@@ -158,6 +159,26 @@ def setup(tmp_path, replies, variant="normal"):
         client, image_bytes=SOURCE, modality=Modality.EKG, deidentified=True
     )
     return reader, gateway, client
+
+
+@pytest.mark.asyncio
+async def test_native_geometry_survives_second_look_preflight_and_bound_handoff(
+    tmp_path, replies
+):
+    reader, gateway, _client = setup(tmp_path, replies)
+    await reader.read_blind()
+    await reader.localize_and_reconcile()
+    revisited = await reader.targeted_second_look()
+    await reader.prepare_review()
+
+    async def synthetic_presenter(run_id, prepared):
+        return json.dumps(receipt(run_id, prepared)).encode()
+
+    final = await reader.offer_review(synthetic_presenter)
+    assert final.to_contract_payload()["review_required"]
+    assert final.findings[0].bboxes == revisited.decoded.draft.findings[0].bboxes
+    assert final.findings[0].bboxes[0].verified
+    assert len(gateway.sent) == 5 and len(reader.records) == 8
 
 
 @pytest.mark.asyncio

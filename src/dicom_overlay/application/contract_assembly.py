@@ -8,8 +8,12 @@ from legacy 16-key predictions, a workflow-event generator, or clinical approval
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING
+
+from medical_image_harness.provenance import canonical_json_sha256
+from medical_image_harness.schema import preflight_validation_errors
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -33,7 +37,7 @@ def _hash(data: bytes) -> str:
     return sha256(data).hexdigest()
 
 
-def assemble_review_contract(
+def _bind_review_contract(
     draft: AnalysisResult,
     *,
     provenance: InputProvenance,
@@ -44,7 +48,9 @@ def assemble_review_contract(
     trusted_evidence: Sequence[Evidence],
     workflow_events: Sequence[Mapping[str, str]],
 ) -> AnalysisResult:
-    """Assemble a new, validated result without altering the original draft.
+    """Bind independently checked host inputs without altering the draft.
+
+    Public content/final validation is performed by the calling boundary below.
 
     ``asset_bytes`` is keyed by host manifest asset ID; ``transform_bytes`` by
     exact output SHA-256. Neither includes paths, window titles or patient IDs.
@@ -166,6 +172,81 @@ def assemble_review_contract(
     result.study_manifest = study
     result.assessment_scope = assessment_scope
     result.workflow_events = events
+    return result
+
+
+@dataclass(frozen=True)
+class PreparedReview:
+    """Content-checked intermediate snapshot; not a complete canonical result."""
+
+    _result: AnalysisResult = field(repr=False)
+    content_sha256: str
+
+    @property
+    def result(self) -> AnalysisResult:
+        return deepcopy(self._result)
+
+
+def review_content_sha256(result: AnalysisResult) -> str:
+    """Bind review content independently of later execution-event completion."""
+    payload = result.to_contract_payload(validate=False)
+    del payload["analysis_trace"]
+    return canonical_json_sha256(payload)
+
+
+def preflight_review_contract(
+    draft: AnalysisResult,
+    *,
+    provenance: InputProvenance,
+    study: StudyManifest,
+    assessment_scope: str,
+    asset_bytes: Mapping[str, bytes],
+    transform_bytes: Mapping[str, bytes],
+    trusted_evidence: Sequence[Evidence],
+    workflow_events: Sequence[Mapping[str, str]],
+) -> PreparedReview:
+    """Verify content/source/executed prefix without claiming future handoff."""
+    result = _bind_review_contract(
+        draft,
+        provenance=provenance,
+        study=study,
+        assessment_scope=assessment_scope,
+        asset_bytes=asset_bytes,
+        transform_bytes=transform_bytes,
+        trusted_evidence=trusted_evidence,
+        workflow_events=workflow_events,
+    )
+    try:
+        errors = preflight_validation_errors(result.to_contract_payload(validate=False))
+        _require(not errors, "public_preflight_rejected")
+        content_sha = review_content_sha256(result)
+    except (ValueError, TypeError, AttributeError, KeyError):
+        raise ContractAssemblyError("public_preflight_rejected") from None
+    return PreparedReview(result, content_sha)
+
+
+def assemble_review_contract(
+    draft: AnalysisResult,
+    *,
+    provenance: InputProvenance,
+    study: StudyManifest,
+    assessment_scope: str,
+    asset_bytes: Mapping[str, bytes],
+    transform_bytes: Mapping[str, bytes],
+    trusted_evidence: Sequence[Evidence],
+    workflow_events: Sequence[Mapping[str, str]],
+) -> AnalysisResult:
+    """Bind host inputs and require the unchanged full public contract gate."""
+    result = _bind_review_contract(
+        draft,
+        provenance=provenance,
+        study=study,
+        assessment_scope=assessment_scope,
+        asset_bytes=asset_bytes,
+        transform_bytes=transform_bytes,
+        trusted_evidence=trusted_evidence,
+        workflow_events=workflow_events,
+    )
     try:
         result.to_contract_payload()
     except (ValueError, TypeError, AttributeError, KeyError):
