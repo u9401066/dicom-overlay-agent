@@ -1,5 +1,30 @@
 # Active Context
 
+## 2026-09-24 Clinical workflow documentation; 16 real GUI cases audited
+
+- Added docs/clinical/ekg-reading-workflow.md: ten human/agent step IDs, sixteen
+  canonical axes, QC/critical-first/differential/localization/reconciliation,
+  official-source links and precise implementation boundaries. Specialist-review
+  draft, not a complete runtime reader or new active rule. Medical-image-reading
+  protocol used; external journal fulltext403 limitations recorded, no copied tables.
+- Current canonical registry remains seven rules, digest
+  0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1.
+  Existing generated views and build/clinical-knowledge.sqlite parity both pass.
+  No canonical YAML/generated Python/prompts/source/config changes during batch.
+- Eight new documentation consistency tests; clinical registry/rules/SQLite/docs
+  targeted run93passed1.31s. Tests do not claim medical correctness or integration.
+- At15:25UTC independent audit16/120,64medium stages,104pending,zero invalid or
+  technical failure. session80364 LIVE; App3948/Viewer7832/ownedGateway26484.
+  Keep same driver2760/10104, config and frozen plan. Do not restart due to timeout.
+- Native case012 meeti_42323817 exported desktop-20260924-152002-843586;
+  critical_triage activates f2+limb support, defers f1/f3; two actual refine targets
+  match; unassessed/deferred-axis guards keep incomplete/review. Actual summary
+  viewed.94.218sanalysis106.717sworkflow; no accuracy/speed-improvement claim.
+- ea94429 CI36019112516/36019106681 all jobs success; secret scans success.
+  PR17 checkpoint https://github.com/u9401066/dicom-overlay-agent/pull/17#issuecomment-5816916153.
+  NEXT: continue live cohort, then seal before gold scoring; canonical ledger and
+  versioned workflow generation/runtime wiring still open. No new EXE/main merge.
+
 ## 2026-09-24 First six GUI cases independently audited; continuation LIVE
 
 - Initial session71757 is terminal/no longer registered; case000–002 all completed.

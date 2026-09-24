@@ -3,6 +3,19 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Human/agent ECG workflow and critical-first native evidence
+
+- Added ten-step/16-axis clinical workflow design with official references, local
+  evidence protocol, per-step differentials/limitations and compact agent mapping.
+  Not yet fully integrated; no active rule/prompt/App edits during the blind batch.
+- Canonical7rules/generated views/SQLite parity pass unchanged. Eight new docs
+  guards; clinical/documentation targeted suite93pass. Current workflow is not
+  an eighth rule or a specialist-approved clinical reader.
+- 15:25UTC live independent audit16/120,64medium stages,104pending,zero failures.
+  Case012actualcritical-first targets+deferrals+incomplete guards inspected in
+  trace and rendered summary;94.218sanalysis, no comparative speed/accuracy claim.
+- Prior ea94429 CI/secret scans pass. Same actual App/Viewer/driver remains live.
+
 ## 2026-09-24 Independent native-batch audit and continued execution
 
 - First three-case tranche completed; same actual App/Viewer resumes fixed case3

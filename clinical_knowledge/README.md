@@ -12,7 +12,7 @@ clinical_knowledge/rules/*.rule.yaml
           + legacy-inventory.yaml
                     │
                     ├─ schema + semantic governance gate
-                    ├─ generated/human-catalogue.md（完整人用鑑別流程）
+                    ├─ generated/human-catalogue.md（各條一致性規則的人用鑑別流程）
                     ├─ generated/agent-steps.md（同 step ID 的精簡 agent 流程）
                     ├─ domain/generated_clinical_rules.py（純資料 runtime）
                     └─ application-owned clinical-knowledge.sqlite（速查投影）
@@ -46,6 +46,11 @@ semantic validator allow-list 控制。Unknown key、unknown axis、錯誤 opera
 過期 clinical review、未映射 runtime 或失效 pytest node 都 fail closed。
 
 ## 人用流程與 agent 流程
+
+端到端的 [EKG 系統化共讀流程](../docs/clinical/ekg-reading-workflow.md) 補上
+品質、高風險優先、十六軸、鑑別、來源定位、challenge 與結論的十步人用／agent
+對照。它是待專科審查、尚未完整接入 runtime 的設計文件，不是已加入目前
+YAML 或 SQLite 的第八條規則，也不改動正在執行的 frozen cohort。
 
 [human-catalogue.md](generated/human-catalogue.md) 會列出每條規則的完整判讀與
 鑑別步驟，例如先核對 capture/lead/projection，再確認 morphology、比較 mimic、

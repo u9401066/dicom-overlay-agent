@@ -146,6 +146,33 @@ six opt-in/private-fixture skips in 201.71 s**. Ruff, formatting and staged secr
 scan passed. This excludes frozen-binary and native-input opt-in gates; it is not
 a new packaged-executable test.
 
+### Continued execution and critical-first observation: 15:25 UTC
+
+The same live batch now has **16 / 120 independently verified cases**, 104 pending,
+64 distinct verified medium stages and no completed invalid/technical failures.
+Gold remains unopened. Neither this checkpoint nor the new clinical workflow
+documentation changed the App, runtime rules, model prompts, config or driver.
+
+Case index 12 (`meeti_42323817`) provides an actual critical-first execution sample,
+not a diagnosis-accuracy pass. Export `desktop-20260924-152002-843586` has
+`critical_triage/activated`: f2 selected, a limb-lead support probe scheduled, f1/f3
+lower-priority refinements deferred. The two actual refine entries target f2 and
+that support probe. Before finalization, deferred normal entries were marked
+unassessed; the final deferred-axis guard retained incomplete/review state.
+The actual rendered summary was inspected and shows CRITICAL — incomplete
+assessment, not a falsely complete report. Four model stages remain bound to
+Astra medium. Analysis took 94.218 s / workflow 106.717 s; without a matched
+non-prioritized comparator this is not proof of a speed improvement.
+
+- Source SHA-256: `0acfe082206e17ae09914e585489b94aaac910746d834446e31df4564753f818`.
+- Result SHA-256: `4e04e896206654cea29f2b32d79c84098325ae9728770a806aca03db327a1f29`.
+- Usage SHA-256: `c863dd2ee06e945b015bfdc00be7738cfe5270eb08c22fef4197764b7f8d4bf9`.
+
+The source/image binding is independently verified; clinical hypothesis accuracy,
+localization accuracy and calibration remain unscored. Both ea94429 CI runs and
+their secret scans passed; the live GUI driver continues, with no replay of
+already completed cases.
+
 No App code/dependency/schema/model-route change or EXE refresh occurred. Both
 7eba45d CI runs and secret scans passed before the new batch. Clinical gold stays
 sealed; diverse-device/legacy inputs, canonical host ledger integration, clinical

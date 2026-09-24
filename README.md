@@ -30,6 +30,9 @@ after full-image ROI calibration; it is not complete/scored. Reference labels ar
 46 asserted and 74 partially uncertain.
 The same evidence page documents the independent read-only batch auditor; a
 partial execution audit is not a completed cohort or a clinical accuracy score.
+The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
+the ten-step reading sequence and all sixteen axes. It is a specialist-review
+design, not a claim that the seven consistency rules implement a full reader.
 
 Manual Mark now covers blank areas of the authorized image ROI, not only AI
 boxes. Actual source-App tests now cover manual-region two-turn inline QA,
