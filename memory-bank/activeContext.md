@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-24 ROI selected-preview black area corrected and natively verified
+
+- Opaque-dialog CompositionMode_Clear erased the selected screenshot pixels.
+  Paint now retains the frozen source and dims only outside selection; all ROI
+  math/containment unchanged, no recapture/capture expansion/dependency change.
+- 25 new pixel tests fail before/pass after: forward/reverse/existing ROI,
+  screenshot DPR 1/1.25/1.5/2, negative origins, reset, unchanged source/margins.
+  Combined ROI tests 43 pass. Full explicit unit/integration/smoke offscreen:
+  1,716 passed / six explicit skips in 212.63s.
+- Actual source App + synthetic grid Viewer at 150%: existing/new/reverse
+  selections retain exact interior RGB; outside dimmed; R reset and Enter save
+  work. Forward/reverse screenshots identical. Zero model requests. Saved only
+  temporary config; derived (300,300,699,348) stays inside requested drag.
+- Owned App/Viewer/Gateway closed and PIDs/listener gone. Source only, no EXE.
+  Both ca34f73 CI runs and both secret scans succeeded.
+  Evidence: docs/evidence/2026-09/roi-preview-pixels-2026-09-24.md; raw screenshots
+  C:/Users/Ericlab/AppData/Local/Temp/dicom-roi-preview-20260924/.
+
 ## 2026-09-24 Native Edge capture and accessibility picker correction
 
 - Real UIA Select exposed currentItem vs selectedItems mismatch: the focused

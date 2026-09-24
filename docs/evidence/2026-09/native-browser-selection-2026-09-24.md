@@ -118,3 +118,5 @@ assembly and >=100 current-model blind multi/urgent cases. Current patch is abse
 from the preserved EXE. A separate native ROI-preview screenshot shows the
 selected area turning black while dragging; inspect the selector paint path in
 follow-up rather than crediting that preview as fully usable.
+Follow-up now [fixes and natively verifies the selected preview pixels](roi-preview-pixels-2026-09-24.md)
+without changing ROI bounds or sending a model request.

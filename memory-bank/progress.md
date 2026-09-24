@@ -3,6 +3,17 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 ROI preview black-area fix
+
+- Presentation paint preserves frozen source inside selection instead of clearing
+  pixels; dims only excluded area. Capture/ROI math and four-core boundaries intact.
+- 25 new pixel regressions turn red to green; 43 combined ROI tests pass. Full
+  unit/integration/smoke: 1,716 passed / six skips, 212.63s (offscreen Qt).
+- Actual Windows App with synthetic grid: selected pixels match original, reset
+  and reverse drag work, temporary config save stays inside requested ROI. Zero
+  model calls; owned windows/Gateway closed. Not a new binary/clinical case.
+- Evidence: docs/evidence/2026-09/roi-preview-pixels-2026-09-24.md.
+
 ## 2026-09-24 Browser actual capture and wrong-focus selection fix
 
 - UIA selected row differed from keyboard-current row, exposing wrong-target
