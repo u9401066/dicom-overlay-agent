@@ -11,6 +11,11 @@
 
 ## 開發證據（尚未發布）
 
+2026-09-24 使用者更新目標：新的實機測試改為 **GPT-6 Astra medium**。
+在 Settings 選擇 `openai-codex-astra`、儲存並重新啟動 App／Gateway 後套用；
+既有 low 設定不會被背景改寫。medium 實機驗收須另行量測，不能沿用下列 low
+數據。見[模型切換與未完成整合工作](docs/astra-medium-2026-09-24.md)。
+
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
 ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。
 補回 38 個原本未被 pytest 收集的 edge cases；canonical evidence 組裝、完整
@@ -19,8 +24,8 @@ plugin 拆分與新版實機驗收尚未完成。不同廠牌／老式機器 ECG
 
 以下為 9 月 11 日封存的實機證據，並非新版 engine 的實機結果：
 
-目前實機驗收只使用 **GPT-6 Astra low**，在 Settings 選擇
-`openai-codex-astra`；Luna 已不列為本輪驗收目標。真實 GUI 擷取已連通訂閱路由。
+當時實機基準使用 **GPT-6 Astra low**，並非新的 medium 目標。
+真實 GUI 擷取已連通訂閱路由。
 主要實機基準已完成並封存：**121 個不重複案例**、六次保留的技術失敗，
 另六個早期 pilot 不納入評分。原有 446 個階段快照；另行封存後補查含內部重試
 共 460 個 session，均有 Astra low runtime 與公開用量紀錄（不是完整帳務）。
@@ -52,7 +57,7 @@ Luna 有兩條刻意分開的路由，避免把訂閱額度與 Platform API 計�
 
 | Settings profile | 認證／transport | 模型 | 計費證據 |
 | --- | --- | --- | --- |
-| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth、`thinkingDefault=low`；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | OpenClaw 原生 `openai-chatgpt-responses`、本機 Codex OAuth、`thinkingDefault=medium`；不使用 Platform API key | `openai/gpt-6-astra` | 訂閱用量；中止或未回報的回合不能算零用量 |
 | `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | 本機 ChatGPT/Codex OAuth 遷移到 OpenClaw 原生 `openai-chatgpt-responses`；不使用 `OPENAI_API_KEY`，也不啟用 Codex agent runtime | `openai/gpt-5.6-luna` | 訂閱用量；下列 token 成本只作 API 等值估算 |
 | `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` 經 OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | 一般 Platform API 計費 |
 

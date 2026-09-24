@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-24 User changes current target to Astra medium; organization added
+
+- New target: GPT-6 Astra medium; GPT-6 Luna xhigh is permitted as an alternative,
+  not a silent fallback. Astra preset/Settings expectation now medium; OpenClaw
+  subscription ownership unchanged. Old low evidence remains low and immutable.
+  Official Astra page confirms medium support; actual new GUI receipts pending.
+- Added requirement 12: organize App / public harness / OpenClaw plugin files and
+  current-vs-historical documentation, updating all consuming paths without
+  compatibility wrappers. Clinical UX must communicate conclusions and priority
+  concerns, not technical jargon without a useful diagnostic impression.
+- Canonical integration inspection: App parser drops observation/evidence fields.
+  No assembler or parser changes have yet been made; do not claim completed host
+  assembly. Model-output protocol, strict host binding and runtime wiring must be
+  implemented together rather than inventing a ledger for old predictions.
+- Previous heading commit 425d363 push/PR CI (35977211005 / 35977219380) and
+  secret scans (35977211011 / 35977219302) pass. Main user's dirt remains intact.
+- Scope/evidence boundary: docs/astra-medium-2026-09-24.md.
+
 ## 2026-09-24 Partial ECG heading source fix
 
 - Actual 128117b export exposed a false `12-Lead` header. Presentation now uses

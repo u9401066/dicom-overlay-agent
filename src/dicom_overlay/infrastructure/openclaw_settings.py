@@ -141,10 +141,10 @@ def default_provider_profiles() -> list[ProviderProfile]:
             context_window=1_050_000,
             max_tokens=128_000,
             reasoning=True,
-            reasoning_effort="low",
+            reasoning_effort="medium",
             agent_runtime="openclaw",
             notes=(
-                "GPT-6 Astra with low reasoning effort through local ChatGPT/Codex "
+                "GPT-6 Astra with medium reasoning effort through local ChatGPT/Codex "
                 "OAuth allowance. OpenClaw owns image interpretation; no Platform "
                 "API key or Codex agent runtime is used."
             ),

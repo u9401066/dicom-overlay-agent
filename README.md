@@ -9,10 +9,18 @@
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 (published and browser-verified on September 10; development evidence, not a clinical release).
 
-## Development evidence — 2026-09-11 (not a release)
+## Current development target — 2026-09-24 (not a release)
 
-The active desktop acceptance target is **GPT-6 Astra low**, selected through
-Settings as `openai-codex-astra`. Luna is no longer the acceptance target.
+The requested desktop target is now **GPT-6 Astra medium**, selected through
+Settings as `openai-codex-astra`. Save the profile and restart the App/Gateway to
+apply it; an existing saved low setting is not silently rewritten. Medium real-GUI
+acceptance must be measured separately from the historical low runs below.
+See the [model transition and open integration work](docs/astra-medium-2026-09-24.md)
+and [verified shared-engine package / low replay](docs/shared-engine-2026-09-24.md).
+
+## Historical desktop baseline — 2026-09-11
+
+This sealed baseline used **GPT-6 Astra low**, not the new medium target.
 The primary real-desktop baseline is complete and sealed: **121 distinct cases**,
 six retained technical failures, with six earlier pilots excluded. There are
 446 original stage snapshots; a separate post-seal supplement binds 460 sessions
@@ -52,7 +60,7 @@ billing. All keep the multimodal agent loop inside OpenClaw:
 
 | Settings profile | Authentication / transport | Model | Billing evidence |
 | --- | --- | --- | --- |
-| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | native OpenClaw `openai-chatgpt-responses`; local Codex sign-in; low reasoning effort; no Platform API key | `openai/gpt-6-astra` | subscription usage; cancelled/unreported turns are not zero usage |
+| `openai-codex-astra` — GPT-6 Astra via Codex Subscription | native OpenClaw `openai-chatgpt-responses`; local Codex sign-in; medium reasoning effort; no Platform API key | `openai/gpt-6-astra` | subscription usage; cancelled/unreported turns are not zero usage |
 | `openai-codex-luna` — GPT-5.6 Luna via Codex Subscription | local ChatGPT/Codex OAuth migrated into native OpenClaw `openai-chatgpt-responses`; no `OPENAI_API_KEY`, no Codex agent runtime | `openai/gpt-5.6-luna` | subscription usage; token cost below is only an API-equivalent estimate |
 | `openai-luna` — GPT-5.6 Luna Vision (API key) | `OPENAI_API_KEY` through OpenClaw `openai-responses` | `openai/gpt-5.6-luna` | normal Platform API billing |
 

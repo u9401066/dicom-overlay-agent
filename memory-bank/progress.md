@@ -3,6 +3,15 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-24 Requested model target updated
+
+- User requests Astra medium (or optionally GPT-6 Luna xhigh). Astra preset now
+  medium; old low settings require explicit save/restart, no silent fallback or
+  historical-result relabeling. Fresh real-GUI medium acceptance pending.
+- Project/plugin file organization and document archiving added to scope. Host
+  evidence-ledger integration remains open; parser currently drops those fields.
+- Prior 425d363 heading fix has green push/PR CI and both secret scans.
+
 ## 2026-09-24 Real-UI finding corrected in source
 
 - Partial/unknown ECG no longer receives an unsupported 12-lead heading. Eleven
