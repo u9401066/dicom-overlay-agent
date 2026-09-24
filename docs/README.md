@@ -10,6 +10,9 @@ is sealed/scored and failed clinical acceptance. An [explicit lead-inventory cor
 now passes one actual exposed-case source-App replay, without changing the baseline.
 Its [portable-plugin/readiness follow-up](evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
 verifies new-path loading, startup/busy shortcut suppression and successful ready-state analysis.
+The [actual startup timing follow-up](evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+separates first OAuth import from subsequent launch without skipping auth checks
+or treating different startup conditions as an implementation speedup.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its

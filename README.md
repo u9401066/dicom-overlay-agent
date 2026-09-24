@@ -40,6 +40,10 @@ acceptance remain open. The [next actual replay](docs/evidence/2026-09/portable-
 verifies current-path plugin loading after relocation and blocks startup/busy
 Analyze clicks and shortcuts without preventing later manual recovery. Cold AI
 startup remains slow; this is a source-App fix, not a new EXE acceptance claim.
+The [startup timing follow-up](docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+separates first OAuth import (148.8 s total) from subsequent launch (28.9 s), with
+real App readiness observations and no model calls. This is diagnosis, not a
+controlled implementation-speedup claim; authentication checks remain intact.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.

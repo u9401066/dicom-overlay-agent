@@ -805,6 +805,34 @@ migrations, authenticates over WebSocket, stops OpenClaw, and checks that port
 18789 is closed. It does not send a model request. Desktop startup allows 180
 seconds for Gateway readiness independently of the per-inference timeout.
 
+### Diagnose subscription startup latency without exposing credentials
+
+Source builds emit paired `subscription_auth_phase_started` /
+`subscription_auth_phase_finished` App-log events for `oauth_migration` and
+`profile_check`. The finished event contains only phase, outcome, exit code and
+monotonic `elapsed_ms`. It does not include the command, paths, environment,
+stdout/stderr, account identity or exception text. Outcomes distinguish a normal
+exit, nonzero exit, timeout and failure to launch the public CLI command.
+
+A successful command is **not** proof that authentication or the App is ready:
+the existing JSON/profile checks, source-credential hash binding and Gateway
+readiness probe still run. `profile_check` is a public profile listing, not a
+paid model probe or proof of token freshness. An unchanged source credential can
+reuse a previously imported profile only after that listing succeeds; changed
+credentials still require migration. Do not lower timeouts or skip these checks
+just to make the status indicator turn green earlier.
+
+Measure these phases separately from the interval between `Gateway started` and
+`Desktop runtime started`. A newly copied runtime with no import receipt is a
+first-import run, not a normal subsequent launch. Keep the receipt private and
+preserve original logs before restarting: managed Gateway startup truncates its
+`gateway.log`. Do not overwrite sealed test evidence to collect a timing sample.
+
+The [official OpenAI authentication guidance](https://learn.chatgpt.com/docs/auth)
+distinguishes ChatGPT subscription access from API-key billing and treats the
+local auth cache as a password. It does not establish this App's OpenClaw startup
+timings or approve a third-party integration; those need local measurements.
+
 For Unreleased `0.4.7`, do not copy the previous full-bundle numbers into release notes.
 After the clean rebuild, require `bundle-manifest.json` to report `status=ok`,
 the exact frozen release commit, `git_dirty=false`, OpenClaw `2026.7.1-2`,

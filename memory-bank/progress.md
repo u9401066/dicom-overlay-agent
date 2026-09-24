@@ -3,6 +3,21 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — startup phases measured through the actual App
+
+- Public OAuth migration/profile-list commands now have secret-free phase timing;
+  existing auth checks, timeouts and Gateway readiness remain unchanged.
+- Real first import: 82.663 s migration, 31.924 s profile check, 148.789 s total.
+  Subsequent real launch: reused verified import, 11.328 s profile, 28.942 s total.
+  These differ in import/cache/load conditions; no controlled speedup claim.
+- Native Analyze readiness verified on both launches; zero model calls. Both
+  App/Gateway pairs closed via Quit, port absent. Original sealed evidence preserved.
+- Eight new timing/privacy tests; full current run 2145 passed, seven skipped,
+  366.26 s; final focused 105 passed. Ruff/format/auth mypy pass. Source inventories
+  unchanged during both launches; afterward only newline normalization verified.
+- README both / operation guide / index / dated evidence / Memory updated.
+  See docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md.
+
 ## 2026-09-25 — plugin relocation and actual input readiness
 
 - App-owned oldabsolute harnesspaths replaced,currentactualGatewayloadverified;

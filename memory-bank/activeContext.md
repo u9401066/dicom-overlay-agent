@@ -1,5 +1,31 @@
 # Active Context
 
+## 2026-09-25 — actual startup phase diagnosis (not a speed fix)
+
+- Added credential-free monotonic timings around existing public OAuth migration
+  and profile-list commands. No commands/retries/timeouts/auth checks changed.
+  Eight tests cover success/nonzero/timeout/spawn failure and sensitive-data exclusion.
+- Actual first-import App 18656 / Gateway 18228: migration 82.663 s, profile
+  31.924 s, Gateway-to-ready 30.950 s, total 148.789 s. Subsequent App 28288 /
+  Gateway 824: no migration, profile 11.328 s, Gateway 14.405 s, total 28.942 s.
+  Different cache/import/load conditions, not a controlled speedup. Zero model calls.
+- Both native UIs disabled Analyze while starting and enabled it after ready;
+  Settings/Quit stayed available. Both closed via Quit, owned port 18795 absent.
+  Previous App 9404/Gateway 17208 also closed; Viewer 7832 remains. No active App.
+- Private Ctemp/dicom-startup-profile-20260925 preserves both logs before truncation,
+  auth receipts, UI states, 79 source hashes unchanged across both launches and audit.
+  Audit SHA 7f38a522e1eae47046043830cccfa7f8488828142b386d8b05518274b090bec0.
+  Source was 20e17b9 plus dirty instrumentation; later three-line newline-only
+  normalization verified identical normalized text with preserved native module.
+- Full current run 2145 passed / 7 skipped / 366.26 s (73029 terminal 0), current
+  collection 2152; use actual counts, not extrapolated older evidence. Final focused
+  105 passed / 0.99 s. Ruff/format/auth mypy pass; pre-existing type narrowing fixed.
+  Both predecessor 20e17b9 CI and secret scans succeeded. No new EXE or acceptance.
+- Marker/region QA fixes rechecked against actual preserved three-turn screenshot
+  and existing native evidence: whole authorized ROI, not arbitrary desktop.
+  Next: controlled startup optimization, low-signal box quality, full scientific
+  pipeline/App integration, clinical improvement/diverse inputs/current EXE acceptance.
+
 ## 2026-09-25 — moved plugin / Analyze readiness fixed and natively verified
 
 - GatewayManager now replaces only absolute App-owned harness load-path entries,

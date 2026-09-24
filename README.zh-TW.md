@@ -34,6 +34,9 @@
 搬移 runtime 後的 plugin 絕對路徑問題，已在[下一次實機重測](docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
 修正並確認：只載入新位置的 harness，啟動／判讀中不接受重複 Analyze 或快捷鍵，
 就緒後可正常判讀。冷啟動仍慢，這不是新版 EXE 或診斷準確率驗收。
+後續[實際啟動分段量測](docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+確認首次匯入總計 148.8 秒、保留登入狀態後再次啟動 28.9 秒；兩次皆核對真實 App
+就緒狀態，沒有模型呼叫。這是不同啟動條件的診斷，不是新版加速倍數；登入檢查未省略。
 另新增 [EKG 人用／agent 共讀流程](docs/clinical/ekg-reading-workflow.md)，涵蓋十步
 與全部十六軸；目前是待專科審查的設計，不把七條一致性規則宣稱為完整判讀器。
 
