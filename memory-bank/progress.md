@@ -3,6 +3,21 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-25 — actual partial-input engineering evidence
+
+- Six native GUI exports,23 verified Astra-medium stages from8 variants/ONE
+  source; two windows blocked before inference, not8/8 pass. All six retain
+  incomplete/review and exact source pixels; no hidden-label restoration.
+- All six summary UI images show INDETERMINATE; four marked exports inspected.
+  No clinical truth/lesion precision/vendor diversity claim. App/Gateway closed,
+  private original receipts and usage-only recovery preserved. Viewer retained.
+- Fixed reproducible English negated-ST false review in canonical YAML/example;
+  generated runtime/views and SQLite agree.16new regressions7fail9pass beforefix;
+  focused clinical/registry/SQLite/workflow105pass1.34s. No post-fix GUI run yet.
+  Full2205pass7skip390.01s; native Windows blank-ROI drag/pass-through1pass1.20s
+  separately enabled. Ruff/format/docs/generated views and staged secrets pass.
+  See docs/evidence/2026-09/native-partial-ecg-2026-09-25.md for hashes and open gaps.
+
 ## 2026-09-25 — pre-prompt waveform provenance validation
 
 - Reproduced23/25 failures in evidence-forwarding checks. Runtime now rejects

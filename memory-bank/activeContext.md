@@ -1,5 +1,37 @@
 # Active Context
 
+## 2026-09-25 — native partial ECG batch and negated-ST rule correction
+
+- Frozen source93e0c81/publicf0f4862: six actual App exports from eight existing
+  answer-free variants of ONE source.23 stages bound to Astra medium. Exact
+  visible/export RGB MAE0; source fingerprints unchanged; all incomplete/review.
+  All six summary panels and four marked review images inspected. Hidden labels
+  remain unknown; right-crop12 labels really visible, not completeness proof.
+- Cases6/7: 1500x90 and101x72 windows rejected by title-based discovery<=100px;
+  Analyze disabled BEFORE inference. Not model QC success, not8/8 acceptance.
+  Driver scaled-ROI/fullscreen+1px/focus failures retained. Case0 usage recovered
+  read-only without new inference; original failed receipt remains untouched.
+- Private Ctemp/dicom-partial-desktop-20260925/audit.json SHA7b21523e3ac8414680d34122de1b6f03a598efdb7e8d8f62e5fcbabbf6245500.
+  App34960/Gateway4636 quit through UI; PIDs/18795 absent; Viewer7832 retained.
+  Do not restart this sealed runtime: logs open with truncation at startup.
+- Top/bottom negative ST sentences triggered positive review notes. YAML rule
+  v1.0.1 uses existing non-negated matching, whole lexical forms; regenerated
+  Python/human/agent and verified SQLite digest8194933290c085ab81a1ab97d57154bb17d6d2e5835f2e28a327fe1cce312435.
+  New16 tests beforefix7fail9pass; focused105pass1.34s. Shared parser/other triage
+  rules/scorer unchanged; English lexical fix, not general multilingual negation.
+- Interaction checks71pass/1opt-in skip0.82s; explicitly enabled native Windows
+  mouse smoke then1pass1.20s. Blank ROI drag without AI highlights, outside-ROI
+  pass-through/passive mode verified. Prior actual regional QA audit re-read and
+  final chat screenshot viewed; not new model QA or EXE acceptance.
+- Full suite2205pass7skip390.01s (session65494 terminal0), documentation12pass;
+  Ruff/format/generated views pass; staged28.41KB secret scan clean. Native mouse
+  opt-in verified separately; frozen package/capture opt-ins remain explicit skips.
+- Remaining: small-window UX, misleading missing/hidden-lead warnings, SAPI
+  class-not-registered voice error, post-fix native replay, diverse vendor/old
+  images, diagnostic/localization acceptance and complete scientific pipeline.
+  No new EXE/release. Current evidence:docs/evidence/2026-09/native-partial-ecg-2026-09-25.md.
+  Prior93e0c81/2dd4f9e CI and secret scans all completed green.
+
 ## 2026-09-25 — waveform evidence checked before crop prompts
 
 - Confirmed desktop still has no trusted waveform resolver and does not call

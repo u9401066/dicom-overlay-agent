@@ -321,6 +321,62 @@ class TestBuiltinRules:
         assert res.review_required is True
 
     @pytest.mark.parametrize(
+        "text",
+        [
+            "No convincing contiguous ST elevation in visible leads",
+            "No convincing acute ST elevation in visible leads",
+            "Without significant ST elevation",
+            "ST elevation is absent",
+            "ST elevation not seen",
+            "No elevated ST segments",
+            "No STE in visible leads",
+        ],
+    )
+    def test_negated_st_checklist_does_not_invent_positive_review(self, text):
+        res = _result(
+            severity=Severity.INFO,
+            checklist={"st_segment": _item(text, Severity.INFO)},
+        )
+        res.incomplete = True
+        res.review_required = True
+        res.review_reasons = ["Missing leads require human review"]
+
+        violations = default_engine().apply(res)
+
+        assert violations == []
+        assert res.severity is Severity.INFO
+        assert res.incomplete and res.review_required
+        assert res.review_reasons == ["Missing leads require human review"]
+        assert res.checklist["st_segment"].value == text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "ST elevation in visible leads",
+            "Elevated ST segments",
+            "Possible mild ST elevation",
+            "ST elevation cannot be excluded",
+            "STE in anterior leads",
+            "No reciprocal depression, but mild ST elevation",
+            "No ST elevation in limb leads; elevation in precordial leads",
+            "No ST elevation. However, elevated ST in V3",
+            "可見 ST 抬高",
+        ],
+    )
+    def test_non_negated_st_review_preserves_uncertainty_and_contrast(self, text):
+        res = _result(
+            severity=Severity.INFO,
+            checklist={"st_segment": _item(text, Severity.INFO)},
+        )
+
+        violations = default_engine().apply(res)
+
+        assert [item.rule.id for item in violations] == ["ekg-st-elevation-not-flagged"]
+        assert res.severity is Severity.INFO
+        assert res.review_required
+        assert res.checklist["st_segment"].value == text
+
+    @pytest.mark.parametrize(
         "summary",
         ["No STEMI pattern", "Cannot exclude STEMI", "Possible anterior STEMI"],
     )
@@ -404,9 +460,7 @@ class TestBuiltinRules:
             modality=Modality.EKG,
             severity=Severity.WARNING,
             summary="Mild concave elevation consistent with early repolarization.",
-            checklist={
-                "st_segment": _item("ST elevation in V2-V4", Severity.WARNING)
-            },
+            checklist={"st_segment": _item("ST elevation in V2-V4", Severity.WARNING)},
         )
 
         default_engine().apply(res)
@@ -419,9 +473,7 @@ class TestBuiltinRules:
             modality=Modality.EKG,
             severity=Severity.WARNING,
             summary="ST elevation is present with no acute myocardial injury.",
-            checklist={
-                "st_segment": _item("ST elevation in V2-V4", Severity.WARNING)
-            },
+            checklist={"st_segment": _item("ST elevation in V2-V4", Severity.WARNING)},
         )
 
         default_engine().apply(res)

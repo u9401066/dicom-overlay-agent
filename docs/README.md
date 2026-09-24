@@ -20,6 +20,10 @@ acceptance is not implied by the engineering checks.
 The [waveform prompt-integrity follow-up](evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
 rejects mismatched evidence before crop prompts. Desktop matching and separate
 blind/tool reconciliation are still open; no new accuracy or GUI claim is made.
+The [native partial-ECG follow-up](evidence/2026-09/native-partial-ecg-2026-09-25.md)
+records six real exports / 23 verified stages and two pre-inference tiny-window
+blocks, plus a regression fix for negated-ST review false alarms. One source and
+six completed variants do not establish eight-case or clinical acceptance.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its

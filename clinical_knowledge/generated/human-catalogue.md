@@ -1,6 +1,6 @@
 # Clinical knowledge catalogue
 
-Registry SHA-256: `0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1`
+Registry SHA-256: `8194933290c085ab81a1ab97d57154bb17d6d2e5835f2e28a327fe1cce312435`
 Registry digest scope: `canonical-input-documents-v1`
 
 ## 明確氣胸宣稱卻低估嚴重度
@@ -97,7 +97,7 @@ Rule: `ekg.possible_hyperacute_ischemia_triage.v1` v1.0.0 (EKG)
 
 ## ST 段抬高所見與整體分流不一致
 
-Rule: `ekg.st_elevation_not_flagged.v1` v1.0.0 (EKG)
+Rule: `ekg.st_elevation_not_flagged.v1` v1.0.1 (EKG)
 
 當可見 ST segment 軸已描述抬高且狀態不正常，整體結果仍標為 normal/info 時，至少需要專科醫師複核。這是輸出一致性安全網；ST 抬高本身不等同 STEMI，也不可只憑截圖宣告心肌梗塞。
 

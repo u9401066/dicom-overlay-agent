@@ -51,6 +51,11 @@ reference concepts: more complete crop coverage is not yet better diagnostic acc
 The [waveform evidence boundary fix](docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
 now checks bindings before crop prompts; desktop waveform matching and a complete
 independent-evidence pipeline remain unimplemented, not silently enabled.
+The [native partial-image replay](docs/evidence/2026-09/native-partial-ecg-2026-09-25.md)
+completed six of eight variants (23 verified medium stages); two tiny windows
+were blocked before inference. Missing labels stayed unknown. A reproduced
+negated-ST review false alarm is fixed in YAML, with original exports preserved.
+This is one-source engineering evidence, not vendor diversity or clinical accuracy.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.
