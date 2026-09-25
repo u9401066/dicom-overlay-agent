@@ -12,6 +12,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from tests.scientific_delta_fixture import scripted_delta
 from tests.unit.test_contract_assembly import inputs as inputs
 from tests.unit.test_image_evidence_turn import SOURCE, Gateway, connected
 from tests.unit.test_scientific_draft import draft_request as draft_request
@@ -69,6 +70,13 @@ class NativeSessionGateway(Gateway):
                 response["draft"]["image_quality"]["adequacy"] = "diagnostic"
             if self.case == "malformed_reconcile":
                 response = "{bad json}"
+        response = scripted_delta(message, response)
+        if index == 3 and self.case == "omit_localization":
+            response["localizations"] = []
+        if index == 3 and self.case == "unlinked_localization":
+            response["localizations"][0]["finding_ids"] = ["wrong-finding"]
+        if index == 3 and self.case == "stale_delta":
+            response["base_response_sha256"] = "a" * 64
         self.body = response if isinstance(response, str) else json.dumps(response)
         await super().send(raw)
         if index == 2 and self.tool is not None:
@@ -258,6 +266,9 @@ async def test_no_localization_remains_explicit_and_no_boxes_fabricated(
         ("missing_decision", "reconcile", 4),
         ("changed_quality", "reconcile", 4),
         ("malformed_reconcile", "reconcile", 4),
+        ("omit_localization", "reconcile", 4),
+        ("unlinked_localization", "reconcile", 4),
+        ("stale_delta", "reconcile", 4),
     ],
 )
 async def test_failed_binding_or_challenge_preserved_without_paid_retry(

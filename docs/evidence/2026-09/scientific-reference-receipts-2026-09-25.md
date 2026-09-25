@@ -179,3 +179,30 @@ Both local runs used supported portable Node24. Remote pin-fix CI36074069157/
 36074064451 and secret scans36074069175/36074064496 all completed successfully.
 Final documentation recheck:12 passed in0.10s. No clinical improvement,
 new EXE acceptance or complete five-stage App success is claimed.
+
+## Compact challenge transport checkpoint (before live retest)
+
+The two challenge stages now request `SCIENTIFIC DELTA v1`: a SHA-bound set of
+explicit record operations, complete claim decisions, four review inventories,
+and per-localization dispositions. Untouched observations/checklist/report data
+are retained, not counted as newly inspected. This reduces repeated output; it
+does not remove either model review stage or lengthen the total180s deadline.
+
+The host copies the retained draft, executes at most128 stable-ID operations,
+then uses the original draft/reference/confirm-revise validators. Modality, QC
+and host provenance cannot be overwritten. Each geometry-bearing source record
+needs explicit use/reject with rationale. Use must match its final finding and
+observation links; rejected geometry may not remain linked. Geometry is neither
+silently adopted nor mandatory when the model considers it unsuitable.
+
+Original delta bytes and the separately materialized validated draft are retained
+as distinct journal artifacts. The private per-turn store still records the exact
+visible model response before decoding. No correction of an old model response,
+automatic JSON repair, extra inference or clinical schema relaxation is involved.
+
+Focused delta/session/handoff/publication/native-localization tests:134 passed
+in9.87s; changed-source Ruff and two-module mypy passed. Negative cases cover
+stale base hashes, QC/provenance edits, duplicate/renamed IDs, dropped checklist,
+false confirmations, omitted/rejected-but-linked geometry and wrong finding
+links. Synthetic output-byte reduction is not measured actual-model speed.
+Full regression and real App retest remain pending at this checkpoint.

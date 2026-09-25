@@ -12,6 +12,7 @@ import pytest
 from dicom_overlay.infrastructure.scientific_image_session import ScientificImageSession
 from medical_image_harness.models import Modality
 from medical_image_harness.profiles import default_registry
+from tests.scientific_delta_fixture import scripted_delta
 from tests.unit.test_contract_assembly import inputs as inputs
 from tests.unit.test_image_evidence_turn import SOURCE, Gateway, connected, picture
 from tests.unit.test_scientific_draft import draft_request as draft_request
@@ -39,6 +40,7 @@ class StageGateway(Gateway):
     async def send(self, raw):
         index = len(self.sent)
         response = self.replies[index]
+        response = scripted_delta(json.loads(raw)["params"]["message"], response)
         self.body = response if isinstance(response, str) else json.dumps(response)
         await super().send(raw)
         if index == self.tool_stage:

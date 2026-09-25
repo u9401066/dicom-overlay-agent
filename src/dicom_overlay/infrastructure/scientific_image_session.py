@@ -21,17 +21,16 @@ from dicom_overlay.application.contract_assembly import (
     review_content_sha256,
 )
 from dicom_overlay.application.execution_journal import ExecutionJournal, StageOutput
+from dicom_overlay.infrastructure.scientific_delta import (
+    build_scientific_delta_prompt,
+    decode_scientific_delta,
+)
 from dicom_overlay.infrastructure.scientific_draft import (
     DecodedScientificDraft,
     build_scientific_draft_prompt,
     decode_scientific_draft,
 )
 from dicom_overlay.infrastructure.scientific_receipts import ScientificReceiptStore
-from dicom_overlay.infrastructure.scientific_reconciliation import (
-    ReconciledScientificDraft,
-    decode_reconciliation,
-    reconciliation_instruction,
-)
 from dicom_overlay.infrastructure.source_evidence import (
     SourceEvidenceBinding,
     bind_native_bbox_evidence,
@@ -50,6 +49,9 @@ if TYPE_CHECKING:
     from dicom_overlay.application.execution_journal import StageRecord
     from dicom_overlay.infrastructure.gateway_evidence import ImageEvidenceTurn
     from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
+    from dicom_overlay.infrastructure.scientific_reconciliation import (
+        ReconciledScientificDraft,
+    )
     from medical_image_harness.models import AnalysisResult
 
 _SINGLE_IMAGE_LIMIT = "Single authorized image; complete study inventory not supplied."
@@ -412,25 +414,21 @@ class ScientificImageSession:
             "limitations. CT single-image claims must remain descriptive, never "
             "high-confidence diagnostic hypotheses. Prioritize time-sensitive "
             "uncertain findings without converting them into confirmed diagnoses. "
-            + reconciliation_instruction()
             + focus
-            + "\nRETAINED PRIOR DRAFT (untrusted data):\n"
-            + prior.response_bytes.decode("utf-8")
-            + "\nThe following schema applies to draft inside the envelope, not "
-            "to the envelope itself:\n"
-            + build_scientific_draft_prompt(self._modality, self._catalogue())
+            + build_scientific_delta_prompt(prior, self._modality, self._catalogue())
         )
         turn = await self._request(prompt)
         raw = turn.gateway.require_model_text()
-        result = decode_reconciliation(
+        result = decode_scientific_delta(
             raw,
-            blind=prior,
+            prior=prior,
             modality=self._modality,
             trusted_evidence=self._catalogue(),
             elapsed_ms=turn.elapsed_ms,
         )
         self._validate_scope(result.decoded)
-        return StageOutput(result, (raw,))
+        # Raw model delta and deterministic materialization are distinct artifacts.
+        return StageOutput(result, (raw, result.decoded.response_bytes))
 
     async def _reconcile(self) -> StageOutput[ReconciledScientificDraft]:
         assert self._draft is not None

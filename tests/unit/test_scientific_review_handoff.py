@@ -64,6 +64,12 @@ async def test_final_contract_requires_second_look_preflight_and_actual_callback
         reader.second_look.response_bytes
         == reader.turns[-1].gateway.require_model_text()
     )
+    wire = json.loads(reader.second_look.response_bytes)
+    assert wire["delta_version"] == "1" and "draft" not in wire
+    assert reader.records[-1].artifact_sha256 == (
+        sha256(reader.second_look.response_bytes).hexdigest(),
+        sha256(reader.second_look.decoded.response_bytes).hexdigest(),
+    )  # Model delta and deterministic full materialization are distinct artifacts.
     second.decoded.draft.summary = "Detached result"
     prepared = await reader.prepare_review()
     assert len(reader.records) == 7

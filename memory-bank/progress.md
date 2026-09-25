@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-25 — compact challenge transport, not clinical acceptance
+
+- Added bounded source-hash-bound scientific deltas and explicit per-geometry
+  use/reject. Original raw response and validated materialized draft remain
+  distinct auditable artifacts; original clinical/reference checks unchanged.
+- Focused134pass9.87s, Ruff/mypy pass. Real five-stage App retest and regional
+  interaction acceptance still required. No measured speed improvement yet;
+  same180s overall deadline, no new EXE or public binary release.
+
+
 ## 2026-09-25 — real second-look attempt and deadline/geometry gaps
 
 - Fresh actual App passed four stages then fifth request canceled at total180s;

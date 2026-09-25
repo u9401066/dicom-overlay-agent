@@ -1,5 +1,24 @@
 # Active Context
 
+## 2026-09-25 — bounded scientific deltas and explicit localization dispositions
+
+- Reconcile/second-look now request a compact, prior-SHA-bound edit envelope,
+  preserving unchanged data rather than re-emitting the complete draft. The host
+  applies explicit operations to a copy and still uses the unchanged scientific
+  draft/reference/claim-decision validators. Raw delta and materialized draft are
+  separate journal artifacts; no automatic response repair or paid retry.
+- Every supplied geometry-bearing evidence record needs explicit use/reject and
+  rationale. Use must resolve to the exact final finding and observation links;
+  reject cannot remain referenced. No automatic box adoption. QC and host-owned
+  provenance remain immutable. Public engine pin/schema unchanged.
+- Focused session/handoff/publication/native-localization regression:134 passed
+  in9.87s; changed-source Ruff and two-module mypy pass. Full suite started but
+  result not yet retained. Actual App acceptance and latency benefit are pending;
+  keep the same total180s deadline and sealed earlier attempts.
+- User-priority follow-up: actual ROI-wide blank-origin Mark and both existing/
+  manually added regional conversations; retain privacy outside authorized ROI.
+
+
 ## 2026-09-25 — five requests, second look aborted at legacy total180s deadline
 
 - Confirm-graph runtime Ctemp/dicom-scientific-desktop-20260925-confirm-graph:
