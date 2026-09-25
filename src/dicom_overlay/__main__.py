@@ -84,6 +84,9 @@ from dicom_overlay.infrastructure.package_runtime_smoke import (
     run_package_runtime_smoke,
 )
 from dicom_overlay.infrastructure.region_mapper import RegionMapper
+from dicom_overlay.infrastructure.scientific_desktop_reader import (
+    ScientificDesktopReader,
+)
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor, ScreenMonitor
 from dicom_overlay.infrastructure.tts_speaker import speak_error, speak_result
 from dicom_overlay.infrastructure.vision_probe import VisionSmokeTester
@@ -91,6 +94,10 @@ from dicom_overlay.presentation.control_bar import ControlBarWindow
 from dicom_overlay.presentation.overlay_window import OverlayWindow
 from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
+from dicom_overlay.presentation.scientific_review import (
+    QtReviewPresenter,
+    ScientificReviewPanel,
+)
 from dicom_overlay.presentation.settings_dialog import SettingsDialog
 from dicom_overlay.presentation.window_picker import WindowPickerDialog
 from medical_image_harness.models import Finding, Modality, RegionRect
@@ -140,6 +147,14 @@ _PACKAGING_SMOKE_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A"
     "AQUBAScY42YAAAAASUVORK5CYII="
 )
+
+
+def _scientific_mode_requested(arguments: list[str]) -> bool:
+    enabled = "--scientific-review" in arguments
+    asserted = "--deidentified-input" in arguments
+    if enabled != asserted:
+        raise ValueError("scientific_review_requires_explicit_deidentified_input")
+    return enabled
 
 
 def _print_cli(*values: object) -> None:
@@ -579,6 +594,7 @@ def main() -> None:
         elif arg == "--config" and sys.argv.index(arg) + 1 < len(sys.argv):
             config_path = Path(sys.argv[sys.argv.index(arg) + 1])
 
+    scientific_mode = _scientific_mode_requested(sys.argv[1:])
     config = load_config(config_path)
 
     # Exercise the exact frozen Pillow/logging/review surface without opening
@@ -647,6 +663,7 @@ def main() -> None:
         gateway_token=gateway_token,
         registry=registry,
         base_dir=base_dir,
+        collect_transport_evidence=scientific_mode,
     )
 
     # --- Build hook pipeline (guardrails) ---
@@ -688,6 +705,7 @@ def main() -> None:
             cropper=image_processor.crop_region_base64,
             bbox_calibrator=calibrate_ekg_bboxes,
             max_zoom_targets=max_zoom_targets,
+            prefer_ekg_group_coverage=True,
         )
         multi_pass = MultiPassAnalyzer(inner=openclaw_client, interpreter=interpreter)
         analyzer = RhythmStripRefiningAnalyzer(
@@ -726,6 +744,17 @@ def main() -> None:
         vision_analyzer=vision_analyzer,
         region_mapper=region_mapper,
         annotation_accumulator=AnnotationAccumulator(),
+        scientific_reader_factory=(
+            lambda image, modality: ScientificDesktopReader(
+                openclaw_client,
+                image_bytes=image,
+                modality=modality,
+                deidentified=True,
+                receipt_root=base_dir / "data" / "scientific-attempts",
+            )
+        )
+        if scientific_mode
+        else None,
     )
 
     # --- Build presentation layer ---
@@ -734,6 +763,27 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
 
     overlay = OverlayWindow()
+    scientific_presenter = None
+    if scientific_mode:
+        unused_summary = overlay.summary_panel
+        unused_summary.close()
+        unused_summary.deleteLater()
+        panel = ScientificReviewPanel()
+        overlay.summary_panel = panel
+        scientific_presenter = QtReviewPresenter(
+            panel, agent.scientific_review_is_current
+        )
+        scientific_presenter.invalidated.connect(agent.invalidate_scientific_review)
+
+        async def offer_scientific_review(run_id, prepared):
+            assert scientific_presenter is not None
+            receipt = await scientific_presenter(run_id, prepared)
+            if not await scientific_presenter.retire(run_id):
+                raise ValueError("scientific_preview_retirement_failed")
+            return receipt
+
+        agent.on_scientific_review = offer_scientific_review
+        logger.info("scientific_review_enabled", deidentified_input_asserted=True)
     overlay.configure(
         display_duration_sec=config.overlay.display_duration_sec,
         critical_persist=config.overlay.critical_persist,
@@ -799,6 +849,8 @@ def main() -> None:
         return agent.displayed_review_snapshot
 
     def on_state_change(_old: AgentState, new: AgentState) -> None:
+        if scientific_presenter is not None and new is not AgentState.ANALYZING:
+            scientific_presenter.invalidate()
         if new in {
             AgentState.CAPTURING,
             AgentState.MONITORING,
@@ -874,6 +926,12 @@ def main() -> None:
             and content_rect is not None
             and not projection_safe
         ):
+            if result.workflow_events:
+                # Do not mutate a canonical payload after validation to fit a
+                # changed display. Revoke it and require a fresh safe ROI instead.
+                agent.invalidate_display_geometry()
+                overlay.invalidate_review()
+                return
             reason = (
                 "Viewer image spans more than one display; move the viewer fully "
                 "onto one monitor and analyze again before trusting overlay boxes."
@@ -1078,6 +1136,9 @@ def main() -> None:
         bridge.submit(_r())
 
     def on_retrigger():
+        if reason := control_bar.analysis_unavailable_reason:
+            control_bar.set_status(reason)
+            return
         control_bar.set_pending_analysis(False)
         bridge.submit(agent.trigger_manual())
 

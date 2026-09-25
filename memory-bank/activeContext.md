@@ -1,5 +1,806 @@
 # Active Context
 
+## 2026-09-25 — bounded scientific deltas and explicit localization dispositions
+
+- Reconcile/second-look now request a compact, prior-SHA-bound edit envelope,
+  preserving unchanged data rather than re-emitting the complete draft. The host
+  applies explicit operations to a copy and still uses the unchanged scientific
+  draft/reference/claim-decision validators. Raw delta and materialized draft are
+  separate journal artifacts; no automatic response repair or paid retry.
+- Every supplied geometry-bearing evidence record needs explicit use/reject and
+  rationale. Use must resolve to the exact final finding and observation links;
+  reject cannot remain referenced. No automatic box adoption. QC and host-owned
+  provenance remain immutable. Public engine pin/schema unchanged.
+- Focused session/handoff/publication/native-localization regression:134 passed
+  in9.87s; changed-source Ruff and two-module mypy pass. Full suite started but
+  result not yet retained. Actual App acceptance and latency benefit are pending;
+  keep the same total180s deadline and sealed earlier attempts.
+- User-priority follow-up: actual ROI-wide blank-origin Mark and both existing/
+  manually added regional conversations; retain privacy outside authorized ROI.
+
+
+## 2026-09-25 — five requests, second look aborted at legacy total180s deadline
+
+- Confirm-graph runtime Ctemp/dicom-scientific-desktop-20260925-confirm-graph:
+  source1eb0565 startup launcher14196/App5404/Gateway23616, same Viewer7832.
+  Only docs/test changed to7b35d0d before actual Analyze; source/schema/skill
+  fingerprints unchanged. Same crop_top_20 ROI, wall185.070s, not a new case.
+- QC/blind/native/reconcile passed; fifth second-look request aborted at App's
+  shared DEFAULT_TOTAL_ANALYSIS_SLA_SEC180s. Gateway chat.abort54ms successful,
+  aborted=true/timedOut=false. No late report/Qt/export or automatic retry.
+- Hostrun41a882aef36c443c925ecb40ecb37c93 keeps4 complete original replies;
+  fifth partial not reconstructed. Public-evidence-20260924-234751 verifies5
+  Astra-medium sessions; fifth usage null/null/0 means unknown, not free.
+  Full IDs/receipts in scientific-reference-receipts evidence. Private config
+  must not publish. Actual Quit; ownedPIDs/18796 absent; Viewer retained. SEALED.
+- New gap: both actual reconciliations leave finding bbox_evidence_ids empty
+  and only source-frame evidence despite native tool validation. No annotation
+  adoption or scientific regional QA claim. Need explicit localization uptake/
+  rejection + response efficiency and bounded per-stage/overall budgets. Do not
+  simply extend SLA and claim faster completion or silently attach boxes.
+- Full1904 terminal0:2417pass8skip407.03s. 7b35d0d CI36074069157/36074064451
+  and secrets36074069175/36074064496 all success. Final docs12pass0.10s.
+  Prior20e2690/1eb0565 failed stale pin assertion,
+  repaired in7b35d0d. No new EXE or clinical improvement. Goal remains active.
+
+
+## 2026-09-25 — CI fixed-pin follow-up during fresh App startup
+
+- Remote20e2690 CI36073119191 failed only test_public_harness_model_boundary's
+  stale literal6152ab0 (both OS jobs). Local2410pass occurred before submodule
+  commit changed HEAD, so did not prove the final committed pin assertion.
+- Updated expected pin + current architecture doc to d9798da without weakening
+  fixed-pin check; boundary/docs31pass1.79s. New full1904 running.
+- Fresh confirm-graph runtime started source1eb0565, launcher14196/App5404;
+  no prior auth/logs reused. Pending real run. Only tests/docs changed during
+  startup; production/schema/skill fingerprints unchanged. Never restart sealed
+  multiref runtime to perform this retest.
+
+
+## 2026-09-25 — actual four-turn multireference replay; confirm graph prompt
+
+- Actual clean20e2690 App26484/launcher36668/Gateway34584/Viewer7832 in fresh
+  Ctemp/dicom-scientific-desktop-20260925-multiref,18796. Real Open+Analyze,
+  same exposed crop_top_20 ROI1500x864. QC/blind/native localization passed;
+  fourth reply rejected confirmation_changed_observation at134.208s. No second
+  look/Qt/report/export. Blind now supplies valid multi-observation arrays.
+- Exact private source + all4 visible replies persisted before decode, hostrun
+  c9082eaeddc148aeb78e19609adde780. Blind10436B/reconcile12932B, valid JSON;
+  o3 anatomy/text changed despite confirm f1. Do not relax validator or rewrite
+  this attempt. Native bbox tool executed once, no optional external classifier.
+- Public-evidence-20260924-233623 records4 Astra-medium sessions with matching
+  runtime IDs, no query model calls. Hashes/usage in scientific-reference-receipts
+  evidence. Query config private; never publish. Actual Quit stopped ownedApp/
+  launcher/Gateway/18796; viewer retained. This fourth runtime is SEALED.
+- Prompt now explicitly checks all linked observation fields and shared refs;
+  revisions permitted, no forced copying errors. Validator unchanged. New
+  confirm/revise cases:111pass6.76s across reconciliation/session/handoff/main;
+  mypy/Ruff pass. New actual run still required, next fresh runtime confirm-graph.
+
+
+## 2026-09-25 — structured checklist references and durable visible attempts
+
+- Implemented public ChecklistItem.observation_ids, additive JSON Schema, strict
+  per-reference canonical validation, App decoder and prompts. Legacy single-ID
+  evidence retained; no comma splitting, dropping references or ambiguous dual
+  representation. Before focused4fail6pass; after draft/assembly/reconcile158pass.
+- Scientific opt-in actual main factory now sets private runtime data/scientific-
+  attempts root. Source plus exact visible replies saved before semantic decode,
+  exclusive files/fsync/commit marker, no auth/prompts/reasoning, no global logs.
+  Disk failure stops attempt. Local inherited permissions, not encrypted; manual
+  retention. No claim for collector failures before returned turn. Details in
+  docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md.
+- Public d9798dae0cf4ac3e25578da127801bce6d4391b3:494pass3.82s,
+  compatibility/Ruff/staged14.12KB secret scan/both remoteCI pass; host prompts+
+  docs51pass0.71s after public prompt update; receipt/session/main96pass;
+  main/four-module mypy and changed-source Ruff pass. Full48321 terminal0:
+  2410pass8skip414.22s; staged33.93KB secrets clean. New actual
+  App acceptance pending. Never restart sealed earlier runtimes. No new EXE.
+
+
+## 2026-09-25 — third real App reaches blind pass, multi-observation references open
+
+- Clean88556d21b799e8364d21ad168b7d8a3436facf4c, fresh private
+  Ctemp/dicom-scientific-desktop-20260925-session-key; App19576/launcher28316/
+  Gateway6688/Viewer7832, port18796. Actual file dialog+Analyze, same authorized
+  partial ROI1500x864 at30,30. QC accepted; blind rejected57.040s at
+  unsupported_checklist_observation. No localization/reconcile/secondlook/handoff
+  or report/export. Three real attempts this turn:0,1,2 model requests respectively;
+  these counts do not establish monetary charges.
+- Public sessions+history/runtime verify both Astra medium. QC runa48c13f5...
+  /session6467aa47... log55; blind94d03518.../sessionc1940c5e... log208. See full
+  IDs, usage snapshots and hashes in native-scientific-startup evidence.
+- Visible blind checklist has comma-joined observation IDs (o5,o6 etc), but
+  public ChecklistItem.evidence and App decoder require ONE exact observation ID.
+  Schema only string, prompt says cite IDs. Need explicit typed multi-observation
+  references across public model/schema/validator/skill+prompt and host adapter;
+  preserve legacy compatibility and strict supported/resolved references. Do not
+  discard references or rewrite old response to make it pass. No prompt-only
+  one-ID simplification implemented; no clinical correctness claim from this.
+- Public chat.history truncates long blind JSON at next_steps; no complete raw
+  output replay exists after App exit. Add durable exact visible-response receipts
+  at host boundary before further live diagnosis; no PHI/global logs/git leakage.
+  Collector filters thinking blocks, query-only private config avoids token argv.
+- Actual Quit stopped App/launcher/Gateway; no18796listener. All THREE runtimes
+  are sealed and must never restart (Gateway truncates logs). Viewer7832 retained.
+- Final full91342 terminal0:2384pass8skip417.52s. Docs12pass0.10s; focused195pass,
+  client mypy/Ruff, staged10.32KB secrets clean. 88556d2 remote CI36070777879/
+  36070773640 and secret scans36070777815/36070773698 completed success;
+  53a32a8 both CI36069820478/36069815151 and secrets20453/15269 success.
+- Next: multi-reference contract + durable output retention, then fresh actual
+  five-stage App test. Current mode remains development-only, skips legacyclinical
+  hooks; independent waveform matching/classifier, quality-only UI, new EXE,
+  clinical acceptance and all broader goal requirements still open.
+
+## 2026-09-25 — actual QC received, canonical session-name correction
+
+- Clean53a32a8 App9468/launcher14048/Gateway24572/Viewer7832, new private
+  Ctemp/dicom-scientific-desktop-20260925-receipts-fix. Same actual GUI input and
+  Analyze, one real Astra-medium QC request; stopped18.583s at strict transport
+  gateway_session_identity_changed. No final report/export/five-stage success.
+- Public sessions+chat.history bind canonical agent:main:image-evidence-b06e76fe-
+  6964-44bf-87b6-79bf22c9af01, session0892cf26-6846-4599-af23-84152f026632,
+  Gatewaylog56 confirms Astra medium. Actual limited QC JSON valid posthoc;
+  visible ROI inspected (clipped III, aVR/aVL/aVF/V1–V6). Image-payload/export
+  identity not fully proved by public history alone. Usage snapshot not billing.
+- Public collector first --url probe failed credential guard; query-only private
+  config port18796 succeeded, no model resend/token argv. Never publish private
+  query-config file. Visible history excludes thinking blocks. Preserve both
+  public-evidence-20260924-225612 and-225749; hashes in dated evidence.
+- Exact canonical sender now agent:main:image-evidence-UUID; no loose aliases,
+  no collector relaxation. New regression beforefix1fail3pass; focused195pass
+  9.35s, mypy/client Ruff pass. Previous full90621:2380pass8skip394.75s terminal0;
+  new full91342 still live. 53a32a8 all two CI+two secrets completed success.
+- Actual Quit stopped owned App/launcher/Gateway, no18796listener. Do not restart
+  either sealed runtime. Third clean isolated live execution still pending.
+- Evidence:docs/evidence/2026-09/native-scientific-startup-2026-09-25.md.
+
+## 2026-09-25 — actual scientific App exposed missing receipt opt-in
+
+- Real clean be27473 App10612/launcher35696/Gateway16428/Viewer7832, port18796,
+  fresh Ctemp/dicom-scientific-desktop-20260925-be27473. Both CLI flags enabled.
+  Actual file dialog opened existing deidentified partial corpus crop_top_20;
+  Analyze reached capture/connect then gateway_evidence_collection_required.
+  Zero embedded run starts; no model chat.send before the explicit client guard.
+- Root cause: main OpenClawClient constructor omitted collect_transport_evidence.
+  Fixtures set it independently. New test executes exact main constructor AST;
+  beforefix1pass1fail; one-line collect_transport_evidence=scientific_mode fixes;
+  existing scientific tests now use constructed client. Focused74pass5.94s,
+  Ruff/main mypy pass. Default mode unchanged; no weakened gate or paid retry.
+- Cold OAuth97.846s + profile37.532s separately recorded; no speedup claim.
+  Controlbar UIA showed unpublished-result error. PrintWindow image black,
+  retained but not counted as visual readability. Quit through UI, App/Gateway
+  gone and no18796listener. Viewer retained. Never restart sealed first runtime.
+- Fresh Ctemp/dicom-scientific-desktop-20260925-receipts-fix prepared, no prior
+  auth/home/log/session copy. Corrected actual run still pending. Full90621 live.
+- be27473 CI36068383641/36068380377 and secrets36068383670/36068380213 all success.
+  Evidence:docs/evidence/2026-09/native-scientific-startup-2026-09-25.md.
+
+## 2026-09-25 — opt-in scientific desktop publication and manual-Mark recheck
+
+- Actual main/agent wiring behind both --scientific-review --deidentified-input;
+  default workflow unchanged. Assertion is not automatic PHI removal. Strict
+  scientific stages do not yet run legacy clinical-rule hooks; development only.
+- Prepared reports cannot enable Export/QA. Source geometry/pixels checked before
+  Qt availability and after preview retirement; full validated final then publishes.
+  Exact main callback tested with actual AsyncBridge/Qt/agent/session, synthetic
+  Gateway. Close/pause/cancel/content/source changes cannot publish or auto-retry.
+- Canonical export validates source SHA before writes. Human regional edits clear
+  canonical workflow claim, retain original session and draft review context;
+  requires reconciliation. Raw response persistence and live usage still pending.
+- Focused54pass7.13s; mypy5modules/Ruff/docs12pass. New fixture issues corrected:
+  white PNG->white JPEG wasn't a pixel change, and retract requires signal audit.
+- Native Mark1pass1.08s; regional121pass1.13s. Actual old3turn promotion audit and
+  chat screenshot re-inspected; no new paid inference/main merge/EXE claimed.
+- Extra native Mark runs: per-process QT_SCALE_FACTOR yields effective DPR~1
+  (1pass1.07s) and~2 (1pass1.05s) on same150% Windows desktop. Actual Win32 input,
+  normalized geometry/pass-through checks; not OS-scale/cross-monitor acceptance.
+- Windows150% native review + exact main Qt handoff2pass1.88s (70294 terminal0).
+  Fresh Ctemp/dicom-scientific-publication-ui-20260925-062908; report visually
+  checked, screenshot hashes match earlier synthetic component; actual close
+  revokes, no desktop-wide capture. Not a whole-App/model acceptance run.
+- Initial full4103:2373pass8skip1fail248.60s; staging rejected global Node25.6.1.
+  Diagnostic smoke32001:439pass7skip1fail247.96s, same unsupported PATH.
+  Final rerun57401 explicitly
+  uses existing portable Node24.18, without restarting sealed Gateway runtimes.
+  Terminal0:2378pass8skip417.97s. Final source Ruff/format, six-module mypy
+  (including main), docs12pass0.12s; initial staged61.90KB secret scan clean.
+- Previous edc75df two CI+two secret runs all completed success. Current work
+  evidence:docs/evidence/2026-09/scientific-desktop-publication-2026-09-25.md.
+
+## 2026-09-25 — concrete Qt scientific review presenter, native component proof
+
+- New presentation/scientific_review.py: inherited frameless/topmost/draggable
+  SummaryPanel + Observations/Evidence tabs; queued signal from AsyncBridge to Qt
+  paints validated detached preflight snapshot before source/run/content receipt.
+  Required is_current guard before render/ack and100ms while visible; hide/close,
+  cancellation, timeout, content change or explicit invalidation clears and revokes.
+  No signing/export, no unconditional production scope guard, no HTML rendering.
+- Full session-to-real-Qt callback test still uses synthetic Gateway. Not wired
+  into default __main__; next integrate at agent post-geometry/pixel validation,
+  separate prepared/final publication, preserve source/revision/ROI protections.
+- Native Windows150% component shown; actual Win32 close click clears/revokes.
+  First1pass2.65s screenshots exposed raw quality JSON; changed to readable QC.
+  Second1pass0.74s; report visually rechecked, observation/evidence hashes unchanged.
+  Private Ctemp/dicom-scientific-review-ui-20260925-055639 and-055931 (no overwrite).
+  No whole-App/model acceptance, paid inference, new EXE or clinical-score claim.
+- Real first-test defect: Qt teardown event accessed cleared wrapper attributes;
+  event filter guarded lifecycle. Test assumptions fixed for title+summary text,
+  no-paint stub content binding and title-cased Process stages. Focused74pass2.73s.
+- Scientific Process no longer infers zero model usage from workflow metadata;
+  missing scientific layout is not evidence all12leads absent. Underlying quality,
+  provenance and draft unmodified. Legacy text/report/geometry checks stay green.
+- Ruff/format and presenter mypy pass. Full suite8481 terminal0:2354pass8skip
+  408.18s. After full run, two-line guard prevents restarting timer after close
+  during render; new regression+focused75pass2.92s. Do not invent2355 full-run count.
+  Docs12pass0.10s; initialstaged47.33KB secret scan clean. d7bd172 both CI36063757958/36063754170 and secret scans
+  36063757965/36063754176 all completed success.
+- Evidence:docs/evidence/2026-09/qt-scientific-review-2026-09-25.md.
+
+## 2026-09-25 — scientific second look, content preflight and bound handoff
+
+- Public6152ab01d240c9b96698ff39e6a37ac35fa28275 adds separate preflight API:
+  same content checks, executed prefix only, future validation/handoff forbidden.
+  Canonical schema/CLI/final serializer unchanged.16 new tests; full475pass2.32s,
+  compatibility/Ruff pass;14.43KB staged secret scan clean. Committed/pushed first;
+  both public CI36062945672/36062941376 complete success. Host pin/assert updated.
+- ScientificImageSession now runs actual fifth Gateway second-look operation on
+  SAME source ROI (not zoom), challenges reconciled identities, preserves all raw
+  drafts. prepare_review performs content checks before journal validation record;
+  offer_review awaits explicit host callback with run/source/content/surface-bound
+  availability bytes before full assembly. No fabricated future stage completion.
+- Receipt error/cancel/concurrency/repeat/premature access cannot publish/retry.
+  Prepared snapshot is detached and non-canonical; final gate failure preserves
+  actual availability history but no final_result. Availability is NOT approval.
+- Initial focused104pass2fail: test used wrong result_status field and hardcoded
+  f1 fixture after replacing finding ID. Corrected tests only; focused122pass20.45s
+  including real JS producer with synthetic Gateway. Expanded handoff28pass2.43s.
+  Source Ruff/format/two-module mypy pass; documentation12pass0.10s.
+- Real App presenter/default pipeline, usage binding, trusted waveform matching,
+  zoomed crops and non-diagnostic quality-only UI remain open. No new paid/GUI run,
+  package, clinical-score or speed claim. Full unit/smoke/integration2332pass7skip
+  402.60s (session41544 terminal0). Explicit native Windows Mark1pass1.06s; frozen
+  package/capture/cohort opt-ins remain skips. Staged56.15KB secret scan clean.
+  Previous1a25eaa both CI+secret scans green.
+- Evidence:docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md.
+  Original sealed runtimes/cohorts and unrelated MAIN changes remain untouched.
+
+## 2026-09-25 — user-reported manual Mark branch comparison
+
+- Same native Windows test: main1c531a5 fails at blank-ROI WindowFromPoint;
+  candidate5b6ccf3 passes1/1 in1.08s. Main source path verified via PYTHONPATH;
+  initial main pytest launcher-resolution failure was not treated as bug evidence.
+- Candidate regional UI/geometry/QA/writeback/export121pass1.09s. No fresh model
+  call, full-App run, EXE release or main merge. Correct scope is entire authorized
+  image ROI, not unrestricted desktop. Fix6be42cb already exists on candidate.
+- Prior real manual/existing-region QA and ADD/dismiss/apply/third-turn evidence
+  re-read; final chat screenshot visually inspected. Full visible/export history,
+  bounded latest-six-pair/12k model context; cross-monitor/DPI coverage incomplete.
+- Evidence:docs/evidence/2026-09/manual-mark-branch-comparison-2026-09-25.md.
+  Unrelated MAIN dirt and scientific preflight work in progress remain untouched.
+
+## 2026-09-25 — scientific post-blind native localization and reconciliation
+
+- ScientificImageSession now continues read_blind with localize_and_reconcile:
+  actual separate Gateway/native geometry and challenge requests, not invented
+  journal completions. Default desktop remains legacy; no paid/GUI run this step.
+- ImageEvidenceTurn freezes whitelisted native audit JSON bytes under send lock.
+  Collector retains bounded bbox call IDs + unbound/non-bbox event flags; missing
+  tool results cannot hide behind one successful call. Native source adapter binds
+  exact pixels/nonce/call/text/count/hash; rejected-only/unavailable stays box-free.
+- New reconciliation wrapper preserves original bytes, four review lists and
+  confirm/revise/retract/add/unevaluable decisions, accounting for all old/new
+  finding IDs. Confirm cannot silently change clinical fields/observations.
+  QC/incomplete/CT scope unchanged, deep snapshots and no implicit paid retry.
+- Stage independent_evidence currently NATIVE GEOMETRY ONLY, NOT independent
+  diagnostic classification. No trusted waveform resolver/tool activation, no
+  targeted crop revisit, final canonical assembly, human handoff or App injection.
+  Model usage stays openclaw-unverified. Source/geometry validity is not accuracy.
+- Initial real-Node fixture9fail2pass: inherited1s mock timeout expired during
+  actual producer startup; fixture30s, production unchanged. Generic optional-slot
+  mypy mismatch fixed via local result. Count-limit regression retained existing
+  result-failure category and added bounded start-only category.
+- Focused206pass18.71s (15 new real native-producer/synthetic-Gateway smoke cases,
+  20 challenge cases,1 bounded collector case); Ruff/format/3-module mypy pass.
+  Docs12pass0.10s. Full2241pass7skip405.22s (39482 terminal0), staged66.49KB secret
+  scan clean. Prior partial audit7b21523e/120-case seal57aeb9d/score6532f1ec all
+  rehashed unchanged; unrelated MAIN dirt preserved. Previous e213fe9 CI and
+  secret scans ALL green (36058746707/36058741851,36058746717/36058741833).
+- Next integration must handle final-stage ordering honestly: public schema.py
+  requires contract_validation AND human_handoff completed before final validation;
+  do not solve that by injecting future completed events into the journal. Design
+  a truthful preflight/content-validation then actual review-availability sequence.
+- Evidence:docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md.
+  Prior sealed App runtimes remain stopped; original files/scorers unchanged.
+
+## 2026-09-25 — native partial ECG batch and negated-ST rule correction
+
+- Frozen source93e0c81/publicf0f4862: six actual App exports from eight existing
+  answer-free variants of ONE source.23 stages bound to Astra medium. Exact
+  visible/export RGB MAE0; source fingerprints unchanged; all incomplete/review.
+  All six summary panels and four marked review images inspected. Hidden labels
+  remain unknown; right-crop12 labels really visible, not completeness proof.
+- Cases6/7: 1500x90 and101x72 windows rejected by title-based discovery<=100px;
+  Analyze disabled BEFORE inference. Not model QC success, not8/8 acceptance.
+  Driver scaled-ROI/fullscreen+1px/focus failures retained. Case0 usage recovered
+  read-only without new inference; original failed receipt remains untouched.
+- Private Ctemp/dicom-partial-desktop-20260925/audit.json SHA7b21523e3ac8414680d34122de1b6f03a598efdb7e8d8f62e5fcbabbf6245500.
+  App34960/Gateway4636 quit through UI; PIDs/18795 absent; Viewer7832 retained.
+  Do not restart this sealed runtime: logs open with truncation at startup.
+- Top/bottom negative ST sentences triggered positive review notes. YAML rule
+  v1.0.1 uses existing non-negated matching, whole lexical forms; regenerated
+  Python/human/agent and verified SQLite digest8194933290c085ab81a1ab97d57154bb17d6d2e5835f2e28a327fe1cce312435.
+  New16 tests beforefix7fail9pass; focused105pass1.34s. Shared parser/other triage
+  rules/scorer unchanged; English lexical fix, not general multilingual negation.
+- Interaction checks71pass/1opt-in skip0.82s; explicitly enabled native Windows
+  mouse smoke then1pass1.20s. Blank ROI drag without AI highlights, outside-ROI
+  pass-through/passive mode verified. Prior actual regional QA audit re-read and
+  final chat screenshot viewed; not new model QA or EXE acceptance.
+- Full suite2205pass7skip390.01s (session65494 terminal0), documentation12pass;
+  Ruff/format/generated views pass; staged28.41KB secret scan clean. Native mouse
+  opt-in verified separately; frozen package/capture opt-ins remain explicit skips.
+- Remaining: small-window UX, misleading missing/hidden-lead warnings, SAPI
+  class-not-registered voice error, post-fix native replay, diverse vendor/old
+  images, diagnostic/localization acceptance and complete scientific pipeline.
+  No new EXE/release. Current evidence:docs/evidence/2026-09/native-partial-ecg-2026-09-25.md.
+  Prior93e0c81/2dd4f9e CI and secret scans all completed green.
+
+## 2026-09-25 — waveform evidence checked before crop prompts
+
+- Confirmed desktop still has no trusted waveform resolver and does not call
+  use_waveform_artifact; Settings correctly says evaluation-only. Existing eval
+  image-first/tool instructions in one turn do not prove a retained blind pass.
+- Fixed real runtime defect: supporting labels previously needed only nonce + one
+  success. Added stdlib-only waveform_receipts gate for exact artifact/model/pinned
+  checkpoint, response digest/fields, count, unique bounded labels and finite scores.
+  Failure-plus-success and conflicting same tool-call ID now fail closed; identical
+  replay remains deduplicated. Deep receipt snapshots cannot mutate later prompts.
+- Native plugin adds sanitized response_canonical_json to schema-1 audit only;
+  preserves original digest bytes across JS/Python number formats, strict projected
+  content comparison. Existing public tool/Gateway/result schemas unchanged. Not
+  original Gateway text, clinical correctness or proof of image/waveform matching.
+- Initial25 regression checks:23fail/2pass before fix; final focused135pass17.11s,
+  including38 new unit cases and6 new native JS numeric smoke cases. Real client
+  refine send/receive exercised with synthetic Gateway; one send/no parse retries.
+  Large synthetic pytest parameter needed a bounded ID on Windows; fixed fixture
+  ID, not the tested payload/size limit. Ruff/format/targeted mypy pass.
+- Docs/legacy eval validator/scientific session checks65pass2.25s. Fresh final full
+  2189pass/7skip377.36s, session22165terminal0 after all code/test changes. Source
+  fix2dd4f9e pushed. Both source secret scans green, four compatibility jobs green;
+  full remoteCI36053906438/36053897226 still running at local-result checkpoint.
+  Previous1b1f28c both CI/secrets completed successfully. Staged40.94KB no leaks.
+- Frozen120-case seal57aeb9d... and score6532f1ec... rehashed unchanged; no scorer,
+  historical validation implementation, source files or private results rewritten.
+  No paid inference, new native App run, EXE, waveform activation or accuracy claim.
+  Viewer7832 retained; no App started. README/docs/Memory updated for exact scope.
+- Next: trusted source/waveform matching + separate blind/independent/reconcile
+  pipeline and actual App integration; do not call this defensive gate that pipeline.
+  Evidence:docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md.
+
+## 2026-09-25 — two-turn lead-group coverage, two actual GUI replays
+
+- Public harness f0f486229cd057c291dd2a66f036f1ce796a42b6 adds optional
+  prefer_ekg_group_coverage=False; App explicitly enables it. Complete valid named
+  inventory required BEFORE normalization, two bounded group crops / two-turn cap,
+  no critical or waveform/local attention. No extra turn. Fourteen new tests;
+  public full459 pass2.48s, compatibility/Ruff pass, both public CI runs green.
+  Public draft PR3, branch agent/ekg-group-coverage-20260925. Submodule is clean.
+- Actual candidate App36748 launcher5912 / Viewer7832, private runtime
+  Ctemp/dicom-group-coverage-20260925. Real file dialog → Analyze → Export twice;
+  103 App/engine source hashes unchanged per run; source dirty on b40f841 plus pin.
+- Exposed index0 took existing critical-first route, so NOT new-coverage proof.
+  100.898s analysis /132.448s GUI, four medium stages; urgent-concern caught, asserted
+  concepts1/4 vs baseline0/4, still incomplete and not causally attributable to policy.
+  Export desktop-20260924-194518-912633;
+  audit36a83a53565898b59b86b4178582d06bc5db3ab5930505cf5b14674932d14b66.
+- Exposed index1 actually ran precordial[0,.425,1,.575] and limb[0,0,1,.575] crops,
+  all12 named lead boxes contained.103.686s analysis /117.596s GUI,four medium stages.
+  Exact ROI/source pixels,12 leads/zero schema warnings, still info/incomplete/review.
+  Asserted reference concepts remain0/4, NOT a diagnostic accuracy improvement.
+  Export desktop-20260924-194901-118072;
+  case-001/audit SHA ddfe6f4ccb749b6709172586b1ab03abb3098db4d98bbc138bc4dd7babc0510a.
+- Both review PNGs and actual second summary UI inspected; one low-signal bbox flag
+  remains. Scoring read references only after completed candidate receipt verification;
+  old sealed score/seal hashes unchanged. No original repairs or new scoring inference.
+- Initial App full run2144pass/1stale pin failure/7skip367.78s; pin updated and
+  host opt-in bound by AST test. Focused218pass2.76s. Fresh full2145pass/7skip381.89s
+  (2776 terminal0); Ruff/format/docs pass. No suppressed tests.
+  Previous b40f841 CI/secrets allgreen. App quit via owned UI, App/Gateway/18795 absent;
+  Viewer7832 retained. No active App. No new EXE or clinical acceptance.
+- Next primary gap: diagnostic uncertainty/recall despite wider review, calibration
+  and independent matched evidence, full scientific pipeline/App wiring, varied
+  partial/vendor inputs and current-EXE acceptance. Do not award positive diagnosis
+  recall merely for an info/possible label or treat crop planning as a full read.
+
+## 2026-09-25 — actual startup phase diagnosis (not a speed fix)
+
+- Added credential-free monotonic timings around existing public OAuth migration
+  and profile-list commands. No commands/retries/timeouts/auth checks changed.
+  Eight tests cover success/nonzero/timeout/spawn failure and sensitive-data exclusion.
+- Actual first-import App 18656 / Gateway 18228: migration 82.663 s, profile
+  31.924 s, Gateway-to-ready 30.950 s, total 148.789 s. Subsequent App 28288 /
+  Gateway 824: no migration, profile 11.328 s, Gateway 14.405 s, total 28.942 s.
+  Different cache/import/load conditions, not a controlled speedup. Zero model calls.
+- Both native UIs disabled Analyze while starting and enabled it after ready;
+  Settings/Quit stayed available. Both closed via Quit, owned port 18795 absent.
+  Previous App 9404/Gateway 17208 also closed; Viewer 7832 remains. No active App.
+- Private Ctemp/dicom-startup-profile-20260925 preserves both logs before truncation,
+  auth receipts, UI states, 79 source hashes unchanged across both launches and audit.
+  Audit SHA 7f38a522e1eae47046043830cccfa7f8488828142b386d8b05518274b090bec0.
+  Source was 20e17b9 plus dirty instrumentation; later three-line newline-only
+  normalization verified identical normalized text with preserved native module.
+- Full current run 2145 passed / 7 skipped / 366.26 s (73029 terminal 0), current
+  collection 2152; use actual counts, not extrapolated older evidence. Final focused
+  105 passed / 0.99 s. Ruff/format/auth mypy pass; pre-existing type narrowing fixed.
+  Both predecessor 20e17b9 CI and secret scans succeeded. No new EXE or acceptance.
+- Marker/region QA fixes rechecked against actual preserved three-turn screenshot
+  and existing native evidence: whole authorized ROI, not arbitrary desktop.
+  Next: controlled startup optimization, low-signal box quality, full scientific
+  pipeline/App integration, clinical improvement/diverse inputs/current EXE acceptance.
+
+## 2026-09-25 — moved plugin / Analyze readiness fixed and natively verified
+
+- GatewayManager now replaces only absolute App-owned harness load-path entries,
+  including index.js, with currentpath; preserves unrelated/custom/relativepaths
+  and otherplugin settings. No deletion/internalSDK changes.29new tests coverpaths,
+  idempotence, UIreadiness/offlinerecovery/duplicate captures.
+- Analyze disabled duringstarting/INIT/WAITING/SETUP/CAPTURING/ANALYZING/RECONNECTING;
+  same Qtshortcutguard givesreason; applicationguardblocksqueued duplicate paidread.
+  Offlineafterstartup stillallowsmanualrecovery inmonitoring/error/display/paused.
+- Actual nativeApp9404 launcher35952 Gateway17208 Viewer7832, newprivate runtime
+  Ctemp/dicom-relocation-ready-20260925/runtime. PreviousApp3308/Gateway4128 quit.
+  Actual startupbuttondisabled +physicalCtrlShiftA blocked, readybuttonenabled,
+  one actualQFileDialog/Analyze run, busyCtrlShiftA blocked, exportbuttonstate restored.
+  Logloads currentharnessonly,no duplicateoldpathwarning. Four Astra-mediumstages,
+  exactROI/sourceRGBMAE0, 12leads/zerowarnings, stillincomplete/review.97.545sanalysis,
+ 111.916sworkflow. Coldstartup~136s remainsperformanceissue; no efficacyclaim.
+- Private exportdesktop-20260924-190928-490683 plusUIstates/attempt/receipt/audit.
+  auditSHA6fd8b4bfc40d402215651a51c7d613d695df50ac1f4306c2b2b32a1924473c89.
+  All79sourcefiles boundduringnative run; afterwardgateway_managerformatteronly,
+  originalpreserved asgateway_manager.native.py andASTequalityverified. Sourcewasdirty
+  ona2e44f7,notcleanEXE. Actualcontrolbarimagevisuallyinspected.
+- Full2192pass7skip358.30s (27303terminal0), focused165pass5.97safterformatter,
+  Ruff/format/focusedmypy pass. InitialfocusedPOSIXpathfailure fixedntpath3.13
+  isabsbehavior. a2e44f7 CI/secrets allsuccess. No newEXE/deps/schema/protocol.
+  CurrentAppmanualmodeopen. Next: cold-authprobestartupcost, low-signalboxmetric,
+  fullscientificpipeline/clinicalimprovement/diversecases/currentEXEnativeacceptance.
+
+## 2026-09-25 — explicit lead inventory, actual App replay
+
+- All five baseline schema failures had empty layout.leads; detector peaks at
+  indices24/26/33/41/94 were8/9/8/8/7. Coarse prompt falsely promised local geometry
+  while forbidding per-lead boxes. Now requests visible panel geometry/labels;
+  unknown/partial constraints unchanged. No detector weakening or invented labels.
+- Actual exposed index24 replay on candidate source d5bb512+dirty recorded prompt
+  change, tracked source hashes unchanged throughout. Native QFileDialog/Analyze/
+  Export, ROI30,30,1500,1080 @150%, RGBMAE0, four verified Astra-medium stages.
+  New12leads/zero validation warnings vsold0/three; detector still8, no local repair.
+  Analysis98.191s/coarse29.349s; total273.431s includes startup/first rejected click.
+  Incomplete/review retained, seven low-signal bbox audit flags remain; no clinical
+  or localization acceptance. Actual summary/report visually inspected.
+- Private Ctemp/dicom-layout-replay-20260925/ holds new runtime/attempt/receipt,
+  export runtime/data/exports/desktop-20260924-185138-394927. Old App3948/Gateway26484
+  closed viaQuit; retained Viewer7832. Current App3308 launcher27668/Gateway4128.
+  Runtime has unchanged plugin selected via old absolute publicconfig path: NOT
+  portable-plugin acceptance. Startup Analyze was enabled before viewer ready;
+  rejected firstclick, confirmedready then one actualanalysis. Fix these gaps next.
+-45prompt/layout+262robustness tests passed; three new regression tests. Firstfull
+ 2162pass7skip1failure due incorrect PATH selecting unsupported globalNode25.6.1;
+ corrected Node24.18 staging2pass123.54s. Fullrerun69953 terminal0:
+ 2163pass7skip386.34s. Ruff/format/docs/diffcheck pass. No new EXE/deps.
+ All79Appsource hashes unchanged sinceactualrun. Original120seal/inventory/audit
+ reverifiedafterreplay (23485terminal0), originalscoreSHAunchanged.
+ Nextsourcefixes: gateway_manager.py _ensure config appends currentplugin path
+ without removing prior ownedpath (~line529); control_bar.py gatewaystatus only
+ updateslabel and never disablesstartup Analyze. Preserve otherplugins/ROI and
+ do not disable offline recovery permanently. Native Appstillopen, manualmode.
+ d5bb512 CI/secrets allgreen. Docs/READMEboth/Memory updated; baseline immutable.
+
+## 2026-09-25 — actual 120-case medium batch sealed; clinical acceptance failed
+
+- Original driver 80364 terminated exit 0: 117 new + three original, no reruns.
+  Final receipt 2026-09-24T18:30:30.531254Z. Independent full audit 120/120,
+  482 Astra-medium stages, zero pending/invalid/technical failures, source RGB MAE0.
+- New create-only score-verified-desktop-batch.py separates seal from gold access;
+  binds 2,519 inventory entries incl recursive crops and original log prefix,
+  verifies full audit twice and uses pre-inference gold hash. No inference/repair.
+  Seal 57aeb9d03c9d79346e09bcd65bc09d51e716ec981a77be4857bdf95a1bd346de;
+  score 6532f1ec79bd0fc95099a7014bc4ceb84e0d4bfeaea55df83b762055074f9046.
+  Private files in C:/Users/Ericlab/AppData/Local/Temp/dicom-medium-batch-20260924/.
+  Do not change sealer bytes without a new explicitly versioned seal.
+- Gold now opened AFTER seal: strict0/46, complete diagnosis recall0/46,
+  exactseverity13/120, urgent concerns5/24, schema115/120; 74partial references.
+  Cant_miss/normal/partial-input denominators zero -> unmeasured. Clinical and
+  canonical-ledger acceptance false. Five schema failures absent lead inventory.
+- Mean analysis93.993s/workflow106.485s; not matched speed/model comparison.
+  Full2160pass7skip353.94s (26602terminal0); 24new synthetic protection tests.
+  READMEboth/evidence/procedure/index updated. No App/prompt/dependency/EXE change.
+  Existing scorer Git-identical to DIRECT; rebuild file CRLF/LF differs only,
+  actual executed digest preserved. Next: adjudicate failure sources without
+  rewriting this baseline, then complete scientific stages and actual GUI tests.
+
+## 2026-09-25 Taipei / September 24 UTC — executable intake/QC/blind adapter
+
+- ScientificImageSession now performs actual source PNG decoding/intake, a real
+  public Gateway QC request and a separate blind request through original-output
+  capture, strict scientific decoding and ExecutionJournal. Only synthetic Gateway
+  replies tested so far; not active desktop/model acceptance or completed pipeline.
+- Host public provenance/study/source-frame evidence bind exact immutable ROI;
+  complete=False, no clinical label or bbox fabricated. Non_diagnostic QC skips
+  blind with zero second request. Invalid QC/draft, scope/QC upgrades, fake geometry,
+  CT screenshot diagnostic/high-confidence claims, cancellation and reruns fail.
+- GatewayTurnEvidence adds tool_event_seen boolean for any matching agent/tool
+  event (including unknown-tool start). QC/blind reject observed tools without
+  retaining arbitrary tool name/args/output. This is after-observation rejection,
+  not remote execution prevention or proof about unreported provider behavior.
+-32new synthetic tests; adapter/collector/request/journal150pass1.88s. Focusedmypy/
+  Ruff/format/docs/stagedgitleaks pass. Full2136pass7skip208.94s,90681terminal0. First typing
+  check flagged contextual generic union and mixed tuple inference; fixed without
+  runtime policy changes. No local scientific type duplicate or dependency added.
+- Read-only snapshots/copies preserve source and replies; failed decoded output
+  retained before parsing. Non-returned transport failure remains client latest
+  snapshot and must be saved before any next send. No automatic disk export.
+  model_used=openclaw-unverified intentionally does not claim configured identity.
+  Readable images add an independent QC paid turn; latency/cost may increase.
+  Non_diagnostic short circuit is request accounting, not an overall speed claim.
+- READMEboth/architecture/index updated. Current code ends at blind intermediate
+  draft; canonical full assembly still rejects it. Next: actual localization/
+  optional independent evidence, reconciliation/targeted revisit, full validation/
+  review publication and App wiring. Do not activate incomplete path as final report.
+- Independent batch111/120verified,9pending,zero invalid/technical failure;
+  original80364live, goldunopened. Previous812d1c9 CI36038426402/36038420472 and
+  secrets36038426541/36038420635 allSUCCESS. Live source/config/helpers frozen.
+
+## 2026-09-25 Taipei / September 24 UTC — original-output image request API
+
+- OpenClawClient.request_image_evidence now sends a fresh instrumented stage via
+  existing public Gateway transport/recovery, without legacy16-key decoding or
+  outer paid parse retry. Collection must be enabled before connect; negotiated
+  protocol, trusted deid, immutable decodable single-frame PNG and bounded prompt/
+  request required. Does not capture pixels, expand ROI or silently transcode.
+- Frozen ImageEvidenceTurn carries exact attached-image/prompt hashes, bbox nonce,
+  elapsed time and original Gateway snapshot while still under send lock. Different
+  concurrent turns cannot replace returned snapshots; crop SHA is attached crop,
+  not a falsely asserted parent. Native audit/source binding remains independent.
+-26 synthetic client tests plus2actual-native-producer/synthetic-Gateway tests;
+  targeted client/collector/recovery/source181pass1.75s. Journal consumes raw QC
+  bytes and blocks non_diagnostic inference; scientific decoder gets original JSON
+  without legacy coercion. Full2104pass7skip202.92s,61911terminal0.
+  Ruff/format/docs/stagedgitleaks pass. Client+collector mypy pass after three existing typing errors
+  were fixed by explicit rejection-count narrowing/mixed-context annotation only.
+- READMEboth/gateway architecture/direct-integration/journal docs updated. No default
+  App activation, model/prompt switch, schema/submodule/dependency/EXE rebuild.
+  True stage prompts/intake/scope/tool-event fidelity and actual GUI wiring open.
+- Independent frozen batch103/120verified,17pending,zero invalid/technical failures;
+  gold unopened, original80364confirmedlive. Do not steal focus/restart/modifylive.
+  Priorc45ad9d CI36037007972/36037000756 and secrets36037008026/36037000768 allSUCCESS.
+
+## 2026-09-25 Taipei / September 24 UTC — host execution journal component
+
+- application/execution_journal.py invokes host stage callbacks once in public
+  protocol order; real running/return/failed/cancelled/explicit-skip records retain
+  source/run IDs, actual timestamps, bounded original-artifact SHA and hash chain.
+  No event import, fake future completion, model prose, PHI paths or reasoning.
+- Public-schema QC precedes blind pass; non_diagnostic blocks interpretation
+  callbacks before invocation. Actual cancellation and a callback swallowing a new
+  task cancellation remain cancelled, not success; same failed run cannot resume.
+  Immutable snapshots and public projection preserve partial/failed history.
+-36 synthetic journal tests plus44assembler checks pass80/0.99s; Ruff/format and
+  focused journal mypy pass. Initial full2075pass7skip1failure201.24s: orphan guard
+  correctly caught unwired journal. Explicit DEFERRED_WIRING reason/prerequisites
+  added without disabling guard or fake entrypoint reference. Final full2076pass
+  7skip205.77s, session53883terminal0. Docs/Mark/history/turn linkage75pass0.90s.
+  Staged gitleaks passes; native tests remain opt-in, no focus stealing.
+- docs/architecture/execution-journal.md documents callback trust limitations and
+  two-phase validation/review availability before unchanged full assembly. No-op
+  callback/hash chain is not clinical evidence or a signature. No App/default
+  pipeline activation, retroconversion, dependency/schema/submodule or EXE change.
+- Actual native promotion evidence and chat screenshot rechecked: three-turn
+  history retained after dismissal/later Apply, reopening without inference,
+  third-turn no duplicate; fixes already in DIRECT. Safe Mark surface is entire
+  authorized ROI, never arbitrary full desktop. No new native GUI during batch.
+- Independent batch audit96/120verified,24pending,zero invalid/technical failures;
+  original80364stilllive, goldunopened. Prior3445772 CI36034342503/36034337896 and
+  secret scans36034342671/36034337955 all SUCCESS. MAIN user dirt preserved.
+- NEXT connect real intake/stage/scientific operations only after frozen cohort
+  is sealed; actual Gateway tool-event fidelity and current EXE GUI remain open.
+
+## 2026-09-25 Taipei / September 24 UTC — compact clinical note presentation
+
+- Candidate-only presentation/finding_notes.py moves exact known ROI prefixes and
+  fixed bbox-expansion messages to inspectable Process details. Crop clinical body
+  stays explicitly [Crop-only evidence] in Report; unknown/malformed/mixed notes
+  stay visible. No result/notes/ID/bbox/summary/checklist/trace/export mutation.
+- SummaryPanel provides mouse/keyboard entry to original ordered notes, matching
+  priority numbers and finding IDs. Clear/replace invalidates delayed targets.
+  Text remains plain/selectable. Frameless/topmost/drag/ROI capture unchanged.
+- Reproduced old label retaining480px after Short note.; fixed height measurement
+  releases old Qt minimum before remeasuring, guards recursion, adapts shorter text.
+  First3render checks had39px hscroll while offscreen fonts were missing. Explicit
+  TEST-only loading of installed Segoe/JhengHei/symbol/emoji fonts corrected that.
+  WITHDREW small-minwidth workaround after a long unbroken identifier clipped.
+  New regression preserves necessary hscroll; do not claim all IDs wrap/no-scroll.
+-28new tests +existing panels74pass2.35s. Fresh offscreen100/150/200% processes
+  verify pixel size/notes/wrapping/navigation. Actual widgets rendered with synthetic
+  fixtures ONLY; fixture Luna text is not a model call/change. Final150% report/
+  Process visually reviewed in pytest-3400/test_isolated_scaled_render_pr1.
+  Six final-source images hash-verified copied to candidate ignored
+  data/tmp/report-note-presentation-20260925/{report,process}-{100,150,200}.png.
+  No new native-window/DPI/App/EXE acceptance while original cohort still runs.
+- Preliminary full2039pass7skip195.84s before defensive long-ID adjustment.
+  Final full2040pass7skip204.41s, session40032terminal0. Ruff/format/helpermypy/
+  docs links and staged gitleaks pass.
+  READMEboth/docs index/runbook/evidence updated; no new fonts bundled/dependency.
+- Original80364 stilllive; independent audit82/120verified,38pending,zero invalid/
+  technical failures at~17:24UTC. Goldunopened; liveApp7eba45d/DIRECT production and
+  private helper/config/driver frozen. Prior648c50b bothCI36031722498/36031714674,
+  secret scans36031722507/36031714660 all SUCCESS. MAIN user dirt untouched.
+- NEXT finish real host stage journal/intake/scientific pipeline; after current
+  cohort seals, actual candidate UI/tool-event fidelity/cross-DPI and newEXE tests.
+  Latest preserved EXE remains3029dfb, not this source UI/canonical candidate.
+
+## 2026-09-25 Taipei / September 24 UTC — opt-in Gateway visible-output capture
+
+- gateway_evidence.py now collects exact decoded visible model/native bbox text
+  before legacy parsing, with request/session/run/call identity, immutable private
+  snapshots, bounded storage, duplicate replay and conflicting-result handling.
+  No JSON repair/reserialization promoted to original bytes. No raw wire transcript,
+  hidden reasoning, arbitrary tools, auth/prompts, logging or automatic disk export.
+- OpenClawClient collect_transport_evidence defaults FALSE; enabled clients declare
+  public tool-events capability and observe both actual receive loops. Reconnect
+  preserves collector: same preaccept idempotency replay, no accepted-run resend.
+  Snapshot latest send only: callers MUST retain it before next turn/outer retry.
+  Binary events buffered during handshake now decode like directly received ones.
+- Public docs + pinned2026.9.3 bundled docs confirm tool-events delivery gating and
+  result sanitization. Recognized agent/tool result nested shape is replay-tested,
+  NOT yet live accepted. Every expected native call must be retrieved and exact
+  text hash bound to independent native audit/source bytes; missing is not repaired.
+-56new collector tests plus1actual-native-producer/synthetic-Gateway smoke. Latest
+  collector+resilience99pass0.73s; pre-binary-fix full2011pass7skip196.01s. Final full
+  regression2012pass7skip194.59s, session84891terminal0. Ruff/format/focusedmypy/
+  docs links and staged gitleaks pass.
+  docs/architecture/gateway-evidence-capture.md + related architecture links updated.
+- Original frozenGUI80364 remains live on7eba45d. Independent audit~17:03UTC
+ 70/120verified,50pending,zero invalid/technical failure. Gold unopened; App/live
+  source/config/helpers unchanged. Do NOT start other GUI windows during batch.
+- Viewed actual case069 summary-panel.png from export desktop-20260924-170103-897124,
+  without gold or new GUI action. Readable but repeated BBox-expansion notes and
+  crop ROI coordinates crowd primary clinical reading. Candidate UX follow-up:
+  preserve details/audit but move technical notes to secondary inspection, without
+  changing clinical statements or live frozen App. This is a usability observation,
+  not clinical adjudication of its content.
+-780c0c6 both CI36029657370/36029648665 and secret scans36029657521/36029648434
+  completed SUCCESS. Candidate default scientific protocol still inactive; latest
+  localEXE3029dfb unchanged. PR20 remains draft; userMAIN dirt untouched.
+- NEXT actual host journal/intake + coherent scientific-protocol pipeline, then
+  exact native-event fidelity and full App acceptance after frozen cohort sealing.
+  Public trace requires ordered intake,quality_gate,blind_pass,reconcile,
+  contract_validation,human_handoff; optional independent_evidence/second_look.
+  Do not synthesize completed events from final prose or call model posthoc just
+  to manufacture a ledger. Review availability != clinician approval.
+
+## 2026-09-25 Taipei / September 24 UTC — native source/crop evidence adapter
+
+- Isolated candidate adds infrastructure/source_evidence.py: actual native tool
+  text/audit hashes, source/nonce/call/count/digest binding, exact App crop bytes
+  and effective integer-pixel remapping into public source Evidence/transforms.
+  No invented fallback for rejected boxes; raw reasons are not promoted to claims.
+  Explicit de-identification assertion required, no wider capture or GUI action.
+- Shared strict JSON ingestion extracted from scientific_draft; native coordinate
+  digest/audit shape and App pixel bounds reused by existing callers. No runtime
+  dependency, public schema/submodule, default prompt or subscription changes.
+-53new tests invoke ACTUAL native JS producer on synthetic images, then adapter/
+  decoder/assembler. Synthetic model claims/journal remain explicitly synthetic;
+  no actual Gateway/model/GUI claim. Exact crop 151x113 -> pixel(16,19,91,78) ->
+  651x512 verified; wrong bindings, digest collisions, resource/JSON limits fail.
+ 53pass0.65s; full1955pass7skip201.18s, session56067terminal0; Ruff/format,
+  four-module focusedmypy and four documentation-link checks pass.
+- Documentation native-source-evidence.md plus crosslinks updated. Existing
+  scientific/assembly boundaries now have an independently tested source adapter,
+  NOT a live native-text collector, real canonical run journal or desktop wiring.
+  Host controlling both receipts can forge them; verified geometry != medical truth.
+  Legacy multipass remapping unchanged; no blanket DPI correction claim.
+- Original frozen actualGUI80364 remains active on7eba45d; independent audit
+ 61/120 at~16:46UTC,59pending,zero invalid/technical failures. Gold unopened;
+  no focus-stealing new windows or live
+  code/config/helper changes. Earlier actual manual promotion chat screenshot
+  re-viewed, not misrepresented as a new interaction run.
+- Previous11c8810 push/PR CI36026786773/36026784409 and secret scans all pass.
+  Latest EXE remains DIRECT3029dfb; PR20 remains draft. MAIN user dirt preserved.
+  NEXT collect exact native tool content and original model body at public Gateway
+  boundary, instrument real stage journal/intake, then wire the scientific path
+  after frozen cohort sealing. No retroactive ledger or completed stages fabricated.
+
+## 2026-09-25 Taipei / September 24 UTC — scientific model-led draft decoder
+
+- In this isolated candidate only: infrastructure/scientific_draft.py now derives
+  a versioned request schema/prompt from the pinned public claim definitions and
+  decodes atomic observations plus summary/checklist/finding references. Model
+  bbox_evidence_ids select exact host-validated source geometry; model provenance,
+  verified flags, hashes, workflow events and invented evidence records forbidden.
+- Decoder retains exact supplied UTF8 JSON body bytes/hash, rejects duplicate keys,
+  invalid encodings, nonfinite/oversized/deep input, missing axes/references and
+  unsupported retained claims. Non-diagnostic quality cannot produce pathology
+  findings or assessed clinical axes. Cached schemas only, no evidence/result cache.
+  Neither model text nor schema validation is clinical truth or source attestation.
+- Actual OpenClawClient legacy parser now rejects draft_version explicitly rather
+  than dropping scientific fields. Three actual retry-wrapper tests verify no
+  extra model request on that routing error. No default inference/skill/schema
+  activation, subscription change or public contract/submodule/dependency change.
+-82new synthetic tests; combined decoder/assembly/public ownership145pass2.87s;
+  Ruff/format/focusedmypy pass. Full1902pass7skip206.80s, session51306terminal0.
+  Initial test-authoring failures: reservedfixture request; then huge auto raw-byte
+  parameter IDs caused2setup errors (116passes136.16s). Short hash IDs and one schema
+  per fixture fix collection/setup; no exclusion or production guard relaxed.
+- Four docs-link checks pass. docs/architecture/scientific-model-draft.md records
+  protocol ownership/limits/use. NEXT actual transport raw-body capture, host run
+  journal, native receipt catalogue adapter and capture manifest before desktop
+  wiring. Do not invent old observations/events or add a posthoc model read just
+  to populate a ledger. Preserve live cohort until it completes/seals.
+- ORIGINAL realGUI80364 re-polled live; independent audit at~16:20UTC46/120,
+  74pending,zero invalid/technical failures. Goldunopened, frozen7eba45d remains.
+  App3948/Viewer7832/Gateway26484 and original driver context unchanged.
+- Previous b6baa1d both CI36024581744/36024573731 and both secret scans pass.
+  Latest localEXE is still DIRECT3029dfb, NOT this scientific candidate. PR20
+  remains draft stacked on PR17; no main merge/binary publication this phase.
+
+## 2026-09-25 Taipei / September 24 UTC — refreshed local EXE, live batch continues
+
+- Previous candidate42dd4efa368bd07f183bdd0422a450f564ce848e is clean/pushed;
+  draft PR20 stacks on agent/direct-harness-models-20260910. CI36022557989 and
+  36023128583, secret scans36022558026/36023128909 all pass. Do not merge a
+  partial scientific assembler as if desktop canonical integration were complete.
+- New LOCAL frozen package built from clean DIRECT3029dfb155d673b0002870ce570ee9e5c58b3d40,
+  NOT this host-assembly candidate. All60bundled App code modules compare exactly
+  to thatcommit;90native dependency sources approved. Includes projection/picker/
+  ROI-preview/publication fixes missing from old6eEXE. Python3.13.12/UPX5.2.1/
+  Node24.18/OpenClaw2026.9.3 unchanged; clinical7rule SQLite parity unchanged.
+- DIRECT/dist-interaction-3029dfb-upx/DICOMOverlayAgent: launcher4.71MiB,
+  App54.45MiB,total337.02MiB. EXEsha b3323a77430e02897259a4a14a7d8114c4605dcf3e66fc077ab044f4208a8162.
+  Package verifier session59053 terminal0; full20frozen smokes session64231
+  terminal0,94.48s; build51770 terminal0. No native GUI acceptance of newEXE yet.
+- DIRECT/data/tmp/package-transfer-interaction-3029dfb: ZIP141.58MiB,
+  18771entries byte/hash roundtrip verified,53UPXpayloads tested; helper59024
+  terminal0. Initial UTF8-vs-cp950 helper failure fixed before output creation.
+  No public binary uploaded; PyQt6 distribution-license/clinical/DPI gates open.
+  Evidence docs/evidence/2026-09/interaction-package-refresh-2026-09-24.md.
+- ORIGINAL live realGUI80364 remains on frozen7eba45d; App3948,Viewer7832,
+  Gateway26484,driver2760/10104 revalidated live. At~16:01UTC35/120 independent
+  verified,85pending,zero invalid/technical failures. Gold unopened. Case029actual
+  summary inspected; critical-first execution is not clinical/scoring evidence.
+  DO NOT launch new App/Viewer or modify DIRECTsrc/config/prompts/rules/helpers/
+  driver midbatch. Packaging only touched ignored build/dist directories.
+- Scientific integration inspection confirms current parser still drops ledger;
+  no decoder/journal/desktop wiring added this turn. Next implement coherent
+  model-led draft protocol+decoder/prompt/schema tests in this isolated candidate,
+  then real host journal/native receipts/capture adapter; do not invent completion.
+
+## 2026-09-24 ISOLATED host assembly candidate; actual GUI run stays elsewhere
+
+- NEW worktree data/tmp/evidence-assembly-worktree-20260924, branch
+  agent/canonical-evidence-20260924, based on3029dfb. Its own uv env and unchanged
+  submodule3c7645e. Develop here WITHOUT changing the live direct-harness worktree
+  src/config/prompts/rules/driver. MAIN user dirt remains untouched.
+- Added application/contract_assembly.py: deep-copy, exact immutable input/
+  transformation hashes and inventories, host-only bindings, exact trusted-evidence
+  parity, source coordinate/tool-source proof, pinned public validation. No ledger,
+  normal status, verified boxes, completeness or workflow events fabricated.
+- NOT wired into desktop. Actual current Gateway parser still lacks observation
+  ledger; explicit synthetic parser regression rejects it. Host journal/native
+  receipt adapter/protocol decoder/quality lifecycle still need implementation.
+-44new tests pass; Ruff/format and focusedmypy pass. Fresh full run before npm:
+  1760pass8skip5fail51errors (missing localOpenClaw); Node25first install warned,
+  reran lockednpmci with portableNode24.18, no global edits.93native/Core2/ownership
+  targeted tests pass. Corrected fullsuite1820pass7skip183.19s; session22239terminal0.
+  Seven skips include candidate-local optional portableNode-directory plus usual
+  private/frozen/native opt-ins. Native plugin checks use portable24.18viaPATH.
+- ORIGINAL realGUI run STILL in direct-harness-worktree-20260910:
+  session80364 live; App3948,Viewer7832,Gateway26484parent3948; driver2760/10104.
+  At15:41UTC independent audit25/120,100medium stages,95pending,zero invalid/
+  technical failures. Frozen plan/temp roots unchanged. Gold unopened.
+- Both3029dfb CI36020406337/36020401506 and secret scans passed.
+- Evidence/design: docs/architecture/host-evidence-assembly.md. No new EXE/main merge.
+
 ## 2026-09-24 Clinical workflow documentation; 16 real GUI cases audited
 
 - Added docs/clinical/ekg-reading-workflow.md: ten human/agent step IDs, sixteen

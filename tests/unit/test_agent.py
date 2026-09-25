@@ -836,6 +836,18 @@ class TestOverlayAgent:
         assert not agent.has_roi_config()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("state", [AgentState.CAPTURING, AgentState.ANALYZING])
+    async def test_duplicate_manual_trigger_does_not_start_another_read(
+        self, agent, agent_deps, state
+    ):
+        agent._set_target_window(WindowRect(0, 0, 1920, 1080))
+        agent._state = state
+        await agent.trigger_manual()
+        assert agent.state is state
+        assert agent_deps["screen_monitor"].capture_rects == []
+        assert agent_deps["vision_analyzer"].analyze_calls == 0
+
+    @pytest.mark.asyncio
     async def test_stop(self, agent):
         await agent.start()
         await agent.stop()

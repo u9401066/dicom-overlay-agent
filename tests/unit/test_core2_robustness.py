@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -51,6 +52,7 @@ from medical_image_harness.multipass import (
     RefinementDelta,
     RefinementResult,
 )
+from tests.unit.test_eval_artifact_validator import _ecg_receipt
 
 
 def _png_bytes(width: int, height: int) -> bytes:
@@ -1924,42 +1926,36 @@ class TestNativeToolAuditTrace:
 
         with client.use_waveform_artifact("wf-opaque-123") as evidence_nonce:
             client._begin_run_trace("analysis-ecg-founder")
-            receipt = {
-                "schema_version": 1,
-                "tool": "ecg_founder_analyze_waveform",
-                "tool_call_id": "ecg-call-1",
+            receipt = _ecg_receipt()
+            receipt["tool_call_id"] = "ecg-call-1"
+            receipt["predictions"][0].update(
+                label="LEFT VENTRICULAR HYPERTROPHY", probability=0.42
+            )
+            for target in (receipt, receipt["response_evidence"]):
+                target["evidence_nonce"] = evidence_nonce
+                target["artifact_id_sha256"] = hashlib.sha256(
+                    b"wf-opaque-123"
+                ).hexdigest()
+            receipt["response_evidence"]["rhythm_measurement"] = {
+                "method": "lead_II_qrs_energy_v1",
+                "lead": "II",
                 "status": "ok",
-                "evidence_nonce": evidence_nonce,
-                "artifact_id_sha256": "a" * 64,
-                "model_revision": "04edac702b61c91face519774ddcc0cd712fef23",
-                "model_id": "PKUDigitalHealth/ECGFounder",
-                "checkpoint_sha256": "b" * 64,
-                "calibration_status": "uncalibrated",
-                "prediction_count": 10,
-                "predictions": [
-                    {
-                        "label": "LEFT VENTRICULAR HYPERTROPHY",
-                        "probability": 0.42,
-                    }
-                ],
-                "response_evidence": {
-                    "rhythm_measurement": {
-                        "method": "lead_II_qrs_energy_v1",
-                        "lead": "II",
-                        "status": "ok",
-                        "diagnostic_scope": "rhythm_regularity_only",
-                        "rr_interval_count": 6,
-                        "rr_intervals_ms": [860, 720, 650, 810, 690, 840],
-                        "median_rr_ms": 765.0,
-                        "heart_rate_bpm_from_median_rr": 78.4,
-                        "rr_cv": 0.11,
-                        "rr_rmssd_ms": 130.0,
-                        "rr_range_ms": 210.0,
-                        "successive_rr_diff_over_80ms_fraction": 0.8,
-                        "regularity_signal": "irregular",
-                    }
-                },
+                "diagnostic_scope": "rhythm_regularity_only",
+                "rr_interval_count": 6,
+                "rr_intervals_ms": [860, 720, 650, 810, 690, 840],
+                "median_rr_ms": 765.0,
+                "heart_rate_bpm_from_median_rr": 78.4,
+                "rr_cv": 0.11,
+                "rr_rmssd_ms": 130.0,
+                "rr_range_ms": 210.0,
+                "successive_rr_diff_over_80ms_fraction": 0.8,
+                "regularity_signal": "irregular",
             }
+            receipt["response_sha256"] = hashlib.sha256(
+                json.dumps(
+                    receipt["response_evidence"], sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest()
             foreign_receipt = {
                 **receipt,
                 "tool_call_id": "foreign-call",

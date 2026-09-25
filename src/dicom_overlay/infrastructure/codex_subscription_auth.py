@@ -11,9 +11,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
+
+import structlog
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -23,6 +26,49 @@ CODEX_MIGRATION_PLUGIN_NAME = "@openclaw/codex"
 CODEX_MIGRATION_PLUGIN_VERSION = "2026.9.3"
 _AUTH_PROBE_TIMEOUT_SEC = 120
 _AUTH_MIGRATION_TIMEOUT_SEC = 180
+logger = structlog.get_logger(__name__)
+
+
+def _run_auth_command(
+    command: list[str],
+    *,
+    phase: Literal["oauth_migration", "profile_check"],
+    working_directory: Path,
+    environment: Mapping[str, str],
+    timeout: int,
+) -> subprocess.CompletedProcess[str]:
+    """Measure public CLI latency without logging credentials or CLI output."""
+    started = time.monotonic()
+    outcome = "spawn_error"
+    exit_code: int | None = None
+    logger.info("subscription_auth_phase_started", phase=phase)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=working_directory,
+            env=dict(environment),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+            creationflags=(
+                subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            ),
+        )
+        exit_code = int(result.returncode)
+        outcome = "success" if exit_code == 0 else "nonzero_exit"
+        return result
+    except subprocess.TimeoutExpired:
+        outcome = "timeout"
+        raise
+    finally:
+        logger.info(
+            "subscription_auth_phase_finished",
+            phase=phase,
+            outcome=outcome,
+            exit_code=exit_code,
+            elapsed_ms=round((time.monotonic() - started) * 1000, 3),
+        )
 
 
 def uses_codex_subscription_transport(config_path: Path) -> bool:
@@ -133,7 +179,7 @@ def ensure_openclaw_subscription_auth(
                 sanitized_source / "codex-runtime-disabled.exe"
             )
             try:
-                process = subprocess.run(
+                process = _run_auth_command(
                     [
                         node_executable,
                         str(openclaw_cli),
@@ -151,15 +197,10 @@ def ensure_openclaw_subscription_auth(
                         "--force",
                         "--json",
                     ],
-                    cwd=working_directory,
-                    env=migration_env,
-                    capture_output=True,
-                    text=True,
-                    check=False,
+                    phase="oauth_migration",
+                    working_directory=working_directory,
+                    environment=migration_env,
                     timeout=_AUTH_MIGRATION_TIMEOUT_SEC,
-                    creationflags=(
-                        subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-                    ),
                 )
                 migration_exit = int(process.returncode)
                 if migration_exit != 0:
@@ -238,7 +279,7 @@ def _auth_profile_is_ready(
     environment: Mapping[str, str],
 ) -> bool:
     try:
-        process = subprocess.run(
+        process = _run_auth_command(
             [
                 node_executable,
                 str(openclaw_cli),
@@ -249,15 +290,10 @@ def _auth_profile_is_ready(
                 "main",
                 "--json",
             ],
-            cwd=working_directory,
-            env=dict(environment),
-            capture_output=True,
-            text=True,
-            check=False,
+            phase="profile_check",
+            working_directory=working_directory,
+            environment=environment,
             timeout=_AUTH_PROBE_TIMEOUT_SEC,
-            creationflags=(
-                subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-            ),
         )
     except subprocess.TimeoutExpired:
         return False
@@ -337,7 +373,7 @@ def _remove_migration_plugin(config_path: Path, plugin_path: Path) -> None:
         entries["codex"] = {"enabled": False}
     load = plugins.get("load")
     paths = load.get("paths") if isinstance(load, dict) else None
-    if isinstance(paths, list):
+    if isinstance(load, dict) and isinstance(paths, list):
         expected = plugin_path.resolve()
         retained: list[object] = []
         for value in paths:

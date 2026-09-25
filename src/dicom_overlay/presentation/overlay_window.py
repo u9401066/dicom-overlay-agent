@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, cast
 
 import structlog
@@ -22,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from dicom_overlay.presentation.capture_safety import protect_widget_from_capture
+from dicom_overlay.presentation.finding_notes import report_note_views
 
 if TYPE_CHECKING:
     from dicom_overlay.domain.entities import DisplayFrame, WindowRect
@@ -51,6 +51,37 @@ _REPORT_TEXT_COLORS = {
     "info": "#c8ced9",
 }
 _USER_REGION_HIGHLIGHT_ID = "__user_region__"
+
+
+def _image_quality_text(quality: str | dict[str, object]) -> str:
+    """Readable QC without changing the underlying scientific quality record."""
+    if isinstance(quality, str):
+        return quality
+    adequacy = {
+        "diagnostic": "可判讀",
+        "limited": "部分可判讀",
+        "non_diagnostic": "不可判讀",
+    }.get(str(quality.get("adequacy", "")), "品質狀態未提供")
+    lines = [adequacy]
+    detail = quality.get("detail")
+    if isinstance(detail, str) and detail:
+        lines.append(detail)
+    for key, label in (
+        ("issues", "限制"),
+        ("views_present", "可見視角／導程"),
+        ("views_required", "所需視角／導程"),
+    ):
+        values = quality.get(key)
+        entries = (
+            [item for item in values if isinstance(item, str) and item]
+            if isinstance(values, list)
+            else []
+        )
+        if entries:
+            lines.append(f"{label}：" + "、".join(entries))
+        elif key != "issues":
+            lines.append(f"{label}：未提供，不能推定完整")
+    return "\n".join(lines)
 
 
 def _review_heading(result: AnalysisResult) -> str:
@@ -175,10 +206,25 @@ class _WrappingReportLabel(QLabel):
     """Preserve wrapped text height inside nested, dynamically sized scroll layouts."""
 
     def _sync_text_height(self) -> None:
-        if self.wordWrap() and self.width() > 0:
+        if (
+            not self.wordWrap()
+            or self.width() <= 0
+            or getattr(self, "_measuring_text", False)
+        ):
+            return
+        self._measuring_text = True
+        previous_minimum = self.minimumHeight()
+        try:
+            # Qt includes the old minimum in heightForWidth(). Without releasing
+            # it, shorter text or a smaller font can never reclaim that space.
+            self.setMinimumHeight(0)
             required = self.heightForWidth(self.width())
-            if required >= 0 and self.minimumHeight() != required:
-                self.setMinimumHeight(required)
+            if required >= 0:
+                self.setFixedHeight(required)
+            else:
+                self.setMinimumHeight(previous_minimum)
+        finally:
+            self._measuring_text = False
 
     def setText(self, text: str | None) -> None:
         super().setText(text)
@@ -233,6 +279,8 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._report_scroll = report_page
         checklist_page, self._checklist_layout = self._scroll_page()
         process_page, self._process_layout = self._scroll_page()
+        self._process_scroll = process_page
+        self._technical_heading: QLabel | None = None
         self._content_layout = self._checklist_layout
         self._tabs.addTab(report_page, "Report")
         self._tabs.addTab(checklist_page, "Checklist")
@@ -302,6 +350,17 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         findings_heading.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         findings_heading.setStyleSheet("color: white; padding-top: 10px;")
         self._report_layout.addWidget(findings_heading)
+        self._technical_button = QPushButton("標記來源與座標細節 → Process")
+        self._technical_button.setAccessibleName("查看標記來源與完整技術註記")
+        self._technical_button.setToolTip(
+            "局部裁切限制仍顯示於判讀內容；原始座標與框線調整紀錄保留於 Process。"
+        )
+        self._technical_button.setStyleSheet(
+            "color: #8ad0ff; background: #232b36; text-align: left; padding: 5px;"
+        )
+        self._technical_button.clicked.connect(self._show_technical_details)
+        self._technical_button.setVisible(False)
+        self._report_layout.addWidget(self._technical_button)
         self._findings_layout = QVBoxLayout()
         self._findings_layout.setSpacing(8)
         self._report_layout.addLayout(self._findings_layout)
@@ -335,6 +394,20 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         scrollbar = self._report_scroll.verticalScrollBar()
         if scrollbar is not None:
             scrollbar.setValue(value)
+
+    def _show_technical_details(self) -> None:
+        if self._technical_heading is None:
+            return
+        self._tabs.setCurrentIndex(2)
+        # Let the newly visible page lay out before navigating; resolve the
+        # current heading later so result replacement cannot use a deleted one.
+        QTimer.singleShot(0, self._scroll_to_technical_details)
+
+    def _scroll_to_technical_details(self) -> None:
+        if self._technical_heading is not None and self._tabs.currentIndex() == 2:
+            self._process_scroll.verticalScrollBar().setValue(
+                self._technical_heading.y()
+            )
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
@@ -372,6 +445,9 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._clear_layout(self._findings_layout)
         self._clear_layout(self._checklist_layout)
         self._clear_layout(self._process_layout)
+        self._technical_heading = None
+        self._technical_button.setVisible(False)
+        technical_notes: list[tuple[str, list[str]]] = []
 
         report_reconciliation = next(
             (
@@ -451,7 +527,15 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     lines.append(
                         f"Source: {finding.source.replace('_', ' ').replace('+', ' + ')}"
                     )
-                lines.extend(f"Note: {note}" for note in finding.notes)
+                clinical_notes, relocated_notes = report_note_views(finding.notes)
+                lines.extend(f"Note: {note}" for note in clinical_notes)
+                if relocated_notes:
+                    technical_notes.append(
+                        (
+                            f"{index}. {finding.label} [{finding.id}]",
+                            relocated_notes,
+                        )
+                    )
                 finding_label = _WrappingReportLabel("\n".join(lines))
                 finding_label.setWordWrap(True)
                 finding_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -470,11 +554,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             self._findings_layout.addWidget(empty)
 
         if result.image_quality:
-            quality = (
-                json.dumps(result.image_quality, ensure_ascii=False)
-                if isinstance(result.image_quality, dict)
-                else result.image_quality
-            )
+            quality = _image_quality_text(result.image_quality)
             quality_label = _WrappingReportLabel(f"Image quality: {quality}")
             quality_label.setWordWrap(True)
             quality_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -504,6 +584,11 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 lead_text += (
                     f"\nMalformed/hidden entries: {inventory.malformed_entries}"
                 )
+            if result.workflow_events and not result.layout:
+                lead_text = (
+                    "Lead layout not supplied. See the quality gate and observations; "
+                    "missing layout metadata does not prove that all leads are absent."
+                )
             layout_label = _WrappingReportLabel(lead_text)
             layout_label.setWordWrap(True)
             layout_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -519,6 +604,11 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 f"{process_summary['model_turns']} model turn(s) | "
                 f"{process_summary['crop_reads']} source crop read(s)"
             ]
+            if result.workflow_events:
+                summary_lines = [
+                    f"Recorded workflow: {len(result.workflow_events)} stage(s)",
+                    "Model usage requires separate receipts; not inferred from stage count.",
+                ]
             registered_tools = process_summary["registered_tools"]
             if isinstance(registered_tools, list) and registered_tools:
                 summary_lines.append("Registered tools: " + ", ".join(registered_tools))
@@ -830,6 +920,29 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             no_trace.setStyleSheet("color: #aaa;")
             self._process_layout.addWidget(no_trace)
 
+        if technical_notes:
+            self._technical_heading = QLabel("標記來源與完整技術註記")
+            self._technical_heading.setStyleSheet(
+                "color: #8ad0ff; font-weight: bold; padding-top: 10px;"
+            )
+            self._process_layout.addWidget(self._technical_heading)
+            for title, notes in technical_notes:
+                details_label = _WrappingReportLabel(
+                    title + "\n" + "\n".join(f"Note: {note}" for note in notes)
+                )
+                details_label.setObjectName("finding-technical-notes")
+                details_label.setWordWrap(True)
+                details_label.setTextFormat(Qt.TextFormat.PlainText)
+                details_label.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                )
+                details_label.setFont(QFont("Segoe UI", 9))
+                details_label.setStyleSheet(
+                    "color: #ccd3df; padding: 4px 0; border-bottom: 1px solid #3f3f49;"
+                )
+                self._process_layout.addWidget(details_label)
+            self._technical_button.setVisible(True)
+
         # Incomplete / degraded badge
         if getattr(result, "incomplete", False):
             reasons = getattr(result, "incomplete_reasons", []) or []
@@ -870,6 +983,8 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._clear_layout(self._findings_layout)
         self._clear_layout(self._checklist_layout)
         self._clear_layout(self._process_layout)
+        self._technical_heading = None
+        self._technical_button.setVisible(False)
         self._summary_label.setText("")
         self._title_label.setText("Waiting")
         for label in (

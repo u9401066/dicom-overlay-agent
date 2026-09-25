@@ -25,11 +25,41 @@ Use the [documentation index](docs/README.md) and [component ownership map](docs
 to find current guidance separately from archived evidence.
 A [fresh 120-case medium cohort](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
 is now selected/reserved from the 9,922 usable images after exposure exclusions.
-Its [actual GUI run has started](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)
-after full-image ROI calibration; it is not complete/scored. Reference labels are
-46 asserted and 74 partially uncertain.
-The same evidence page documents the independent read-only batch auditor; a
-partial execution audit is not a completed cohort or a clinical accuracy score.
+Its [actual GUI run is complete and sealed](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md):
+120/120 execution checks and 482 Astra-medium stages verified. Post-seal scoring
+**does not pass clinical acceptance**: strict complete-reference pass 0/46, all
+urgent concerns caught 5/24, legacy draft schema 115/120. The 74 partially uncertain
+references remain separate. Mean analysis/workflow times were 93.993/106.485 s;
+these are not controlled speed comparisons. See the evidence page for intervals,
+hashes, limitations and the no-inference seal/score procedure.
+The [first failure-driven correction](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
+removes a prompt assumption that local row detection always supplies lead geometry.
+One actual exposed-case replay now has 12 explicit panels and zero schema warnings,
+even though the detector still finds only eight rows. Diagnosis and localization
+acceptance remain open. The [next actual replay](docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+verifies current-path plugin loading after relocation and blocks startup/busy
+Analyze clicks and shortcuts without preventing later manual recovery. Cold AI
+startup remains slow; this is a source-App fix, not a new EXE acceptance claim.
+The [startup timing follow-up](docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+separates first OAuth import (148.8 s total) from subsequent launch (28.9 s), with
+real App readiness observations and no model calls. This is diagnosis, not a
+controlled implementation-speedup claim; authentication checks remain intact.
+The [two-crop coverage follow-up](docs/evidence/2026-09/two-crop-group-coverage-2026-09-25.md)
+now verifies actual limb/precordial group review without another model turn, while
+preserving critical-first routing. The noncritical replay still scores 0/4 asserted
+reference concepts: more complete crop coverage is not yet better diagnostic accuracy.
+The [waveform evidence boundary fix](docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
+now checks bindings before crop prompts; desktop waveform matching and a complete
+independent-evidence pipeline remain unimplemented, not silently enabled.
+The [native partial-image replay](docs/evidence/2026-09/native-partial-ecg-2026-09-25.md)
+completed six of eight variants (23 verified medium stages); two tiny windows
+were blocked before inference. Missing labels stayed unknown. A reproduced
+negated-ST review false alarm is fixed in YAML, with original exports preserved.
+This is one-source engineering evidence, not vendor diversity or clinical accuracy.
+An opt-in [scientific continuation](docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)
+now binds actual native bbox receipts after retained blind reading and requires
+explicit finding challenge decisions. It is not yet the desktop's active pipeline
+or an independent waveform classifier, and has no new clinical accuracy claim.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.
@@ -43,6 +73,42 @@ See the [regional history checkpoint](docs/evidence/2026-09/regional-history-202
 The actual source App now also passes manual ADD proposal dismissal, later Apply,
 promotion to a finding, history reopening and third-turn follow-up without a
 duplicate. See [native promotion evidence](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md).
+
+The isolated source candidate now keeps crop limitations beside clinical notes,
+while exact ROI/bbox-adjustment details are available through **Process**. It also
+fixes stale text height without clipping long identifiers. See the
+[report-layout checkpoint](docs/evidence/2026-09/report-note-presentation-2026-09-24.md):
+synthetic 100/150/200% rendering passes, but native candidate/EXE acceptance is pending.
+
+An isolated [host execution journal](docs/architecture/execution-journal.md) now
+enforces ordered callbacks, quality-gated interpretation and cancellation records.
+It is not yet desktop-wired and does not retroactively certify prior model runs.
+The opt-in [image evidence request API](docs/architecture/gateway-evidence-capture.md)
+now connects Gateway requests to original output receipts, without the legacy
+parser or automatic paid parse retries. Actual staged desktop acceptance is pending.
+An [executable stage adapter](docs/architecture/scientific-image-session.md) now
+runs intake, QC, blind reading, native localization, reconciliation and a separate
+source-image second look; non-diagnostic inputs make no blind-read request.
+Content preflight and a run/source/content-bound review-availability callback now
+precede full canonical validation. These stages are tested with synthetic replies;
+the independent classifier and default desktop activation remain open.
+See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
+The concrete [Qt review surface](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)
+now paints observation/evidence tabs before acknowledging availability, with
+native 150%-DPI synthetic-window and real-mouse close/revocation checks. This is
+component evidence, not yet default App/OpenClaw staged-pipeline acceptance.
+Explicit development [desktop wiring](docs/architecture/scientific-review-presentation.md)
+now uses `--scientific-review --deidentified-input`, two pixel checks, queued Qt
+handoff and validated canonical export. It is synthetic-tested, not live-model
+accepted, and does not yet integrate the legacy clinical-rule hooks. Regional edits
+remain review drafts requiring reconciliation; the default workflow is unchanged.
+Initial [actual App runs](docs/evidence/2026-09/native-scientific-startup-2026-09-25.md)
+fixed missing receipt collection and canonical session naming. QC advanced to
+blind reading, where multi-observation checklist references blocked publication.
+The [follow-up](docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
+adds structured references and private exact visible-output retention; fresh live
+replays now reach the second-look request, but the total deadline and unadopted
+localization evidence still prevent complete live acceptance.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
@@ -58,12 +124,13 @@ Mid-analysis image replacement is now checked before publishing: a local exact
 ROI pixel comparison withholds stale results and exports. Real swapped/unchanged
 Viewer runs pass; see [publication guard evidence](docs/evidence/2026-09/image-publication-guard-2026-09-24.md).
 
-The latest preserved local executable is `6e6734e`: eight key modules match its
-clean source, with package verification and 20 frozen smoke checks passing.
-It includes regional turn IDs and promotion-history fixes, but not the later
-Viewer-projection, picker-accessibility, ROI-preview or publication-guard changes.
-This is not a public release;
-see the [package checkpoint](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md).
+The latest preserved local executable is `3029dfb`: all 60 bundled App modules match
+its clean source; package verification and 20 frozen smoke checks pass. It now
+includes Viewer projection, picker accessibility, ROI preview and publication
+guards alongside the earlier regional QA/history fixes. The complete folder is
+337.02 MiB; a 141.58 MiB ZIP has every entry byte-verified. Native acceptance of
+this new EXE and binary-license gates remain open; it is not a public release.
+See the [package refresh](docs/evidence/2026-09/interaction-package-refresh-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11
 

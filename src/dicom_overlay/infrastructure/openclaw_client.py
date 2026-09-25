@@ -13,6 +13,7 @@ import time
 from collections import deque
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from json import JSONDecodeError
 from pathlib import Path
@@ -38,7 +39,16 @@ from dicom_overlay.domain.modality_profile import (
     ModalityRegistry,
     get_active_registry,
 )
+from dicom_overlay.infrastructure.bbox_receipts import (
+    bbox_coordinates_digest,
+    valid_bbox_tool_audit_record,
+)
 from dicom_overlay.infrastructure.env_file import read_env_file
+from dicom_overlay.infrastructure.gateway_evidence import (
+    GatewayEvidenceCollector,
+    GatewayTurnEvidence,
+    ImageEvidenceTurn,
+)
 from dicom_overlay.infrastructure.openclaw_paths import resolve_bbox_tool_audit_path
 from dicom_overlay.infrastructure.openclaw_runtime import (
     MAX_GATEWAY_PROTOCOL,
@@ -47,6 +57,10 @@ from dicom_overlay.infrastructure.openclaw_runtime import (
     build_openclaw_chat_frame,
     parse_gateway_hello,
 )
+from dicom_overlay.infrastructure.waveform_receipts import (
+    valid_waveform_support_receipt,
+)
+from medical_image_harness.image_ops import ImageOperationError, decode_image
 from medical_image_harness.models import (
     AnalysisResult,
     ChecklistItem,
@@ -131,7 +145,7 @@ class _WaveformArtifactBinding:
     audit_offset: int
     receipts: list[dict[str, object]] = field(default_factory=list)
     duplicate_attempts: list[dict[str, object]] = field(default_factory=list)
-    tool_call_ids: set[str] = field(default_factory=set)
+    tool_records: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 def probe_openclaw_gateway(
@@ -238,6 +252,7 @@ class OpenClawClient(VisionAnalyzerService):
         require_bound_bbox_receipts: bool = True,
         fast_mode: bool = False,
         bbox_tool_audit_path: str | Path | None = None,
+        collect_transport_evidence: bool = False,
     ) -> None:
         if analysis_prompt_profile not in _ANALYSIS_PROMPT_PROFILES:
             raise ValueError(
@@ -245,6 +260,10 @@ class OpenClawClient(VisionAnalyzerService):
             )
         if not isinstance(fast_mode, bool):
             raise ValueError("fast_mode must be a boolean")
+        if not isinstance(collect_transport_evidence, bool):
+            raise ValueError("collect_transport_evidence must be a boolean")
+        self._collect_transport_evidence = collect_transport_evidence
+        self._transport_evidence: GatewayEvidenceCollector | None = None
         self._url = gateway_url
         self._timeout = timeout_sec
         # Split timeouts: handshake is fast, inference can be slow on big images.
@@ -343,7 +362,7 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is None or binding.evidence_nonce != evidence_nonce:
             return []
         self._refresh_waveform_binding(binding)
-        return [dict(receipt) for receipt in binding.receipts]
+        return deepcopy(binding.receipts)
 
     def waveform_duplicate_attempts(
         self,
@@ -357,7 +376,7 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is None or binding.evidence_nonce != evidence_nonce:
             return []
         self._refresh_waveform_binding(binding)
-        return [dict(attempt) for attempt in binding.duplicate_attempts]
+        return deepcopy(binding.duplicate_attempts)
 
     async def connect(self) -> None:
         try:
@@ -1197,9 +1216,9 @@ class OpenClawClient(VisionAnalyzerService):
         if len(receipts) != 1:
             return
         receipt = receipts[0]
+        rejected_count = receipt.get("rejected_count")
         if receipt.get("accepted_count") != 0 or not (
-            isinstance(receipt.get("rejected_count"), int)
-            and int(receipt["rejected_count"]) > 0
+            isinstance(rejected_count, int) and rejected_count > 0
         ):
             return
 
@@ -1227,7 +1246,7 @@ class OpenClawClient(VisionAnalyzerService):
                 "tool": "dicom_bbox_validate",
                 "tool_call_id": str(receipt.get("tool_call_id") or ""),
                 "accepted_count": 0,
-                "rejected_count": int(receipt["rejected_count"]),
+                "rejected_count": int(rejected_count),
                 "retracted_count": len(boxes),
             }
         )
@@ -1241,7 +1260,7 @@ class OpenClawClient(VisionAnalyzerService):
         ) = _read_new_tool_audit_records(
             self._tool_audit_path,
             self._tool_audit_offset,
-            _valid_bbox_tool_audit_record,
+            valid_bbox_tool_audit_record,
         )
         self._last_bbox_audit_observations.extend(
             [*bbox_records, *invalid_bbox_observations]
@@ -1284,15 +1303,22 @@ class OpenClawClient(VisionAnalyzerService):
             if record.get("evidence_nonce") != binding.evidence_nonce:
                 continue
             tool_call_id = str(record.get("tool_call_id") or "")
-            if not tool_call_id or tool_call_id in binding.tool_call_ids:
+            if not tool_call_id:
                 continue
-            binding.tool_call_ids.add(tool_call_id)
-            copied = dict(record)
-            if record.get("status") == "duplicate_suppressed":
+            previous = binding.tool_records.get(tool_call_id)
+            if previous == record:
+                continue
+            copied = deepcopy(record)
+            binding.tool_records[tool_call_id] = deepcopy(record)
+            if previous is not None:
+                # Same identity with different contents is not a replay. Keep
+                # both records so prompt-time AND exactly-once eval checks fail.
+                binding.receipts.append(copied)
+            elif record.get("status") == "duplicate_suppressed":
                 binding.duplicate_attempts.append(copied)
             else:
                 binding.receipts.append(copied)
-            new_records.append(copied)
+            new_records.append(deepcopy(copied))
         return new_records
 
     def _supporting_waveform_evidence(self) -> dict[str, object] | None:
@@ -1302,15 +1328,15 @@ class OpenClawClient(VisionAnalyzerService):
         if binding is None:
             return None
         self._refresh_waveform_binding(binding)
-        successful = [
-            receipt
-            for receipt in binding.receipts
-            if receipt.get("status") == "ok"
-            and receipt.get("evidence_nonce") == binding.evidence_nonce
-        ]
-        if len(successful) != 1:
+        if len(binding.receipts) != 1:
             return None
-        receipt = successful[0]
+        receipt = binding.receipts[0]
+        if not valid_waveform_support_receipt(
+            receipt,
+            artifact_id=binding.artifact_id,
+            evidence_nonce=binding.evidence_nonce,
+        ):
+            return None
         predictions = []
         raw_predictions = receipt.get("predictions")
         if isinstance(raw_predictions, list):
@@ -1350,6 +1376,137 @@ class OpenClawClient(VisionAnalyzerService):
         """Send a free-text question with acceptance-aware recovery."""
         async with self._ws_lock:
             return await self._do_chat(message)
+
+    async def request_image_evidence(
+        self,
+        prompt: str,
+        *,
+        image_bytes: bytes,
+        deidentified: bool,
+    ) -> ImageEvidenceTurn:
+        """Send a new instrumented stage without the legacy result parser.
+
+        The trusted caller supplies an already-authorized PNG ROI and the stage
+        prompt/schema. This does not capture pixels, determine clinical scope,
+        run a QC gate, or enforce the scientific lifecycle: use a real execution
+        journal around those operations. No past result is converted here.
+
+        Requires collection enabled before connect. A returned immutable receipt
+        is captured under the send lock, so a subsequent turn cannot replace it.
+        Raw visible text remains untouched; callers apply their strict decoder.
+        There is no outer model retry for missing/malformed scientific output.
+        """
+        if not self._collect_transport_evidence:
+            raise ValueError("gateway_evidence_collection_required")
+        if deidentified is not True:
+            raise ValueError("untrusted_deidentification")
+        if (
+            type(image_bytes) is not bytes
+            or not 0 < len(image_bytes) <= 32 * 1024 * 1024
+        ):
+            raise ValueError("invalid_immutable_image_bytes")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("stage_prompt_required")
+        try:
+            prompt_bytes = prompt.encode("utf-8")
+        except UnicodeError:
+            raise ValueError("invalid_stage_prompt_encoding") from None
+        if len(prompt_bytes) > 512 * 1024:
+            raise ValueError("stage_prompt_size_limit")
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        try:
+            _, image = decode_image(encoded)
+        except ImageOperationError:
+            raise ValueError("invalid_stage_image_encoding") from None
+        try:
+            # The stable App Gateway builder advertises image/png. Do not send
+            # JPEG/APNG bytes under that MIME or silently re-encode the source.
+            if image.format != "PNG" or getattr(image, "n_frames", 1) != 1:
+                raise ValueError("stage_requires_single_frame_png")
+        finally:
+            image.close()
+
+        async with self._ws_lock:
+            if not self.is_connected():
+                raise ConnectionError("Not connected to OpenClaw Gateway")
+            if self._gateway_protocol not in range(
+                MIN_GATEWAY_PROTOCOL, MAX_GATEWAY_PROTOCOL + 1
+            ):
+                raise ValueError("validated_gateway_protocol_required")
+            source_sha = hashlib.sha256(image_bytes).hexdigest()
+            nonce = uuid4().hex
+            # Trusted binding supplied separately from model claims. A native
+            # bbox call must still bind its exact text to an independent audit.
+            bound_prompt = (
+                "HOST IMAGE BINDING (metadata, not clinical evidence):\n"
+                f"bbox_source_image_sha256={source_sha}\n"
+                f"bbox_evidence_nonce={nonce}\n\n" + prompt
+            )
+            request_id = self._next_request_id("evidence")
+            idempotency_key = str(uuid4())
+            # Name the actual agent explicitly: public Gateway history/events
+            # canonicalize short keys. Keep receipt equality strict, not alias-based.
+            session_key = f"agent:main:image-evidence-{idempotency_key}"
+            frame = build_openclaw_chat_frame(
+                request_id=request_id,
+                session_key=session_key,
+                message=bound_prompt,
+                idempotency_key=idempotency_key,
+                image_base64=encoded,
+                fast_mode=self._fast_mode,
+            )
+            serialized = json.dumps(frame)
+            if len(serialized.encode("utf-8")) > _MAX_WS_MESSAGE_BYTES:
+                raise ValueError("stage_request_size_limit")
+            self._start_attempt_sequence()
+            self._begin_run_trace(
+                session_key,
+                bbox_evidence_nonce=nonce,
+                source_image_sha256=source_sha,
+            )
+            started = time.monotonic()
+            # Ignore legacy text extraction: only the independently collected,
+            # exact visible text body is authoritative for the returned receipt.
+            await self._send_chat_frame_with_recovery(
+                frame, expect_text=True, payload_json=serialized
+            )
+            receipt = self.transport_evidence()
+            if receipt is None or (
+                receipt.request_id != request_id or receipt.session_key != session_key
+            ):
+                raise ValueError("gateway_evidence_identity_mismatch")
+            receipt.require_model_text()
+            # Freeze local native receipts before another send resets the offset
+            # or nonce. These contain only the audited metadata whitelist, never
+            # arbitrary extra fields from a local JSONL record.
+            self._refresh_tool_audit()
+            audit_fields = {
+                "schema_version",
+                "recorded_at",
+                "tool",
+                "tool_call_id",
+                "accepted_count",
+                "rejected_count",
+                "source_image_sha256",
+                "evidence_nonce",
+                "accepted_boxes_sha256",
+                "details_sha256",
+            }
+            audits = self._last_tool_audit_records
+            if len(audits) > 16 or any(set(item) != audit_fields for item in audits):
+                raise ValueError("invalid_stage_native_audit_inventory")
+            audit_json = tuple(
+                json.dumps(item, sort_keys=True, allow_nan=False).encode("utf-8")
+                for item in audits
+            )
+            return ImageEvidenceTurn(
+                source_sha,
+                hashlib.sha256(bound_prompt.encode("utf-8")).hexdigest(),
+                nonce,
+                int((time.monotonic() - started) * 1000),
+                receipt,
+                audit_json,
+            )
 
     async def chat_about_image(
         self,
@@ -1524,6 +1681,11 @@ class OpenClawClient(VisionAnalyzerService):
         )
         if not session_key:
             raise ValueError("expected a chat.send frame with a session key")
+        self._transport_evidence = (
+            GatewayEvidenceCollector(request_id, session_key)
+            if self._collect_transport_evidence
+            else None
+        )
         serialized = payload_json if payload_json is not None else json.dumps(frame)
         deadline = time.monotonic() + self._inference_timeout
 
@@ -1727,6 +1889,7 @@ class OpenClawClient(VisionAnalyzerService):
                     deadline=deadline,
                 ) from exc
 
+            self._observe_transport_evidence(raw)
             frame = json.loads(raw)
             frame_type = frame.get("type")
 
@@ -1794,6 +1957,8 @@ class OpenClawClient(VisionAnalyzerService):
         }
         if self._gateway_token:
             params["auth"] = {"token": self._gateway_token}
+        if self._collect_transport_evidence:
+            params["caps"] = ["tool-events"]
         frame = {
             "type": "req",
             "id": connect_id,
@@ -1821,7 +1986,8 @@ class OpenClawClient(VisionAnalyzerService):
     async def _recv_gateway_frame(self, timeout: float) -> str:
         pending_frames: deque[str] | None = getattr(self, "_pending_frames", None)
         if pending_frames:
-            return pending_frames.popleft()
+            pending = pending_frames.popleft()
+            return pending.decode("utf-8") if isinstance(pending, bytes) else pending
         assert self._ws is not None
         raw: str | bytes = await asyncio.wait_for(
             self._ws.recv(),
@@ -1885,6 +2051,7 @@ class OpenClawClient(VisionAnalyzerService):
                     deadline=deadline,
                 ) from exc
 
+            self._observe_transport_evidence(raw)
             frame = json.loads(raw)
             frame_type = frame.get("type")
             # Only log non-event frames to avoid flooding logs
@@ -1983,6 +2150,20 @@ class OpenClawClient(VisionAnalyzerService):
                 run_id=run_id or "",
             )
 
+    def transport_evidence(self) -> GatewayTurnEvidence | None:
+        """Private snapshot for the latest send; never added to logs/exports.
+
+        Consumers must retain each snapshot before another turn starts. This is
+        opt-in transport evidence, not canonical workflow or clinical validation.
+        """
+        collector = getattr(self, "_transport_evidence", None)
+        return collector.snapshot() if collector is not None else None
+
+    def _observe_transport_evidence(self, raw: str) -> None:
+        collector = getattr(self, "_transport_evidence", None)
+        if collector is not None:
+            collector.observe(raw)
+
     def _record_tool_events(self, frame: object) -> None:
         for tool_name in _extract_tool_names(frame):
             if tool_name not in self._last_run_tools:
@@ -1999,6 +2180,12 @@ class OpenClawClient(VisionAnalyzerService):
         request_modality: Modality = Modality.EKG,
     ) -> AnalysisResult:
         payload = response.get("payload", response)
+
+        # A versioned scientific draft needs the independently collected host
+        # evidence catalogue. Never silently discard its ledger in the legacy
+        # parser, or spend another model turn retrying a protocol-routing error.
+        if isinstance(payload, dict) and "draft_version" in payload:
+            raise ValueError("scientific_draft_requires_host_evidence_decoder")
 
         findings = []
         parse_warnings: list[str] = []
@@ -2568,7 +2755,7 @@ def _build_refinement_prompt(
                 for box in hypothesis.bboxes
             ],
         }
-    context = {
+    context: dict[str, Any] = {
         "modality": modality.value,
         "allowed_regions": valid_regions,
         "crop_in_original_image": {
@@ -3260,33 +3447,6 @@ def _file_size(path: Path) -> int:
         return 0
 
 
-def _valid_bbox_tool_audit_record(value: object) -> bool:
-    if not isinstance(value, dict):
-        return False
-    digest = value.get("details_sha256")
-    accepted = value.get("accepted_count")
-    rejected = value.get("rejected_count")
-    return (
-        value.get("schema_version") == 2
-        and value.get("tool") == "dicom_bbox_validate"
-        and isinstance(value.get("tool_call_id"), str)
-        and bool(value["tool_call_id"])
-        and isinstance(accepted, int)
-        and not isinstance(accepted, bool)
-        and accepted >= 0
-        and isinstance(rejected, int)
-        and not isinstance(rejected, bool)
-        and rejected >= 0
-        and _is_sha256(value.get("source_image_sha256"))
-        and isinstance(value.get("evidence_nonce"), str)
-        and bool(re.fullmatch(r"[a-f0-9]{32}", value["evidence_nonce"]))
-        and _is_sha256(value.get("accepted_boxes_sha256"))
-        and isinstance(digest, str)
-        and len(digest) == 64
-        and all(char in "0123456789abcdef" for char in digest.lower())
-    )
-
-
 def _valid_ecg_founder_tool_audit_record(value: object) -> bool:
     if not isinstance(value, dict):
         return False
@@ -3470,14 +3630,7 @@ def _retain_unlocalized_refinement_semantics(
 
 
 def _bbox_coordinates_digest(boxes: list[RegionRect]) -> str:
-    from dicom_overlay.infrastructure.bbox_receipts import canonical_bbox_coordinate
-
-    canonical = sorted(
-        [canonical_bbox_coordinate(value) for value in (box.x, box.y, box.w, box.h)]
-        for box in boxes
-    )
-    encoded = json.dumps(canonical, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return bbox_coordinates_digest(boxes)
 
 
 def resolve_openclaw_gateway_token(base_dir: Path | None = None) -> str | None:

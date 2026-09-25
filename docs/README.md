@@ -3,7 +3,45 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+Latest development wiring: [scientific desktop publication](evidence/2026-09/scientific-desktop-publication-2026-09-25.md)
+keeps prepared reports out of Export/QA until Qt availability and two source-pixel
+checks pass. Opt-in only, synthetic-tested, no new clinical/live-model acceptance.
+An [actual App follow-up](evidence/2026-09/native-scientific-startup-2026-09-25.md)
+found and corrected a missing transport-receipt opt-in before the first model
+request; successful live scientific interpretation is not yet established.
+The next real run exposed canonical session naming; after correction, QC advances
+to blind reading, where multi-observation checklist references failed the prior
+single-ID contract. A [follow-up](evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
+adds typed multiple references and private exact visible-response persistence;
+fresh replay reaches the second-look request but the total deadline cancels it.
+Native localization evidence was not adopted in the reconciliation finding boxes;
+complete live acceptance remains pending.
+
 ## Current checkpoint — September 24, 2026
+
+September 25 update: the [120-case real desktop batch](evidence/2026-09/medium-desktop-batch-2026-09-24.md)
+is sealed/scored and failed clinical acceptance. An [explicit lead-inventory correction](evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
+now passes one actual exposed-case source-App replay, without changing the baseline.
+Its [portable-plugin/readiness follow-up](evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+verifies new-path loading, startup/busy shortcut suppression and successful ready-state analysis.
+The [actual startup timing follow-up](evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+separates first OAuth import from subsequent launch without skipping auth checks
+or treating different startup conditions as an implementation speedup.
+The [two-crop coverage follow-up](evidence/2026-09/two-crop-group-coverage-2026-09-25.md)
+verifies both actual lead-group crops and preserved critical-first routing. Its
+noncritical replay still misses the four asserted reference concepts; clinical
+acceptance is not implied by the engineering checks.
+The [waveform prompt-integrity follow-up](evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
+rejects mismatched evidence before crop prompts. Desktop matching and separate
+blind/tool reconciliation are still open; no new accuracy or GUI claim is made.
+The [native partial-ECG follow-up](evidence/2026-09/native-partial-ecg-2026-09-25.md)
+records six real exports / 23 verified stages and two pre-inference tiny-window
+blocks, plus a regression fix for negated-ST review false alarms. One source and
+six completed variants do not establish eight-case or clinical acceptance.
+The [scientific continuation checkpoint](evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)
+connects real native bbox receipts to post-blind reconciliation with explicit
+finding decisions. Its model replies are still synthetic in tests; independent
+waveform classification, targeted revisits, final assembly and App activation remain open.
 
 The active desktop target is **GPT-6 Astra medium**, through subscription OAuth
 with OpenClaw owning inference. The clean `9a27b61` Windows package passes its
@@ -28,6 +66,14 @@ handoff and stale-writeback protection. Neither adds clinical cohort acceptance.
 The [native promotion follow-up](evidence/2026-09/native-marker-promotion-2026-09-24.md)
 now verifies real ADD dismissal, later approval, history migration/reopening and
 third-turn follow-up on clean 243f2ef, without claiming a new frozen release.
+The [3029dfb package refresh](evidence/2026-09/interaction-package-refresh-2026-09-24.md)
+now includes those interaction/source-identity fixes, verifies all 60 bundled App
+modules and passes 20 frozen smoke checks. Its byte-verified ZIP is local only;
+native acceptance of this new EXE and the license gate remain open.
+
+The isolated [report-note presentation candidate](evidence/2026-09/report-note-presentation-2026-09-24.md)
+keeps clinical crop limitations visible and makes original ROI/bbox notes available
+in Process. Scaled synthetic rendering is distinct from pending native acceptance.
 
 The candidate runtime remains OpenClaw 2026.9.3 / Node 24.18.0. Adoption of 2026.9.6,
 complete canonical evidence-ledger wiring, diverse legacy/vendor ECG acceptance,
@@ -46,7 +92,15 @@ Source branches/PRs are development checkpoints, not approved medical releases.
 | Work on OpenClaw / external evidence | [OpenClaw integration](../openclaw/README.md), [ECGFounder contract](integrations/ecgfounder-tool.md) |
 | Maintain clinical YAML and generated SQLite | [Clinical knowledge governance](../clinical_knowledge/README.md) |
 | Review the complete ECG reading sequence and its open integration gaps | [EKG human/agent workflow](clinical/ekg-reading-workflow.md) |
+| Assemble source-bound scientific drafts (isolated candidate; not desktop-wired) | [Host evidence assembly](architecture/host-evidence-assembly.md) |
+| Decode model-led observations without model-owned provenance (inactive protocol) | [Scientific model draft](architecture/scientific-model-draft.md) |
+| Bind native bbox receipts to actual source/crop pixels (isolated component) | [Native source evidence](architecture/native-source-evidence.md) |
+| Preserve original visible Gateway model/tool text (opt-in; live acceptance pending) | [Gateway evidence capture](architecture/gateway-evidence-capture.md) |
+| Record real stage execution, failure and cancellation (isolated component) | [Host execution journal](architecture/execution-journal.md) |
+| Execute scientific stages, content preflight and bound review availability (not desktop-wired) | [Scientific image session](architecture/scientific-image-session.md) |
+| Present a scientific draft on the Qt thread and revoke stale availability | [Qt review presentation](architecture/scientific-review-presentation.md) |
 | Interpret dataset metrics | [Cohorts and denominators](evaluation/cohorts.md) |
+| Seal and score the completed medium GUI batch without rerunning inference | [Verified desktop batch scoring](evaluation/verified-desktop-batch.md) |
 | Audit privacy, licensing and contributors | [Security](../SECURITY.md), [notices](../THIRD_PARTY_NOTICES.md), [contributing](../CONTRIBUTING.md) |
 
 ## Archive policy

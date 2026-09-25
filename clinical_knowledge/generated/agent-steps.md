@@ -1,6 +1,6 @@
 # Agent clinical steps
 
-Registry SHA-256: `0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1`
+Registry SHA-256: `8194933290c085ab81a1ab97d57154bb17d6d2e5835f2e28a327fe1cce312435`
 Registry digest scope: `canonical-input-documents-v1`
 
 This generated view contains no evaluation gold labels or scorer aliases.

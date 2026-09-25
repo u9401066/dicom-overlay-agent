@@ -574,6 +574,10 @@ async function appendEcgFounderAuditRecord(
     ...responseEvidenceWithoutDigest,
     artifact_id_sha256: artifactDigest,
   };
+  // Retain the exact bytes used by this JavaScript producer's digest. Python
+  // and JS can serialize the same finite number differently (e.g. 1e-7).
+  // This is sanitized audit data, not original Gateway tool text or a signature.
+  const responseCanonicalJson = canonicalJson(responseEvidence);
   const record = {
     schema_version: 1,
     recorded_at: new Date().toISOString(),
@@ -596,8 +600,9 @@ async function appendEcgFounderAuditRecord(
       details.rhythm_measurement?.regularity_signal ?? "",
     rr_interval_count: details.rhythm_measurement?.rr_interval_count ?? 0,
     response_evidence: responseEvidence,
+    response_canonical_json: responseCanonicalJson,
     response_sha256: createHash("sha256")
-      .update(canonicalJson(responseEvidence))
+      .update(responseCanonicalJson)
       .digest("hex"),
     latency_ms: Math.max(0, Math.trunc(Number(latencyMs) || 0)),
     failure_reason: details.reason ?? "",

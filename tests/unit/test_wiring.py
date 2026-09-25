@@ -30,7 +30,14 @@ import dicom_overlay.application as application_pkg
 # Orchestrators that are intentionally NOT wired yet. Each MUST carry a reason
 # explaining why and what unblocks it. Keep this list short and honest — it is
 # the project's ledger of known gaps, not a place to silence the guard.
-DEFERRED_WIRING: dict[str, str] = {}
+DEFERRED_WIRING: dict[str, str] = {
+    "ExecutionJournal": (
+        "Isolated canonical-pipeline component; the active GUI cohort stays frozen. "
+        "Requires real intake/QC/blind/reconcile operations, source/tool receipts, "
+        "and validation/review-availability wiring before desktop activation. "
+        "See docs/architecture/execution-journal.md; do not retrofit legacy events."
+    ),
+}
 
 
 def _main_source() -> str:

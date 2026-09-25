@@ -23,7 +23,7 @@ EKG_PARTIAL_LAYOUT_EXAMPLE = (
     '"leads":[{"name":"V1","label_visible":true,"bbox":[0,0,1,0.25]}]}'
 )
 EKG_LAYOUT_OUTPUT_GUIDANCE = (
-    "For every non-compact EKG layout, each layout.leads entry must use exactly "
+    "For every EKG layout, each layout.leads entry must use exactly "
     "name, label_visible, and bbox. name is the printed lead label (I, II, III, "
     "aVR, aVL, aVF, V1-V6, or unknown); label_visible is a JSON boolean; bbox is "
     "exactly [x,y,w,h] in this image's normalized coordinates. Do not rename name "
@@ -284,14 +284,15 @@ def build_coarse_analysis_prompt(
     ekg_contract = ""
     if modality.value == "EKG":
         ekg_contract = (
-            'For a full-width 12-row EKG strip, use compact layout={"format":'
-            '"12lead_12x1","lead_order":["I","II","III","aVR","aVL",'
-            '"aVF","V1","V2","V3","V4","V5","V6"],'
-            '"rhythm_strip_leads":[],"rhythm_strip_bbox":null,"leads":[]}; '
-            "do not output "
-            "per-lead bboxes. Local pixel "
-            "evidence will derive row geometry. For any other EKG layout, include "
-            "only visibly labeled leads with normalized [x,y,w,h] bboxes. "
+            "For all EKG layouts, including a full-width 12-row strip, return "
+            "the actual visible panel inventory in layout.leads with normalized "
+            "[x,y,w,h] bboxes and explicit label visibility. Do not substitute "
+            "lead_order plus an empty leads array for observed panel geometry. "
+            "Local pixel row detection may fail and is not a promised source "
+            "of missing geometry. A printed label identifies a lead; row count "
+            "or position alone does not. Keep unlabeled panels unknown and "
+            "partial captures partial. Inventory coverage takes precedence over "
+            "the prose length target. "
             f"{EKG_LAYOUT_OUTPUT_GUIDANCE}"
             "Check "
             "rhythm/ectopy, conduction, high versus low voltage, Q/QS or R-wave "
@@ -333,7 +334,7 @@ def build_coarse_analysis_prompt(
             "be abnormal without ST elevation; compare hyperkalemia, hyperacute "
             "ischemia, and benign variants instead of downgrading them solely for "
             "lack of reciprocal change. "
-            "For the compact 12-row layout, findings must name actual lead_* "
+            "For a full-width 12-row layout, findings must name actual lead_* "
             "regions, never rhythm_strip. "
             "Normal/WNL is valid when no visible abnormality or unresolved candidate "
             "is present.\n"

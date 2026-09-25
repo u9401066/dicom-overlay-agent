@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from dicom_overlay.infrastructure import codex_subscription_auth as auth_module
 from dicom_overlay.infrastructure.codex_subscription_auth import (
     CODEX_MIGRATION_PLUGIN_NAME,
     CODEX_MIGRATION_PLUGIN_VERSION,
@@ -16,6 +20,76 @@ from dicom_overlay.infrastructure.gateway_manager import GatewayManager
 def _write_json(path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.mark.parametrize("phase", ["oauth_migration", "profile_check"])
+@pytest.mark.parametrize(
+    "outcome", ["success", "nonzero_exit", "timeout", "spawn_error"]
+)
+def test_auth_phase_timing_has_no_command_output_environment_or_error_secrets(
+    monkeypatch, tmp_path, phase, outcome
+):
+    secret = "private-credential-must-not-appear"
+    command = ["node", secret, "public-command"]
+    environment = {"PRIVATE": secret}
+    result = subprocess.CompletedProcess(
+        command, 0 if outcome == "success" else 9, stdout=secret, stderr=secret
+    )
+    error = (
+        subprocess.TimeoutExpired(command, 120, output=secret, stderr=secret)
+        if outcome == "timeout"
+        else OSError(secret)
+    )
+    events = []
+    ticks = iter([10.0, 12.25])
+    calls = []
+
+    def run(observed_command, **kwargs):
+        calls.append((observed_command, kwargs))
+        if outcome in {"timeout", "spawn_error"}:
+            raise error
+        return result
+
+    monkeypatch.setattr(auth_module.subprocess, "run", run)
+    monkeypatch.setattr(auth_module.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(
+        auth_module,
+        "logger",
+        SimpleNamespace(
+            info=lambda event, **fields: events.append({"event": event, **fields})
+        ),
+    )
+    args = {
+        "phase": phase,
+        "working_directory": tmp_path,
+        "environment": environment,
+        "timeout": 120,
+    }
+    if outcome in {"timeout", "spawn_error"}:
+        with pytest.raises(type(error)) as caught:
+            auth_module._run_auth_command(command, **args)
+        assert caught.value is error
+    else:
+        assert auth_module._run_auth_command(command, **args) is result
+    assert len(calls) == 1  # Instrumentation must never retry a command.
+    observed_command, kwargs = calls[0]
+    assert observed_command == command
+    assert kwargs["env"] == environment and kwargs["env"] is not environment
+    assert kwargs["cwd"] == tmp_path and kwargs["timeout"] == 120
+    assert kwargs["capture_output"] and kwargs["text"] and not kwargs["check"]
+    assert events == [
+        {"event": "subscription_auth_phase_started", "phase": phase},
+        {
+            "event": "subscription_auth_phase_finished",
+            "phase": phase,
+            "outcome": outcome,
+            "exit_code": result.returncode
+            if outcome in {"success", "nonzero_exit"}
+            else None,
+            "elapsed_ms": 2250.0,
+        },
+    ]
+    assert secret not in json.dumps(events)
 
 
 def test_runtime_selfcheck_uses_matching_migration_pin_and_rejects_flat_codex(tmp_path):

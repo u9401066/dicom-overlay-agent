@@ -8,6 +8,7 @@ import dataclasses
 import inspect
 import threading
 import time
+from hashlib import sha256
 from typing import TYPE_CHECKING, Any, cast
 
 import structlog
@@ -16,8 +17,12 @@ from dicom_overlay.application.annotation_accumulator import (
     AnnotationAccumulator,
     max_severity,
 )
+from dicom_overlay.application.contract_assembly import review_content_sha256
 from dicom_overlay.application.regional_conversation import validate_review_turn_id
 from dicom_overlay.application.roi import compute_viewer_roi_rect, scaled_roi_crop
+from dicom_overlay.application.scientific_review_port import (
+    NonDiagnosticScientificInput,
+)
 from dicom_overlay.domain.entities import (
     AgentState,
     DisplayFrame,
@@ -41,6 +46,9 @@ from medical_image_harness.multipass import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from dicom_overlay.application.scientific_review_port import ScientificReviewReader
     from dicom_overlay.domain.entities import AppConfig, CaptureWindow
     from dicom_overlay.domain.services import (
         ImageProcessorService,
@@ -289,11 +297,16 @@ class OverlayAgent:
         screen_left: int = 0,
         screen_top: int = 0,
         annotation_accumulator: AnnotationAccumulator | None = None,
+        scientific_reader_factory: Callable[[bytes, Modality], ScientificReviewReader]
+        | None = None,
     ) -> None:
         self._config = config
         self._monitor = screen_monitor
         self._processor = image_processor
         self._analyzer = vision_analyzer
+        self._scientific_reader_factory = scientific_reader_factory
+        self._scientific_reader: ScientificReviewReader | None = None
+        self._scientific_scope: tuple[str, str, int] | None = None
         self._mapper = region_mapper
         self._gateway: GatewayManager | None = gateway_manager
         self._screen_width = screen_width
@@ -343,6 +356,25 @@ class OverlayAgent:
         # layer can hide app-owned panels first; otherwise capture exclusion
         # would burn black panel/box blocks into the next analysis image.
         self.on_before_capture: Any = None
+        # Async UI availability + retirement; must finish before fresh pixel check.
+        self.on_scientific_review: Any = None
+
+    def scientific_review_is_current(self, run_id: str, source_sha256: str) -> bool:
+        with self._review_lock:
+            scope, snapshot = self._scientific_scope, self._review_snapshot
+            return bool(
+                self._state is AgentState.ANALYZING
+                and scope is not None
+                and snapshot is not None
+                and scope == (run_id, source_sha256, snapshot.revision)
+            )
+
+    def invalidate_scientific_review(self, run_id: str) -> None:
+        with self._review_lock:
+            if self._scientific_scope is None or self._scientific_scope[0] != run_id:
+                return
+            self._scientific_scope = None
+        self._withhold_review("scientific_review_revoked")
 
     @property
     def state(self) -> AgentState:
@@ -586,6 +618,10 @@ class OverlayAgent:
         if safe_regional_turns:
             trace_entry["regional_turns"] = safe_regional_turns
         trace = [*self._last_result.analysis_trace, trace_entry]
+        if self._last_result.workflow_events:
+            review_reasons.append(
+                "Scientific observation ledger requires reconciliation after this regional edit."
+            )
         updated = dataclasses.replace(
             self._last_result,
             summary=summary,
@@ -595,6 +631,9 @@ class OverlayAgent:
             review_required=True,
             review_reasons=review_reasons,
             analysis_trace=trace,
+            # The immutable original scientific session remains retained. An
+            # edited review is not that validated ledger or a new canonical read.
+            workflow_events=[],
         )
         self._last_result = updated
         self._result_revision += 1
@@ -1068,6 +1107,11 @@ class OverlayAgent:
 
     async def trigger_manual(self) -> None:
         """Manual trigger from Control Bar or hotkey."""
+        # A second queued click/hotkey can arrive before Qt renders the state
+        # change from the first. Never start a second paid read in that gap.
+        if self._state in {AgentState.CAPTURING, AgentState.ANALYZING}:
+            logger.info("Manual trigger ignored while capture/analysis is active")
+            return
         if self._target_window is None:
             logger.warning("No viewer window, cannot trigger manually")
             return
@@ -1078,6 +1122,13 @@ class OverlayAgent:
             self._transition(AgentState.ERROR)
 
     async def _do_capture_and_analyze(self) -> None:
+        self._scientific_scope = None
+        if self._scientific_reader_factory is not None:
+            with self._review_lock:
+                self._review_snapshot = None
+                self._last_result = None
+                self._last_image_base64 = ""
+                self._last_capture_rect = None
         self._pending_analysis = False
         self._transition(AgentState.CAPTURING)
 
@@ -1171,14 +1222,39 @@ class OverlayAgent:
         valid_regions = self._mapper.get_valid_regions(modality)
 
         try:
-            result = await self._analyze_with_retry(
-                image_b64,
-                modality,
-                valid_regions,
-                source_size_px=source_size_px,
-                source_image_base64=source_image_b64,
-                local_candidate_regions=local_candidate_regions,
-            )
+            prepared = None
+            reader = None
+            deadline = time.monotonic() + DEFAULT_TOTAL_ANALYSIS_SLA_SEC
+            if self._scientific_reader_factory is not None:
+                if not callable(self.on_scientific_review):
+                    raise ValueError("scientific_presenter_not_connected")
+                reader = self._scientific_reader_factory(source_screenshot, modality)
+                self._scientific_reader = (
+                    reader  # Retain original failed/partial receipts.
+                )
+                prepared = await asyncio.wait_for(
+                    reader.prepare(), timeout=DEFAULT_TOTAL_ANALYSIS_SLA_SEC
+                )
+                result = prepared.result
+                provenance = result.to_contract_payload(validate=False)[
+                    "input_provenance"
+                ]
+                if (
+                    not isinstance(provenance, dict)
+                    or provenance.get("source_image_sha256")
+                    != sha256(source_screenshot).hexdigest()
+                    or review_content_sha256(result) != prepared.content_sha256
+                ):
+                    raise ValueError("scientific_capture_binding_mismatch")
+            else:
+                result = await self._analyze_with_retry(
+                    image_b64,
+                    modality,
+                    valid_regions,
+                    source_size_px=source_size_px,
+                    source_image_base64=source_image_b64,
+                    local_candidate_regions=local_candidate_regions,
+                )
             if self._state != AgentState.ANALYZING:
                 logger.info(
                     "Analysis result discarded (state changed to %s)", self._state.name
@@ -1216,29 +1292,99 @@ class OverlayAgent:
                 return
             if not await self._verify_image_before_publication(source_screenshot):
                 return
+            if reader is not None and prepared is not None:
+                snapshot = self.review_snapshot
+                assert snapshot is not None
+                scope = (
+                    reader.run_id,
+                    sha256(source_screenshot).hexdigest(),
+                    snapshot.revision,
+                )
+                self._scientific_scope = scope
+
+                async def present(run_id, candidate):
+                    if not self.scientific_review_is_current(run_id, scope[1]):
+                        raise ValueError("scientific_review_scope_expired")
+                    receipt = await self.on_scientific_review(run_id, candidate)
+                    if not self.scientific_review_is_current(run_id, scope[1]):
+                        raise ValueError("scientific_review_scope_expired")
+                    return receipt
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("scientific_publication_deadline")
+                final = await asyncio.wait_for(
+                    reader.handoff(present), timeout=remaining
+                )
+                final.to_contract_payload()
+                if (
+                    not self.scientific_review_is_current(scope[0], scope[1])
+                    or review_content_sha256(final) != prepared.content_sha256
+                ):
+                    self._withhold_review("scientific_final_content_or_scope_changed")
+                    return
+                # The callback has retired its preview; verify the unoccluded ROI
+                # again before publishing final content or enabling Export/QA.
+                if not await self._verify_image_before_publication(source_screenshot):
+                    return
+                with self._review_lock:
+                    current = self._review_snapshot
+                    if current is None or current.revision != scope[2]:
+                        self._withhold_review("scientific_review_revision_changed")
+                        return
+                    result = _with_gateway_protocol_receipt(final, self._analyzer)
+                    self._last_result = result
+                    self._review_snapshot = dataclasses.replace(current, result=result)
+                    self._annotation_accumulator.reset(result.findings)
+                    self._scientific_scope = None
             self._transition(AgentState.DISPLAYING)
             if self.on_analysis_result:
                 self.on_analysis_result(result)
+        except NonDiagnosticScientificInput:
+            self._withhold_review(
+                "scientific_input_non_diagnostic",
+                message="影像品質不足，已停止判讀；請調整 ROI 或來源影像後重新 Analyze。",
+            )
+        except asyncio.CancelledError:
+            if reader is not None:
+                self._withhold_review("scientific_review_cancelled")
+            raise
         except TimeoutError:
+            if reader is not None:
+                self._withhold_review(
+                    "scientific_review_timeout",
+                    message="研究判讀或檢閱逾時，未發布結果；請確認後重新 Analyze。",
+                )
             logger.error("Analysis timed out")
             if self._state == AgentState.ANALYZING:
                 self._transition(AgentState.ERROR)
                 if self.on_error:
                     self.on_error("分析逾時")
         except ConnectionError:
+            if reader is not None:
+                self._withhold_review(
+                    "scientific_connection_lost",
+                    message="Gateway 連線中斷，未發布結果；請確認連線後重新 Analyze。",
+                )
             if self._state == AgentState.ANALYZING:
                 self._transition(AgentState.RECONNECTING)
                 if self.on_error:
                     self.on_error("Gateway 連線中斷")
         except Exception:
+            if reader is not None:
+                self._withhold_review(
+                    "scientific_publication_failed",
+                    message="研究判讀或檢閱未完成，未發布結果；請確認後重新 Analyze。",
+                )
             logger.exception("Analysis failed")
             if self._state == AgentState.ANALYZING:
                 self._transition(AgentState.ERROR)
                 if self.on_error:
                     self.on_error("分析錯誤")
 
-    def _withhold_review(self, reason: str) -> None:
+    def _withhold_review(self, reason: str, *, message: str | None = None) -> None:
         with self._review_lock:
+            self._scientific_scope = None
             if self._review_snapshot is not None:
                 self._last_withheld_review = WithheldReview(
                     self._review_snapshot, reason
@@ -1257,7 +1403,8 @@ class OverlayAgent:
             self._mark_pending_analysis(reason)
             if self.on_error:
                 self.on_error(
-                    "判讀期間影像已變更或無法確認；舊結果未顯示。"
+                    message
+                    or "判讀期間影像已變更或無法確認；舊結果未顯示。"
                     "請確認影像與 ROI 後重新 Analyze。"
                 )
 
