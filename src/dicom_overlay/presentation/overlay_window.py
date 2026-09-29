@@ -496,8 +496,12 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         metadata = " | ".join(
             value
             for value in (
-                result.model_used.strip(),
-                f"{result.analysis_time_ms} ms" if result.analysis_time_ms else "",
+                "OpenClaw（模型身分未核對）"
+                if result.model_used == "openclaw-unverified"
+                else result.model_used.strip(),
+                f"判讀：{result.analysis_time_ms / 1000:.1f} 秒"
+                if result.analysis_time_ms
+                else "",
             )
             if value
         )

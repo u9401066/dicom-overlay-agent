@@ -111,6 +111,37 @@ async def test_final_contract_requires_second_look_preflight_and_actual_callback
 
 
 @pytest.mark.asyncio
+async def test_review_time_covers_all_stages_but_excludes_handoff_wait(
+    tmp_path, replies, monkeypatch
+):
+    from dicom_overlay.application import execution_journal
+
+    clock = iter(range(0, 16_000_000_000, 1_000_000_000))
+    monkeypatch.setattr(execution_journal, "monotonic_ns", lambda: next(clock))
+    reader, gateway = setup(tmp_path, replies)
+    second = await through_second(reader)
+    original = deepcopy(second.decoded.draft)
+    original_bytes = second.response_bytes
+    prepared = await reader.prepare_review()
+    # Six journal stages span 0..11 seconds, not the last Gateway turn alone.
+    assert prepared.result.analysis_time_ms == 11_000
+    assert prepared.result.analysis_time_ms != original.analysis_time_ms
+
+    async def presenter(run_id, shown):
+        assert shown.result.analysis_time_ms == 11_000
+        return json.dumps(receipt(run_id, shown)).encode()
+
+    final = await reader.offer_review(presenter)
+    assert final.analysis_time_ms == 11_000
+    assert reader.records[-1].finished_ns == 15_000_000_000
+    assert final.to_contract_payload()["analysis_time_ms"] == 11_000
+    assert review_content_sha256(final) == prepared.content_sha256
+    assert reader.second_look.decoded.draft == original
+    assert reader.second_look.response_bytes == original_bytes
+    assert len(gateway.sent) == 5
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("stage", ["new", "blind", "reconciled", "second", "prepared"])
 async def test_no_premature_handoff_and_no_repeated_model_request(
     tmp_path, replies, stage

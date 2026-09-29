@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — corrected scientific timing display
+
+- Host journal now supplies full analysis-stage elapsed time, frozen before
+  validation/handoff. Raw model evidence is preserved, with no extra inference.
+- Readable seconds/model-unverified label; focused132pass7.18s and static checks
+  pass. This is an implementation follow-up, not a new desktop or EXE acceptance.
+- Full offscreen source suite2403pass/8skip436.05s, JUnit retained; native and
+  packaged opt-in skips remain explicit. Previous562ec59 PR CI completed green.
+
 ## 2026-09-29 — actual five-stage publication and regional interaction
 
 - Source e9e1346 actual App:147.516s, all5 stages, Qt handoff/complete canonical

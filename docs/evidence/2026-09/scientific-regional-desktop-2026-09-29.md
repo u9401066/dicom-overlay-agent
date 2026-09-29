@@ -105,3 +105,26 @@ model-stage duration (29525ms), not total workflow time, and `openclaw-unverifie
 until separate runtime usage binding; both need clearer UI treatment. Conversation
 context is bounded to the last6 turns/12000 characters although full visible/export
 history is retained; no automatic session restoration is implemented.
+
+## Follow-up implementation: analysis timing and metadata
+
+The source implementation now derives scientific `analysis_time_ms` from the
+host journal's intake start through completed second look, including inter-stage
+overhead. It excludes cold startup, subsequent validation/Qt handoff and time
+spent viewing the report. Preflight and final handoff use the same fixed journal
+endpoints, preserving their content-hash match. Original stage drafts and raw
+response bytes remain unchanged; no additional model call or retry was added.
+
+The report presents seconds and translates the unverified model sentinel to
+`OpenClaw（模型身分未核對）`; it does not infer verified identity from configuration.
+Deterministic tests cover full-workflow versus last-stage time, delayed handoff,
+unchanged source evidence, exactly five model calls and presentation-only
+metadata. Focused handoff/presentation/interaction suite: 132 passed in 7.18s;
+Ruff and targeted mypy pass. This follow-up is not a new actual-GUI replay and
+does not alter the sealed results or screenshots above.
+
+Full offscreen source regression: **2403 passed, 8 skipped in 436.05s**;
+JUnit artifact `data/tmp/regression-timing-20260929.xml` (local, ignored).
+Skips explicitly cover absent repo-portable Node/local frozen cohort and opt-in
+packaged/native-desktop checks; this run does not claim those gates passed.
+The preceding 562ec59 PR CI run36540642163 completed successfully.

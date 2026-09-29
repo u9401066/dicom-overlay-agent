@@ -472,6 +472,29 @@ class ScientificImageSession:
         self._second_look = result
         return deepcopy(result)
 
+    def _draft_for_review(self) -> AnalysisResult:
+        """Freeze host analysis time without rewriting any original stage draft.
+
+        Intake start through second-look completion includes inter-stage overhead,
+        not cold startup, later validation/GUI availability or time spent reading.
+        The fixed journal endpoints keep preflight and handoff content identical.
+        """
+        if self._second_look is None:
+            raise ValueError("completed_second_look_required")
+        records = self.records
+        start, finish = records[0], records[5]
+        if (
+            start.stage != "intake"
+            or finish.stage != "targeted_second_look"
+            or finish.status != "completed"
+            or finish.finished_ns is None
+            or finish.finished_ns < start.started_ns
+        ):
+            raise ValueError("invalid_scientific_analysis_timing")
+        draft = deepcopy(self._second_look.decoded.draft)
+        draft.analysis_time_ms = (finish.finished_ns - start.started_ns) // 1_000_000
+        return draft
+
     def _review_bindings(self, events: list[dict[str, str]]) -> dict[str, Any]:
         assert self._second_look is not None
         ids = {item.id for item in self._second_look.decoded.draft.evidence}
@@ -489,7 +512,7 @@ class ScientificImageSession:
         """Validate content before offering it; no future stage is fabricated."""
         if self._second_look is None:
             raise ValueError("completed_second_look_required")
-        draft = self._second_look.decoded.draft
+        draft = self._draft_for_review()
         bindings = self._review_bindings(self.workflow_events())
 
         async def operation() -> StageOutput[PreparedReview]:
@@ -546,7 +569,7 @@ class ScientificImageSession:
 
         await self._journal.execute("human_handoff", operation)
         result = assemble_review_contract(
-            self._second_look.decoded.draft,
+            self._draft_for_review(),
             **self._review_bindings(self.workflow_events()),
         )
         if review_content_sha256(result) != prepared.content_sha256:

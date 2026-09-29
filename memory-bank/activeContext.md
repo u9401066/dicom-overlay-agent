@@ -1,5 +1,21 @@
 # Active Context
 
+## 2026-09-29 — scientific timing and readable metadata follow-up
+
+- Scientific report timing uses immutable intake-start through second-look-end
+  journal endpoints, not only the final Gateway stage. It excludes cold startup,
+  later validation/handoff and human reading. Prepared/final content hashes stay
+  identical; original stage bytes/drafts remain untouched and requests stay five.
+- UI shows seconds and translates the unverified model sentinel without claiming
+  configured identity is verified. Focused132pass7.18s, Ruff/targeted mypy pass.
+  No new desktop inference; the successful runtime above remains sealed.
+- Full offscreen regression2403pass/8skip436.05s, local JUnit retained. Explicit
+  skips include opt-in packaged/native-desktop gates; not fresh EXE acceptance.
+  Prior562ec59 remote PR CI36540642163 passed. Staged secrets scan clean.
+- Manual Mark and regional-QA actual acceptance remain source-App evidence, not
+  proof the user's existing installed EXE contains these fixes. New packaging,
+  broader clinical cases and tiny-region context improvements remain open.
+
 ## 2026-09-29 — actual scientific App and regional QA pass (one exposed source)
 
 - Clean e9e1346, fresh Ctemp/dicom-scientific-desktop-20260929-publication,

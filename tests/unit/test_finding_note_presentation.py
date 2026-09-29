@@ -80,6 +80,34 @@ def _process_text(panel):
 
 
 @pytest.mark.parametrize(
+    ("model", "elapsed", "expected"),
+    [
+        ("openclaw-unverified", 142_000, "OpenClaw（模型身分未核對） | 判讀：142.0 秒"),
+        ("verified-test-model", 1_234, "verified-test-model | 判讀：1.2 秒"),
+        ("", 0, ""),
+    ],
+)
+def test_summary_metadata_is_readable_without_changing_evidence(
+    qt_app, model, elapsed, expected
+):
+    result = _result()
+    result.model_used = model
+    result.analysis_time_ms = elapsed
+    original = deepcopy(result)
+    panel = SummaryPanel()
+    panel.update_result(result)
+    text = panel._summary_label.text()
+    if expected:
+        assert text.endswith("\n" + expected)
+    else:
+        assert text.endswith(result.summary)
+        assert "判讀：" not in text
+    assert "openclaw-unverified" not in text
+    assert result == original
+    panel.close()
+
+
+@pytest.mark.parametrize(
     "note",
     [
         "Clinical uncertainty remains.",
