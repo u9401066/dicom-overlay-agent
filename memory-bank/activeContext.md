@@ -1,5 +1,24 @@
 # Active Context
 
+## 2026-09-29 — reconcile sealed cohort state and remaining desktop gate
+
+- Read-only audit found a stale evidence-doc headline claiming117 cases resumed.
+  Actual closure-20260929.json records seal/App Quit/owned Viewer close at12:38:29Z;
+  current scoped process query finds no runtime process. App log unchanged at
+  SHA2563bb977307bb75ef0f684e3f6c077f5a1d9c761be03826293ebf914f0c6f5824c.
+- Corrected only the report's latest-state summary and added closure provenance;
+  historical tranches, original receipts, failures and denominator retained.
+  Final9 direct+1 recovered publications/2technical failures/108pending, gold unread
+  and clinically unscored. New source/runtime must not silently resume sealed run.
+- Runtime3e94a77 CI/frozen verifier and public Pages main aed2378 already pass.
+  Documentation ecc4a06 CI36587673340 now fully green; ea906b0 CI36588478707 still
+  running at checkpoint, secret36588478687 green. No source change or rebuild.
+- Desktop availability requested again after the candidate became ready:10–15min
+  native history load/Send/Export/restart/reimport, independent test instance and
+  unchanged authorized ROI, small Astra-medium usage. No answer yet at checkpoint.
+  No new desktop input/paid inference; native history, clinical cohort/accuracy,
+  controlled speed comparison and distribution-license gates remain open.
+
 ## 2026-09-29 — public history guide deployed and browser-verified
 
 - Website-only ecbfe13 PR22 passed all CI/secrets, then merged mainaed2378484126c82443bec20fa5c284b35330f86.

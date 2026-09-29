@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — sealed cohort headline corrected from authoritative closure
+
+Report incorrectly retained an early "remaining117 resumed" headline. Actual
+closure receipt/current process audit/unchanged App-log hash establish sealed,
+stopped10publications/2failures/108pending; clinical scoring remains incomplete.
+Summary and closure section corrected without changing original data. Fresh native
+history acceptance is ready for a desktop availability reply; no paid retry or
+sealed runtime restart. Clinical correctness/speed and binary-license gates open.
+
 ## 2026-09-29 — history guide publicly deployed
 
 PR22 website/docs only merged as mainaed2378 after green CI/secrets. Pages36588136547

@@ -1,9 +1,10 @@
 # Scientific desktop paired regression — 2026-09-29
 
-**Latest checkpoint: three actual cases published and retained evidence checked;
-case0's original collector failure remains supplemented, not rewritten. The same
-continuation driver has resumed the remaining117 cases; they are not credited yet.**
-The preparation sections below describe the pre-inference state at their timestamp.
+**Latest status: this runtime is sealed and stopped, with ten published cases,
+two retained technical failures and108 pending. No continuation driver is live.
+Case0's original collector failure remains supplemented, not rewritten.**
+The preparation and tranche sections below are historical checkpoints, not live
+process status. Do not restart the sealed runtime or overwrite its logs to resume.
 This is a paired regression of the previously exposed
 [120-case medium cohort](medium-desktop-batch-2026-09-24.md), not120 new blind
 images or evidence of improved clinical accuracy. The old failed score remains
@@ -282,7 +283,8 @@ offline replay of retained bytes/native bbox artifacts passes contract preflight
 without any new inference or GUI handoff. Source pixels match the original
 visible ROI. Original failure remains unchanged. Final checkpoint: ten published
 cases, two technical failures,108 pending, zero invalid evidence. Gold is still
-unopened. No batch driver is live; App/Gateway/Viewer remain running.
+unopened. At that checkpoint no batch driver was live; App/Gateway/Viewer were
+still running. The later closure below supersedes that process state.
 
 Repeated minimization/publication failure needs a safe desktop recovery design,
 not repeated paid analysis. Ask whether concurrent desktop use explains the
@@ -290,3 +292,26 @@ native event, and investigate retaining a prepared draft until the original
 authorized ROI is again verifiably visible and unchanged. Do not auto-restore
 foreign windows or publish while the source cannot be verified. Any source fix
 must be isolated/versioned so it does not silently change this cohort's method.
+
+### Runtime sealed after the final checkpoint
+
+`closure-20260929.json` records actual App Quit and owned Viewer closure at
+2026-09-29T12:38:29.262265Z. App32116, Gateway7204, Viewer33040 and their recorded
+launchers33368/25400 were absent. A later read-only process audit found no App,
+Python or Node process referencing this runtime; no restart or inference was used.
+Closure receipt SHA256:
+`b9b70d6fa423147efc0065c04fe146b36934fd1a7a555e067e017a6fe0e931b6`.
+
+The retained App log still hashes to
+`3bb977307bb75ef0f684e3f6c077f5a1d9c761be03826293ebf914f0c6f5824c`.
+The terminal scientific audit counts nine directly verified publications plus
+one publication with a recovered collector failure, two technical failures,
+108 pending and zero invalid evidence. It explicitly records incomplete evidence,
+unscored clinical results and unopened gold. Closure does not turn pending cases
+or preserved failures into successful cases.
+
+Any new desktop acceptance must use a fresh, version-bound runtime and retain this
+denominator and its failures. The later publication-recovery and history candidates
+are different source versions; they must not be silently substituted into this
+sealed run. See [partial recovery acceptance](viewer-recovery-desktop-2026-09-29.md)
+and [current history workflow](../../architecture/regional-history-import.md).
