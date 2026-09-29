@@ -15,7 +15,15 @@
 - First extended run247passed51errors: new worktree missing Node/OpenClaw modules.
   Initial focused round-trip failure exposed extra RegionRect dataclass fields;
   now explicit x/y/w/h serialization. Test IDs/skip-trace expectations corrected.
-  Completing dependency setup, broader checks and CI before publishing checkpoint.
+- Locked dependencies/submodule initialized. Full local suite using Node24.18.0:
+  2697passed12skipped487.21s. Seven additional edge/export tests were added during
+  that run; final focused63passed0.74s includes them (overlaps full run). Ruff,
+  six-file mypy (existing import-untyped suppression), Bandit and staged gitleaks
+  pass. Synthetic owned-widget render uses installed font, readable Chinese,
+  no HTML execution: Ctemp/dicom-history-check-20260929-b/.../history-dialog.png.
+- Code50a5c868323be92a1d0fd75fa3027bc08c8efe1a pushed. Secret36575857972 passes;
+  CI36575857832 has all four compatibility jobs/Linux pytest green, Windows
+  pytest still running at checkpoint. No runtime/case retry to obtain these checks.
 - See docs/architecture/regional-history-import.md. No actual new-App import
   acceptance or rebuilt EXE yet; >=100-case scientific/clinical evaluation and
   license/release goals remain open. Desktop-availability question unanswered.

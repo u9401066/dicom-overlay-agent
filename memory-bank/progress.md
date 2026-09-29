@@ -7,8 +7,11 @@ without conflating past-run findings/IDs with current evidence. Preview and plai
 text, v2/v3 round-trip, bounded untrusted import and stale-selection/reply guards
 are wired into the App. Q&A-only continuation skips refinement; no measured
 speed/accuracy or real subscription acceptance claimed. Initial dependency-related
-smoke errors retained; broader verification and CI in progress. No new EXE or
-clinical case. See docs/architecture/regional-history-import.md.
+smoke errors retained; after setup2697passed12skipped487.21s, plus final63 focused
+checks including seven later additions (groups overlap). Ruff/mypy/Bandit/leakscan
+pass. Code50a5c86 pushed; secret36575857972 green, CI36575857832 compatibility and
+Linux green/Windows running. No new EXE or clinical case. See
+docs/architecture/regional-history-import.md.
 
 ## 2026-09-29 — website release and recovery CI confirmation
 

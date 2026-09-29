@@ -83,6 +83,14 @@ snapshot when imported again; it is not silently merged with an earlier snapshot
 
 ## Verification scope
 
+Code checkpoint `50a5c868323be92a1d0fd75fa3027bc08c8efe1a`:
+after locked dependency setup, local unit/integration/smoke run on Node24.18.0
+passed2,697 tests, skipped12 opt-in/private/portable-runtime checks in487.21s.
+Seven additional edge/export cases were added during that run and covered by a
+subsequent63-pass focused run; counts overlap and must not be added together.
+Ruff, targeted mypy, Bandit and staged secret scan passed. CI run36575857832
+tracks the complete committed test set; real desktop/frozen gates remain separate.
+
 Focused tests cover v2/v3 round-trip, strict image match, independent same-box
 threads, repeated import, stale response invalidation, parsing/resource edges,
 real Qt buttons/preview/plain text, cancel/error preservation, modal revision
