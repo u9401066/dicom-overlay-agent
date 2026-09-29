@@ -1,5 +1,21 @@
 # Active Context
 
+## 2026-09-29 — scientific paired120 plan and actual complete ROI
+
+-9a84847 full2435pass/10skip437.41s, both remote CI/secret scans pass.
+- New Ctemp/dicom-scientific-cohort-9a84847-20260929 prepared:18771 pristine
+  payload hashes plus120 fixed input hashes checked; no gold opened. This is a
+  paired replay of the exposed Sept24 cohort, not fresh blind selection.
+- Live App32116/launcher25400, Gateway7204/18796, Viewer33040/launcher33368.
+  Settings actual Astra-medium. Viewer was minimized; initial ROI preflight
+  failed before input, owned restore recorded. Actual App dialog drag/Enter
+  selected(30,30)-(1530,1110),1500x1080,zero margins; preview inspected.
+- Pre-inference plan85c87eef90a809e041a6d32fafe42a00372c7f88a636a19d4483b65815422c7f
+  in cohort-run-9a84847/plan.json. Driver run-batch.py initially limit3; retains
+  errors and stops for inspection, never repeats success. Check live handles.
+  No batch results claimed at preparation checkpoint; prior runtimes SEALED.
+- Evidence: docs/evidence/2026-09/scientific-paired-cohort-2026-09-29.md.
+
 ## 2026-09-29 — actual failure-path close and mixed observation support
 
 - Source8524c4a full suite2428pass/10skip467.34s; native Mark4pass3.97s;

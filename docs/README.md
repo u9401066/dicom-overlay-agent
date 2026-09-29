@@ -3,6 +3,10 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+[Scientific120-case paired regression preparation](evidence/2026-09/scientific-paired-cohort-2026-09-29.md)
+freezes the previously exposed cohort for the new workflow, with actual complete
+image ROI and a pre-inference plan digest. Preparation is not completed coverage.
+
 [Actual source-App shutdown follow-up](evidence/2026-09/gateway-close-desktop-2026-09-29.md)
 verifies failure-path Quit without the close timeout after two real subscription
 turns. Blind publication failed on mixed positive/negative finding references;

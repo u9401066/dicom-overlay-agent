@@ -1,5 +1,12 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — paired scientific120 execution preparation
+
+- Source9a84847 full2435pass/10skip and both CI/secret scans pass.
+- Fresh runtime/input hashes verified; actual full-image ROI calibrated on the
+  owned synthetic Viewer.120-case exposed paired plan frozen before inference,
+  first tranche limited3; preparation is not case completion/clinical acceptance.
+
 ## 2026-09-29 — real source shutdown verified; blind-pass failure retained
 
 -8524c4a full source2428pass/10skip and remote CI/secret scans pass. Actual
