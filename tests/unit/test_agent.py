@@ -432,6 +432,9 @@ class TestOverlayAgent:
                     "stage": "regional_structured_review",
                     "status": "completed",
                     "run_id": "run-8",
+                    "image_attachment_count": 2,
+                    "selected_crop_sha256": "c" * 64,
+                    "source_image_sha256": "d" * 64,
                     "private_value": "drop-me",
                 }
             ],
@@ -451,6 +454,9 @@ class TestOverlayAgent:
                     "stage": "regional_structured_review",
                     "status": "completed",
                     "run_id": "run-8",
+                    "image_attachment_count": 2,
+                    "selected_crop_sha256": "c" * 64,
+                    "source_image_sha256": "d" * 64,
                 }
             ],
         }

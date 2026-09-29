@@ -221,6 +221,7 @@ def build_openclaw_chat_frame(
     message: str,
     idempotency_key: str,
     image_base64: str | None = None,
+    context_image_base64: str | None = None,
     fast_mode: bool | Literal["auto"] | None = None,
     fast_auto_on_seconds: int | None = None,
 ) -> dict[str, Any]:
@@ -229,6 +230,14 @@ def build_openclaw_chat_frame(
         not isinstance(image_base64, str) or not image_base64.strip()
     ):
         raise ValueError("image_base64 must be a non-empty string when provided")
+    if context_image_base64 is not None:
+        if image_base64 is None:
+            raise ValueError("context_image_base64 requires a primary image")
+        if (
+            not isinstance(context_image_base64, str)
+            or not context_image_base64.strip()
+        ):
+            raise ValueError("context_image_base64 must be a non-empty string")
     if (
         fast_mode is not None
         and not isinstance(fast_mode, bool)
@@ -261,6 +270,14 @@ def build_openclaw_chat_frame(
                 "content": image_base64,
             }
         ]
+        if context_image_base64 is not None:
+            params["attachments"].append(
+                {
+                    "type": "image",
+                    "mimeType": "image/png",
+                    "content": context_image_base64,
+                }
+            )
 
     return {
         "type": "req",

@@ -1,5 +1,12 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — context-aware regional question source change
+
+- Same-snapshot original ROI now accompanies the selected crop in one structured
+  QA request. No capture widening or weakened crop/writeback/thread guards.
+- Both payload hashes retained with run trace; focused175pass, static checks pass.
+  Actual dual-image App acceptance and updated EXE remain separate pending gates.
+
 ## 2026-09-29 — frozen native/subscription/Mark acceptance
 
 - Exact575bcdc EXE now exercised through real UI; first paid attempt blocked on

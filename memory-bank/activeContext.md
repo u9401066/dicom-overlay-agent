@@ -1,5 +1,19 @@
 # Active Context
 
+## 2026-09-29 — regional same-snapshot image context implementation
+
+- Actual tiny46x20px crop-only QA motivated attaching selected crop plus original
+  approved ReviewSnapshot ROI in the same structured question. No new capture,
+  expanded ROI, model switch or extra request; image input volume increases.
+- Prompt separates selected versus surrounding evidence; multi-marker and low
+  source-resolution writeback gates remain unchanged. Refine stays crop-only.
+- Public attachments array only; locked trace retains both SHA256s and count2.
+  Invalid base64 fails before send. Focused175pass6.33s; Ruff/mypy5files pass.
+- Full suite running; fresh Ctemp/dicom-regional-context-20260929 static runtime
+  prepared, not launched yet. Source acceptance must not be attributed to the
+  unchanged575bcdc executable; all old runtimes remain sealed.
+- Design: docs/architecture/regional-image-context.md. No accuracy/speed claim.
+
 ## 2026-09-29 — exact575bcdc frozen App regional acceptance
 
 - Fresh verified copy, actual EXE4364/Gateway12476/Viewer20732; OAuth/profile

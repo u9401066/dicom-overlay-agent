@@ -33,6 +33,7 @@ class _ImmediateBridge:
 @pytest.mark.parametrize("outcome", ["no_change", "blocked", "applied", "dismissed"])
 def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(outcome):
     image = base64.b64encode(b"synthetic pixels").decode()
+    crop = base64.b64encode(b"synthetic selected crop pixels").decode()
     region = RegionRect(0.1, 0.2, 0.3, 0.4)
     finding = Finding(
         id="new",
@@ -53,6 +54,7 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
         image_base64=image, revision=8, result=SimpleNamespace(modality=Modality.EKG)
     )
     agent = Mock(state=AgentState.DISPLAYING, result_revision=8, target_window=None)
+    agent.last_image_base64 = base64.b64encode(b"different live image").decode()
 
     def record(**kwargs):
         agent.result_revision += 1
@@ -112,7 +114,7 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
     signals.review_chat_done.connect(env["_show_review_chat_response"])
     env["_submit_region_review"](
         question="Synthetic question",
-        crop_base64=image,
+        crop_base64=crop,
         source_crop_bytes=b"synthetic crop",
         snapshot=snapshot,
         selected_region=region,
@@ -120,6 +122,16 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
         allow_add=True,
     )
     assert not errors
+    env["build_region_review_prompt"].assert_called_once()
+    assert (
+        env["build_region_review_prompt"].call_args.kwargs["has_source_context"] is True
+    )
+    transport = env["openclaw_client"].review_region_about_image_with_trace
+    transport.assert_awaited_once_with(
+        "synthetic prompt",
+        image_base64=crop,
+        context_image_base64=snapshot.image_base64,
+    )
     turn = store.export()["threads"][0]["turns"][0]
     turn_id = turn["review_turn_id"]
     assert len(turn_id) == 32

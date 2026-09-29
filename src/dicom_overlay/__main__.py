@@ -1469,6 +1469,7 @@ def main() -> None:
                 refinement_evidence=refinement_evidence,
                 regional_history=prior_regional_history,
                 allow_add=allow_add,
+                has_source_context=True,
             )
             (
                 raw_response,
@@ -1476,6 +1477,7 @@ def main() -> None:
             ) = await openclaw_client.review_region_about_image_with_trace(
                 prompt,
                 image_base64=crop_base64,
+                context_image_base64=snapshot.image_base64,
             )
             turn_trace.append(
                 {

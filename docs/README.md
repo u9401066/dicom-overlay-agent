@@ -3,6 +3,11 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+New source change: [regional image context](architecture/regional-image-context.md)
+adds the same authorized ROI alongside a selected crop for regional questions.
+It preserves crop/writeback/history boundaries and needs separate live acceptance;
+the preceding frozen evidence remains crop-only.
+
 Latest local [scientific package 575bcdc](evidence/2026-09/scientific-package-2026-09-29.md)
 passes 20 frozen smoke tests and complete bundle verification, with 86 App/public
 harness code modules matching exact source. Folder 337.14 MiB.

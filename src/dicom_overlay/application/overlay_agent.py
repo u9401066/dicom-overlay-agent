@@ -106,6 +106,9 @@ _REGIONAL_TRACE_KEYS = frozenset(
         "tools",
         "tool_audit",
         "parse_retry_count",
+        "image_attachment_count",
+        "selected_crop_sha256",
+        "source_image_sha256",
     }
 )
 _REGIONAL_REVIEW_OUTCOMES = frozenset(

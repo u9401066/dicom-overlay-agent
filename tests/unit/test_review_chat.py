@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import io
 import json
 from dataclasses import replace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from PIL import Image
@@ -18,6 +20,7 @@ from dicom_overlay.application.review_chat import (
 )
 from dicom_overlay.domain.entities import FindingOp
 from dicom_overlay.infrastructure.openclaw_client import OpenClawClient
+from dicom_overlay.infrastructure.openclaw_runtime import build_openclaw_chat_frame
 from dicom_overlay.infrastructure.screen_monitor import ImageProcessor
 from medical_image_harness.models import Finding, RegionRect, Severity
 from medical_image_harness.multipass import (
@@ -468,3 +471,94 @@ async def test_openclaw_regional_review_returns_trace_in_same_locked_turn(
 
     assert '"answer":"ok"' in answer
     assert trace["tools"] == ["dicom_bbox_validate"]
+
+
+@pytest.mark.parametrize("has_context", [False, True])
+def test_regional_context_never_expands_selection_or_weakens_writeback(has_context):
+    finding = _finding()
+    finding.bboxes.append(RegionRect(0.5, 0.5, 0.1, 0.1))
+    prompt = build_region_review_prompt(
+        user_question="Compare the selected morphology with its surroundings",
+        prior_context="Unverified draft",
+        selected_region=finding.bboxes[0],
+        selected_finding=finding,
+        local_signal_audit={"status": "ok", "low_signal": True},
+        has_source_context=has_context,
+    )
+    assert "proposal.op must be 'none'" in prompt
+    assert "will reject every add/revise/retract operation" in prompt
+    assert "Do not return coordinates" in prompt
+    if has_context:
+        assert "Attachment 1 is the selected crop" in prompt
+        assert "Attachment 2 is the unchanged authorized original ROI" in prompt
+        assert "SAME review snapshot, not a new capture" in prompt
+        assert "Clearly separate" in prompt
+    else:
+        assert "surrounding image pixels are unavailable" in prompt
+        assert "Attachment 2" not in prompt
+
+
+@pytest.mark.parametrize(
+    "crop,context", [(None, "YQ=="), ("YQ==", ""), ("YQ==", " "), ("YQ==", 42)]
+)
+def test_context_attachment_requires_nonempty_primary_and_context(crop, context):
+    with pytest.raises(ValueError):
+        build_openclaw_chat_frame(
+            request_id="chat-1",
+            session_key="test",
+            message="test",
+            idempotency_key="idem",
+            image_base64=crop,
+            context_image_base64=context,
+        )
+
+
+@pytest.mark.asyncio
+async def test_regional_context_sent_in_same_turn_and_order_with_atomic_hashes(
+    monkeypatch,
+):
+    client = OpenClawClient(gateway_url="ws://127.0.0.1:1")
+    client._connected = True
+    client._ws = Mock()
+    crop = base64.b64encode(b"synthetic selected crop").decode()
+    source = base64.b64encode(b"synthetic authorized original ROI").decode()
+    sender = AsyncMock(return_value='{"answer":"ok","proposal":{"op":"none"}}')
+    monkeypatch.setattr(client, "_send_chat_text_frame", sender)
+    answer, trace = await client.review_region_about_image_with_trace(
+        "EXACT_CONTRACT",
+        image_base64=crop,
+        context_image_base64=source,
+    )
+    sender.assert_awaited_once()
+    frame = sender.call_args.args[0]
+    assert frame["method"] == "chat.send"
+    assert frame["params"]["message"] == "EXACT_CONTRACT"
+    assert frame["params"]["attachments"] == [
+        {"type": "image", "mimeType": "image/png", "content": payload}
+        for payload in (crop, source)
+    ]
+    assert trace["image_attachment_count"] == 2
+    assert (
+        trace["selected_crop_sha256"]
+        == hashlib.sha256(b"synthetic selected crop").hexdigest()
+    )
+    assert (
+        trace["source_image_sha256"]
+        == hashlib.sha256(b"synthetic authorized original ROI").hexdigest()
+    )
+    assert trace["session_key"] == frame["params"]["sessionKey"]
+    assert '"answer":"ok"' in answer
+
+
+@pytest.mark.asyncio
+async def test_malformed_context_rejected_before_any_model_request(monkeypatch):
+    client = OpenClawClient(gateway_url="ws://127.0.0.1:1")
+    sender = AsyncMock()
+    monkeypatch.setattr(client, "_do_image_chat_prompt", sender)
+    with pytest.raises(ValueError):
+        await client.review_region_about_image_with_trace(
+            "EXACT_CONTRACT",
+            image_base64="YQ==",
+            context_image_base64="not-base64!",
+        )
+    sender.assert_not_awaited()

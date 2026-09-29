@@ -42,7 +42,7 @@ runtime usage. Preserve the plan digest separately. Use `--allow-partial` only f
 an ongoing run; invalid evidence and technical failures always fail the command.
 A failed audit is not permission to restart a live App or repeat inference.
 
-## Manual Mark and per-region conversations (development source)
+## Manual Mark and per-region conversations (development candidate)
 
 1. After Analyze publishes a result, choose **Mark**, then drag anywhere inside
    the authorized image ROI, including blank areas outside all AI boxes. The safe
@@ -66,6 +66,13 @@ Real native evidence covers [blank-ROI Mark and separate threads](../evidence/20
 and [ADD dismissal, promotion, reopening and a third turn](../evidence/2026-09/native-marker-promotion-2026-09-24.md).
 These are source-App tests, not proof that the latest preserved EXE contains all
 subsequent fixes, or that every cross-monitor/DPI and clinical scenario is complete.
+The [575bcdc frozen follow-up](../evidence/2026-09/frozen-regional-desktop-2026-09-29.md)
+also verifies blank-origin Mark and separate regional threads in that exact EXE.
+Newer [dual-image regional context](../architecture/regional-image-context.md)
+attaches the original authorized ROI alongside the selected crop in the source
+candidate; it is not yet part of that frozen acceptance. In a new actual run,
+verify both payload hashes and the answer's distinction between selected content
+and surrounding context. Never reinterpret a prior crop-only receipt as this test.
 
 ## Inspect compact notes (isolated source candidate)
 

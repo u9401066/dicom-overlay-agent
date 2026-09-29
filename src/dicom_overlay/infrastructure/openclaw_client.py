@@ -1547,6 +1547,7 @@ class OpenClawClient(VisionAnalyzerService):
         prompt: str,
         *,
         image_base64: str,
+        context_image_base64: str | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Run a regional review and atomically return its public run trace."""
 
@@ -1555,6 +1556,7 @@ class OpenClawClient(VisionAnalyzerService):
         return await self._chat_about_image_prompt_and_trace(
             prompt,
             image_base64=image_base64,
+            context_image_base64=context_image_base64,
         )
 
     async def _chat_about_image_prompt(
@@ -1574,13 +1576,26 @@ class OpenClawClient(VisionAnalyzerService):
         prompt: str,
         *,
         image_base64: str,
+        context_image_base64: str | None = None,
     ) -> tuple[str, dict[str, object]]:
         async with self._ws_lock:
-            response = await self._do_image_chat_prompt(
-                prompt,
-                image_base64=image_base64,
-            )
-            return response, self.last_run_trace()
+            kwargs = {"image_base64": image_base64}
+            image_receipt: dict[str, object] = {}
+            if context_image_base64 is not None:
+                kwargs["context_image_base64"] = context_image_base64
+                image_receipt.update(
+                    image_attachment_count=2,
+                    selected_crop_sha256=hashlib.sha256(
+                        base64.b64decode(image_base64, validate=True)
+                    ).hexdigest(),
+                    source_image_sha256=hashlib.sha256(
+                        base64.b64decode(context_image_base64, validate=True)
+                    ).hexdigest(),
+                )
+            response = await self._do_image_chat_prompt(prompt, **kwargs)
+            trace = self.last_run_trace()
+            trace.update(image_receipt)
+            return response, trace
 
     async def _do_chat(self, message: str) -> str:
         if not self.is_connected():
@@ -1609,6 +1624,7 @@ class OpenClawClient(VisionAnalyzerService):
         prompt: str,
         *,
         image_base64: str,
+        context_image_base64: str | None = None,
     ) -> str:
         if not self.is_connected():
             raise ConnectionError("Not connected to OpenClaw Gateway")
@@ -1629,6 +1645,7 @@ class OpenClawClient(VisionAnalyzerService):
             message=prompt,
             idempotency_key=idempotency_key,
             image_base64=image_base64,
+            context_image_base64=context_image_base64,
             fast_mode=self._fast_mode,
         )
 
