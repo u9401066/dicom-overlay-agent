@@ -5,8 +5,11 @@ purposes. Start here; a dated successful smoke run is not current clinical appro
 
 Latest local [scientific package 575bcdc](evidence/2026-09/scientific-package-2026-09-29.md)
 passes 20 frozen smoke tests and complete bundle verification, with 86 App/public
-harness code modules matching exact source. Folder 337.14 MiB; new-EXE native,
-subscription, clinical and distribution-license acceptance remain open.
+harness code modules matching exact source. Folder 337.14 MiB.
+[Actual frozen acceptance](evidence/2026-09/frozen-regional-desktop-2026-09-29.md)
+now covers subscription, five-stage publication and ROI-wide Mark/regional QA.
+One occluded paid attempt and one successful replay are retained;15 sessions
+accounted for. Clinical and distribution-license acceptance remain open.
 
 Latest development wiring: [scientific desktop publication](evidence/2026-09/scientific-desktop-publication-2026-09-25.md)
 keeps prepared reports out of Export/QA until Qt availability and two source-pixel

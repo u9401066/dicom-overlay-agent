@@ -83,6 +83,12 @@ installed App or a demonstrated inference-speed improvement.
 
 ## Limits and retained artifacts
 
+Subsequent [actual frozen desktop acceptance](frozen-regional-desktop-2026-09-29.md)
+now covers subscription, scientific publication and regional QA on a fresh copy
+of this exact executable. It retains one failed and one successful paid attempt.
+The following paragraph records gates still open at the build-only checkpoint;
+clinical and distribution-license gates remain open after the GUI follow-up.
+
 The [actual source-App replay](scientific-regional-desktop-2026-09-29.md) does
 not become frozen-GUI acceptance merely because this build matches its source.
 New-EXE subscription/UI/clinical acceptance, broader vendor/DPI scenarios and

@@ -1,5 +1,24 @@
 # Active Context
 
+## 2026-09-29 — exact575bcdc frozen App regional acceptance
+
+- Fresh verified copy, actual EXE4364/Gateway12476/Viewer20732; OAuth/profile
+  inspection and five-stage publication completed. First paid5-stage attempt
+  failed viewer_roi_obstructed; separate paid replay144.864s passed,140.7s UI.
+- Native blank-origin Mark, manual2-turn QA, separate f1 QA, history reopen and
+  actual file-dialog invalidation/stale-export block pass.1494x858 ROI,0.5px
+  max edge drift; source/canonical unchanged.15 Astra-medium sessions verified.
+- Public history truncates both blind drafts at8000chars: prefix-only remote
+  binding, complete local transport hashes retained. Do not call them full remote
+  byte matches. Evidence: frozen-regional-desktop-2026-09-29.md.
+- Ctemp/dicom-frozen-scientific-575bcdc-20260929 now SEALED after actual Quit/owned
+  Viewer close; four processes and18796 absent. Never restart. Clean master intact.
+- Native Win32 forward/reverse and two-sided ROI clipping smoke4pass4.04s.
+  Focused overlay/history/linkage/geometry/docs126pass1.24s; Ruff clean. Previous
+  a76f385 remote CI and secret scans all passed. New checkpoint needs its own CI.
+  Tiny-region context, review-PNG annotation overflow and recoverable-occlusion
+  retained-result publication remain open. No clinical, binary release or Pages claim.
+
 ## 2026-09-29 — current scientific candidate packaged at575bcdc
 
 - Fresh isolated no-dev Python3.13.12/UPX5.2.1 build, no dependency changes.

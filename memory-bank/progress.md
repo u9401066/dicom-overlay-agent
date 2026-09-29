@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — frozen native/subscription/Mark acceptance
+
+- Exact575bcdc EXE now exercised through real UI; first paid attempt blocked on
+  obstruction, second144.864s passed.15 total Astra-medium sessions retained.
+- Blank-origin marking, two manual questions, independent AI-box question,
+  identical reopened history and stale-export rejection pass; coordinate0.5px.
+- Added native forward/reverse/top-left/bottom-right clipping cases:4pass4.04s.
+  Focused regression/docs126pass1.24s; Ruff and diff checks passed.
+  No source-code change or model-based accuracy improvement asserted. Runtime
+  sealed; clinical/binary-license/Pages/tiny-region-context gates remain open.
+
 ## 2026-09-29 — scientific host-assembly EXE build and frozen smoke
 
 - Clean575bcdc built with isolated no-dev Python3.13.12/UPX;75 App+11 public

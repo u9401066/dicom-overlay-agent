@@ -15,7 +15,11 @@ September 29 package: [scientific candidate 575bcdc](docs/evidence/2026-09/scien
 now passes 20 frozen smoke checks and the complete bundle verifier; all 75 App and
 11 public-harness code modules match their pinned sources. Launcher 4.81 MiB,
 App/Python/Qt 54.55 MiB, portable folder 337.14 MiB. This includes the timing-display
-fix; new-EXE native/subscription/clinical and distribution-license gates remain open.
+fix. [Actual frozen desktop acceptance](docs/evidence/2026-09/frozen-regional-desktop-2026-09-29.md)
+now covers subscription, five-stage publication, blank-origin Mark, separate regional
+QA/history and stale-export blocking. One paid attempt failed on occlusion before a
+successful144.864s replay; all15 sessions are accounted for. Clinical and
+distribution-license gates remain open; this does not update an older installed EXE.
 Byte-verified local archives: ZIP 141.68 MiB or optional 7z 105.20 MiB (25.75%
 smaller); neither has been published as a binary release.
 
