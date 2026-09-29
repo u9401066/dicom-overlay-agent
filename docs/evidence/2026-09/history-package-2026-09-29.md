@@ -76,6 +76,10 @@ or clinical correctness. No package was uploaded or published as a release.
 
 ## Preserved warnings and remaining gates
 
+Follow-up: the [strict UTF-8 regression check](diagnostic-utf8-2026-09-29.md)
+now correctly rejects this exact EXE's selfcheck output. The source fix requires
+a new build; the historical21-test result below is not current release approval.
+
 - Two OpenConsole UI Automation API-set warnings remain recorded in the build
   log. `win32-console-mode.node` and `python3.dll` are not compressible; CFG-marked
   runtime DLLs are intentionally not UPX-compressed. They are retained, not dropped.

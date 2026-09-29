@@ -1,5 +1,22 @@
 # Active Context
 
+## 2026-09-29 — diagnostic UTF-8 source fix; fixed rebuild still needed
+
+- Previous packaging turn was progress:61cb1e2 pushed, secret36583254974 passed;
+  CI36583254755 compatibility/Linux pass, Windows still running at checkpoint.
+- Reproduced CLI encoding failures in CP1252/CP950/ASCII. `_print_cli` now sets
+  real TextIOWrapper output to strict UTF-8, preserving windowed None/StringIO.
+- Verifier now captures bytes and strictly decodes in the calling thread. Initial
+  direct text/strict attempt exposed Windows reader-thread failures; replaced.
+  Malformed stdout/stderr fail closed without echoing offending content.
+- Real pristine69683fa EXE --selfcheck is rejected by the stronger verifier with
+  controlled UTF-8 failure. No live App/log/auth/model request. Historical21-test
+  package pass is not approval under the new output contract; do not relabel it.
+- Final72passed3skipped13.03s, including13 new cases; Ruff and targeted mypy pass.
+  No fixed EXE build yet. See docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md.
+- Pending desktop-availability answer unchanged. Native history acceptance and
+  clinical10pub/2fail/108pending remain unchanged; sealed runtimes not restarted.
+
 ## 2026-09-29 — actual69683fa frozen package verified; transfer audit
 
 - Same exec58416 completed successfully after627.035s; no duplicate/restarted

@@ -421,16 +421,18 @@ def test_built_bundle_selfcheck_exits_zero():
         [str(exe), "--selfcheck"],
         cwd=str(exe.parent),
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         timeout=60,
     )
+    stdout = result.stdout.decode("utf-8")
+    stderr = result.stderr.decode("utf-8")
     # A complete portable bundle finds node + openclaw + config + writable base.
     assert result.returncode == 0, (
         f"bundle self-check failed (exit {result.returncode}):\n"
-        f"{result.stdout}\n{result.stderr}"
+        f"{stdout}\n{stderr}"
     )
+    assert "DICOM Overlay Agent — self-check" in stdout
+    assert "RESULT: OK" in stdout
+    assert "\ufffd" not in stdout
     assert not (bundle / "overlay_agent.log").exists()
     assert not (bundle / "openclaw-home").exists()
 
@@ -450,16 +452,16 @@ def test_built_bundle_package_runtime_smoke_exits_zero():
         [str(exe), "--package-runtime-smoke"],
         cwd=str(bundle),
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         timeout=60,
     )
+    stdout = result.stdout.decode("utf-8")
+    stderr = result.stderr.decode("utf-8")
 
     assert result.returncode == 0, (
         f"bundle package-runtime smoke failed (exit {result.returncode}):\n"
-        f"{result.stdout}\n{result.stderr}"
+        f"{stdout}\n{stderr}"
     )
+    assert json.loads(stdout)["status"] == "ok"
     assert not (bundle / "runtime-smoke.log").exists()
     assert not (bundle / "review").exists()
 

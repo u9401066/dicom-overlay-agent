@@ -5,6 +5,7 @@ import importlib.util
 import json
 import shutil
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,33 @@ def _load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.mark.parametrize("fd", [1, 2], ids=["stdout", "stderr"])
+def test_process_verification_rejects_invalid_utf8_without_echoing_payload(fd):
+    module = _load_module()
+    result = module._run_process(
+        [sys.executable, "-c", f"import os; os.write({fd}, b'private-fixture\\x97')"]
+    )
+    assert result == {
+        "exit_code": -1,
+        "stdout": "",
+        "stderr": "process output is not valid UTF-8",
+    }
+
+
+@pytest.mark.parametrize("code", [0, 7])
+def test_process_verification_preserves_utf8_and_real_exit_code(code):
+    module = _load_module()
+    result = module._run_process(
+        [
+            sys.executable,
+            "-c",
+            "import os, sys; os.write(1, '\\u81e8\\u5e8a'.encode('utf-8')); "
+            f"os.write(2, b'diagnostic'); sys.exit({code})",
+        ]
+    )
+    assert result == {"exit_code": code, "stdout": "臨床", "stderr": "diagnostic"}
 
 
 def _load_build_receipt_module():

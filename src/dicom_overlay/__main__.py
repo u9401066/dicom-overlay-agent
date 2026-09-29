@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import json
 import os
 import sys
@@ -166,6 +167,10 @@ def _print_cli(*values: object) -> None:
     codes when invoked by the package verifier.
     """
 
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        # Redirected Windows streams otherwise inherit the local ANSI code page.
+        # Package diagnostics have a UTF-8 contract, including the Chinese audit.
+        sys.stdout.reconfigure(encoding="utf-8", errors="strict")
     if sys.stdout is not None:
         print(*values)
 

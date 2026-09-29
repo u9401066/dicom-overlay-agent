@@ -20,6 +20,9 @@ frozen packaging checks, including history round-trip; full folder337.14MiB,
 ZIP141.70MiB / 7z105.23MiB, both verified after decompression.
 Native subscription acceptance of the new history workflow remains
 pending, and the installed old EXE has not been replaced.
+[Diagnostic UTF-8 follow-up](docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md):
+the stronger verifier rejects that candidate's damaged console output. The source
+fix passes focused tests but still requires a new frozen build; not release-ready.
 
 [Source-App shutdown follow-up](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md):
 actual Quit drained10 queued events and exited without a close timeout. The same

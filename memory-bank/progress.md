@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — encoding smoke gap reproduced and fixed in source
+
+CLI diagnostics now write strict UTF-8, and the package verifier rejects malformed
+stdout/stderr without Windows reader-thread crashes or leaking offending content.
+72 focused tests pass,3 frozen opt-ins skipped; Ruff/mypy pass. The real old69683fa
+EXE reproduces the expected verification failure. A newly built/frozen-verified
+candidate is still required; prior package evidence is retained, not overwritten.
+No new native history/clinical acceptance. See
+docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md.
+
 ## 2026-09-29 — new actual frozen history package (not clinical acceptance)
 
 69683fa source is built in a clean no-dev environment; codeCI/secrets green.

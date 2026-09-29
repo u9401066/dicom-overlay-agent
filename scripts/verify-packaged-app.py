@@ -1431,17 +1431,24 @@ def _run_process(
             command,
             cwd=cwd,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=timeout,
             check=False,
             env=env,
         )
         return {
             "exit_code": result.returncode,
-            "stdout": result.stdout[-100_000:],
-            "stderr": result.stderr[-100_000:],
+            # Decode here, not in Windows subprocess reader threads, so malformed
+            # output becomes a controlled verification failure on every OS.
+            "stdout": result.stdout.decode("utf-8")[-100_000:],
+            "stderr": result.stderr.decode("utf-8")[-100_000:],
+        }
+    except UnicodeDecodeError:
+        # Do not replace corrupt bytes and accidentally approve a broken build.
+        # Keep offending process output out of the diagnostic error message.
+        return {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": "process output is not valid UTF-8",
         }
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {"exit_code": -1, "stdout": "", "stderr": str(exc)}
