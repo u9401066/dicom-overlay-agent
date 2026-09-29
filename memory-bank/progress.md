@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — website release and recovery CI confirmation
+
+Recovery1a7cb81 passes all Windows/Linux/compatibility/secret checks. Separate
+website9acaa3f PR21 merged to public mainf3b4d8d; Pages36572820217 succeeded.
+Updated bilingual READMEs/setup/ROI/QA/scientific/bundle/evidence with measured
+September29 status and retained clinical failures.19 static checks,10 pinned
+documents and actual local/public headless browser checks at1440/820/390 widths
+pass; deployed HTML/CSS/JS match source. No App code/binary or private image
+published; no added clinical case. Remaining clinical/runtime goals stay active.
+
 ## 2026-09-29 — real prepared-draft recovery; retain missing export gate
 
 Fresh sourceb3b4c1f App captured one exposed image, waited through actual owned

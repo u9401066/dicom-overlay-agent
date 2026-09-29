@@ -1,5 +1,30 @@
 # Active Context
 
+## 2026-09-29 — Pages refresh deployed; recovery CI fully green
+
+- Recovery source1a7cb81 CI36571046138: Windows/Linux pytest and all four
+  compatibility jobs pass; secret36571046102 passes. Original b3b4c1f Windows
+  timer-test failure remains retained, not relabeled successful.
+- Separate website worktree pages-progress-20260929 was based on public main
+  37d6ed3, avoiding the stale site in this App branch. Commit9acaa3f/PR21 passed
+  all checks and merged asf3b4d8d6c899fd9bbe4daeb2ae05bb282d5658bb.
+  Pages deployment36572820217 succeeded; public URL now has September29 state.
+- Site and bilingual READMEs pin source1a7cb81, distinguish actual36dc3c6 EXE,
+  failed sealed120-case medium baseline,10pub/2fail/108pending scientific rerun,
+  partial recovery canary, original-ROI regional context, opt-in scientific mode,
+  Node24.18.0 and measured337.15MiB folder/141.68MiB ZIP/105.21MiB7z.
+- Browser plugin absent; Playwright1.62.1/isolated headless Edge verified local
+  and public1440x1000,820x1000,390x844. Identity/content/assets/no-error-overlay,
+  menu/Escape/focus/no-JS, development→regional→scientific→setup navigation,
+  zero console errors/warnings/failed responses/horizontal overflow all pass.
+ 19 static site tests pass;10 exact Git evidence targets checked. Public HTML,
+  docs,CSS,JS bytes match source after newline normalization. Screenshots and
+  qa.json outside repo atCtemp/dicom-pages-20260929/public-verified.
+- Main App/runtime remains older; this merged only website/docs/tests/memory.
+  Never replace the current public site with this branch's stale site directory.
+  No new model inference, desktop capture, binary release or clinical case.
+  GUI availability question remains unanswered; continue non-intrusive work.
+
 ## 2026-09-29 — actual b3b4c1f recovery observed; export unavailable after Quit
 
 - Old cohort runtime SEALED via actual Quit; App32116/Gateway7204/Viewer33040 and
