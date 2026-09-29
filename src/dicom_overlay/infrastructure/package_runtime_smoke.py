@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -133,6 +134,60 @@ def run_package_runtime_smoke(work_dir: Path) -> dict[str, object]:
         if not validation_errors({}):
             raise RuntimeError("canonical harness validator accepted an empty draft")
 
+    def regional_history_smoke() -> None:
+        from dicom_overlay.application.regional_conversation import (
+            RegionalConversations,
+        )
+        from dicom_overlay.infrastructure.regional_history_io import (
+            load_regional_history,
+        )
+
+        encoded = base64.b64encode(artifacts["png"]).decode("ascii")
+        original = RegionalConversations()
+        original.bind(encoded)
+        original.append(
+            original.thread(RegionRect(.1, .2, .3, .4), "synthetic-old-finding"),
+            question="Synthetic historical question", answer="Synthetic old answer",
+            review_turn_id="a" * 32,
+        )
+        path = work_dir / "regional-history.json"
+        path.write_text(json.dumps(original.export()), encoding="utf-8")
+        imported = load_regional_history(path, source_image_sha256=original.image_sha256)
+        current = RegionalConversations()
+        current.bind(encoded)
+        thread = current.restore_archive(imported[0])
+        if thread.finding_id or thread.turns or "unverified" not in thread.transcript():
+            raise RuntimeError("historical context was mistaken for a current finding")
+        current.append(
+            thread, question="Synthetic continuation", answer="Synthetic new answer",
+            review_turn_id="b" * 32,
+        )
+        path.write_text(json.dumps(current.export()), encoding="utf-8")
+        exported = json.loads(path.read_text(encoding="utf-8"))
+        if exported["schema_version"] != 3 or exported["threads"]:
+            raise RuntimeError("archived conversation was merged into live history")
+        archived = exported["archived_threads"][0]
+        if (
+            archived["history"]["turns"][0]["review_turn_id"] != "a" * 32
+            or archived["turns"][0]["review_turn_id"] != "b" * 32
+        ):
+            raise RuntimeError("past/current evidence ID separation failed")
+        reopened = load_regional_history(path, source_image_sha256=current.image_sha256)
+        if [turn.answer for turn in reopened[0].turns] != [
+            "Synthetic old answer", "Synthetic new answer",
+        ]:
+            raise RuntimeError("history export/import lost a conversation turn")
+        try:
+            load_regional_history(path, source_image_sha256="c" * 64)
+        except ValueError:
+            pass
+        else:
+            raise RuntimeError("history importer accepted a different source image")
+        current.clear()
+        current.bind(encoded)
+        if current.append(thread, question="Late", answer="Must not enter new image"):
+            raise RuntimeError("history invalidation accepted a stale reply")
+
     def harness_engine_smoke() -> None:
         from medical_image_harness.image_ops import crop_source_image
         from medical_image_harness.multipass import (
@@ -190,6 +245,7 @@ def run_package_runtime_smoke(work_dir: Path) -> dict[str, object]:
         check("jpeg_decode", jpeg_smoke)
         check("font_render", font_smoke)
         check("review_export", review_smoke)
+        check("regional_history", regional_history_smoke)
         check("harness_contract", harness_contract_smoke)
         check("harness_engine", harness_engine_smoke)
     finally:

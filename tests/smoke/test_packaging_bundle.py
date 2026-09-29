@@ -219,6 +219,7 @@ def test_package_runtime_smoke_handles_windowed_logging_and_image_surfaces(
             "jpeg_decode": True,
             "font_render": True,
             "review_export": True,
+            "regional_history": True,
             "harness_contract": True,
             "harness_engine": True,
         },
@@ -240,6 +241,22 @@ def test_package_runtime_smoke_rejects_missing_harness_resources(tmp_path, monke
     assert report["status"] == "failed"
     assert report["checks"]["harness_contract"] is False
     assert any("harness_contract" in item for item in report["failures"])
+
+
+def test_package_runtime_smoke_rejects_broken_history_loader(tmp_path, monkeypatch):
+    from dicom_overlay.infrastructure import regional_history_io
+    from dicom_overlay.infrastructure.package_runtime_smoke import (
+        run_package_runtime_smoke,
+    )
+
+    def unavailable(*_args, **_kwargs):
+        raise ValueError("synthetic unavailable history decoder")
+
+    monkeypatch.setattr(regional_history_io, "load_regional_history", unavailable)
+    report = run_package_runtime_smoke(tmp_path)
+    assert report["status"] == "failed"
+    assert report["checks"]["regional_history"] is False
+    assert any("regional_history" in item for item in report["failures"])
 
 
 def test_bootstrap_config_load_handles_windowed_process_streams(

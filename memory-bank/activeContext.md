@@ -1,5 +1,19 @@
 # Active Context
 
+## 2026-09-29 — history candidate packaging in progress
+
+- Source50a5c86 and documentation1cf40ec CI both fully green; code CI Windows
+  2704passed12skipped457.50s. Both secret scans passed. Prior turn was progress.
+- Preparing a separate frozen package, not modifying installed EXE or sealed
+  runtimes. New local no-dev25-package build environment Python3.13.12; official
+  pinned Node24.18.0 checksum verified; UPX5.2.1 retained. Seven-rule YAML/SQLite
+  parity8194933290c085ab81a1ab97d57154bb17d6d2e5835f2e28a327fe1cce312435.
+- Extended the actual EXE --package-runtime-smoke with v2/v3 history round-trip,
+  past/current turn-ID separation, source mismatch rejection and stale append
+  rejection. Synthetic/offline only; no Qt desktop, OAuth or paid inference.
+- Desktop-availability question remains unanswered. Native history continuation,
+  clinical cohort completion and public distribution/license gates remain open.
+
 ## 2026-09-29 — isolated regional-history import candidate
 
 - Worktree/branch regional-history-import-20260929 based on3b3c5a6; preserves
