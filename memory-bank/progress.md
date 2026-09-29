@@ -1,5 +1,13 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — three-case scientific checkpoint; remaining117 LIVE
+
+- Tranche terminated0; three actual publications with15 distinct bound sessions,
+  immutable artifact/source/contract checks and MAE0. Case0's original collector
+  failure stays explicit. No clinical scoring/gold access.
+- Same frozen driver resumed remaining117 in exec60442; case3 capture11:26:06UTC.
+  Preserve active source/config/collector and inspect handle before any restart.
+
 ## 2026-09-29 — linked continuation reaches case1
 
 - Case0 preserved/recovered without inference; case1 succeeds with scientific

@@ -1,5 +1,21 @@
 # Active Context
 
+## 2026-09-29 — ACTIVE remaining117 process60442
+
+- Tranche exec77794 exited0: cases1/2 verified,case0 supplemented retained failure.
+  Case2 actual export desktop-20260929-112420-009354,120400ms/135.151s,MAE0,
+  5 Astra-medium turns; saved summary viewed. First-three offline audit validates
+  plans/contracts/source/recursive files/log prefixes and15 non-reused sessions.
+  Audit d7dbcc4b2842d47e0a8744eeb3935f89e2653106c293e45f6bc4b56d9234d3c5.
+- LIVE exec60442 invokes SAME run-batch-v2.py --app-pid32116 --viewer-pid33040
+  --limit117; resumes from case3, no reruns0–2. Actual capture11:26:06UTC.
+  Same Ctemp/dicom-scientific-cohort-9a84847-20260929 App/Gateway/runtime/PIDs.
+  Do not edit src/plugins/public harness or frozen driver/collector/config while
+  batch is live. Scripts/docs/tests outside its bindings may be developed.
+-3 actual publications/120 at checkpoint;117 pending including activecase3,
+  no clinical scoring or full-cohort seal. New collector f850315 fixed; docs/tests
+  follow-up93ecb4a pushed. Need independent scientific batch auditor/scorer later.
+
 ## 2026-09-29 — case1 published; case2 currently running
 
 - Same live exec77794: case1 exported_verified,141.270s wall/125886ms analysis,

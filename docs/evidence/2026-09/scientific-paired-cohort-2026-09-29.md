@@ -1,8 +1,8 @@
 # Scientific desktop paired regression — 2026-09-29
 
-**Latest checkpoint: two actual cases published; case0's original collector failure
-is retained and bound by a supplement, case1 completes with the new collector.
-Case2 is running; remaining118 cases are not credited as completed.**
+**Latest checkpoint: three actual cases published and retained evidence checked;
+case0's original collector failure remains supplemented, not rewritten. The same
+continuation driver has resumed the remaining117 cases; they are not credited yet.**
 The preparation sections below describe the pre-inference state at their timestamp.
 This is a paired regression of the previously exposed
 [120-case medium cohort](medium-desktop-batch-2026-09-24.md), not120 new blind
@@ -141,3 +141,28 @@ This is an observed log boundary, not a general exactly-once network guarantee.
 The same continuation driver started case2 at11:22:17UTC. It is not completed at
 this checkpoint; inspect its existing live process before any further action.
 Neither published case is a clinical pass or a new blind sample.
+
+### Three-case tranche completed; remaining117 resumed
+
+Original continuation exec77794 terminated successfully, reporting two new
+verified cases and preserving case0. Case2 export `desktop-20260929-112420-009354`
+completed at11:24:25UTC: analysis120400ms, GUI/usage135.151s, source-to-visible
+MAE0.5234776, visible-to-export MAE0, five Astra-medium turns. Its two-finding
+warning summary was visually inspected; incomplete/review status remains.
+
+- Case2 canonical SHA256: `2e3f8aad0fc677da729324c1625ad7756beb40c0b1b59662ab48fe19d955516a`.
+- Case2 usage SHA256: `fdd3851c38d9dfec7b9d52cb2c02949eddce065f64dbc8754cc5dd777daba004`.
+- Separate `first-three-audit.json` SHA256:
+  `d7dbcc4b2842d47e0a8744eeb3935f89e2653106c293e45f6bc4b56d9234d3c5`.
+
+The offline checkpoint rechecks both frozen plans, all three scientific source/
+contract/turn identities, unchanged recursive export inventories, retained log
+prefixes, exact visible/export pixels and15 non-reused sessions. It preserves
+case0's original `technical_failure` plus its separately bound recovery; the
+other two remain `exported_verified`. This is not independent physical-event
+attestation, clinical scoring or a complete120-case seal. Gold remains unopened.
+
+The exact same driver/plan/App/Gateway resumed from case3 with limit117. New
+original process handle is exec60442; case3 actual capture began11:26:06UTC.
+Do not restart or alter inference source/config while it runs. Inspect this
+handle and each create-only receipt, retaining all failures and pending cases.
