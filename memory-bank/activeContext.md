@@ -1,5 +1,24 @@
 # Active Context
 
+## 2026-09-29 — isolated bounded Viewer publication recovery
+
+- Worktree viewer-publication-recovery-20260929 branches from242f5a9. Original
+  cohort source/runtime unchanged; no new paid inference or failed-case retry.
+- Prepared scientific drafts wait within original180s SLA for identical native
+  target; original ROI/geometry/protected capture/exact pixels remain required.
+  Explicit waiting/restore/timeout UX; pause/stop/cancel/source changes discard.
+-26 new unit checks,187 existing focused checks,5 actual Windows input/recovery
+  checks passed; groups overlap. Full first run2450pass27fail103error13skip:
+  new worktree lacked OpenClaw Node dependency. CI lockfile install completed;
+  full rerun on pinned Node24.18.0:2585passed12skipped531.66s. Separate integration
+  61passed0.45s; regional UI/QA/export129passed1.22s. Native five cover their
+  opt-in skips, not remaining private/frozen/interactive cases. Ruff/leakscan pass.
+- User Mark scope rechecked: whole authorized ROI, not AI-only/full desktop.
+  Existing36dc3c6 real EXE manual2/existing1/history evidence visually re-read;
+  old main/installed EXE not replaced. Restart-restorable history still open.
+- No new full-App subscription recovery canary or rebuilt EXE. See
+  docs/evidence/2026-09/viewer-publication-recovery-2026-09-29.md.
+
 ## 2026-09-29 — exec28335 TERMINAL; confirmed native minimization case11
 
 - Exec28335 EXIT1 at12:03:00. Case11 failed138.726s; native Viewer33040 observed

@@ -25,6 +25,14 @@ class ScreenMonitorService(ABC):
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         """Find the DICOM viewer window by title keywords."""
 
+    def capture_target_identity(self) -> tuple[int, int, str] | None:
+        """Opaque local window/process/class identity; never a title or pixels.
+
+        Older adapters return None and cannot resume a delayed publication after
+        target loss. Identity alone never authorizes capture or publication.
+        """
+        return None
+
     def select_capture_window(self, window: CaptureWindow) -> WindowRect:
         """Explicitly bind one live window, or fail without broadening discovery."""
         raise NotImplementedError("Explicit window selection is unavailable")

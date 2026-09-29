@@ -374,6 +374,7 @@ class OverlayAgent:
         self.on_review_geometry_change: Any = None
         self.on_pending_analysis: Any = None
         self.on_error: Any = None
+        self.on_publication_status: Any = None
         self.on_roi_setup_required: Any = None
         # Fired synchronously before every ROI capture so the presentation
         # layer can hide app-owned panels first; otherwise capture exclusion
@@ -1172,6 +1173,7 @@ class OverlayAgent:
         self._sync_capture_display(self._target_window)
         capture_window = self._target_window
         capture_display = self._display_frame
+        capture_identity = self._monitor.capture_target_identity()
         roi = self._config.phi_roi
         try:
             capture_rect = self._get_roi_rect()
@@ -1301,19 +1303,20 @@ class OverlayAgent:
                 )
             # The viewer may have moved/reflowed during a long model request.
             # Validate current geometry before the first result is presented.
-            current_window = self._monitor.find_target_window(
-                self._config.monitor.window_title_keywords
+            current_window = await self._publication_window(
+                expected_identity=capture_identity if reader is not None else None,
+                deadline=deadline,
             )
             if current_window is None:
-                with self._review_lock:
-                    self._review_snapshot = None
-                self._set_target_window(None)
-                self._transition(AgentState.WAITING)
                 return
             self._set_target_window(current_window)
             if not self._update_review_projection(capture_window, notify=False):
                 return
-            if not await self._verify_image_before_publication(source_screenshot):
+            if not await self._verify_image_before_publication(
+                source_screenshot,
+                expected_identity=capture_identity if reader is not None else None,
+                deadline=deadline,
+            ):
                 return
             if reader is not None and prepared is not None:
                 snapshot = self.review_snapshot
@@ -1348,7 +1351,11 @@ class OverlayAgent:
                     return
                 # The callback has retired its preview; verify the unoccluded ROI
                 # again before publishing final content or enabling Export/QA.
-                if not await self._verify_image_before_publication(source_screenshot):
+                if not await self._verify_image_before_publication(
+                    source_screenshot,
+                    expected_identity=capture_identity,
+                    deadline=deadline,
+                ):
                     return
                 with self._review_lock:
                     current = self._review_snapshot
@@ -1431,7 +1438,71 @@ class OverlayAgent:
                     "請確認影像與 ROI 後重新 Analyze。"
                 )
 
-    async def _verify_image_before_publication(self, original: bytes) -> bool:
+    async def _publication_window(
+        self, *, expected_identity: tuple[int, int, str] | None, deadline: float
+    ) -> WindowRect | None:
+        """Retain the prepared draft within the existing SLA, without inference.
+
+        Never restore/move a window, select another target, or capture hidden
+        pixels. Successful return still requires geometry and pre/post-capture
+        guards plus exact original-pixel comparison before any publication.
+        """
+        waiting = False
+        while True:
+            if not self._running or self._state is not AgentState.ANALYZING:
+                self._withhold_review("state_changed_before_publication")
+                return None
+            if waiting and time.monotonic() >= deadline:
+                self._withhold_review(
+                    "viewer_restore_timeout",
+                    message="原影像視窗未在判讀時限內恢復，結果未發布；請還原視窗並確認影像。",
+                )
+                return None
+            window = self._monitor.find_target_window(
+                self._config.monitor.window_title_keywords
+            )
+            if window is not None:
+                if (
+                    expected_identity is not None
+                    and self._monitor.capture_target_identity() != expected_identity
+                ):
+                    self._withhold_review("viewer_identity_changed_before_publication")
+                    return None
+                if waiting:
+                    logger.info("publication_viewer_restored")
+                    if self.on_publication_status:
+                        self.on_publication_status(
+                            "原影像視窗已恢復，正在核對影像；不重送判讀。"
+                        )
+                return window
+            if expected_identity is None:
+                self._withhold_review("viewer_lost_before_publication")
+                self._set_target_window(None)
+                self._transition(AgentState.WAITING)
+                return None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._withhold_review(
+                    "viewer_restore_timeout",
+                    message="原影像視窗未在判讀時限內恢復，結果未發布；請還原視窗並確認影像。",
+                )
+                return None
+            if not waiting:
+                waiting = True
+                logger.info("publication_waiting_for_viewer")
+                if self.on_publication_status:
+                    self.on_publication_status(
+                        "判讀已備妥，請還原原影像視窗；等待核對，不重送判讀。"
+                    )
+            await asyncio.sleep(min(0.25, remaining))
+
+    async def _verify_image_before_publication(
+        self,
+        original: bytes,
+        *,
+        expected_identity: tuple[int, int, str] | None = None,
+        deadline: float | None = None,
+    ) -> bool:
         """Local, bounded ROI recheck; never transmit or publish new pixels."""
         if self.on_before_capture is not None:
             self.on_before_capture()
@@ -1440,13 +1511,11 @@ class OverlayAgent:
             self._withhold_review("state_changed_before_publication")
             return False
         previous_window = self._target_window
-        current_window = self._monitor.find_target_window(
-            self._config.monitor.window_title_keywords
+        current_window = await self._publication_window(
+            expected_identity=expected_identity,
+            deadline=time.monotonic() if deadline is None else deadline,
         )
         if current_window is None:
-            self._withhold_review("viewer_lost_before_publication")
-            self._set_target_window(None)
-            self._transition(AgentState.WAITING)
             return False
         self._set_target_window(current_window)
         if not self._update_review_projection(previous_window, notify=False):

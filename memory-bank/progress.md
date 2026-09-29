@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — same-Viewer recovery and Mark scope checkpoint
+
+Isolated source now retains prepared drafts only within original SLA, with
+native target identity and final protected exact-pixel checks. No new model
+calls or automatic window restoration.26new unit/187focused/5native Windows
+checks pass (overlap); after missing OpenClaw dependency fix, full rerun passes
+2585tests/12skips531.66s onNode24.18.0; separate integration61pass0.45s and regional
+UI/QA/export129pass1.22s. Other opt-in/private/frozen checks remain skipped.
+Existing real36dc3c6 EXE regional QA evidence re-inspected; old EXE unchanged.
+No new clinical/publication case; cohort remains10published/2failed/108pending.
+
 ## 2026-09-29 — v3 stopped; confirmed Viewer minimization
 
 Exec28335 EXIT1 atcase11 after138.726s; native observer captured IsIconic=True

@@ -142,6 +142,24 @@ class ScreenMonitor(ScreenMonitorService):
         self._selected_window_invalidated = False
         logger.info("Hash algorithm: %s", algo)
 
+    def capture_target_identity(self) -> tuple[int, int, str] | None:
+        if not HAS_WIN32 or win32gui is None or win32process is None:
+            return None
+        hwnd = self._target_hwnd
+        if hwnd is None or self._target_pid is None:
+            return None
+        try:
+            if not win32gui.IsWindow(hwnd):
+                return None
+            pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+            window_class = win32gui.GetClassName(hwnd)
+            if pid != self._target_pid or not window_class:
+                return None
+            return hwnd, pid, window_class
+        except Exception:
+            # Native exceptions and titles may contain unrelated private data.
+            return None
+
     def find_target_window(self, keywords: list[str]) -> WindowRect | None:
         if self._selected_window is not None:
             # Never fall back to another matching window after explicit selection.

@@ -177,6 +177,7 @@ class _SignalBridge(QObject):
     review_geometry_changed = pyqtSignal(object)
     pending_analysis = pyqtSignal(str)
     error_msg = pyqtSignal(str)
+    publication_status = pyqtSignal(str)
     prepare_capture = pyqtSignal()
     chat_done = pyqtSignal(str, str, int, int)
     review_chat_done = pyqtSignal(str, object, int, object, object, int, str)
@@ -827,6 +828,7 @@ def main() -> None:
         "New image ready. Click Analyze."
     )
     agent.on_error = signals.error_msg.emit
+    agent.on_publication_status = signals.publication_status.emit
     agent.on_roi_setup_required = signals.roi_setup_requested.emit
     agent.on_before_capture = signals.prepare_capture.emit
 
@@ -1065,11 +1067,17 @@ def main() -> None:
         control_bar.set_pending_analysis(True)
         control_bar.set_status(msg)
 
+    def on_publication_status(msg: str) -> None:
+        # A queued status must not overwrite Pause, cancellation or a new result.
+        if agent.state is AgentState.ANALYZING:
+            control_bar.set_status(msg)
+
     signals.state_changed.connect(on_state_change)
     signals.analysis_result.connect(on_analysis_result)
     signals.review_geometry_changed.connect(on_review_geometry_changed)
     signals.pending_analysis.connect(on_pending_analysis)
     signals.error_msg.connect(on_error)
+    signals.publication_status.connect(on_publication_status)
     signals.prepare_capture.connect(overlay.hide_for_recapture)
 
     def _display_configuration_changed(*_args) -> None:
