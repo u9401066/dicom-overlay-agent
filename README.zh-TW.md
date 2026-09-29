@@ -17,6 +17,11 @@
 AI 框獨立問答、歷史重開、可讀匯出及換圖失效。每次區域問題會綁定框內裁切圖
 與同一份原始授權 ROI，不截整個桌面。重啟後還原歷史尚未完成，舊 EXE 未自動替換。
 
+較新的[區域歷史候選功能](https://github.com/u9401066/dicom-overlay-agent/blob/3e94a77d2f23cb25e91aa337d4eab6099e540370/docs/architecture/regional-history-import.md)
+已實作 Settings 載入、同圖預覽及僅供問答的續問；需原始 PNG 完全相符，且目前已有
+發布的判讀。開啟歷史不呼叫模型，新增對話仍須手動 Export。重啟匯入的實機驗收
+仍未完成，main 執行期沒有更新。詳見[歷史操作指南](https://u9401066.github.io/dicom-overlay-agent/docs.html#regional-history)。
+
 已封存的 medium 基準確實跑完 **120 例 GUI 流程**，但**臨床驗收失敗**：
 完整參考嚴格符合 0/46、所有緊急參考疑慮辨識 5/24、舊版 schema 115/120。
 74 例部分不確定參考分開處理；沒有確診 cannot-miss 案例或正常對照。

@@ -1,5 +1,16 @@
 # Active Context
 
+## 2026-09-29 — website-only explicit history workflow
+
+Separate branch from public mainf3b4d8d; no candidate App code merged. Added
+home/TOC navigation and five-step same-image history import guide, exact encoded
+PNG identity, current-review requirement, local-only open, explicit Send/Export,
+Q&A-only old context and native-acceptance-pending label. Two links pin3e94a77;
+remote content existence checked.20 static checks pass; existing Playwright1.62.1
+with headless Edge1440/820/390 checks identity/content/errors/overflow/navigation
+and screenshots. Browser plugin not available. Artifacts outside repository:
+Ctemp/dicom-pages-history-20260929/local. Deployment pending at this checkpoint.
+
 ## 2026-09-29 Website-only current evidence refresh
 
 - Based on public main37d6ed3, not the older site in the App development branch.
