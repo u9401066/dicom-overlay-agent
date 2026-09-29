@@ -43,7 +43,6 @@ try:
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
-    logger.warning("pywin32 not available — window detection disabled")
 
 
 _HashFunc = Callable[[Image.Image], str]
@@ -123,6 +122,10 @@ class ScreenMonitor(ScreenMonitorService):
         *,
         excluded_process_ids: Iterable[int] = (),
     ) -> None:
+        # Imports also serve CLI diagnostics on non-Windows hosts. Do not emit
+        # through structlog before the application configures its output sinks.
+        if not HAS_WIN32:
+            logger.warning("pywin32 not available — window detection disabled")
         algo = hash_algorithm.lower()
         if algo not in _HASH_FUNCS:
             logger.warning(

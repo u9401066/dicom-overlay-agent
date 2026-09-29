@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-29 —60911e7 frozen pass; Linux import-side-effect fix
+
+- Prior turn was progress; full verifier exec86907 now EXIT0/statusok/no failures,
+  clean60911e7 source.21 frozen checks passed136.30s;89 code modules match exact
+  Git; actual Chinese rule CLI70lines6604B passes three requested legacy encodings.
+- EXE5061764B/App57223011B/folder353518671B,18771 files. EXE SHA256
+  ea48de76de831af4d90b82abe8c2fdd82a911a333c47f71c292008743d7366ea;
+  payload7b7e2b6395f0434345c15c0a0c43ec53c1a2d2dcbac13af066e4e35c112268ea;
+  sourcee1e7751c7e69f2eec105d9ee4b6d11ddf2d01c112e93b5e5a9a87a02f918d93f.
+- CI36584151373 Linux job109460132959:3failed2707passed20skipped149.89s. Logs
+  recovered through GitHub connector after local download failures. Failure is
+  screen_monitor import-time warning before UTF-8 setup when pywin32 is absent.
+  Original CI is now terminal failed; Windows and all compatibility jobs passed.
+- Reproduced exact Linux failures locally by blocking Win32 import in isolated
+  subprocesses. Deferred warning to ScreenMonitor construction (retained, not
+  silenced). Added3 missing-Win32 tests and1 warning-retention test.143passed/
+  3skipped16.83s. Added missing win32process mypy override matching other pywin32
+  modules, no runtime dependency change. Follow-up not in60911e7 EXE; CI pending.
+  Ruff/explicit-current-config nonincremental mypy pass;31 docs/CLI tests pass
+  (overlap with143; do not sum). Use explicit --config-file when sharing dev env.
+- No desktop/model request, installed replacement, sealed runtime restart or new
+  clinical case. Earlier10pub/2fail/108pending and native history gates unchanged.
+  See docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md.
+
 ## 2026-09-29 — diagnostic UTF-8 source fix; fixed rebuild still needed
 
 - Previous packaging turn was progress:61cb1e2 pushed, secret36583254974 passed;

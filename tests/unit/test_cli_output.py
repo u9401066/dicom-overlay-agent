@@ -4,6 +4,7 @@ import io
 import os
 import subprocess
 import sys
+from unittest.mock import Mock
 
 import pytest
 
@@ -39,13 +40,15 @@ def test_cli_windowed_without_stdout(monkeypatch):
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "cp950", "ascii"])
-def test_real_python_cli_overrides_legacy_pipe_encoding(encoding):
+@pytest.mark.parametrize("missing_win32", [False, True], ids=["native", "no-win32"])
+def test_real_python_cli_overrides_legacy_pipe_encoding(encoding, missing_win32):
     env = dict(os.environ, PYTHONIOENCODING=f"{encoding}:strict")
+    prelude = "import sys; sys.modules['win32api'] = None; " if missing_win32 else ""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "from dicom_overlay.__main__ import _print_cli; "
+            prelude + "from dicom_overlay.__main__ import _print_cli; "
             "_print_cli('DICOM Overlay Agent \\u2014 self-check'); "
             "_print_cli('\\u81e8\\u5e8a\\u898f\\u5247')",
         ],
@@ -59,3 +62,18 @@ def test_real_python_cli_overrides_legacy_pipe_encoding(encoding):
         "臨床規則",
     ]
     assert result.stderr == b""
+
+
+def test_missing_win32_warning_is_retained_when_monitor_is_constructed(monkeypatch):
+    from dicom_overlay.infrastructure import screen_monitor
+
+    logger = Mock()
+    monkeypatch.setattr(screen_monitor, "HAS_WIN32", False)
+    monkeypatch.setattr(screen_monitor, "logger", logger)
+
+    monitor = screen_monitor.ScreenMonitor()
+
+    logger.warning.assert_called_once_with(
+        "pywin32 not available — window detection disabled"
+    )
+    assert monitor.find_target_window(["synthetic viewer"]) is None

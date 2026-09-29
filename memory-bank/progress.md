@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — actual fixed UTF-8 EXE verified; Linux CI cause repaired
+
+New60911e7 Windows bundle passes21 frozen checks and complete verifier; exact89
+code modules/Chinese CLI output verified.337.14MiB folder; separate retained
+receipts. Linux CI failed3 new subprocess tests due to a pre-existing import-time
+pywin32 warning reaching stdout before encoding setup. Reproduced on Windows,
+deferred warning to real monitor construction, kept warning and strengthened
+coverage:143passed3skipped. Follow-up source still needs CI/final-candidate inclusion.
+No new native history/subscription or clinical acceptance. See
+docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md.
+
 ## 2026-09-29 — encoding smoke gap reproduced and fixed in source
 
 CLI diagnostics now write strict UTF-8, and the package verifier rejects malformed

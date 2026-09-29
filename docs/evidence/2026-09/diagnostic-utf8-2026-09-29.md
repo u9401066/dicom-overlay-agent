@@ -45,10 +45,59 @@ Final focused run:72 passed,3 opt-in frozen tests skipped,13.03s. Ruff and mypy
 for the affected source/verifier pass. These source tests and the negative test
 on the old EXE do not establish a successful fixed frozen build.
 
+## Actual Windows60911e7 candidate acceptance
+
+The separate source-bound60911e75da4be2fb6aa526180302285b8c8c19bc build completed
+in106.694s with90 approved native files. All78 App/11 public-harness code objects
+match exact Git sources. This is not a controlled build-speed comparison.
+
+All21 strengthened frozen packaging tests passed in136.30s, including strict
+UTF-8 selfcheck and isolated Gateway synthetic image transport. The complete
+package verifier finished successfully with no failures. Source provenance was
+captured clean before the subsequent Linux fix below.
+
+- EXE:5,061,764 bytes; App layer:57,223,011 bytes; full18,771-file folder:
+  353,518,671 bytes (337.14MiB). OpenClaw/Node unchanged;127 bytes more than69683fa.
+- EXE SHA256: `ea48de76de831af4d90b82abe8c2fdd82a911a333c47f71c292008743d7366ea`.
+- Payload tree: `7b7e2b6395f0434345c15c0a0c43ec53c1a2d2dcbac13af066e4e35c112268ea`.
+- Source tree: `e1e7751c7e69f2eec105d9ee4b6d11ddf2d01c112e93b5e5a9a87a02f918d93f`.
+- Actual EXE `--explain-rules` under three requested legacy pipe encodings
+  returned the same70-line/6,604-byte strict UTF-8 output with exact Chinese
+  heading. Output SHA256:
+  `e151c4878faee20df8cc4755c4100c8c30f250f20ccd2f664ac04661dcb6fce3`.
+- Artifacts: `dist-utf8-60911e7-upx/DICOMOverlayAgent` and private
+  `data/tmp/package-utf8-60911e7-{build.log,code-receipt.json,chinese-audit.json,tests.xml,verifier.json}`.
+
+OpenConsole API-set warnings, two incompressible binaries and intentional CFG
+UPX skips remain recorded. The earlier ZIP/7z sizes belong to69683fa, not this
+new binary. No installed EXE replacement, new public binary or paid inference.
+
+## Linux CI follow-up
+
+CI36584151373 Linux job109460132959 failed with3 failed/2707 passed/20 skipped
+in149.89s. All failures were the new real-subprocess encoding tests. The job log
+was obtained through the existing GitHub connector after local signed-download
+connections failed; the failed run is retained, not replaced by a blind retry.
+That run is terminal failed; Windows and all four compatibility jobs passed.
+
+Without pywin32, `screen_monitor` logged a non-ASCII warning at import, before
+the diagnostic printer could configure UTF-8. Forced missing-Win32 imports in
+Windows subprocesses reproduced the same byte offsets and ASCII exception.
+The warning is now deferred until actual `ScreenMonitor` construction, after
+the App's normal logging setup. It is not silenced or replaced by a test skip.
+
+Three added missing-Win32 subprocess cases plus a constructor-warning check
+first failed, then passed. Expanded focused run:143 passed/3 frozen opt-ins
+skipped in16.83s. The targeted type check also exposed a missing `win32process`
+untyped-library override; it now matches the other optional pywin32 modules,
+without changing runtime dependencies. This follow-up needs its own green CI
+and is not included in the60911e7 frozen payload.
+Ruff and nonincremental mypy with the explicit current-worktree configuration
+pass;31 documentation/CLI checks also pass (overlapping the143-test run).
+
 ## Remaining acceptance
 
-Build a new source-bound candidate without modifying the old pristine bundle,
-then run the strengthened frozen tests and complete package verifier on it.
-Keep its source/EXE/payload receipts separate. Native history continuation,
+The follow-up source must pass fresh CI and be included in the final candidate.
+Native history continuation,
 subscription image/usage acceptance, clinical cohort completion and public
 distribution/license gates remain open.
