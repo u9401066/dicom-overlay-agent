@@ -74,6 +74,14 @@ async def test_identical_geometry_does_not_prove_current_image_identity(changed)
 
 @pytest.mark.parametrize("failure", ["precheck", "capture", "postcheck", "decode"])
 async def test_unverifiable_final_roi_never_publishes(monkeypatch, failure):
+    from dicom_overlay.application import overlay_agent
+
+    logged = []
+    monkeypatch.setattr(
+        overlay_agent.logger,
+        "warning",
+        lambda event, **data: logged.append((event, data)),
+    )
     agent, monitor, analyzer, processor = _agent()
     published = []
     agent.on_analysis_result = published.append
@@ -103,6 +111,55 @@ async def test_unverifiable_final_roi_never_publishes(monkeypatch, failure):
     await task
     assert not published and agent.displayed_review_snapshot is None
     assert agent.last_withheld_review.reason == "viewer_unverifiable_before_publication"
+    assert analyzer.analyze_calls == 1
+    assert (
+        "publication_recheck_failed",
+        {
+            "check": "pixel_comparison" if failure == "decode" else failure,
+            "code": "capture_blocked"
+            if failure in {"precheck", "postcheck"}
+            else "unexpected_failure",
+        },
+    ) in logged
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected"),
+    [
+        (CaptureBlockedError("viewer_roi_obstructed"), "viewer_roi_obstructed"),
+        (CaptureBlockedError("private patient/window text"), "capture_blocked"),
+        (RuntimeError("private patient/window text"), "unexpected_failure"),
+    ],
+)
+async def test_publication_log_uses_fixed_categories_only(
+    monkeypatch, exception, expected
+):
+    from dicom_overlay.application import overlay_agent
+
+    agent, monitor, analyzer, _ = _agent()
+    logged = []
+    monkeypatch.setattr(
+        overlay_agent.logger,
+        "warning",
+        lambda event, **data: logged.append((event, data)),
+    )
+    await agent.start()
+    await agent.tick()
+    task = asyncio.create_task(agent.trigger_manual())
+    await analyzer.entered.wait()
+
+    def reject(_rect):
+        raise exception
+
+    monkeypatch.setattr(monitor, "verify_capture_target", reject)
+    analyzer.release.set()
+    await task
+    assert (
+        "publication_recheck_failed",
+        {"check": "precheck", "code": expected},
+    ) in logged
+    assert "private patient/window text" not in repr(logged)
+    assert agent.displayed_review_snapshot is None
     assert analyzer.analyze_calls == 1
 
 

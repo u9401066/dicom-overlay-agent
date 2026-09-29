@@ -59,6 +59,19 @@ def export_desktop_review(
 ) -> Path:
     """Write one self-contained, coordinate-auditable desktop review folder."""
     raw = base64.b64decode(image_base64, validate=True)
+    scientific_payload = None
+    if result.workflow_events:
+        try:
+            scientific_payload = result.to_contract_payload()
+            provenance = scientific_payload["input_provenance"]
+            if (
+                not isinstance(provenance, dict)
+                or provenance.get("source_image_sha256")
+                != hashlib.sha256(raw).hexdigest()
+            ):
+                raise ValueError("source_mismatch")
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise ValueError("scientific_export_contract_invalid") from None
     if (
         regional_conversations is not None
         and regional_conversations.get("source_image_sha256")
@@ -176,7 +189,7 @@ def export_desktop_review(
         "schema_version": 1,
         "case": case,
         "coordinate_space": "normalized_original_roi",
-        "source_image_sha256": payload["source_image"]["sha256"],
+        "source_image_sha256": hashlib.sha256(raw).hexdigest(),
         "source_size_px": [width, height],
         "review_image": review_path.name,
         "records": [
@@ -192,6 +205,23 @@ def export_desktop_review(
     payload["coordinate_audit"] = audit_path.name
     payload["crop_directory"] = crops_dir.name
     result_path = folder / "result.json"
+    if scientific_payload is not None:
+        contract_path = folder / "scientific-result.json"
+        contract_path.write_text(
+            json.dumps(
+                scientific_payload, ensure_ascii=False, indent=2, allow_nan=False
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        payload["scientific_contract"] = contract_path.name
+        payload["scientific_contract_scope"] = (
+            "analysis_ledger_only; manual annotations are separate review context"
+        )
+    elif result.input_provenance is not None:
+        payload["scientific_contract_status"] = (
+            "requires_reconciliation; not a canonical result"
+        )
     if regional_conversations is not None:
         conversation_path = folder / "regional-conversations.json"
         conversation_path.write_text(

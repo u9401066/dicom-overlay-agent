@@ -506,9 +506,15 @@ def test_report_keeps_crop_scope_next_to_the_limited_observation(
     assert label.textFormat() is Qt.TextFormat.PlainText
     assert "Note: Original ROI includes labeled V1." in label.text()
     assert (
-        "Note: [Crop-only evidence; ROI x=0.2500 y=0.5000 w=0.5000 h=0.2500] "
-        "V1 is absent; V2 and V6 are truncated."
+        "Note: [Crop-only evidence] V1 is absent; V2 and V6 are truncated."
     ) in label.text()
+    technical = "\n".join(
+        item.text() for item in panel.findChildren(QLabel, "finding-technical-notes")
+    )
+    assert (
+        "[Crop-only evidence; ROI x=0.2500 y=0.5000 w=0.5000 h=0.2500] "
+        "V1 is absent; V2 and V6 are truncated."
+    ) in technical
     assert "Note: V1 is absent" not in label.text()
     assert label.height() >= label.heightForWidth(label.width())
     panel.close()

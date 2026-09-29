@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import ntpath
 import os
 import shutil
 import subprocess
@@ -60,6 +61,26 @@ _GATEWAY_OWNERSHIP_SCHEMA_VERSION = 2
 _GATEWAY_STARTUP_REUSE_WAIT_SEC = 3.0
 _GATEWAY_STARTUP_REUSE_POLL_SEC = 0.1
 DEFAULT_GATEWAY_READY_TIMEOUT_SEC = 180.0
+
+
+def _managed_harness_load_paths(paths: list[object], current: Path) -> list[object]:
+    """Rebind only absolute paths in the App-owned portable plugin layout.
+
+    A moved installation can leave a still-existing old path first in OpenClaw's
+    public load list. Do not identify ownership by plugin basename alone, inspect
+    external plugin files, or delete anything from the old installation.
+    """
+    suffix = str(_DST_PLUGINS / _HARNESS_PLUGIN).replace("/", "\\").casefold()
+    retained = []
+    for value in paths:
+        if isinstance(value, str) and (ntpath.isabs(value) or value.startswith("/")):
+            normalized = ntpath.normpath(value).casefold()
+            if normalized.endswith("\\" + suffix) or normalized.endswith(
+                "\\" + suffix + "\\index.js"
+            ):
+                continue
+        retained.append(value)
+    return [*retained, str(current)]
 
 
 def ecg_founder_tool_enabled(environment: Mapping[str, str]) -> bool:
@@ -550,9 +571,7 @@ class GatewayManager:
         if not isinstance(paths, list):
             paths = []
             load["paths"] = paths
-        plugin_path_text = str(plugin_path)
-        if plugin_path_text not in paths:
-            paths.append(plugin_path_text)
+        load["paths"] = _managed_harness_load_paths(paths, plugin_path)
         entries = plugins.setdefault("entries", {})
         if not isinstance(entries, dict):
             entries = {}

@@ -1,7 +1,73 @@
 # Medium desktop batch: complete-image calibration and execution — 2026-09-24
 
 Continuation of the [fresh 120-case selection](prospective-medium-cohort-2026-09-24.md).
-Batch execution is in progress, not sealed or scored. No clinical pass is claimed.
+**Current status, September 25 Taipei:** all 120 actual GUI cases completed,
+independently verified, sealed and scored. **Clinical acceptance failed.** The
+historical checkpoints below remain unchanged; they describe progress at their
+stated times, not the final outcome.
+
+## Completed batch and post-seal score
+
+The original continuation driver terminated with exit code 0 and reported
+117 newly verified cases, preserving the initial three without rerunning them.
+The last receipt finished at `2026-09-24T18:30:30.531254+00:00`. The independent
+auditor verifies **120/120**, zero pending/invalid/technical failures and **482**
+distinct Astra-medium model stages. All exported sources match their pre-analysis
+visible ROI at RGB MAE 0; maximum file-to-visible resampling MAE is 0.585651/255.
+Execution correctness is not diagnosis correctness.
+
+The [separate seal/score procedure](../../evaluation/verified-desktop-batch.md)
+inventoried 2,519 files/log-prefix records, including recursive crops, and reran
+the complete audit before sealing. Only afterward was gold opened with its
+pre-inference digest. Scoring made **zero model calls**, replayed no guardrail
+pipeline, and changed no original output. Existing draft schema validation is
+part of scoring; it is not canonical medical-ledger validation.
+
+| Automated endpoint | Result | Descriptive 95% Wilson interval |
+| --- | --- | --- |
+| Strict complete-reference case pass | 0/46 (0%) | 0–7.71% |
+| Exact severity | 13/120 (10.83%) | 6.44–17.66% |
+| All urgent concerns caught | 5/24 (20.83%) | 9.24–40.47% |
+| Asserted acute `cant_miss` cases | 0 eligible; unmeasured | Not applicable |
+| Legacy App-draft schema | 115/120 (95.83%) | Technical check, not clinical accuracy |
+
+All 46 complete-reference cases also fail complete diagnosis recall. The 74
+partially uncertain references are not promoted into complete-reference cases.
+Five schema failures cite findings referencing leads absent from the visible lead
+inventory; original results and diagnostics remain preserved for investigation.
+Actual severity distribution is 21 critical, four warning and 95 info; the latter
+must not be read as 95 normal studies. These automated mismatches require source/
+report/concept-matcher adjudication, not post-hoc relaxation of scoring rules.
+
+Mean stored analysis time is **93.993 s**, mean actual per-case GUI workflow time
+**106.485 s** (77.098–141.858 s). Concurrent engineering workloads and a different
+cohort mean neither timing nor score is a controlled comparison with historical
+Astra-low results. No reference boxes, patient-independent split or representative
+device distribution is established. Normal controls, confirmed acute sensitivity
+and partial-input subgroup performance have zero eligible denominators here and
+are **unmeasured**, regardless of legacy aggregate default values.
+
+Private seal: `sealed-medium-batch-20260925.json`; private scorecard:
+`scorecard-medium-batch-20260925.json`, both under the private evidence root below.
+Raw gold/images/model output are not published.
+
+- Seal SHA-256: `57aeb9d03c9d79346e09bcd65bc09d51e716ec981a77be4857bdf95a1bd346de`.
+- Scorecard SHA-256: `6532f1ec79bd0fc95099a7014bc4ceb84e0d4bfeaea55df83b762055074f9046`.
+- Pre-inference gold SHA-256: `cae03104d538fa7c38e5021e9a2620dc5e19636963b65fb8b6dd23c200503243`.
+- Scorer provenance digest: `c6ab4272865066db7f40de2bc345c167c3fc49cbcb52e0ec596d834872ea22e2`.
+
+The existing scorer implementation has no Git changes from the frozen source
+branch. Its rebuild-script byte digest differs across worktrees solely because
+of line endings; normalized text equality was checked, and the actual executed
+byte digests remain in the scorecard. The plan digest was first independently
+captured mid-run, not independently timestamped before execution. A local seal
+is not a signature or independent GUI-event attestation.
+
+New seal/score protection tests: 24 synthetic casesets passed in 138.79 s. Full
+unit/integration/smoke regression: **2,160 passed, seven explicit skips in 353.94 s**.
+No new App runtime, prompt, dependency or packaged executable was introduced by
+this checkpoint. Localization/reconciliation integration, diverse real-input
+coverage, clinical improvement and current-binary GUI/DPI acceptance remain open.
 
 ## Actual complete-image ROI calibration
 

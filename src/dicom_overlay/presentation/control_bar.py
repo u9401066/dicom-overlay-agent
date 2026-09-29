@@ -18,7 +18,8 @@ _BTN_STYLE = (
     "font-size: 12px; }"
     "QPushButton:hover { background: rgba(80,80,110,240); }"
     "QPushButton:pressed { background: rgba(40,40,60,250); }"
-    "QPushButton[pending=\"true\"] { background: rgba(0,115,170,245); "
+    "QPushButton:disabled { color: #888; background: rgba(40,40,50,230); }"
+    'QPushButton[pending="true"] { background: rgba(0,115,170,245); '
     "border: 1px solid #54c7ff; }"
 )
 
@@ -61,6 +62,8 @@ class ControlBarWindow(QWidget):
 
         self._trigger_mode = TriggerMode.HYBRID
         self._is_paused = False
+        self._agent_state = AgentState.INIT
+        self._gateway_status = "starting"
         self._drag_pos: QPoint | None = None
 
         layout = QHBoxLayout(self)
@@ -185,13 +188,35 @@ class ControlBarWindow(QWidget):
         }
         if status not in states:
             raise ValueError(f"Unsupported Gateway status: {status}")
+        self._gateway_status = status
         text, color = states[status]
         self._gateway_status_label.setText(text)
         self._gateway_status_label.setStyleSheet(
             f"color: {color}; padding: 0 6px; font-weight: 600;"
         )
+        self._refresh_analysis_availability()
+
+    @property
+    def analysis_unavailable_reason(self) -> str:
+        if self._gateway_status == "starting" or self._agent_state is AgentState.INIT:
+            return "AI 啟動中，請等待就緒後再 Analyze"
+        return {
+            AgentState.WAITING: "等待影像視窗；請開啟或選擇 Viewer",
+            AgentState.SETUP: "請先設定已授權的影像 ROI",
+            AgentState.CAPTURING: "正在擷取影像，請勿重複 Analyze",
+            AgentState.ANALYZING: "正在判讀，請等待這次結果",
+            AgentState.RECONNECTING: "AI 重新連線中；可在 Settings 檢查連線",
+        }.get(self._agent_state, "")
+
+    def _refresh_analysis_availability(self) -> None:
+        reason = self.analysis_unavailable_reason
+        self._analyze_btn.setEnabled(not reason)
+        self._analyze_btn.setToolTip(
+            reason or "Analyze the current authorized image ROI"
+        )
 
     def update_state(self, state: AgentState) -> None:
+        self._agent_state = state
         status_map = {
             AgentState.INIT: "Starting",
             AgentState.SETUP: "ROI setup needed",
@@ -205,6 +230,7 @@ class ControlBarWindow(QWidget):
             AgentState.RECONNECTING: "Reconnecting",
         }
         self.set_status(status_map.get(state, state.name))
+        self._refresh_analysis_availability()
 
     def position_bottom_right(
         self,
@@ -219,6 +245,8 @@ class ControlBarWindow(QWidget):
         self.move(x, y)
 
     def _emit_analyze(self) -> None:
+        if self.analysis_unavailable_reason:
+            return
         self.analyze_clicked.emit()
         self.retrigger_clicked.emit()
 
@@ -250,7 +278,9 @@ class ControlBarWindow(QWidget):
         if a0 is None:
             return
         if a0.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = a0.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._drag_pos = (
+                a0.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
             a0.accept()
 
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:

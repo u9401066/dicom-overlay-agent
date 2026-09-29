@@ -12,6 +12,9 @@ import pytest
 from dicom_overlay.infrastructure.eval_artifact_validator import (
     _valid_ecg_founder_evidence,
 )
+from dicom_overlay.infrastructure.waveform_receipts import (
+    valid_waveform_support_receipt,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PLUGIN_ROOT = (
@@ -319,7 +322,46 @@ console.log(JSON.stringify({{ done: true }}));
         evidence,
         expected_preprocessing_revision="test",
     )
+    assert valid_waveform_support_receipt(
+        records[0], artifact_id="artifact-1", evidence_nonce="a" * 32
+    )
+    assert not valid_waveform_support_receipt(
+        records[0], artifact_id="unmatched-artifact", evidence_nonce="a" * 32
+    )
+    assert not valid_waveform_support_receipt(
+        records[1], artifact_id="artifact-1", evidence_nonce="a" * 32
+    )
     assert records[1]["failure_reason"] == "transport_down"
+
+
+@pytest.mark.parametrize("score", [1e-5, 1e-6, 1e-7, 1e-8, 0.0, 1.0])
+def test_native_number_receipt_is_usable_without_python_js_reserialization_drift(
+    tmp_path: Path, score: float
+) -> None:
+    module_uri = (_PLUGIN_ROOT / "index.js").as_uri()
+    audit_path = tmp_path / "numbers.jsonl"
+    payload = _valid_payload()
+    payload["predictions"][0]["probability"] = score
+    source = f"""
+const module = await import({json.dumps(module_uri)});
+const tool = module.createEcgFounderTool({{
+  endpoint: "http://127.0.0.1:18790/v1/analyze", token: "synthetic",
+  timeoutMs: 5000, auditPath: {json.dumps(str(audit_path))}
+}}, async () => new Response({json.dumps(json.dumps(payload))}, {{ status: 200 }}));
+await tool.execute("native-number", {{ artifact_id: "artifact-1",
+  lead_mode: "12_lead", evidence_nonce: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  max_predictions: 10 }});
+console.log(JSON.stringify({{done: true}}));
+"""
+    assert _run_node_module(source)["done"] is True
+    receipt = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert (
+        hashlib.sha256(receipt["response_canonical_json"].encode()).hexdigest()
+        == (receipt["response_sha256"])
+    )
+    assert valid_waveform_support_receipt(
+        receipt, artifact_id="artifact-1", evidence_nonce="a" * 32
+    )
 
 
 def test_ecg_founder_tool_suppresses_duplicate_nonce_without_second_fetch(

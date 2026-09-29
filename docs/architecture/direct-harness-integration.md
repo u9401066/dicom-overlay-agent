@@ -8,7 +8,11 @@ cohorts and separately verified binaries remain unchanged.
 ## One owner for image-reading models
 
 The public [medical-image-agent-harness](https://github.com/u9401066/medical-image-agent-harness)
-is pinned as a submodule at `3c7645ec2c41364e8ae521416ae758ddb81ea7c3`.
+is pinned as a submodule at `d9798dae0cf4ac3e25578da127801bce6d4391b3`.
+The desktop opts into two-turn EKG lead-group coverage for a complete, explicitly
+labeled inventory, preserving critical-first and independent-attention routes.
+The public default remains off; older frozen batches and the evaluation runner
+are not silently treated as having used this policy.
 Application, infrastructure, presentation, scripts and tests now import
 `AnalysisResult`, `ChecklistItem`, `Finding`, `Modality`, `RegionRect`, `Severity`
 and `UserRegionAnnotation` directly from `medical_image_harness.models`.
@@ -38,7 +42,22 @@ without a trusted study manifest, observation/evidence ledger and ordered workfl
 events still fails `to_contract_payload()`; current review exports must not be
 relabeled as validated canonical clinical contracts.
 
-The host assembler and model-led observation ledger remain implementation work.
+An isolated [host assembly boundary](host-evidence-assembly.md) now validates
+explicit host bytes, source/evidence bindings and the public contract without
+inventing missing observations. The [scientific draft protocol](scientific-model-draft.md)
+adds a matching prompt/schema and decoder that retains model-led observations while
+resolving geometry from host evidence IDs. It is not activated in desktop inference;
+the [host execution journal](execution-journal.md) now records actual callbacks,
+and the opt-in image request API returns original visible output under the send
+lock. Remaining clinical stage operations and desktop wiring remain work. The
+[executable stage adapter](scientific-image-session.md) now runs intake, QC, blind
+reading, native localization, reconciliation and source-image second look, with
+preflight and explicit review-availability callbacks before final validation.
+Actual App presenter injection and guarded scientific publication remain open. The
+[native source adapter](native-source-evidence.md) additionally verifies exact
+tool receipts and App crop bytes. The opt-in
+[Gateway collector](gateway-evidence-capture.md) preserves visible text at the
+receive boundary, pending default pipeline integration and live acceptance.
 They must preserve raw predictions, exact ROI/crop hashes, native receipt bindings,
 the user's assessment scope, and incomplete-input limitations. Neither filling
 default placeholders nor replaying current guardrails over old results can close
@@ -177,6 +196,13 @@ No public binary release is implied. The later source-only partial-ECG heading
 fix is not present in this preserved 128117b executable.
 
 ## Current interaction package
+
+The [3029dfb refresh](../evidence/2026-09/interaction-package-refresh-2026-09-24.md)
+is now the newest preserved local package, including the later projection/picker/
+ROI-preview/publication fixes. Its 60 bundled App modules match the exact source;
+general verification, 20 frozen smoke tests and byte-verified ZIP transfer pass.
+The following 6e6734e paragraph records the older checkpoint, not current native
+acceptance. Neither package contains the isolated scientific draft/assembly work.
 
 Clean source `6e6734eb33b3d6331ccf0f82476a8c5b97bfe44b` now has its own local
 verified bundle, including explicit window selection, ROI-wide Mark, retained

@@ -43,8 +43,8 @@ rules:
       A non-normal ST axis describes elevation but the study is rated benign.
     conditions:
       - field: checklist.st_segment
-        op: contains_any
-        values: ["elevat", "ste ", "de winter", "hyperacute", "抬高", "上升"]
+        op: contains_any_non_negated
+        values: ["elevation", "elevated", "elevating", "ste", "st elevation", "抬高", "上升"]
       - field: checklist.st_segment.status
         op: severity_at_least
         value: info

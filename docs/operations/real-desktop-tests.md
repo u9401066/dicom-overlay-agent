@@ -42,7 +42,7 @@ runtime usage. Preserve the plan digest separately. Use `--allow-partial` only f
 an ongoing run; invalid evidence and technical failures always fail the command.
 A failed audit is not permission to restart a live App or repeat inference.
 
-## Manual Mark and per-region conversations (development source)
+## Manual Mark and per-region conversations (development candidate)
 
 1. After Analyze publishes a result, choose **Mark**, then drag anywhere inside
    the authorized image ROI, including blank areas outside all AI boxes. The safe
@@ -66,6 +66,27 @@ Real native evidence covers [blank-ROI Mark and separate threads](../evidence/20
 and [ADD dismissal, promotion, reopening and a third turn](../evidence/2026-09/native-marker-promotion-2026-09-24.md).
 These are source-App tests, not proof that the latest preserved EXE contains all
 subsequent fixes, or that every cross-monitor/DPI and clinical scenario is complete.
+The [575bcdc frozen follow-up](../evidence/2026-09/frozen-regional-desktop-2026-09-29.md)
+also verifies blank-origin Mark and separate regional threads in that exact EXE.
+Newer [dual-image regional context](../architecture/regional-image-context.md)
+attaches the original authorized ROI alongside the selected crop in the source
+candidate; it is not yet part of that frozen acceptance. In a new actual run,
+verify both payload hashes and the answer's distinction between selected content
+and surrounding context. Never reinterpret a prior crop-only receipt as this test.
+
+## Inspect compact notes (isolated source candidate)
+
+In the [report-note candidate](../evidence/2026-09/report-note-presentation-2026-09-24.md),
+Report still shows `[Crop-only evidence]` alongside each affected statement.
+Use **標記來源與座標細節 → Process** to inspect its exact original ROI prefix and
+frame-adjustment messages; use Tab/Space for keyboard access. Different finding
+IDs and their presentation-priority numbers remain distinguishable. Raw result
+and export notes are not edited. Unknown or mixed clinical notes remain in Report.
+
+This behavior is not in the frozen active batch or the preserved 3029dfb EXE.
+After that batch is sealed, verify navigation and readability through the actual
+candidate App at native scale and across displays; do not count the existing
+offscreen render tests as completion of those native checks.
 
 ## Select a browser or another image application (development source)
 
@@ -790,6 +811,34 @@ Gateway smoke that creates a runtime-only loopback token, waits for first-run
 migrations, authenticates over WebSocket, stops OpenClaw, and checks that port
 18789 is closed. It does not send a model request. Desktop startup allows 180
 seconds for Gateway readiness independently of the per-inference timeout.
+
+### Diagnose subscription startup latency without exposing credentials
+
+Source builds emit paired `subscription_auth_phase_started` /
+`subscription_auth_phase_finished` App-log events for `oauth_migration` and
+`profile_check`. The finished event contains only phase, outcome, exit code and
+monotonic `elapsed_ms`. It does not include the command, paths, environment,
+stdout/stderr, account identity or exception text. Outcomes distinguish a normal
+exit, nonzero exit, timeout and failure to launch the public CLI command.
+
+A successful command is **not** proof that authentication or the App is ready:
+the existing JSON/profile checks, source-credential hash binding and Gateway
+readiness probe still run. `profile_check` is a public profile listing, not a
+paid model probe or proof of token freshness. An unchanged source credential can
+reuse a previously imported profile only after that listing succeeds; changed
+credentials still require migration. Do not lower timeouts or skip these checks
+just to make the status indicator turn green earlier.
+
+Measure these phases separately from the interval between `Gateway started` and
+`Desktop runtime started`. A newly copied runtime with no import receipt is a
+first-import run, not a normal subsequent launch. Keep the receipt private and
+preserve original logs before restarting: managed Gateway startup truncates its
+`gateway.log`. Do not overwrite sealed test evidence to collect a timing sample.
+
+The [official OpenAI authentication guidance](https://learn.chatgpt.com/docs/auth)
+distinguishes ChatGPT subscription access from API-key billing and treats the
+local auth cache as a password. It does not establish this App's OpenClaw startup
+timings or approve a third-party integration; those need local measurements.
 
 For Unreleased `0.4.7`, do not copy the previous full-bundle numbers into release notes.
 After the clean rebuild, require `bundle-manifest.json` to report `status=ok`,

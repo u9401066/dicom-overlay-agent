@@ -1,7 +1,534 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — v3 stopped; confirmed Viewer minimization
+
+Exec28335 EXIT1 atcase11 after138.726s; native observer captured IsIconic=True
+mid-analysis. Five original model turns and offline contract preflight pass,
+but no GUI publication.10 publications/2 technical failures/108 pending remain.
+Cause unknown; concurrent-use question sent. Investigate safely retaining prepared
+drafts until same ROI/source is verified again; don't repeat paid cases. Source
+changes must be isolated/versioned, not silently mixed into frozen cohort.
+
+## 2026-09-29 — v3 resumed real GUI cohort without erasing case7
+
+Declared480e6ada… continuation binds prior plan/receipts and exact terminal audit.
+Same App/source/config/collector, no inference retries. Live exec28335 starts at
+case8; cases8–10 now published, case11 active (10pub/1failure/109pending). Auditor
+explicitly validates the failure/continuation chain;37 more tests,162 related
+tests/docs checks passed. Prior5eff6ee CI green. No clinical scoring/new binary.
+
+## 2026-09-29 — scientific batch audit; case7 failure retained
+
+New offline linked scientific verifier +50 edge tests;121 related tests pass,
+Ruff clean. Actual checkpoint:7 publications,1 technical failure,112 pending.
+Exec60442 exited1. Case7's5 original Astra-medium turns are bound; offline byte
+replay passes contract preflight but is not GUI publication. Missing-Viewer
+branch lacks terminal logging; external cause unknown. Preserve original failure
+and denominator; next explicitly linked continuation starts case8 without rerun.
+App/source/config remain unchanged. No full cohort seal or clinical scoring.
+
+## 2026-09-29 — three-case scientific checkpoint; remaining117 LIVE
+
+- Tranche terminated0; three actual publications with15 distinct bound sessions,
+  immutable artifact/source/contract checks and MAE0. Case0's original collector
+  failure stays explicit. No clinical scoring/gold access.
+- Same frozen driver resumed remaining117 in exec60442; case3 capture11:26:06UTC.
+  Preserve active source/config/collector and inspect handle before any restart.
+
+## 2026-09-29 — linked continuation reaches case1
+
+- Case0 preserved/recovered without inference; case1 succeeds with scientific
+  collector, five bound medium turns and exact source pixels. Case2 remains live
+  in original exec77794.2/120 publications, no clinical pass claim.
+- Additional CLI protections bring collector/verifier/docs checks to75pass.
+
+## 2026-09-29 — scientific case0 and five-turn usage binding
+
+- Actual publication succeeds; driver stops on legacy collector mismatch. Original
+  failed receipt/zero-turn output preserved. New scientific usage collector binds
+  five real Astra-medium turns with no new inference or modified exports.
+-67 collector/verifier tests pass. Need linked continuation plan for cases1–119;
+  not a complete cohort or clinical pass. Same App/runtime remain live.
+
+## 2026-09-29 — paired scientific120 execution preparation
+
+- Source9a84847 full2435pass/10skip and both CI/secret scans pass.
+- Fresh runtime/input hashes verified; actual full-image ROI calibrated on the
+  owned synthetic Viewer.120-case exposed paired plan frozen before inference,
+  first tranche limited3; preparation is not case completion/clinical acceptance.
+
+## 2026-09-29 — real source shutdown verified; blind-pass failure retained
+
+-8524c4a full source2428pass/10skip and remote CI/secret scans pass. Actual
+  failure-path Quit drains10events, no timeout, owned processes/port gone.
+- Two real Astra-medium turns ended in a retained invalid mixed present/absent
+  finding reference, not publication. Clarified prompt support-ID rules and added
+  seven synthetic retention/rejection cases without weakening the decoder.
+  No speed/accuracy improvement or new frozen acceptance claimed.
+
+## 2026-09-29 — bounded idle Gateway close drain
+
+- Added real-socket regression for unread-event backpressure and normal peer
+  closure, plus cancellation/flood/active-reader/idempotence edges.184 focused
+  tests pass; source drain keeps existing queue limits and close timeout.
+- Full suite and separate actual App close check in progress; no frozen-build
+  acceptance claimed for this new code, no old runtime restarted.
+
+## 2026-09-29 — new frozen regional context and actual readable Export
+
+- Packaged36dc3c6 with20 frozen smoke passes/full verifier/exact86-module proof;
+  portable337.15MiB, ZIP141.68MiB,7z105.21MiB, byte-verified round trips.
+- Real new EXE subscription/5-stage publication133.130s, manual2/AI1 threads,
+  unchanged reopen, image invalidation and actual Chinese PNG growth all pass.
+  Ten Astra-medium sessions; all3 crop+ROI payload pairs hash-verified. One
+  helper focus failure before inference retained, separate bounded-focus retry.
+- Runtime sealed; shutdown2s WebSocket timeout retained as open issue. Broader
+  clinical/public release/Pages/external-model/durable-history goals remain open.
+
+## 2026-09-29 — readable saved regional notes
+
+- Pixel-width wrapping and content-driven PNG height remove Chinese-note clipping
+  and the old12-finding limit. Original source-coordinate pixels remain unchanged.
+- Separate rerender of actual sealed output now2014x1062; no new inference or
+  clinical claim. Added multilingual/paragraph/many-finding/bounds/resource tests.
+- Fresh GUI/frozen acceptance remains pending; no archive or old receipt rewritten.
+- Follow-up Mark scope inspection: candidate native mouse4pass3.97s and regional/
+  history/geometry/export/core2/docs168pass3.25s. Main1c531a5 lacks alpha1 fix;
+  do not present candidate-only functionality as already shipped on main.
+
+## 2026-09-29 — context-aware regional question source change
+
+- Actual c7fd1f8 source App now accepted on one exposed partial ECG:131.432s
+  initial five-stage publication, manual2turn/existing1turn/reopen/invalidation.
+- Three dual-image questions match recomputed source/crop and Gateway-retained
+  PNG hashes;10 Astra-medium sessions accounted for. Full2412pass/10skip448.36s,
+  both remote CI+secrets pass. Runtime sealed; no clinical or new EXE claim.
+
+- Same-snapshot original ROI now accompanies the selected crop in one structured
+  QA request. No capture widening or weakened crop/writeback/thread guards.
+- Both payload hashes retained with run trace; focused175pass, static checks pass.
+  Actual dual-image acceptance is now recorded above; updated EXE remains pending.
+
+## 2026-09-29 — frozen native/subscription/Mark acceptance
+
+- Exact575bcdc EXE now exercised through real UI; first paid attempt blocked on
+  obstruction, second144.864s passed.15 total Astra-medium sessions retained.
+- Blank-origin marking, two manual questions, independent AI-box question,
+  identical reopened history and stale-export rejection pass; coordinate0.5px.
+- Added native forward/reverse/top-left/bottom-right clipping cases:4pass4.04s.
+  Focused regression/docs126pass1.24s; Ruff and diff checks passed.
+  No source-code change or model-based accuracy improvement asserted. Runtime
+  sealed; clinical/binary-license/Pages/tiny-region-context gates remain open.
+
+## 2026-09-29 — scientific host-assembly EXE build and frozen smoke
+
+- Clean575bcdc built with isolated no-dev Python3.13.12/UPX;75 App+11 public
+  harness modules exactly match Git sources,90 native sources approved.
+- Frozen20pass126.37s; complete verifierOK, clean runtime,18771files/337.14MiB.
+  New frozen native/OAuth/clinical/license gates remain open. Both source CI runs
+  and secret scans passed. README/docs distinguish this from source-GUI evidence.
+- ZIP141.68MiB versus7z105.20MiB (25.75% smaller), both18771-file roundtrips
+  hash-verified;53 UPX payloads pass integrity and source stays unchanged. Local
+  artifacts only, no binary release. Documentation12pass and secret scan clean.
+
+## 2026-09-29 — corrected scientific timing display
+
+- Host journal now supplies full analysis-stage elapsed time, frozen before
+  validation/handoff. Raw model evidence is preserved, with no extra inference.
+- Readable seconds/model-unverified label; focused132pass7.18s and static checks
+  pass. This is an implementation follow-up, not a new desktop or EXE acceptance.
+- Full offscreen source suite2403pass/8skip436.05s, JUnit retained; native and
+  packaged opt-in skips remain explicit. Previous562ec59 PR CI completed green.
+
+## 2026-09-29 — actual five-stage publication and regional interaction
+
+- Source e9e1346 actual App:147.516s, all5 stages, Qt handoff/complete canonical
+  export; visible-source pixels identical.10 Astra-medium sessions verified.
+- Blank-origin manual Mark, two manual questions, separate AI-box question,
+  history reopening and image-change stale-export rejection passed. Report and
+  canonical result unchanged; manual coordinate edge error0.5px.
+- Single exposed source, not clinical acceptance/new EXE. Runtime sealed after
+  actual UI cleanup. Remaining UI time/context gaps documented; goal active.
+
+
+## 2026-09-29 — five model stages complete, desktop publication still open
+
+- Retained delta run completed5 stages under180s but failed final local image
+  verification. Explicit3-use/2-reject geometry decisions; no Qt/report/export
+  success, clinical improvement or regional-QA acceptance for scientific mode.
+- Offline stopped-runtime audit preserves7 total sessions (additional incomplete
+  attempt included); no missing usage treated as free. PR20 checks all green.
+- Fixed-category, PHI-free publication diagnostics added;35 focused tests/mypy
+  pass. Reproduce in a fresh runtime without concurrent visible Qt tests.
+
+
+## 2026-09-25 — compact challenge transport, not clinical acceptance
+
+- Added bounded source-hash-bound scientific deltas and explicit per-geometry
+  use/reject. Original raw response and validated materialized draft remain
+  distinct auditable artifacts; original clinical/reference checks unchanged.
+- Focused134pass9.87s, Ruff/mypy pass. Real five-stage App retest and regional
+  interaction acceptance still required. No measured speed improvement yet;
+  same180s overall deadline, no new EXE or public binary release.
+
+
+## 2026-09-25 — real second-look attempt and deadline/geometry gaps
+
+- Fresh actual App passed four stages then fifth request canceled at total180s;
+  Gateway confirms chat.abort, no report/export. Five verified Astra-medium
+  sessions,4 complete local visible replies. Same exposed case, no new cohort.
+- Native localization ran but final reconciliation did not adopt its boxes.
+  Next: explicit localization disposition and more efficient bounded stages;
+  no silent box linking or speed claim from increasing timeout.
+- Current full2417pass8skip407.03s; remote pin-fix both CI and secrets pass.
+  Runtime Quit/sealed, no active inference. No new EXE or clinical acceptance.
+
+
+## 2026-09-25 — CI pin assertion correction
+
+- Remote20e2690 exposed old6152ab0 expected pin; public submodule now d9798da.
+  Updated literal and architecture doc,31 boundary/docs tests pass. Fixed-pin
+  invariant retained. Full1904 running; fresh actual App startup in progress.
+
+
+## 2026-09-25 — actual multireference success, reconciliation decision failure
+
+- Clean20e2690 actual App advanced through QC/blind/native bbox binding, then
+  rejected fourth-turn confirm that changed linked o3 anatomy/text. Four verified
+  Astra-medium turns,134.208s; no second look/report/export or clinical claim.
+- New private receipt store retained all exact replies, including10KB blind and
+  12KB failed reconciliation. Runtime safely Quit and sealed, not restarted.
+- Clarified confirm/revise prompt across the whole linked observation graph;
+  validator unchanged,111 focused tests/mypy/Ruff pass. Fresh live retest pending.
+
+
+## 2026-09-25 — multi-observation contract and private visible-output retention
+
+- Added typed checklist observation_ids in public harness and host decoder;
+  validates every reference without rewriting prior failed replies.
+- Scientific App opt-in stores exact visible turn bytes before decoding, enabling
+  investigation after semantic failures and App exit without chat.history replay.
+- Focused draft158pass; receipt/session/main96pass; public initial494pass and
+  compatibility pass. Full48321:2410pass8skip414.22s; staged33.93KB secrets clean.
+  Fresh actual desktop acceptance pending.
+- Evidence:scientific-reference-receipts-2026-09-25.md. Not a clinical improvement
+  or five-stage acceptance claim; broader goal remains active.
+
+
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
+
+## 2026-09-25 — actual canonical sessions work; blind multi-reference gate remains
+
+- Three actual clean-source App runs found two fixed integration defects. Third
+  run accepted QC and sent blind pass, but comma-joined checklist references fail
+  the current one-observation contract. Two Astra-medium turns verified, no final
+  report, localization or five-stage acceptance. Public history truncates long
+  output; durable full visible-response retention and typed multi-reference
+  support remain next required work, not a reason to relax the evidence gate.
+- All three Apps/Gateways closed through UI and sealed; Viewer retained. Full
+  canonical-session suite2384pass8skip417.52s, docs12pass, focused195pass, Ruff/
+  mypy/secrets pass. No new EXE, clinical result improvement or baseline changes.
+
+## 2026-09-25 — actual quality response and canonical Gateway session names
+
+- One actual Astra-medium QC response received via App but transport identity
+  guard rejected Gateway canonical key. Public history/usage bound and preserved;
+  quality schema passes posthoc, not completed scientific or clinical acceptance.
+- Sender now explicitly names main agent; strict matching/foreign-agent rejection
+  unchanged. Beforefix1fail3pass, focused195pass9.35s. Prior receipt-option full
+ 2380pass8skip394.75s; final canonical-sender full and corrected GUI run pending.
+- Both actual failed environments closed through UI and retained, no restarts or
+  model resends for read-only receipt collection. See native scientific evidence.
+
+## 2026-09-25 — actual scientific App startup failure and correction
+
+- Real App/Viewer/Analyze exposed missing production transport-evidence opt-in,
+  before any model request. Main constructor corrected; exact-constructor test
+  reproduces beforefix and focused74pass5.94s after. No weakened receipt gate.
+- Cold OAuth/profile measurements kept separate; failed black UI screenshot
+  retained, not credited. Actual UI Quit stopped owned App/Gateway. New isolated
+  runtime prepared; corrected GUI/model and full test completion still pending.
+- See native-scientific-startup-2026-09-25 evidence; be27473 remote CI/secrets green
+  did not prove this desktop wiring. Original clinical cohorts remain unchanged.
+
+## 2026-09-25 — explicit scientific desktop publication boundary
+
+- Added optional main/agent/Qt two-phase wiring and source-bound canonical export.
+  Default remains unchanged; clinical-rule hooks/current live-model acceptance,
+  non-diagnostic quality-only UI and durable receipts remain open.
+- Focused54pass7.13s, native Mark1pass1.08s, regional121pass1.13s, Windows150%
+  review/main-callback2pass1.88s; synthetic Gateway only, no new paid model replay.
+- Main/oldEXE still lack candidate interaction fixes. Actual earlier manual3turn
+  promotion proof re-inspected; no new clinical claim or baseline modification.
+- Initial full run failed only staging under unsupported global Node25; corrected
+  Node24.18 full rerun2378pass8skip417.97s (57401terminal0). Ruff/format,
+  six-module mypy and docs12pass; native Mark also passes effective Qt DPR1/2
+  overrides on the150% desktop, without changing OS settings. Not cross-monitor
+  acceptance. See current activeContext and dated evidence.
+
+## 2026-09-25 — real native geometry into scientific reconciliation
+
+- Opt-in scientific session now executes source-bound native localization and
+  explicit post-blind challenge, with actual journal callbacks and raw receipts.
+  No fabricated missing decisions/boxes, prior-draft mutation or paid parse retry.
+- Twenty challenge unit cases,15 actual native producer / synthetic Gateway smoke
+  cases and one bounded start-event test added. Focused206pass18.71s;
+  Ruff/format/targeted mypy and12 documentation checks pass. Initial fixture timeout
+  and preserved result-limit failure-category regression documented, not hidden.
+- Full2241pass7skip405.22s; staged66.49KB secret scan clean. Original120-case
+  seal/score and partial-run audit hashes verified unchanged; no new package.
+- Still no matched independent classifier, targeted second look, canonical final
+  assembly/handoff or default App activation. No paid model, GUI or EXE acceptance
+  claim from this step. Prior e213fe9 remote CI/secrets completed green.
+  See docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md.
+
+## 2026-09-25 — actual partial-input engineering evidence
+
+- Six native GUI exports,23 verified Astra-medium stages from8 variants/ONE
+  source; two windows blocked before inference, not8/8 pass. All six retain
+  incomplete/review and exact source pixels; no hidden-label restoration.
+- All six summary UI images show INDETERMINATE; four marked exports inspected.
+  No clinical truth/lesion precision/vendor diversity claim. App/Gateway closed,
+  private original receipts and usage-only recovery preserved. Viewer retained.
+- Fixed reproducible English negated-ST false review in canonical YAML/example;
+  generated runtime/views and SQLite agree.16new regressions7fail9pass beforefix;
+  focused clinical/registry/SQLite/workflow105pass1.34s. No post-fix GUI run yet.
+  Full2205pass7skip390.01s; native Windows blank-ROI drag/pass-through1pass1.20s
+  separately enabled. Ruff/format/docs/generated views and staged secrets pass.
+  See docs/evidence/2026-09/native-partial-ecg-2026-09-25.md for hashes and open gaps.
+
+## 2026-09-25 — pre-prompt waveform provenance validation
+
+- Reproduced23/25 failures in evidence-forwarding checks. Runtime now rejects
+  mismatched/conflicting/malformed waveform support before later image prompts,
+  keeps audit records and returns deep snapshots. No extra inference or dependency.
+- Native sanitized digest bytes retained for JS/Python small-number compatibility;
+  independent desktop matching and saved blind/tool reconciliation remain open.
+- Focused135pass17.11s; documentation/eval-validator/scientific-session65pass2.25s;
+  targeted mypy/Ruff/format pass. Fresh full2189pass/7skip377.36s (22165terminal0).
+  Source2dd4f9e pushed; remote secret scans/four compatibility jobs pass, full CI
+  still running when local results were recorded. Staged40.94KB no leaks.
+- Old120-case score/seal unchanged, previous candidate CI green. No paid model,
+  actual new GUI, package-size measurement, EXE or clinical acceptance in this step.
+  Evidence:docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md.
+
+## 2026-09-25 — actual two-crop group coverage without extra inference
+
+- App opts into public harness f0f4862 two-group routing only with complete valid
+  labeled input before normalization. Preserves critical-first and attention routes.
+- Two actual source-App replays, eight verified Astra-medium stages total. First
+  preserved critical-first; second executed both groups covering all named leads.
+  Both exact ROI/export pixels,103 source files frozen per run,12leads/zero warnings.
+- Second still0/4 asserted reference concepts, incomplete/review required; no
+  clinical or controlled speed improvement. One low-signal box flag persists.
+- Public459 tests/compatibility/Ruff/CI pass; App focused218 pass. Initial full run
+  exposed stale pin assertion, fixed without weakening the boundary; full rerun
+  2145 passed /7 skipped /381.89s. App Ruff/format/docs pass.
+- Draft public PR3, README/docs/index/Memory updated; no new EXE or baseline mutation.
+  Evidence:docs/evidence/2026-09/two-crop-group-coverage-2026-09-25.md.
+
+## 2026-09-25 — startup phases measured through the actual App
+
+- Public OAuth migration/profile-list commands now have secret-free phase timing;
+  existing auth checks, timeouts and Gateway readiness remain unchanged.
+- Real first import: 82.663 s migration, 31.924 s profile check, 148.789 s total.
+  Subsequent real launch: reused verified import, 11.328 s profile, 28.942 s total.
+  These differ in import/cache/load conditions; no controlled speedup claim.
+- Native Analyze readiness verified on both launches; zero model calls. Both
+  App/Gateway pairs closed via Quit, port absent. Original sealed evidence preserved.
+- Eight new timing/privacy tests; full current run 2145 passed, seven skipped,
+  366.26 s; final focused 105 passed. Ruff/format/auth mypy pass. Source inventories
+  unchanged during both launches; afterward only newline normalization verified.
+- README both / operation guide / index / dated evidence / Memory updated.
+  See docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md.
+
+## 2026-09-25 — plugin relocation and actual input readiness
+
+- App-owned oldabsolute harnesspaths replaced,currentactualGatewayloadverified;
+  unrelatedplugins preserved. Analyze/shortcutdisabled duringstartup/busy states,
+  manualoffline recoveryretained; queuedduplicate trigger guarded inapplication.
+- ActualstartupCtrlShiftA andbusyCtrlShiftA rejected withvisible reasons; ready
+  actualGUIanalysis/export completed, fourmediumstages, exactROI/sourcepixels.
+ 97.545sanalysis/111.916sworkflow, stillincomplete; coldstartup~136snotfixed.
+-29new regressions; focused165pass, full2192pass7skip358.30s. InitialPOSIXpath
+  recognitionfailure corrected. Ruff/format/focusedmypy pass.79sourcefiles bound
+  throughnative run, subsequentonefileformatterchange verifiedASTidentical.
+- READMEboth/index/evidence/Memory updated; no newEXE or clinicalacceptance.
+  Evidence:docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md.
+
+## 2026-09-25 — first baseline failure corrected and natively replayed
+
+- Prompt now requires actual visible lead panels instead of promising automatic
+  geometry for an empty compact inventory. Three regression tests;45prompt/layout
+  and262robustness/multipass pass. No schema/detector threshold/dependency changes.
+- Real source App replay of exposed baselineindex24 restores12lead entries with
+  zero warnings while local detector stillfinds8. ExactROI/sourcepixels, four
+  mediumstages,98.191sanalysis; remainsincomplete/review. Seven lowsignalbbox flags
+  remain. No clinical/latency improvement claim or baseline rewrite.
+- Separate runtime avoids overwriting sealed log. Actualstartup click dropped
+  beforeviewer discovery; laterreadyclick startsoneanalysis. Copiedpublicconfig
+  stillpointsat unchangedoldpluginpath. Bothreadiness/relocation gaps documented.
+- FirstfulltestfailedunsupportedglobalNode25; portableNode24.18stagingretry2pass.
+  Fullrerun2163pass7skip386.34s; Ruff/format/docs/diffcheck pass. Original120seal
+  independentlyreverifiedafterreplay, scoreSHAunchanged. d5bb512 CI/secrets allgreen.
+  Evidence:
+  docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md.
+
+## 2026-09-25 — completed real GUI cohort, sealed and scored
+
+-120/120 independently verified; 482 Astra-medium stages. Original driver exited0,
+  no successful-case repeats. All source/visible ROI pixels exact. Original source
+  remains7eba45d; no App mutation during batch.
+- Seal then score tool makes no model calls, preserves evidence/gold digests,
+  protects original trees and inventories nested crops.24new synthetic tests;
+  full2160pass7skip353.94s. Private raw results/gold stay outside public Git.
+- Clinical acceptance FAILED: strict0/46, allurgent5/24, exactseverity13/120,
+  legacy schema115/120.74partiallyuncertain separate; zero confirmed cant_miss
+  means unmeasured, not perfect sensitivity. Meananalysis93.993s/workflow106.485s,
+  no controlled speed claim. Detailed intervals/hashes/limitations in
+  docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md.
+- READMEboth/procedure/index/Memory updated. No new binary or default scientific
+  pipeline activation. Diverse-input testing/clinical improvements remain needed.
+
+## 2026-09-25 Taipei / September 24 UTC — executed scientific first stages
+
+- Source intake/QC/blind adapter now calls actual client/journal/strict decoder.
+  Trusted ROI/deid, partial study and non-localizing source evidence; no second
+  request for non_diagnostic QC, no default App or canonical export activation.
+  Tool-event boolean rejects observed tools in QC/blind without retaining payload;
+  not a remote tool policy/opaque-provider attestation. CT screenshot limits checked.
+-32new tests; combined150pass1.88s. Focusedmypy/Ruff/format/docs/stagedgitleaks pass;
+  full2136pass7skip208.94s,90681terminal0. README/index/architecture/Memory updated,
+  no package/dependency change. Separate QC increases readable-case paid turns;
+  no overall latency/cost/accuracy improvement claimed.
+- Independent actualGUI audit111/120verified,9pending,zero invalid/technical failure,
+  original80364live, gold unopened. Previous812d1c9 CI/secrets all green.
+  Localization/reconciliation/independent evidence/full assembly/review/App remain
+  required, along with real candidate GUI/EXE/DPI and clinical scoring.
+
+## 2026-09-25 Taipei / September 24 UTC — Gateway stage request connection
+
+- Added opt-in original-output image API through existing serialized public Gateway
+  transport. Exact source/prompt/nonce and immutable returned snapshot; no legacy
+  draft coercion, silent image conversion, outer parse retry or default activation.
+  Protocol/deid/PNG/resource gates execute before send. Failure snapshots retained.
+-26newclient+2nativeproducer source/crop tests. Focused181pass1.75s, docs/Ruff pass,
+  focusedclient+collectormypy pass after three pre-existing typing errors corrected.
+  Full2104pass7skip202.92s,61911terminal0; stagedgitleaks pass.
+  README/architecture/Memory updated; no EXE or live model test.
+- Independently103/120actualGUI exports verified,17pending,zero invalid/technical
+  failures. Goldunopened; original80364live. Priorc45ad9d bothCI/secretsallgreen.
+  Actual canonical stage operations, desktop wiring and clinical scoring incomplete.
+
+## 2026-09-25 Taipei / September 24 UTC — actual callback journal, isolated
+
+- Added ordered source-bound execution journal with immutable timing/status/hash
+  receipts, explicit optional/non-diagnostic skips, failure/cancellation retention,
+  artifact limits and no automatic replay/future-stage completion. Public QC schema
+  reused. A swallowed newly requested task cancellation cannot become completion.
+-36 new synthetic checks; with assembler80pass0.99s. Focused mypy/Ruff/format pass.
+  Initial full2075pass7skip1failure201.24s: missing deferred-orchestrator registration.
+  Explicit reason/activation prerequisites added; guard not bypassed. Final full
+  2076pass7skip205.77s, session53883terminal0. Regional QA/docs75pass0.90s;
+  staged gitleaks passes. No new native GUI acceptance.
+  Architecture/README/index updated; no live App/canonical pipeline activation.
+- Native promotion screenshot/audit rechecked; no new GUI inference or focus change.
+  Independent frozen cohort96/120verified,24pending,zero invalid/technical failures,
+  gold unopened. Prior3445772 CI and secrets green. Latest EXE remains3029dfb;
+  new native/cross-DPI acceptance and full canonical wiring remain pending.
+
+## 2026-09-25 Taipei / September 24 UTC — clinical notes first, raw detail retained
+
+- Display-only note separation preserves crop scope/clinical prose and exact raw
+  originals in Process; keyboard/mouse entry, stable IDs/priority and stale-target
+  handling. Fixed old wrapped-label height after shortening; no clinical mutation.
+- Initial3render failures traced to empty offscreen font DB; test-only installed
+  fonts loaded. Discarded minwidth workaround that clipped an unbroken long token;
+  added necessary-hscroll regression. Short-note480px issue separately reproduced.
+-28new checks; focused74pass2.35s including100/150/200% child offscreen renders.
+  Correct-font synthetic screenshots visually inspected, not native App acceptance.
+  Preliminary full2039pass7skip195.84s; final2040pass7skip204.41s after long-ID
+  adjustment, session40032terminal0. Ruff/format/helpermypy/docs/gitleaks pass.
+  READMEboth/runbook/index/evidence updated; no font/dependency/package changes.
+- Independent realGUI audit82/120verified,38pending,zero invalid/technical failures;
+  original80364stilllive, goldunopened. Previous648c50b CI/secrets allgreen. Latest
+  EXE3029dfb not refreshed; candidate defaults and frozen batch unchanged.
+
+## 2026-09-25 Taipei / September 24 UTC — Gateway capture wired, opt-in only
+
+- Actual client receive/recovery/handshake paths now support bounded original
+  visible-output snapshots, request/run/session/native-call binding and explicit
+  unavailable evidence. No thinking/auth/raw transcript persisted; default false,
+  no new inference calls. Native result hash still must bind independent audit.
+-56collector tests +1native producer via synthetic-Gateway smoke added. Focused
+ 99pass0.73s; pre-final-binary-fix full2011pass7skip196.01s. Final full regression
+ 2012pass7skip194.59s, session84891terminal0; Ruff/format/focusedmypy/docs links
+  and staged gitleaks green. Architecture
+  docs added/crosslinked. No clinical accuracy or live tool-event fidelity claimed.
+- Original realGUI batch independently70/120verified at~17:03UTC,50pending,
+  zero invalid/technical failures. Gold unopened; original80364 remains live.
+  Prior780c0c6 CI/secrets all pass. No runtime/schema/dependency/prompt update,
+  new EXE or main merge. Real stage journal/intake/scientific desktop wiring open.
+
+## 2026-09-25 Taipei / September 24 UTC — actual native producer/source binding
+
+- Added host adapter verifying exact native tool text/audit receipts, authorized
+  source/crop bytes and effective-pixel geometry. Public Evidence/transforms only;
+  source binding is not diagnostic truth. No desktop wiring or schema/dependency
+  changes, no synthesized model observations/workflow events.
+-53actual-native-producer synthetic checks pass0.65s. Full1955pass7skip201.18s;
+  Ruff/format/focusedmypy/docs links pass. Current skips explicit private/frozen/
+  native-GUI/portable-directory opt-ins; Node24.18 used for real producer tests.
+- Native-source architecture docs and related protocol/integration guidance
+  updated. Live tool-text collection, canonical host journal, study intake and
+  actual scientific-protocol GUI validation remain open. Latest local EXE3029dfb
+  does not include these candidate components. Previous11c8810 CI/secrets green.
+- Original realGUI batch independently61/120verified at~16:46UTC,59pending,
+  zero technical/invalid. Gold unopened and
+  live source frozen. Existing manual promotion screenshot re-inspected only.
+
+## 2026-09-25 Taipei / September 24 UTC — versioned scientific model draft
+
+- Added schema-derived model prompt/strict ledger decoder; findings select exact
+  host source-evidence geometry by ID, never self-assert verified boxes/provenance.
+  Original UTF8 JSON body retained; malformed/unsupported graphs fail closed.
+  Legacy Gateway parser rejects scientific protocol misrouting without extra retry.
+-82new synthetic cases; decoder/assembly/ownership145pass. Full1902pass7skip206.80s;
+  four doc-link checks plus Ruff/format/focusedmypy pass. Initial fixture/name/huge
+  parameter-ID test errors corrected, no tests bypassed. No runtime dependency added.
+- New protocol remains inactive pending actual capture/native receipts/host journal
+  and transport wiring. Public scientific owner/schema pin unchanged, no old result
+  promoted to acceptance; latest3029dfbEXE does not include this code.
+- Original actualGUI batch46/120 independently verified at~16:20UTC,74pending,
+  zero invalid/technical failure receipts; gold unopened. Same live80364process.
+  Previous b6baa1d CI and secret scans all passed; user MAIN dirt preserved.
+
+## 2026-09-25 Taipei / September 24 UTC — local interaction package refreshed
+
+- Built clean DIRECT3029dfb into separate dist-interaction-3029dfb-upx, preserving
+  earlier bundles. Includes latest source projection/ROI/picker/publication fixes.
+  Compared all60bundled App modules to exactcommit;90native sources approved.
+- Actual frozen20smokes pass94.48s; general bundle verifier passes; launcher4.71MiB,
+  App54.45MiB,full337.02MiB. LocalZIP141.58MiB roundtrip18771entries plus53UPX
+  tests all pass. No newEXE native interaction/clinical/publicrelease claim.
+- READMEboth/docsindex/evidence updated; no App/runtime/dependency/ROI changes.
+  Host-assembly candidate42dd4ef draftPR20 CI and secret scans all pass.
+- Same realGUI80364 cohort independently35/120verified,85pending,zero technical/
+  invalid receipts at~16:01UTC. Goldunopened; case029actualcritical-first summary
+  reviewed without claiming diagnostic accuracy or improved latency.
+
+## 2026-09-24 Isolated scientific assembly boundary
+
+- Separate worktree/branch protects frozen actual GUI batch. Host assembly validates
+  exact bytes, lineage, manifests, model-led ledger references, trusted evidence and
+  workflow sequence through unchanged public schema. No placeholder completion.
+-44new synthetic tests pass including real legacy-parser rejection; Ruff/format/
+  focusedmypy pass. Fresh environment native tests failed until locked local npm
+  install; supported portableNode24.18 rerun passes93native/Core2/ownership checks.
+  Full corrected regression1820pass7skip183.19s; desktop integration still open.
+- Actual original-source cohort25/120 independently verified at15:41UTC,100model
+  stages,95pending,zero failures; same live driver, no inference reruns or gold reads.
 
 ## 2026-09-24 Human/agent ECG workflow and critical-first native evidence
 

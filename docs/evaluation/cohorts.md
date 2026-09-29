@@ -9,8 +9,8 @@
 | --- | ---: | --- | --- | --- |
 | `full-9922` | 9,922 | MEETI ordered full-cohort paired evaluation | manifests/tooling exist; authoritative new pair not complete | evaluation capacity only; historical partial/paired results remain dated |
 | `important-multi-128-v1` | 128 | historical important multi-diagnosis stress cohort | 121-case Astra-low primary sealed and scored; six earlier pilots separate | failed acceptance: strict 0/46, annotated urgent concerns 2/21; not medium coverage |
-| `prospective-desktop-important-multi-120-v1` | 120 | fresh Astra-medium GUI stress cohort | first real GUI case verified September 24 14:54 UTC; batch running, unscored | source/usage verification only; 1,366 prior identities excluded |
-| `incomplete-ecg-20260902-v2` | 8 | deliberately incomplete/cropped/low-resolution ECG behavior | 8/8 mock plumbing; real App not run | input/hash/schema/bbox/partial plumbing only |
+| `prospective-desktop-important-multi-120-v1` | 120 | Astra-medium GUI stress cohort | sealed/scored; 120 verified exports, 482 stages | failed clinical acceptance: strict 0/46, all urgent concerns 5/24; now exposed |
+| `incomplete-ecg-20260902-v2` | 8 variants / 1 source | deliberately incomplete/cropped/low-resolution ECG behavior | 8/8 historical mock; six native exports / 23 medium stages, two blocked before inference | exact ROI/export binding and partial behavior for six variants; not diagnosis or vendor acceptance |
 | 10,001-identity scale fixture | 10,001 identities | atomic resume/checkpoint set behavior | source smoke complete | resumability scale, not 10,001 medical images |
 | Historical 32/8 sets | 32 paired + 8 unseen | 2026-08-09 engineering evidence | complete under their recorded protocol | only the dated metrics in their evidence record |
 
@@ -72,7 +72,7 @@ has a [frozen selection](../evidence/2026-09/prospective-medium-cohort-2026-09-2
 with 46 asserted / 74 partially uncertain references and a refreshed exposure union.
 Its 24 acute-risk references are uncertain concerns, not confirmed urgent diagnoses.
 The [actual medium desktop batch](../evidence/2026-09/medium-desktop-batch-2026-09-24.md)
-has now started after full-image ROI calibration; it is not sealed/scored.
+is now sealed/scored after full-image ROI calibration and failed clinical acceptance.
 
 The full run must be performed in order through the real viewer and desktop App,
 not by replacing viewer interaction with a direct script/client call. For each
@@ -110,12 +110,22 @@ metadata, `incomplete/review` requirements, schema, bbox binding, and artifact
 validator agree. It has no diagnostic gold and cannot prove the model recognized
 rhythm, missing leads, or pathology.
 
+September 25 [actual App evidence](../evidence/2026-09/native-partial-ecg-2026-09-25.md)
+now records six completed variants and two tiny-window discovery blocks before
+inference. All six are incomplete/review-required, their declared visible labels
+match a separate manual inventory, and visible/export pixels match exactly.
+Original false-positive rule warnings and unsuccessful attempts remain preserved.
+The right crop retains all twelve printed labels: the old blanket ban on any
+twelve-lead inventory is too broad. This documentation clarification is not a
+change to a frozen scorer or a retrospective diagnostic pass.
+
 For the real App gate, open each variant in the actual viewer, let the App capture
 only the configured ROI, and verify:
 
 - `incomplete=true` and `review_required=true`;
 - an explicit case-specific limitation, not a generic medical refusal or boilerplate;
-- no full-12-lead layout claim and no named lead claim outside verified visibility;
+- no named lead claim outside verified visibility; distinguish twelve surviving
+  labels from a complete, calibrated study;
 - context-dependent axes are `not_assessable` or cautiously abnormal, never
   fabricated as normal from invisible content;
 - any bbox is bound to the exact variant SHA-256 and remains within the visible image;
@@ -164,7 +174,8 @@ Synthetic regression covers incomplete cohorts before gold access, wrong/changed
 gold, duplicate cases, mismatched source/model/effort, missing evidence, negative
 attempt indices, traversal paths, post-score mutation and overwrite protection.
 The historical primary score now exists and fails the gate; see the sealed evidence
-above. No fresh medium-cohort clinical score has been produced. The low-specific
+above. The separate medium cohort now has its own failed sealed score in the
+[medium evidence](../evidence/2026-09/medium-desktop-batch-2026-09-24.md). The low-specific
 scorer must not silently relabel medium receipts as low or merge the two cohorts.
 
 - Schema, bbox in-bounds, tool receipt, coordinate projection, latency, strict

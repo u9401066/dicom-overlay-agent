@@ -569,25 +569,20 @@ class ImageProcessor(ImageProcessorService):
         data = base64.b64decode(image_base64, validate=True)
         with Image.open(io.BytesIO(data)) as source:
             w, h = source.size
-            if w <= 0 or h <= 0:
-                raise ValueError("cannot crop an empty image")
-            x0 = max(
-                0,
-                min(w - 1, math.floor(region.x * w)),
-            )
-            y0 = max(
-                0,
-                min(h - 1, math.floor(region.y * h)),
-            )
-            x1 = max(
-                x0 + 1,
-                min(w, math.ceil((region.x + region.w) * w)),
-            )
-            y1 = max(
-                y0 + 1,
-                min(h, math.ceil((region.y + region.h) * h)),
-            )
-            return source.crop((x0, y0, x1, y1))
+            return source.crop(ImageProcessor.crop_region_pixel_box(w, h, region))
+
+    @staticmethod
+    def crop_region_pixel_box(
+        w: int, h: int, region: RegionRect
+    ) -> tuple[int, int, int, int]:
+        """Exact integer crop used by pixels and provenance; not nominal floats."""
+        if w <= 0 or h <= 0:
+            raise ValueError("cannot crop an empty image")
+        x0 = max(0, min(w - 1, math.floor(region.x * w)))
+        y0 = max(0, min(h - 1, math.floor(region.y * h)))
+        x1 = max(x0 + 1, min(w, math.ceil((region.x + region.w) * w)))
+        y1 = max(y0 + 1, min(h, math.ceil((region.y + region.h) * h)))
+        return x0, y0, x1, y1
 
     def downscale_to_max_edge(self, image_data: bytes, max_edge: int) -> bytes:
         if max_edge <= 0:

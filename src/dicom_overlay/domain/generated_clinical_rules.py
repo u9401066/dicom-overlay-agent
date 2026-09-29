@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-REGISTRY_SHA256 = "0d35360aa941f0fc4a532c6fc204fee32fae7fdab866376c4ac82925a1e612c1"
+REGISTRY_SHA256 = "8194933290c085ab81a1ab97d57154bb17d6d2e5835f2e28a327fe1cce312435"
 
 REGISTRY_DIGEST_SCOPE = "canonical-input-documents-v1"
 
@@ -104,8 +104,14 @@ BUILTIN_RULE_SPECS: tuple[dict[str, object], ...] = ({'canonical_rule_id': 'cxr.
   'description': '當可見 ST segment 軸已描述抬高且狀態不正常，整體結果仍標為 normal/info '
                  '時，至少需要專科醫師複核。這是輸出一致性安全網；ST 抬高本身不等同 STEMI，也不可只憑截圖宣告心肌梗塞。',
   'conditions': [{'field': 'checklist.st_segment',
-                  'op': 'contains_any',
-                  'values': ['elevat', 'ste ', 'st elevation', '抬高', '上升']},
+                  'op': 'contains_any_non_negated',
+                  'values': ['elevation',
+                             'elevated',
+                             'elevating',
+                             'ste',
+                             'st elevation',
+                             '抬高',
+                             '上升']},
                  {'field': 'checklist.st_segment.status',
                   'op': 'severity_at_least',
                   'value': 'info'},

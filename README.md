@@ -9,7 +9,52 @@
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 (updated and browser-verified on September 24; development evidence, not a clinical release).
 
-## Current development target — 2026-09-24 (not a release)
+## Current development target — 2026-09-29 (not a release)
+
+[Source-App shutdown follow-up](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md):
+actual Quit drained10 queued events and exited without a close timeout. The same
+run's blind draft failed on mixed present/absent finding references; it is retained
+as a failed publication, not a successful replay. Prompt clarification and seven
+regression cases are added; fresh actual validation of that change is still pending.
+
+[New local package36dc3c6](docs/evidence/2026-09/regional-package-2026-09-29.md)
+includes regional image context and readable long-note exports. All20 frozen smoke
+tests, the full verifier and86 source-code comparisons pass; portable folder337.15 MiB.
+[Actual frozen GUI acceptance](docs/evidence/2026-09/frozen-regional-context-2026-09-29.md)
+now also passes:133.130s initial publication, manual two-turn and independent
+AI-box QA, history reopen, full Chinese PNG and stale-export blocking. Ten
+Astra-medium sessions and exact crop/context PNGs verified; not a clinical release.
+
+[Review-export layout](docs/evidence/2026-09/review-export-layout-2026-09-29.md)
+now wraps mixed Chinese/English by pixel width and grows the report canvas instead
+of clipping long notes. Retained real-output rerender preserves source/marker pixels;
+the separate frozen replay above now verifies the actual new Export path too.
+
+[Context-aware regional QA](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
+now passes an actual source-App replay: selected crop plus the unchanged authorized
+ROI in one question, verified against two retained Gateway PNGs. Manual two-turn
+and independent AI-box QA/history pass; no capture widening or automatic report
+change. Full source regression2412pass/10skip; updated EXE acceptance is linked
+above. Broader clinical acceptance remains pending.
+
+September 29 package: [scientific candidate 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
+now passes 20 frozen smoke checks and the complete bundle verifier; all 75 App and
+11 public-harness code modules match their pinned sources. Launcher 4.81 MiB,
+App/Python/Qt 54.55 MiB, portable folder 337.14 MiB. This includes the timing-display
+fix. [Actual frozen desktop acceptance](docs/evidence/2026-09/frozen-regional-desktop-2026-09-29.md)
+now covers subscription, five-stage publication, blank-origin Mark, separate regional
+QA/history and stale-export blocking. One paid attempt failed on occlusion before a
+successful144.864s replay; all15 sessions are accounted for. Clinical and
+distribution-license gates remain open; this does not update an older installed EXE.
+Byte-verified local archives: ZIP 141.68 MiB or optional 7z 105.20 MiB (25.75%
+smaller); neither has been published as a binary release.
+
+September29 update: [actual scientific desktop and regional QA](docs/evidence/2026-09/scientific-regional-desktop-2026-09-29.md)
+now completes five model stages, Qt handoff and canonical export in147.516s on
+one exposed partial ECG. Blank-origin Mark, manual two-turn QA, separate AI-box
+QA, history reopening and stale-export blocking pass;10 Astra-medium sessions
+verified. This is source-App engineering acceptance, not a new EXE or clinical
+accuracy claim. Remaining UI timing/context limitations are documented.
 
 The requested desktop target is now **GPT-6 Astra medium**, selected through
 Settings as `openai-codex-astra`. Save the profile and restart the App/Gateway to
@@ -25,11 +70,46 @@ Use the [documentation index](docs/README.md) and [component ownership map](docs
 to find current guidance separately from archived evidence.
 A [fresh 120-case medium cohort](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
 is now selected/reserved from the 9,922 usable images after exposure exclusions.
-Its [actual GUI run has started](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)
-after full-image ROI calibration; it is not complete/scored. Reference labels are
-46 asserted and 74 partially uncertain.
-The same evidence page documents the independent read-only batch auditor; a
-partial execution audit is not a completed cohort or a clinical accuracy score.
+Its [actual GUI run is complete and sealed](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md):
+120/120 execution checks and 482 Astra-medium stages verified. Post-seal scoring
+**does not pass clinical acceptance**: strict complete-reference pass 0/46, all
+urgent concerns caught 5/24, legacy draft schema 115/120. The 74 partially uncertain
+references remain separate. Mean analysis/workflow times were 93.993/106.485 s;
+these are not controlled speed comparisons. See the evidence page for intervals,
+hashes, limitations and the no-inference seal/score procedure.
+The [September29 scientific paired regression](docs/evidence/2026-09/scientific-paired-cohort-2026-09-29.md)
+is now running through the actual desktop on the same previously exposed cohort.
+Its explicit continuation preserves a publication-time Viewer failure in the
+denominator, without rerunning paid cases. It is not a fresh blind evaluation and
+does not supersede the failed clinical baseline above; scoring remains pending.
+The [first failure-driven correction](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
+removes a prompt assumption that local row detection always supplies lead geometry.
+One actual exposed-case replay now has 12 explicit panels and zero schema warnings,
+even though the detector still finds only eight rows. Diagnosis and localization
+acceptance remain open. The [next actual replay](docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+verifies current-path plugin loading after relocation and blocks startup/busy
+Analyze clicks and shortcuts without preventing later manual recovery. Cold AI
+startup remains slow; this is a source-App fix, not a new EXE acceptance claim.
+The [startup timing follow-up](docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+separates first OAuth import (148.8 s total) from subsequent launch (28.9 s), with
+real App readiness observations and no model calls. This is diagnosis, not a
+controlled implementation-speedup claim; authentication checks remain intact.
+The [two-crop coverage follow-up](docs/evidence/2026-09/two-crop-group-coverage-2026-09-25.md)
+now verifies actual limb/precordial group review without another model turn, while
+preserving critical-first routing. The noncritical replay still scores 0/4 asserted
+reference concepts: more complete crop coverage is not yet better diagnostic accuracy.
+The [waveform evidence boundary fix](docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)
+now checks bindings before crop prompts; desktop waveform matching and a complete
+independent-evidence pipeline remain unimplemented, not silently enabled.
+The [native partial-image replay](docs/evidence/2026-09/native-partial-ecg-2026-09-25.md)
+completed six of eight variants (23 verified medium stages); two tiny windows
+were blocked before inference. Missing labels stayed unknown. A reproduced
+negated-ST review false alarm is fixed in YAML, with original exports preserved.
+This is one-source engineering evidence, not vendor diversity or clinical accuracy.
+An opt-in [scientific continuation](docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)
+now binds actual native bbox receipts after retained blind reading and requires
+explicit finding challenge decisions. It is an opt-in, not the default desktop pipeline
+or an independent waveform classifier, and has no new clinical accuracy claim.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
 design, not a claim that the seven consistency rules implement a full reader.
@@ -43,6 +123,42 @@ See the [regional history checkpoint](docs/evidence/2026-09/regional-history-202
 The actual source App now also passes manual ADD proposal dismissal, later Apply,
 promotion to a finding, history reopening and third-turn follow-up without a
 duplicate. See [native promotion evidence](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md).
+
+The isolated source candidate now keeps crop limitations beside clinical notes,
+while exact ROI/bbox-adjustment details are available through **Process**. It also
+fixes stale text height without clipping long identifiers. See the
+[report-layout checkpoint](docs/evidence/2026-09/report-note-presentation-2026-09-24.md):
+synthetic 100/150/200% rendering passes, but native candidate/EXE acceptance is pending.
+
+An isolated [host execution journal](docs/architecture/execution-journal.md) now
+enforces ordered callbacks, quality-gated interpretation and cancellation records.
+It is wired into the explicit development flow, not the default or historical runs.
+The opt-in [image evidence request API](docs/architecture/gateway-evidence-capture.md)
+now connects Gateway requests to original output receipts, without the legacy
+parser or automatic paid parse retries. The September29 replay verifies this path.
+An [executable stage adapter](docs/architecture/scientific-image-session.md) now
+runs intake, QC, blind reading, native localization, reconciliation and a separate
+source-image second look; non-diagnostic inputs make no blind-read request.
+Content preflight and a run/source/content-bound review-availability callback now
+precede full canonical validation. Synthetic tests and the actual replay cover these stages;
+the independent classifier and default desktop activation remain open.
+See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
+The concrete [Qt review surface](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)
+now paints observation/evidence tabs before acknowledging availability, with
+native 150%-DPI synthetic-window and real-mouse close/revocation checks. This is
+component evidence, not yet default App/OpenClaw staged-pipeline acceptance.
+Explicit development [desktop wiring](docs/architecture/scientific-review-presentation.md)
+now uses `--scientific-review --deidentified-input`, two pixel checks, queued Qt
+handoff and validated canonical export. The actual source replay passes; it
+does not yet integrate the legacy clinical-rule hooks. Regional edits
+remain review drafts requiring reconciliation; the default workflow is unchanged.
+Initial [actual App runs](docs/evidence/2026-09/native-scientific-startup-2026-09-25.md)
+fixed missing receipt collection and canonical session naming. QC advanced to
+blind reading, where multi-observation checklist references blocked publication.
+The [follow-up](docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
+adds structured references and private exact visible-output retention; fresh live
+failures led to compact review deltas and explicit geometry dispositions. The
+September29 replay completes this path without increasing the total deadline.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.
@@ -58,12 +174,13 @@ Mid-analysis image replacement is now checked before publishing: a local exact
 ROI pixel comparison withholds stale results and exports. Real swapped/unchanged
 Viewer runs pass; see [publication guard evidence](docs/evidence/2026-09/image-publication-guard-2026-09-24.md).
 
-The latest preserved local executable is `6e6734e`: eight key modules match its
-clean source, with package verification and 20 frozen smoke checks passing.
-It includes regional turn IDs and promotion-history fixes, but not the later
-Viewer-projection, picker-accessibility, ROI-preview or publication-guard changes.
-This is not a public release;
-see the [package checkpoint](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md).
+The latest preserved local executable is `3029dfb`: all 60 bundled App modules match
+its clean source; package verification and 20 frozen smoke checks pass. It now
+includes Viewer projection, picker accessibility, ROI preview and publication
+guards alongside the earlier regional QA/history fixes. The complete folder is
+337.02 MiB; a 141.58 MiB ZIP has every entry byte-verified. Native acceptance of
+this new EXE and binary-license gates remain open; it is not a public release.
+See the [package refresh](docs/evidence/2026-09/interaction-package-refresh-2026-09-24.md).
 
 ## Historical desktop baseline — 2026-09-11
 

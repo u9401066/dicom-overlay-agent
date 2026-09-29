@@ -11,6 +11,43 @@
 
 ## 開發證據（尚未發布）
 
+[原始碼 App 關閉追蹤](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md)：
+實際 Quit 排空10則訊息、未再出現關閉逾時；但同次盲讀因 finding 混入陰性觀察引用而
+拒絕發布，失敗紀錄完整保留。已明確化提示規則並新增7項回歸案例，尚待新實機驗證，
+不算成功判讀或已證明正確率提升。
+
+[新封裝36dc3c6](docs/evidence/2026-09/regional-package-2026-09-29.md) 已包含區域問答原圖上下文及長註記排版，
+20 項封裝 smoke、完整驗證與 86 個模組原始碼比對皆通過；可攜目錄337.15 MiB。
+[新版 EXE 實機驗收](docs/evidence/2026-09/frozen-regional-context-2026-09-29.md) 也已完成：
+133.130 秒初次發布、人工框兩輪／AI 框獨立問答、還原歷史、完整中文 PNG 與換圖阻擋舊匯出。
+10 個 Astra medium 回合及裁圖／原 ROI 附件均核對；不代表臨床驗收或正式發布。
+
+[匯出排版修正](docs/evidence/2026-09/review-export-layout-2026-09-29.md)：中英混排改按像素寬度換行，
+長篇註記會延長報告畫布，不再被側欄截掉。以保留的真實結果重繪驗證，原影像與
+標記像素不變；上述新版 EXE 已另外完成實際 Export 的排版驗收。
+
+[帶原圖上下文的區域問答](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
+已完成真實 source App 驗證：同一問題附選取裁圖及原本授權 ROI，兩張 Gateway
+留存 PNG 均核對 SHA。人工框兩輪續問、AI 框獨立問答與歷史通過，不擴大截圖、
+不自動改報告。完整 source 回歸 2,412 項通過／10 項跳過；新 EXE 實機證據見上，
+更廣泛臨床驗收仍待完成。
+
+9 月 29 日[科學判讀候選封裝 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
+已通過 20 項 EXE smoke 與完整封裝驗證；75 個 App、11 個公開 harness 模組
+均與指定原始碼一致。EXE 4.81 MiB、App/Python/Qt 54.55 MiB、零安裝目錄
+337.14 MiB，包含判讀耗時顯示修正。[新版 EXE 實機驗證](docs/evidence/2026-09/frozen-regional-desktop-2026-09-29.md)
+已完成訂閱、五階段判讀、ROI 空白處 Mark、分框續問／歷史及換圖阻擋舊匯出。
+先有一次遮擋導致發布失敗，再以 144.864 秒重跑成功；15 個模型回合均保留核對。
+臨床與散布授權仍未驗收；候選版測試不代表使用者原本的舊 EXE 已自動更新。
+逐檔驗證的本機壓縮包為 ZIP 141.68 MiB／7z 105.20 MiB（少 25.75%）；
+解壓內容完全一致，尚未公開發布二進位版本。
+
+9 月 29 日新增[真實科學判讀與區域問答驗證](docs/evidence/2026-09/scientific-regional-desktop-2026-09-29.md)：
+同一張已曝光部分 ECG 完成五階段、Qt 交接及正式契約匯出，全程 147.516 秒。
+已實測空白處 Mark、人工框兩輪續問、AI 框獨立問答、重開歷史與換圖阻擋舊匯出；
+10 個 Astra-medium 回合均核對。這是 source App 工程驗證，不是新版 EXE 或
+臨床準確率驗收；小框上下文與介面計時等限制見紀錄。
+
 2026-09-24 使用者更新目標：新的實機測試改為 **GPT-6 Astra medium**。
 在 Settings 選擇 `openai-codex-astra`、儲存並重新啟動 App／Gateway 後套用；
 既有 low 設定不會被背景改寫。乾淨版 `9a27b61` 已通過 20 項封裝 smoke，並完成
@@ -22,8 +59,36 @@
 [App／harness／plugin 責任地圖](docs/architecture/components.md)。
 新的 [120 例 medium 批次](docs/evidence/2026-09/prospective-medium-cohort-2026-09-24.md)
 已從 9,922 張可用影像排除曝光案例後選定；完整 ROI 校準後
-[已開始真實 GUI 執行](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)，尚未完成或評分；同頁提供獨立唯讀稽核工具，局部執行通過不等於臨床正確率。參考標籤為
-46 例 asserted、74 例部分不確定，不能把建檔當作驗收通過。
+[已完成真實 GUI 執行與封存](docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md)：
+120／120 例執行核驗、482 個 Astra-medium 回合均通過。但封存後評分
+**未通過臨床驗收**：完整參考答案嚴格通過 0／46、急迫疑慮全部捕捉 5／24、
+舊版草稿格式通過 115／120；74 例部分不確定答案另列。平均判讀／完整操作時間
+93.993／106.485 秒，沒有對照組，不能宣稱加速。同頁列出信賴區間、雜湊與限制；
+封存及評分均未新增模型呼叫。
+另有 [9 月 29 日結構化判讀配對回歸](docs/evidence/2026-09/scientific-paired-cohort-2026-09-29.md)
+正在透過真實 App 執行；使用同一批已曝光案例，不是新的盲測。發布前 Viewer
+暫時不可用的失敗會保留在分母，續跑不重送已付費案例；尚未評分，也不取代上述失敗基準。
+已完成[第一項失敗導向修正與實機重測](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)：
+初讀不再假設本機一定能補齊導程座標。一例已曝光案例在偵測器仍只找到八列時，
+已回傳 12 個明確導程、零格式警告；不代表診斷或定位通過。啟動按鈕就緒狀態及
+搬移 runtime 後的 plugin 絕對路徑問題，已在[下一次實機重測](docs/evidence/2026-09/portable-plugin-readiness-2026-09-25.md)
+修正並確認：只載入新位置的 harness，啟動／判讀中不接受重複 Analyze 或快捷鍵，
+就緒後可正常判讀。冷啟動仍慢，這不是新版 EXE 或診斷準確率驗收。
+後續[實際啟動分段量測](docs/evidence/2026-09/subscription-startup-timing-2026-09-25.md)
+確認首次匯入總計 148.8 秒、保留登入狀態後再次啟動 28.9 秒；兩次皆核對真實 App
+就緒狀態，沒有模型呼叫。這是不同啟動條件的診斷，不是新版加速倍數；登入檢查未省略。
+另完成[兩次裁切涵蓋導程組的實機驗證](docs/evidence/2026-09/two-crop-group-coverage-2026-09-25.md)：
+不增加模型回合，非急迫案例細看肢體與胸前兩組導程，急迫優先路徑保留。
+但該非急迫案例的肯定診斷概念仍只命中 0／4；不能把裁切涵蓋較完整宣稱為準確率提升。
+另修正[外部波形證據的提示前核驗](docs/evidence/2026-09/waveform-prompt-integrity-2026-09-25.md)，
+阻擋錯配／衝突紀錄進入後續裁切提示；桌面波形配對與完整獨立證據流程仍未完成，未暗中啟用。
+另完成[不完整 ECG 的真實 App 測試](docs/evidence/2026-09/native-partial-ecg-2026-09-25.md)：
+八種變體中六種完成判讀／匯出，共 23 個 medium 階段核驗；兩種過小視窗在推論前被擋下，
+不算通過。隱藏導程未補猜；已重現並修正否定 ST 抬高句誤觸複核提醒，原始輸出保留。
+這是一張來源圖的工程測試，不是廠牌多樣性或臨床準確率驗收。
+另接通可選的[結構化盲讀後續流程](docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)：
+核對真正 bbox 工具的來源收據，再逐項確認／修訂／撤回 finding；尚未成為桌面預設流程，
+也不是獨立波形分類器或新的準確率驗收。
 另新增 [EKG 人用／agent 共讀流程](docs/clinical/ekg-reading-workflow.md)，涵蓋十步
 與全部十六軸；目前是待專科審查的設計，不把七條一致性規則宣稱為完整判讀器。
 
@@ -34,6 +99,34 @@
 [區域歷史實機紀錄](docs/evidence/2026-09/regional-history-2026-09-24.md)。
 也已實機跑通人工框 ADD 建議的拒絕、再次建議後套用、轉為 finding、重開歷史及
 第三輪續問；沒有重複新增，見[人工框升級實機紀錄](docs/evidence/2026-09/native-marker-promotion-2026-09-24.md)。
+
+隔離候選版保留臨床註記旁的裁切範圍限制，將完整 ROI／框線調整紀錄移至
+**Process** 查閱，並修正文字縮短後殘留高度；極長識別碼保留捲動，不截字。見
+[判讀介面整理紀錄](docs/evidence/2026-09/report-note-presentation-2026-09-24.md)：
+100／150／200% 合成離屏渲染通過，尚未當作候選版或新版 EXE 的實機驗收。
+
+隔離分支新增[主機端執行紀錄](docs/architecture/execution-journal.md)，強制流程順序、
+品質檢查先於判讀，並保留失敗／取消狀態。已接入明確啟用的開發流程，不回填認證舊判讀。
+另新增[影像證據請求介面](docs/architecture/gateway-evidence-capture.md)，將 Gateway
+請求直接接到原始回覆紀錄，不經舊解析器，也不因格式錯誤自動重送付費請求。
+9 月 29 日已完成此路徑的單例實機驗證；桌面仍須明確啟用開發模式。
+目前[可執行的階段介面](docs/architecture/scientific-image-session.md)已串起原圖登錄、
+品質檢查、盲讀、原圖定位、整合及獨立第二次檢視；不可判讀時不送盲讀請求。
+內容預檢與綁定回合／來源／內容的檢閱可用回執，現在先於完整契約驗證執行。
+這些階段已有合成測試與單例實機驗證；獨立分類器及桌面預設啟用仍未完成，
+見[交付邊界紀錄](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md)。
+另已完成具體的 [Qt 檢閱面板](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)：
+繪製觀察／證據分頁後才回覆可供檢閱，並在 Windows 150% 縮放下以合成內容驗證
+真實滑鼠關閉、清除與撤銷。這是元件實機證據，尚不是桌面預設 OpenClaw 分階段驗收。
+明確啟用的[開發版桌面接線](docs/architecture/scientific-review-presentation.md)使用
+`--scientific-review --deidentified-input`，加入兩次像素核對、Qt 交接及正式契約匯出。
+目前已有真實模型 source App 工程驗證，但未整合舊版臨床規則 hooks；
+人工套用區域修改後只保留待重新整合的草稿，不冒稱為新的正式科學判讀。預設流程不變。
+初次[真實 App 測試](docs/evidence/2026-09/native-scientific-startup-2026-09-25.md)
+已修正回執收集及會話名稱接線問題；品質檢查進入盲讀後，被清單的多觀察引用攔下。
+[後續修正](docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
+加入結構化多觀察引用及本機完整可見回覆保存；後續以精簡差異回覆與明確定位處置，
+在不延長整體期限下完成 9 月 29 日五階段實機驗證。原始失敗紀錄仍保留。
 
 開發版 Settings 新增 **Choose image window**，可選瀏覽器或其他影像軟體，必須
 重新框選本次使用的 ROI，不會偷偷切到其他視窗。已完成一例已曝光部分影像的
@@ -46,10 +139,11 @@
 判讀途中換圖也已實測並修正：發佈前在本機核對相同安全 ROI 的像素，換圖後不顯示
 或匯出舊結果；未換圖則正常顯示與匯出。見[換圖防護紀錄](docs/evidence/2026-09/image-publication-guard-2026-09-24.md)。
 
-最新保留的本機 EXE 為 `6e6734e`，八個關鍵模組與乾淨來源一致，封裝總檢查及
-20 項 frozen smoke 通過。包含區域回合 ID 與人工框升級歷史修正，但尚未包含
-後續 Viewer 座標跟隨、輔助操作選窗、ROI 預覽及判讀途中換圖防護；不是公開發布版。
-見[封裝驗證紀錄](docs/evidence/2026-09/interaction-bundle-6e6734e-2026-09-24.md)。
+最新保留的本機 EXE 為 `3029dfb`，封存的 60 個 App 模組全部與乾淨來源一致，
+封裝總檢查及 20 項 frozen smoke 通過。現在包含 Viewer 座標跟隨、輔助操作選窗、
+ROI 預覽、判讀途中換圖防護，以及先前區域問答／歷史修正。完整目錄 337.02 MiB，
+ZIP 141.58 MiB 且逐檔位元組核對通過。這個新 EXE 的實機驗收與二進位授權 gate
+仍未完成，不是公開發布版。見[新版封裝紀錄](docs/evidence/2026-09/interaction-package-refresh-2026-09-24.md)。
 
 2026-09-24：開發分支已直接引用獨立 harness 的模型、現行 multi-pass engine、
 ECG layout parser 與 analyzer port，移除 App 重複實作，沒有新增轉接相容層。

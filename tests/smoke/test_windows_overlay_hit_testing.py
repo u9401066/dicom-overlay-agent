@@ -16,7 +16,19 @@ from dicom_overlay.presentation.overlay_window import OverlayWindow
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows layered-window behavior")
-def test_native_mark_drag_starts_in_unmarked_roi_and_passive_mode_passes_through():
+@pytest.mark.parametrize(
+    ("start_xy", "end_xy", "expected"),
+    [
+        ((80, 50), (160, 100), (0.25, 0.25, 0.4, 50 / 120)),
+        ((160, 100), (80, 50), (0.25, 0.25, 0.4, 50 / 120)),
+        ((80, 50), (280, 180), (0.25, 0.25, 0.75, 0.75)),
+        ((160, 100), (5, 5), (0.0, 0.0, 0.65, 80 / 120)),
+    ],
+    ids=["forward", "reverse", "clip-bottom-right", "clip-top-left"],
+)
+def test_native_mark_drag_starts_in_unmarked_roi_and_passive_mode_passes_through(
+    start_xy, end_xy, expected
+):
     if os.environ.get("DICOM_RUN_WINDOWS_INPUT_SMOKE") != "1":
         pytest.skip("set DICOM_RUN_WINDOWS_INPUT_SMOKE=1 for native mouse smoke")
     app = QApplication.instance() or QApplication([])
@@ -78,7 +90,7 @@ def test_native_mark_drag_starts_in_unmarked_roi_and_passive_mode_passes_through
         overlay.set_interaction_mode("annotate")
         overlay.raise_()
         settle()
-        start, end = point(80, 50), point(160, 100)
+        start, end = point(*start_xy), point(*end_xy)
         # No findings, no draft, no manually painted marker under this point.
         assert overlay._highlights == []
         assert native.WindowFromPoint(start) == int(overlay.winId())
@@ -99,7 +111,7 @@ def test_native_mark_drag_starts_in_unmarked_roi_and_passive_mode_passes_through
         settle()
         native.mouse_event(4, 0, 0, 0, 0)
         settle()
-        assert created == [pytest.approx((0.25, 0.25, 0.4, 50 / 120))]
+        assert created == [pytest.approx(expected)]
 
         overlay.set_interaction_mode("passive")
         settle()

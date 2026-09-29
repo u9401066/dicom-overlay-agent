@@ -2,7 +2,7 @@ schema_version: 1
 registry_version: 0.1.0
 rules:
   - rule_id: ekg.st_elevation_not_flagged.v1
-    version: 1.0.0
+    version: 1.0.1
     modality: EKG
     status: active
     human:
@@ -71,8 +71,8 @@ rules:
     runtime:
       conditions:
         - field: checklist.st_segment
-          op: contains_any
-          values: [elevat, "ste ", st elevation, 抬高, 上升]
+          op: contains_any_non_negated
+          values: [elevation, elevated, elevating, ste, st elevation, 抬高, 上升]
         - field: checklist.st_segment.status
           op: severity_at_least
           value: info

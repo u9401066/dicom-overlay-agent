@@ -101,8 +101,10 @@ def test_coarse_prompt_is_compact_triage_with_bound_tools() -> None:
     assert "accepted=[]" in prompt
     assert "never return a rejected coordinate" in prompt
     assert "lead_order" in prompt
-    assert '"leads":[]' in prompt
-    assert "do not output per-lead bboxes" in prompt
+    assert "actual visible panel inventory in layout.leads" in prompt
+    assert "Local pixel row detection may fail" in prompt
+    assert "do not output per-lead bboxes" not in prompt
+    assert "use compact layout=" not in prompt
     assert "Do not call sinus from regular timing alone" in prompt
     assert "High voltage alone cannot establish definite LVH" in prompt
     assert "missing calibration pulse prevents a definite LVH claim" in prompt
@@ -163,10 +165,33 @@ def test_non_ekg_coarse_prompt_omits_lvh_balance_contract() -> None:
     assert EKG_LAYOUT_OUTPUT_GUIDANCE not in prompt
 
 
+@pytest.mark.parametrize("regions", [["lead_I", "lead_II"], ["rhythm_strip"]])
+def test_coarse_layout_does_not_promise_untested_local_geometry(regions) -> None:
+    prompt = build_coarse_analysis_prompt(modality=Modality.EKG, valid_regions=regions)
+    assert "including a full-width 12-row strip" in prompt
+    assert "Do not substitute lead_order plus an empty leads array" in prompt
+    assert "row count or position alone does not" in prompt
+    assert "Keep unlabeled panels unknown and partial captures partial" in prompt
+    assert "Inventory coverage takes precedence" in prompt
+    assert "never fill missing leads" in prompt
+
+
+def test_coarse_partial_scope_keeps_no_named_lead_guarantee() -> None:
+    prompt = build_coarse_analysis_prompt(
+        modality=Modality.EKG,
+        valid_regions=["partial_ecg_visible_pixels_no_named_leads"],
+    )
+    assert "Do not infer or locally reconstruct a complete 12-lead inventory" in prompt
+    assert "leads=[] unless a separate trusted lead map is supplied" in prompt
+    assert "use regions=[]" in prompt
+
+
 def test_noncompact_layout_example_obeys_the_real_schema_and_parser() -> None:
-    schema = json.loads(Path(
-        "openclaw/workspace/skills/dicom-ekg-analysis/schema.json"
-    ).read_text(encoding="utf-8"))["properties"]["layout"]
+    schema = json.loads(
+        Path("openclaw/workspace/skills/dicom-ekg-analysis/schema.json").read_text(
+            encoding="utf-8"
+        )
+    )["properties"]["layout"]
     example = json.loads(EKG_PARTIAL_LAYOUT_EXAMPLE)
     Draft202012Validator(schema).validate(example)
     inventory = parse_ekg_lead_inventory(example)
@@ -197,13 +222,17 @@ def test_synthetic_partial_inventories_preserve_missing_leads(count: int) -> Non
     assert not inventory.complete
 
 
-@pytest.mark.parametrize("defect", ["lead_alias", "missing_visibility", "invented_format"])
+@pytest.mark.parametrize(
+    "defect", ["lead_alias", "missing_visibility", "invented_format"]
+)
 def test_partial_inventory_drift_stays_invalid_without_compatibility_aliases(
     defect: str,
 ) -> None:
-    schema = json.loads(Path(
-        "openclaw/workspace/skills/dicom-ekg-analysis/schema.json"
-    ).read_text(encoding="utf-8"))["properties"]["layout"]
+    schema = json.loads(
+        Path("openclaw/workspace/skills/dicom-ekg-analysis/schema.json").read_text(
+            encoding="utf-8"
+        )
+    )["properties"]["layout"]
     bad = copy.deepcopy(json.loads(EKG_PARTIAL_LAYOUT_EXAMPLE))
     if defect == "lead_alias":
         bad["leads"][0]["lead"] = bad["leads"][0].pop("name")
