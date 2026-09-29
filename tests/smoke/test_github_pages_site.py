@@ -267,11 +267,32 @@ def test_evidence_links_pin_the_published_development_checkpoint():
     pins = {
         "ebbe2a5e0c883126da40c62e2d6d88195698a381",  # Retained historical evidence.
         "1a7cb81c90f25ac41c1c568c911389d39231cc01",  # September29 checkpoint.
+        "3e94a77d2f23cb25e91aa337d4eab6099e540370",  # History/diagnostic candidate.
     }
     assert {
         urlparse(link).path.split("/blob/")[1].split("/")[0] for link in links
     } == pins
     assert all(any(f"/blob/{pin}/docs/" in link for pin in pins) for link in links)
+
+
+def test_history_import_guide_separates_candidate_workflow_and_native_acceptance():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    assert 'href="docs.html#regional-history"' in index
+    assert 'id="regional-history"' in docs
+    for text in (
+        "native acceptance pending",
+        "not the main App runtime or your installed EXE",
+        "Closing without Export does not save new turns",
+        "current published review is required",
+        "Settings → Trigger → Regional history",
+        "Open conversation makes no model request",
+        "SHA-256 of the encoded source PNG",
+        "old proposals cannot change the current report",
+        "Nothing is auto-saved",
+        "malformed, oversized or mismatched files are rejected",
+    ):
+        assert text in docs
 
 
 def test_september29_separates_execution_scoring_reruns_and_partial_recovery():

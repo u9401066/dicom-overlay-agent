@@ -1,5 +1,12 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — history guide candidate, local browser QA passed
+
+Website-only workflow explains manual import versus previous36dc3c6 native QA,
+with same-source/privacy/history/report boundaries.20 static checks and actual
+headless Edge1440/820/390 interaction/layout/console/screenshot checks pass.
+No App binary/runtime/clinical claim or new patient media. Not deployed yet.
+
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 

@@ -17,7 +17,14 @@ not the older App on main. Actual `36dc3c6` EXE checks cover blank-ROI Mark,
 two-turn manual QA, independent AI-region QA, history reopening, readable export
 and invalidation after an image change. Every question binds its selected crop
 plus the same original authorized ROI; no full-desktop capture. Restart-restorable
-history is not implemented. The old installed EXE is not automatically replaced.
+history is not part of that tested build. The old installed EXE is not automatically replaced.
+
+A newer [regional-history candidate](https://github.com/u9401066/dicom-overlay-agent/blob/3e94a77d2f23cb25e91aa337d4eab6099e540370/docs/architecture/regional-history-import.md)
+adds explicit Settings load, same-source preview and Q&A-only continuation.
+It requires the exact source PNG and a current published review; opening makes
+no model request, and new turns require Export. Native restart/import acceptance
+is still pending; main runtime is unchanged. See the
+[history workflow guide](https://u9401066.github.io/dicom-overlay-agent/docs.html#regional-history).
 
 The sealed medium baseline executed **120 GUI cases**, but **failed clinical
 acceptance**: strict 0/46 complete references, all urgent reference concerns caught

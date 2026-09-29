@@ -60,6 +60,7 @@
           <a href="#subscription">Subscription route</a>
           <a href="#roi">ROI and privacy</a>
           <a href="#regional-qa">Mark and regional QA</a>
+          <a href="#regional-history">Load saved history</a>
           <a href="#scientific-review">Scientific review</a>
           <a href="#clinical-rules">Clinical-rule audit</a>
           <a href="#harness">Image harness</a>
@@ -219,6 +220,43 @@ start.bat</code></pre>
             </div>
             <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/frozen-regional-context-2026-09-29.md">Read the actual EXE regional interaction evidence</a> ·
               <a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/native-marker-promotion-2026-09-24.md">Confirmed manual ADD and continued QA</a></p>
+          </section>
+
+          <section id="regional-history">
+            <h2>Load a saved regional conversation</h2>
+            <div class="docs-callout docs-callout-neutral">
+              <strong>Development candidate — native acceptance pending</strong>
+              <p>This explicit import workflow is implemented in the regional-history
+                development branch, not the main App runtime or your installed EXE.
+                Source and frozen checks do not prove the real desktop
+                load → Send → Export → restart → reimport workflow. The earlier
+                36dc3c6 interaction replay did not test restart import.</p>
+            </div>
+            <ol>
+              <li><strong>Keep both files:</strong> use Export to preserve
+                <code>source.png</code> and <code>regional-conversations.json</code>.
+                Closing without Export does not save new turns.</li>
+              <li><strong>Return to the same image:</strong> display and analyze the
+                same original ROI. A current published review is required before import.</li>
+              <li><strong>Load and preview:</strong> open Settings → Trigger →
+                Regional history, select the exported JSON, and choose a conversation.
+                The orange preview shows its historical region, not a new AI finding.</li>
+              <li><strong>Open, then ask:</strong> Open conversation makes no model
+                request. Send explicitly asks a new question using that region's crop
+                plus the same original authorized ROI.</li>
+              <li><strong>Export again:</strong> old historical turns and new current-run
+                turns remain separate in the exported record. Nothing is auto-saved.</li>
+            </ol>
+            <p><strong>Exact image, not a similar picture.</strong> Import verifies the
+              SHA-256 of the encoded source PNG. A different ROI, scale, rendering or
+              PNG encoding can be rejected even if the picture looks similar. Do not
+              widen the capture ROI or bypass this check to load a file.</p>
+            <p><strong>Q&amp;A-only history.</strong> Imported IDs and old proposals cannot
+              change the current report. Use the current image's Inspect or Mark flow
+              for report proposals, then review Apply explicitly. A new image invalidates
+              active history; malformed, oversized or mismatched files are rejected.</p>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/3e94a77d2f23cb25e91aa337d4eab6099e540370/docs/architecture/regional-history-import.md">Read the pinned candidate workflow and import limits</a> ·
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/3e94a77d2f23cb25e91aa337d4eab6099e540370/docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md">Separate frozen diagnostics and retained CI failure</a></p>
           </section>
 
           <section id="scientific-review">
