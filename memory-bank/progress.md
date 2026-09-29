@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — latest source and frozen CLI checks all pass
+
+3e94a77 Windows/Linux/compatibility/secret CI passes. Actual newly built EXE
+matches89 Git code objects, passes21 frozen checks and the complete verifier.
+337.14MiB folder; Chinese diagnostic output validated. Previous failed runs remain
+in evidence. Native history continuation, clinical cohort and distribution/license
+remain incomplete; old installed EXE unchanged. Separate website-history guide
+has20 static and three-width local browser checks, deployment pending.
+
 ## 2026-09-29 — actual fixed UTF-8 EXE verified; Linux CI cause repaired
 
 New60911e7 Windows bundle passes21 frozen checks and complete verifier; exact89

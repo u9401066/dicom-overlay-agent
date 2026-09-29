@@ -20,7 +20,8 @@ Settings 可載入同一原始影像匯出的對話，預覽區域並開啟續�
 新歷史流程仍待真實桌面／訂閱驗收，原本安裝的舊 EXE 尚未替換。
 [診斷輸出 UTF-8 追蹤](docs/evidence/2026-09/diagnostic-utf8-2026-09-29.md)：
 加強後的檢查器會拒絕該候選的亂碼輸出；另一份60911e7 Windows EXE 已通過
-21 項封裝測試及完整驗證。後續 Linux 匯入警告修正仍待 CI，尚不可發布。
+21 項封裝測試及完整驗證。最新3e94a77 EXE 已包含 Linux 匯入警告修正，
+同樣通過封裝驗證與 Windows／Linux CI；實機歷史及臨床驗收仍未完成，尚不可發布。
 
 [原始碼 App 關閉追蹤](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md)：
 實際 Quit 排空10則訊息、未再出現關閉逾時；但同次盲讀因 finding 混入陰性觀察引用而

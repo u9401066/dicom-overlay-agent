@@ -97,7 +97,23 @@ pass;31 documentation/CLI checks also pass (overlapping the143-test run).
 
 ## Remaining acceptance
 
-The follow-up source must pass fresh CI and be included in the final candidate.
-Native history continuation,
+Follow-up source3e94a77d2f23cb25e91aa337d4eab6099e540370 now passes all Windows,
+Linux and compatibility jobs in CI36585937279; secret36585937389 passes. Linux
+records2714 passed/20 skipped149.60s, including all13 CLI tests.
+
+Its separate new EXE passes21 frozen checks in138.51s and the complete package
+verifier, with clean source provenance and no failures. All89 App/harness modules
+match Git. Chinese CLI output matches the same70-line hash recorded above.
+The83.482s build retains90 approved native sources and the same recorded warnings.
+
+- EXE:5,061,754 bytes; App layer:57,223,001 bytes; full18,771-file folder:
+  353,518,661 bytes (337.14MiB). No runtime dependency or pruning change.
+- EXE SHA256: `65d1925d93a8f292edaca2aaa46c7b42e5778e2d73099e447297ed1010ac64ff`.
+- Payload tree: `d13ae9fd6c68c93f989b643515d6e2b5ad9e0b1967ae1d169178fa79c14581c2`.
+- Source tree: `5cf074b385ef1b0949a0f36a2a2c2a5fe30ada4ab307a2424bf4f3194dc088e2`.
+- Artifacts: `dist-cli-3e94a77-upx/DICOMOverlayAgent` and private
+  `data/tmp/package-cli-3e94a77-{build.log,code-receipt.json,chinese-audit.json,tests.xml,verifier.json}`.
+
+This resolves the diagnostic/frozen/CI checks, not native history continuation,
 subscription image/usage acceptance, clinical cohort completion and public
-distribution/license gates remain open.
+distribution/license gates. Those remain open; the installed EXE is untouched.

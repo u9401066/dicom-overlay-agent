@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-29 — final CLI-fix candidate verified, source CI green
+
+-3e94a77 build29100 EXIT0,83.482s;90 native approved.89 App/harness code objects
+  match exact Git;21 frozen checks30948 EXIT0,138.51s. Chinese CLI3 requested
+  encodings identical. Full verifier17121 EXIT0/statusok/failures empty, clean
+  source receipt. No old receipt, installed EXE or sealed runtime overwritten.
+- CI36585937279 fully green Windows/Linux/four compatibility; secret36585937389
+  green. Linux2714passed20skipped149.60s,13 CLI cases all pass. Retained failed
+  earlier60911e7 CI and old69683fa diagnostic failure, no clinical case added.
+-18771 files/353518661B; launcher5061754B/App57223001B/OpenClaw272780196B/
+  Node23515464B. EXE65d1925d93a8f292edaca2aaa46c7b42e5778e2d73099e447297ed1010ac64ff;
+  payloadd13ae9fd6c68c93f989b643515d6e2b5ad9e0b1967ae1d169178fa79c14581c2;
+  source5cf074b385ef1b0949a0f36a2a2c2a5fe30ada4ab307a2424bf4f3194dc088e2.
+- Separate pages-history-20260929 branch from public main adds explicit history
+  workflow with candidate/ROI/exact-source/Q&A-only/export boundaries. Local
+ 20 static checks and headless Edge1440/820/390 QA pass; not yet deployed at
+  this checkpoint. No desktop input; native history/clinical/license gates open.
+
 ## 2026-09-29 —60911e7 frozen pass; Linux import-side-effect fix
 
 - Prior turn was progress; full verifier exec86907 now EXIT0/statusok/no failures,
