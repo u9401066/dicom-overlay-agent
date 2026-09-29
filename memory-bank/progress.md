@@ -1,5 +1,18 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — new actual frozen history package (not clinical acceptance)
+
+69683fa source is built in a clean no-dev environment; codeCI/secrets green.
+78 App+11 harness modules match Git;90 native sources approved. Actual EXE21
+packaging checks pass140.70s, including new history round-trip and isolated
+Gateway synthetic image transport. Full verifier passes.337.14MiB folder,
+4.83MiB launcher/54.57MiB App layer; ZIP141.70MiB round-trips18,771 files and
+passes53 UPX integrity checks.7z105.23MiB also round-trips all18,771 files with
+the pristine source unchanged;25.74% smaller than ZIP, not installed-size savings.
+No installed EXE replacement/public binary/paid clinical case; native history
+acceptance, clinical cohort/accuracy, encoding and license gates remain open.
+See docs/evidence/2026-09/history-package-2026-09-29.md.
+
 ## 2026-09-29 — regional-history import candidate (source only)
 
 Explicit Settings load/select/reopen/Send supports exported same-image history

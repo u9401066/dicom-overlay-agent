@@ -1,5 +1,36 @@
 # Active Context
 
+## 2026-09-29 — actual69683fa frozen package verified; transfer audit
+
+- Same exec58416 completed successfully after627.035s; no duplicate/restarted
+  build. Fresh dist-history-69683fa-upx, no installed/sealed runtime changes.
+-78 App+11 harness frozen modules equal exact Git source;90 native files from
+  approved roots. Actual EXE21 opt-in smoke tests pass140.70s, including v2/v3
+  history/source/stale-ID checks and isolated Gateway synthetic PNG/expected
+  auth failure. Verifier exec81166 EXIT0: full manifest statusok, no failures;
+  fabricated OAuth migration only, zero real model requests.
+-18,771 files/353518544B (337.14MiB); launcher5061637B/App57222884B/
+  OpenClaw272780196B/Node23515464B. EXE74636ce2a0188190d9649802f0206118e6cf6d947f02013d109874ecb3be49c1;
+  payloadacef62f6573b41c2088cafc6a61fc0be3571621a295695989da71707aba8b971;
+  source375871bc922ed99f85632ee4d7cdd7e547169f18297347a44d4cdc269cbd2a26.
+- Overall5,521B reduction vs36dc3c6 is metadata/newline formatting, not new
+  runtime pruning:324 upstream notice records unchanged; plugin normalized text
+  unchanged. App grew20,084B. Two UPX-incompressible binaries, CFG skips and
+  OpenConsole optional API-set warnings retained. Selfcheck heading contains a
+  decoding replacement character; structured JSON is valid. Fix CLI encoding
+  separately, do not relabel this as zero remaining smoke/UX issues.
+- ZIP148580906B/141.70MiB,21.331s,53 UPX integrity checks; all18,771 entries
+  round-trip match, source unchanged.7z exec96079 EXIT0:110342461B/105.23MiB,
+  SHA256b0e70d75381c36a582321e23c85c56f35ca2cb4e0b0e3feb515fc61db156ac1c;
+  compression133.570s/extraction11.439s, then all18,771 extracted files verified
+  and pristine source unchanged.25.74% smaller than ZIP. Helpers/receipts in
+  data/tmp/package-transfer-history-69683fa and package-history-69683fa-*.
+- Code69683fa CI36577926415 and secret36577926458 fully green. No native new
+  history UI/subscription acceptance or clinical case. Desktop question still
+  unanswered;10pub/2fail/108pending cohort and failed earlier120-case baseline
+  unchanged. License/public-binary gate remains open. See
+  docs/evidence/2026-09/history-package-2026-09-29.md.
+
 ## 2026-09-29 — history candidate packaging in progress
 
 - Source50a5c86 and documentation1cf40ec CI both fully green; code CI Windows

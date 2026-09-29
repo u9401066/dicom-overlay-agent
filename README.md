@@ -14,8 +14,12 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 [Regional history import candidate](docs/architecture/regional-history-import.md):
 Settings can load a same-source exported conversation, preview its region and
 reopen/continue it independently of current findings. Imported context is Q&A-only;
-old proposals and evidence IDs cannot modify the current report. Source/offscreen
-validation only; not yet real subscription acceptance or included in the EXE.
+old proposals and evidence IDs cannot modify the current report.
+[New local69683fa EXE](docs/evidence/2026-09/history-package-2026-09-29.md) passes21
+frozen packaging checks, including history round-trip; full folder337.14MiB,
+ZIP141.70MiB / 7z105.23MiB, both verified after decompression.
+Native subscription acceptance of the new history workflow remains
+pending, and the installed old EXE has not been replaced.
 
 [Source-App shutdown follow-up](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md):
 actual Quit drained10 queued events and exited without a close timeout. The same

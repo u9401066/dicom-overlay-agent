@@ -13,8 +13,11 @@
 
 [區域歷史載入候選功能](docs/architecture/regional-history-import.md)：
 Settings 可載入同一原始影像匯出的對話，預覽區域並開啟續問；與目前標記分開保存。
-舊歷史僅供問答，不能把舊建議或證據 ID 寫入目前報告。目前為原始碼／離屏驗證，
-尚未完成新功能的真實訂閱驗收，也尚未包含於 EXE。
+舊歷史僅供問答，不能把舊建議或證據 ID 寫入目前報告。
+[新候選69683fa EXE](docs/evidence/2026-09/history-package-2026-09-29.md) 已通過21項
+封裝檢查，包含歷史 round-trip；完整資料夾337.14MiB、ZIP141.70MiB／7z105.23MiB，
+兩種壓縮檔均已解壓並逐檔核對。
+新歷史流程仍待真實桌面／訂閱驗收，原本安裝的舊 EXE 尚未替換。
 
 [原始碼 App 關閉追蹤](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md)：
 實際 Quit 排空10則訊息、未再出現關閉逾時；但同次盲讀因 finding 混入陰性觀察引用而

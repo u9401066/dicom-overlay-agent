@@ -1,8 +1,10 @@
 # Regional history import and continuation
 
-Source candidate, September 29, 2026. This is not in the installed EXE or the
-previously tested frozen `36dc3c6` package. Synthetic Qt/callback checks are not
-substitutes for a fresh real App/OpenClaw acceptance run.
+Source candidate, September 29, 2026. Now included in the separately built
+[69683fa local candidate](../evidence/2026-09/history-package-2026-09-29.md), whose
+actual frozen runtime history round-trip passes. It is not in the installed EXE
+or previously real-GUI-tested36dc3c6 package. Synthetic Qt/callback/frozen checks
+are not substitutes for a fresh real App/OpenClaw acceptance run.
 
 ## Reviewer workflow
 
@@ -99,6 +101,6 @@ synthetic in these tests. The existing real frozen Mark/regional QA evidence
 remains separate; no new paid clinical case is claimed for this source change.
 
 Remaining acceptance: real source App load → select → Send → Export → restart
-and reimport, an actual OpenClaw attachment/usage audit, then rebuild/frozen
-verification before replacing or publishing any EXE. Broader clinical/100-case
+and reimport, an actual OpenClaw attachment/usage audit, and frozen native GUI
+acceptance before replacing or publishing any EXE. Broader clinical/100-case
 and distribution-license gates remain open.
