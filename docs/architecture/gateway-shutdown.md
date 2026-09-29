@@ -42,6 +42,12 @@ normal code1000 on both peers after the source fix, with flow control unchanged.
 Additional tests cover empty connections, active-turn ownership, repeated
 disconnect, hung/flooding peers, explicit cancellation and no leftover drain task.
 Focused shutdown/Gateway/Core2/evidence checks passed184 tests in3.07s; Ruff and
-targeted mypy passed. Full source regression and fresh actual App acceptance are
-pending at this implementation checkpoint. Existing packages/runtimes are not
-silently updated or restarted.
+targeted mypy passed. Full source regression at8524c4a passed2428 tests with10
+conditional skips in467.34s. A separate native Windows Mark replay passed all4
+forward/reverse/boundary-drag cases in3.97s; the full-suite offscreen run does not
+substitute for those native checks. A fresh
+[actual source-App failure-path close](../evidence/2026-09/gateway-close-desktop-2026-09-29.md)
+drained10 messages and exited without the close timeout after two real model
+turns; publication itself failed on an invalid observation reference. Successful
+publication-path and new frozen shutdown acceptance remain open. Existing
+packages/runtimes are not silently updated or restarted.

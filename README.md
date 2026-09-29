@@ -11,6 +11,12 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## Current development target — 2026-09-29 (not a release)
 
+[Source-App shutdown follow-up](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md):
+actual Quit drained10 queued events and exited without a close timeout. The same
+run's blind draft failed on mixed present/absent finding references; it is retained
+as a failed publication, not a successful replay. Prompt clarification and seven
+regression cases are added; fresh actual validation of that change is still pending.
+
 [New local package36dc3c6](docs/evidence/2026-09/regional-package-2026-09-29.md)
 includes regional image context and readable long-note exports. All20 frozen smoke
 tests, the full verifier and86 source-code comparisons pass; portable folder337.15 MiB.

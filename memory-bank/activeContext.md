@@ -1,5 +1,23 @@
 # Active Context
 
+## 2026-09-29 — actual failure-path close and mixed observation support
+
+- Source8524c4a full suite2428pass/10skip467.34s; native Mark4pass3.97s;
+  both CI and secret-scan runs green. Fresh actual App34676/Gateway32152 used
+  Ctemp/dicom-close-drain-20260929, Settings verified Astra medium. QC10459ms
+  and blind49264ms completed; blind rejected f1 linking present o5+absent o6.
+  Original failed65.691s attempt retained, no repeat inference or Export.
+- Actual Quit drains10 queued messages, no2s timeout. App/Gateway/launcher gone
+  after0.954s UI observation; owned viewer/launcher closed,18796 absent, no kills.
+  Runtime SEALED. This proves failed-analysis source-App closure only, not a
+  successful pipeline or new frozen build. Source pixels match visible ROI;
+  public QC full/ blind8000char prefix match,2 Astra-medium turns accounted for.
+- Follow-up draft prompt explicitly limits finding-support IDs and preserves
+  negative observations/checklist;7 synthetic cases protect mixed references
+  and negative-information retention. Strict decoder/schema unchanged, no paid
+  auto-retry. Fresh actual prompt validation remains pending.
+- Evidence: docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md.
+
 ## 2026-09-29 — idle WebSocket shutdown backpressure source fix
 
 - Real socket peer sending80 unread events reproduces close timeout with locked

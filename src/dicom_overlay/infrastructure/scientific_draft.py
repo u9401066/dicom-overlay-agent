@@ -366,6 +366,17 @@ def build_scientific_draft_prompt(
         "provenance, hashes, workflow completion, or hidden reasoning. "
         "Provide a concrete reviewer question for low-certainty hypotheses. "
         "Normal/absent claims belong in observations/checklist, not findings. "
+        "Finding observation_ids are supporting observations, not every observation "
+        "considered in a differential: each referenced observation must have "
+        "assessable=true, polarity=present or uncertain, and status=supported or "
+        "possible. Keep absent observations in the observation ledger and relevant "
+        "checklist; do not link their IDs from a finding even alongside valid "
+        "positive observations. For example, if o1 is present/supported and o2 is "
+        'absent/supported, a finding supported by o1 cites ["o1"], not '
+        '["o1", "o2"]. Preserve o2 as a negative observation; never change its '
+        "polarity or discard it just to make a finding eligible. If no eligible "
+        "support exists, do not create that finding; preserve uncertainty and "
+        "limitations in observations/checklist/review questions instead. "
         "For each finding bbox_evidence_ids selects exact host-verified source "
         "geometry; leave it empty if no suitable localization exists. "
         "Tool labels are not spatial evidence. Do not fabricate IDs or coordinates. "

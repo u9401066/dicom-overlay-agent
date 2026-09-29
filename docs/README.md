@@ -3,6 +3,11 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+[Actual source-App shutdown follow-up](evidence/2026-09/gateway-close-desktop-2026-09-29.md)
+verifies failure-path Quit without the close timeout after two real subscription
+turns. Blind publication failed on mixed positive/negative finding references;
+the new prompt clarification remains pending fresh actual acceptance.
+
 [Regional package36dc3c6](evidence/2026-09/regional-package-2026-09-29.md)
 contains dual-image QA and readable-note exports:20 frozen checks, full verifier,
 86 exact-source comparisons pass;337.15 MiB folder. Separate

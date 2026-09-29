@@ -11,6 +11,11 @@
 
 ## 開發證據（尚未發布）
 
+[原始碼 App 關閉追蹤](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md)：
+實際 Quit 排空10則訊息、未再出現關閉逾時；但同次盲讀因 finding 混入陰性觀察引用而
+拒絕發布，失敗紀錄完整保留。已明確化提示規則並新增7項回歸案例，尚待新實機驗證，
+不算成功判讀或已證明正確率提升。
+
 [新封裝36dc3c6](docs/evidence/2026-09/regional-package-2026-09-29.md) 已包含區域問答原圖上下文及長註記排版，
 20 項封裝 smoke、完整驗證與 86 個模組原始碼比對皆通過；可攜目錄337.15 MiB。
 [新版 EXE 實機驗收](docs/evidence/2026-09/frozen-regional-context-2026-09-29.md) 也已完成：

@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — real source shutdown verified; blind-pass failure retained
+
+-8524c4a full source2428pass/10skip and remote CI/secret scans pass. Actual
+  failure-path Quit drains10events, no timeout, owned processes/port gone.
+- Two real Astra-medium turns ended in a retained invalid mixed present/absent
+  finding reference, not publication. Clarified prompt support-ID rules and added
+  seven synthetic retention/rejection cases without weakening the decoder.
+  No speed/accuracy improvement or new frozen acceptance claimed.
+
 ## 2026-09-29 — bounded idle Gateway close drain
 
 - Added real-socket regression for unread-event backpressure and normal peer
