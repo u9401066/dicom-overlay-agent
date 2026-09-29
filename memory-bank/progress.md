@@ -1,5 +1,13 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — bounded idle Gateway close drain
+
+- Added real-socket regression for unread-event backpressure and normal peer
+  closure, plus cancellation/flood/active-reader/idempotence edges.184 focused
+  tests pass; source drain keeps existing queue limits and close timeout.
+- Full suite and separate actual App close check in progress; no frozen-build
+  acceptance claimed for this new code, no old runtime restarted.
+
 ## 2026-09-29 — new frozen regional context and actual readable Export
 
 - Packaged36dc3c6 with20 frozen smoke passes/full verifier/exact86-module proof;

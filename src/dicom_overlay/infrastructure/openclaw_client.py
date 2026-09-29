@@ -417,6 +417,16 @@ class OpenClawClient(VisionAnalyzerService):
         self._ws = None
         self._connected = False
         if websocket is not None:
+            # An idle Gateway can leave enough events queued to pause socket
+            # reads. The close reply then sits behind those unread frames.
+            # Drain only this detached, idle connection via the public recv()
+            # API; never compete with an in-flight turn or disable backpressure.
+            drain_task = None
+            if not self._ws_lock.locked() and callable(getattr(websocket, "recv", None)):
+                drain_task = asyncio.create_task(
+                    self._drain_closing_websocket(websocket),
+                    name="openclaw-close-drain",
+                )
             try:
                 await asyncio.wait_for(
                     websocket.close(),
@@ -429,7 +439,36 @@ class OpenClawClient(VisionAnalyzerService):
                     "OpenClaw WebSocket close failed during shutdown; detaching",
                     error_type=type(exc).__name__,
                 )
+            finally:
+                if drain_task is not None:
+                    drain_task.cancel()
+                    await asyncio.gather(drain_task, return_exceptions=True)
         logger.info("Disconnected from OpenClaw Gateway")
+
+    @staticmethod
+    async def _drain_closing_websocket(websocket: Any) -> None:
+        """Discard shutdown-only events without parsing, storing, or logging them."""
+        discarded = 0
+        try:
+            while True:
+                await websocket.recv()
+                discarded += 1
+                # A peer flooding buffered events must not starve the close
+                # handshake, its deadline, or the background event loop.
+                await asyncio.sleep(0)
+        except (websockets.ConnectionClosed, websockets.exceptions.ConcurrencyError):
+            return
+        except Exception as exc:
+            logger.debug(
+                "Stopped draining closing OpenClaw connection",
+                error_type=type(exc).__name__,
+            )
+        finally:
+            if discarded:
+                logger.info(
+                    "Drained queued Gateway messages during disconnect",
+                    message_count=discarded,
+                )
 
     def is_connected(self) -> bool:
         return self._connected and self._ws is not None

@@ -1,5 +1,19 @@
 # Active Context
 
+## 2026-09-29 — idle WebSocket shutdown backpressure source fix
+
+- Real socket peer sending80 unread events reproduces close timeout with locked
+  websockets16.0 default16/4 queue. New integration regression fails old code,
+  passes normal close1000 on both peers after temporary idle-socket recv drain.
+- Disconnect detaches first; only drains if no active turn owns ws lock. No
+  payload logging/parsing, model calls, unbounded queue or protocol changes.
+  Reader cancels/joins on success/timeout/error/caller cancel; flood yields.
+- Focused184pass3.07s; Ruff/mypy pass. Full suite currently running; new source
+  App runtime Ctemp/dicom-close-drain-20260929 being prepared (not launched).
+  Previous regional runtimes remain SEALED. Actual close acceptance pending.
+  Design: docs/architecture/gateway-shutdown.md. Historical exact queue state
+  unknown; this is a reproduced cause, not retroactive socket-state proof.
+
 ## 2026-09-29 —36dc3c6 frozen dual-image/long-note GUI acceptance
 
 - New clean local package:20 frozen tests135.15s, full verifier,75 App+11 harness
