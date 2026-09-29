@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — scientific batch audit; case7 failure retained
+
+New offline linked scientific verifier +50 edge tests;121 related tests pass,
+Ruff clean. Actual checkpoint:7 publications,1 technical failure,112 pending.
+Exec60442 exited1. Case7's5 original Astra-medium turns are bound; offline byte
+replay passes contract preflight but is not GUI publication. Missing-Viewer
+branch lacks terminal logging; external cause unknown. Preserve original failure
+and denominator; next explicitly linked continuation starts case8 without rerun.
+App/source/config remain unchanged. No full cohort seal or clinical scoring.
+
 ## 2026-09-29 — three-case scientific checkpoint; remaining117 LIVE
 
 - Tranche terminated0; three actual publications with15 distinct bound sessions,

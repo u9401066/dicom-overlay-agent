@@ -44,3 +44,40 @@ The actual [first scientific paired case](../evidence/2026-09/scientific-paired-
 exercised the five-turn collection after a legacy-collector failure, without
 rerunning that case. If workflow stages, model or public session format change,
 update the collector and regression tests together; do not silently loosen it.
+
+## Offline linked-batch verification
+
+`scripts/verify-scientific-desktop-batch.py` audits the September29 original plan
+and linked `plan-v2.json`. Supply both independently retained plan hashes; do not
+calculate new expected hashes from suspect plans.
+
+```powershell
+uv run --no-sync python scripts/verify-scientific-desktop-batch.py `
+  --run PATH_TO_RUN --manifest PATH_TO_INFERENCE_JSON --live PATH_TO_RUNTIME `
+  --recovery PATH_TO_ORIGINAL_CASE_ZERO_USAGE_SUPPLEMENT `
+  --original-sha256 ORIGINAL_PREDECLARED_PLAN_HASH `
+  --continuation-sha256 PREDECLARED_CONTINUATION_PLAN_HASH `
+  --output NEW_PATH_OUTSIDE_PRIMARY_EVIDENCE_TREES
+```
+
+No Gateway/session/model requests or gold reads occur. The verifier rechecks
+input order/hashes, unchanged source/config/ROI bindings between plans, image
+pixels, canonical contracts, recursive exports, retained turns and Gateway log
+prefixes. It rejects reused exports, host runs, public sessions and model runs.
+Audit code hashes include the shared collector and pixel helper.
+
+Statuses distinguish verified publication, the exact case-zero collector failure
+with linked recovery, later technical failures, invalid evidence and pending
+cases. A generic failure cannot use case-zero recovery. Output is create-only
+outside runtime/run/input trees. Live log growth is allowed; prefix changes are
+not. Missing receipts remain pending, never permission to rerun. Terminal cases
+after an unresolved gap are rejected. Exit1 means invalid evidence or technical
+failure; exit0 may still be partial: inspect `complete_evidence`.
+
+This independent driver-side recheck shares contract/binding code. It is not
+physical-input attestation. Public fields are retained collector snapshots, not
+new/signed queries. Source/config hashes are compared between plans, not against
+a currently installed binary. Complete evidence is not clinical scoring, patient
+independence or fresh blind accuracy. The legacy scorer/sealer is not compatible
+with this scientific recovery format. New continuation formats require an
+explicit audited extension, not an ignore-failure switch.

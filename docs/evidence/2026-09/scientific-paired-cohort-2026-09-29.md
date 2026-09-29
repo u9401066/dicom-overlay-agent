@@ -166,3 +166,52 @@ The exact same driver/plan/App/Gateway resumed from case3 with limit117. New
 original process handle is exec60442; case3 actual capture began11:26:06UTC.
 Do not restart or alter inference source/config while it runs. Inspect this
 handle and each create-only receipt, retaining all failures and pending cases.
+
+### Seven publications; case7 terminal technical failure
+
+Exec60442 exited1 at11:41:22UTC after case7's360.201-second observation deadline.
+The driver is no longer live. App32116, Gateway7204 and Viewer33040 remain alive;
+do not restart or rerun the failed image. Cases3–6 published with visible/export
+MAE0 and five bound Astra-medium turns each. Cases8–119 have not run.
+
+The new repository offline verifier rechecks six ordinary verified publications,
+one publication with case0's recovered collector failure, one technical failure,
+112 pending and zero invalid evidence. No failure is rewritten, no gold scored.
+
+- Original case7 receipt SHA256:
+  `3fdfa5e4e80776169d8004c66a9a3e89dc049fe9d5626eb6fef7222c74a70056`.
+- Private `batch-audit-stopped-v2.json` SHA256:
+  `cdc1a9fcec96cfacaff4aac4c2c60e8a79820e58b924f2326974f9295255c242`.
+- Private `case-007-terminal-audit.json` SHA256:
+  `e70d65192992139bc49dfa6fda3d2f78d52dbf23b759008cb19794db14757a89`.
+- Failed host attempt:`7776d634ce154230bc5aa80dc872feac`;
+  source SHA256:`f1330e7c7d39c7fa9edd3e9a8fbdd77891c357585bd0582322b3a9217f9e66af`.
+
+Offline replay of case7's exact retained model bytes/native bbox receipts passed
+all stages through contract preflight, without model requests or GUI handoff.
+Its source pixels equal the original visible ROI. A public read-only session
+query binds all five original turns to Astra medium; they are not zero usage.
+Replayed timing is not original timing and creates no clinical export. The first
+helper incorrectly compared PNG file hashes and stopped before replay; correcting
+the observer to compare decoded pixels succeeded. Original artifacts stayed intact.
+
+At11:37:40 the actual App changed ANALYZING→WAITING;11:38:46 it rediscovered the
+Viewer and returned to MONITORING. Its owned accessibility tree later showed
+Monitoring/AI ready. Together with source inspection and successful offline
+preflight, this points to the first publication-time missing-Viewer branch,
+which returns without an explicit failure log. The external disappearance cause
+is unknown. A later observer saw the Viewer visible/not minimized; that helper's
+rectangle is DPI-unaware logical coordinates, not a physical ROI measurement.
+The missing terminal log left the driver waiting to its observation deadline.
+This is publication-workflow evidence, not clinical correctness evidence.
+
+The unchanged v2 driver's prepare-only preflight again confirmed the same
+source/plugin/harness fingerprint, config, inputs, PIDs and plan hash, with zero
+model calls.50 new offline-verifier tests +38 collector +33 legacy-verifier tests
+pass (121 total,12.58s); Ruff passes. See
+[scientific usage operations](../../operations/scientific-usage.md).
+
+Next continuation must explicitly bind case7's failure/terminal evidence, keep it
+in the evaluation denominator, and proceed to case8 without repeating paid cases.
+Do not rewrite old driver/plans or count offline preflight as App publication.
+Later source work must add an explicit missing-Viewer terminal signal and tests.

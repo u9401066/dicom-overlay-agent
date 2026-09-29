@@ -1,5 +1,28 @@
 # Active Context
 
+## 2026-09-29 — exec60442 TERMINAL; case7 publication failure
+
+- Exec60442 EXIT1 at11:41:22UTC; case7 observation timeout360.201s. No driver
+  remains live. App32116/Gateway7204/Viewer33040 alive; no restart/rerun.
+  Seven publications(case0 recovery + cases1–6), one failure,112 pending.
+- New offline scientific batch verifier: linked plans, explicit case0 recovery,
+  recursive exports/canonical/turns/log/pixels/chronology and cross-case identity
+  checks.50 new tests +38 collector +33 legacy =121passed12.58s; Ruff passes.
+  Stopped-v2 audit SHA cdc1a9fcec96cfacaff4aac4c2c60e8a79820e58b924f2326974f9295255c242.
+- Case7 failure SHA3fdfa5e4e80776169d8004c66a9a3e89dc049fe9d5626eb6fef7222c74a70056.
+  Host7776d634ce154230bc5aa80dc872feac: five terminal Astra-medium turns verified;
+  retained-byte offline replay passes seven stages through contract preflight,
+  NOT actual GUI handoff. Terminal audit e70d65192992139bc49dfa6fda3d2f78d52dbf23b759008cb19794db14757a89.
+- Actual ANALYZING→WAITING11:37:40, MONITORING11:38:46. Source points to first
+  post-prepare missing-Viewer branch returning without terminal log. Why Viewer
+  disappeared unknown. Current owned UI Monitoring/AI ready. Initial diagnostic
+  PNG-byte comparison failed; decoded pixels equal. Supplement Viewer rect is
+  DPI-unaware/logical, not physical coordinates. No diagnosis helper model calls.
+- Prepare-only v2 rechecks SAME source/config/input/PIDs. Next explicitly linked
+  v3 continuation preserves case7/failure denominator and proceeds from case8;
+  extend auditor for that plan chain, no generic skip-errors. Keep source/config/
+  collector frozen for comparable continuation. Later fix missing-Viewer log/UX.
+
 ## 2026-09-29 — ACTIVE remaining117 process60442
 
 - Tranche exec77794 exited0: cases1/2 verified,case0 supplemented retained failure.
