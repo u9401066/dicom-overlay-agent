@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — history guide publicly deployed
+
+PR22 website/docs only merged as mainaed2378 after green CI/secrets. Pages36588136547
+passed; public three-width headless browser navigation/menu/layout/console/screenshots
+and source-content comparison pass. No candidate runtime merged or clinical result
+added. Guide distinguishes explicit candidate import from the earlier native replay;
+native restart/Send/export acceptance still pending. Browser skill drove QA, not design
+or dependency changes. Local QA server stopped; source candidate3e94a77 remains intact.
+
 ## 2026-09-29 — latest source and frozen CLI checks all pass
 
 3e94a77 Windows/Linux/compatibility/secret CI passes. Actual newly built EXE

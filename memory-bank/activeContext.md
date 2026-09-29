@@ -1,5 +1,21 @@
 # Active Context
 
+## 2026-09-29 — public history guide deployed and browser-verified
+
+- Website-only ecbfe13 PR22 passed all CI/secrets, then merged mainaed2378484126c82443bec20fa5c284b35330f86.
+  Pages36588136547 succeeded. No candidate App code or binary merged to main.
+- Actual public https://u9401066.github.io/dicom-overlay-agent/ checked with
+  Playwright1.62.1/headless Edge at1440/820/390. Home→history→Mark guide→history
+  and mobile menu/Escape pass, no overflow/errors/warnings/failed responses.
+  Published index/docs/CSS/JS equal source after newline normalization. Screenshots
+  inspected; artifacts Ctemp/dicom-pages-history-20260929/public/qa.json and PNGs.
+- Browser plugin absent; frontend-testing-debugging skill required real rendered
+  interaction/screenshot checks. Only owned local8871 serverPID31484 stopped after
+  QA. No visible desktop input, clinical image capture, paid inference or sealed
+  runtime restart. Public native-history-acceptance-pending label remains explicit.
+- App docs ecc4a06 pushed; doc CI36587673340 still running at this checkpoint,
+  secret36587673601 passed. Runtime3e94a77 and websitePR22 CI are fully green.
+
 ## 2026-09-29 — final CLI-fix candidate verified, source CI green
 
 -3e94a77 build29100 EXIT0,83.482s;90 native approved.89 App/harness code objects
