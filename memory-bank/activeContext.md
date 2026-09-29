@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-29 —36dc3c6 frozen dual-image/long-note GUI acceptance
+
+- New clean local package:20 frozen tests135.15s, full verifier,75 App+11 harness
+  code comparisons and90 native-source records pass.18771 files353524065B;
+  EXE4.81MiB/App54.55MiB/total337.15MiB. EXE SHA ae30034779281ecaa3cb653a963ba458b66c085f3a27080d8bbb080d7664e6b3.
+  ZIP148560997B,7z110323778B; all entries round-trip,53 UPX checks pass.
+- Actual frozen App18336/Gateway28992/Viewer17724/launcher29244 used new
+  Ctemp/dicom-frozen-regional-36dc3c6-20260929. First focus assertion failed
+  BEFORE inference; original case-000/helper retained, separate focus-wait
+  retry completed133.130s, display125.2s. Source image MAE0,8 workflow events.
+- Actual blank-origin Mark>manual2 questions>AI f1 question>reopen>file-dialog
+  invalidation all pass. Manual max edge0.5px; report/canonical unchanged.
+  Long Chinese actual review2014x1252, next2014x1157, source1494x858 unchanged.
+- Ten public/runtime sessions bind Astra medium; all3 two-PNG questions match
+  independently recomputed crop/source/Gateway inbound hashes and decoded answers.
+  One blind draft public8000char prefix only,4 other science responses fullmatch.
+  Audit c1c7fbca5db3d16fdec090560196bd384f83ee5e9900226ef59efe438d28442f.
+- Runtime SEALED after actual Quit/ownedViewerclose;4 processes/18796 absent.
+  Shutdown WebSocket timed out2s before successful detach/Gateway stop; fix pending.
+- Both36dc3c6 CI and secret scans passed. No public binary release, no new clinical
+  case, no accuracy claim. See regional-package-2026-09-29.md and
+  frozen-regional-context-2026-09-29.md. Next: close timeout, external models,
+  broader>=100 scientific clinical evaluation, Pages, license and durable history.
+
 ## 2026-09-29 — review PNG long-note layout fix
 
 - Actual context-aware export showed Chinese detail text overflowing the fixed

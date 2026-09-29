@@ -3,10 +3,17 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+[Regional package36dc3c6](evidence/2026-09/regional-package-2026-09-29.md)
+contains dual-image QA and readable-note exports:20 frozen checks, full verifier,
+86 exact-source comparisons pass;337.15 MiB folder. Separate
+[actual frozen GUI acceptance](evidence/2026-09/frozen-regional-context-2026-09-29.md)
+now verifies manual/AI-box questions, exact dual-image payloads, long Chinese
+Export layout, history and source invalidation;10 Astra-medium sessions accounted for.
+
 [Review PNG layout fix](evidence/2026-09/review-export-layout-2026-09-29.md)
 uses pixel-based text wrapping and a content-height side column. A separate
 rerender of retained actual App output fixes clipped Chinese notes without changing
-the original image/marker pixels; fresh GUI and EXE acceptance remain separate.
+the original image/marker pixels; the separate fresh EXE replay above also passes.
 
 New source change: [regional image context](architecture/regional-image-context.md)
 adds the same authorized ROI alongside a selected crop for regional questions.
@@ -15,7 +22,7 @@ It preserves crop/writeback/history boundaries. Its
 now verifies two PNGs per question against retained Gateway bytes and separate
 regional histories. The preceding frozen evidence remains crop-only.
 
-Latest local [scientific package 575bcdc](evidence/2026-09/scientific-package-2026-09-29.md)
+Earlier local [scientific package 575bcdc](evidence/2026-09/scientific-package-2026-09-29.md)
 passes 20 frozen smoke tests and complete bundle verification, with 86 App/public
 harness code modules matching exact source. Folder 337.14 MiB.
 [Actual frozen acceptance](evidence/2026-09/frozen-regional-desktop-2026-09-29.md)

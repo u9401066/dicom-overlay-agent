@@ -11,16 +11,25 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## Current development target — 2026-09-29 (not a release)
 
+[New local package36dc3c6](docs/evidence/2026-09/regional-package-2026-09-29.md)
+includes regional image context and readable long-note exports. All20 frozen smoke
+tests, the full verifier and86 source-code comparisons pass; portable folder337.15 MiB.
+[Actual frozen GUI acceptance](docs/evidence/2026-09/frozen-regional-context-2026-09-29.md)
+now also passes:133.130s initial publication, manual two-turn and independent
+AI-box QA, history reopen, full Chinese PNG and stale-export blocking. Ten
+Astra-medium sessions and exact crop/context PNGs verified; not a clinical release.
+
 [Review-export layout](docs/evidence/2026-09/review-export-layout-2026-09-29.md)
 now wraps mixed Chinese/English by pixel width and grows the report canvas instead
 of clipping long notes. Retained real-output rerender preserves source/marker pixels;
-this follow-up is not yet a new GUI or frozen acceptance.
+the separate frozen replay above now verifies the actual new Export path too.
 
 [Context-aware regional QA](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
 now passes an actual source-App replay: selected crop plus the unchanged authorized
 ROI in one question, verified against two retained Gateway PNGs. Manual two-turn
 and independent AI-box QA/history pass; no capture widening or automatic report
-change. Full regression2412pass/10skip. Updated EXE and clinical acceptance remain pending.
+change. Full source regression2412pass/10skip; updated EXE acceptance is linked
+above. Broader clinical acceptance remains pending.
 
 September 29 package: [scientific candidate 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
 now passes 20 frozen smoke checks and the complete bundle verifier; all 75 App and

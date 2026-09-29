@@ -1,5 +1,9 @@
 # Review PNG text layout — 2026-09-29
 
+Follow-up: [actual new EXE acceptance](frozen-regional-context-2026-09-29.md)
+now verifies this renderer through real App Export with long Chinese answers.
+The original offline-only checkpoint and its limitations below remain preserved.
+
 The [actual regional-context replay](regional-context-desktop-2026-09-29.md)
 exposed clipped Chinese annotation text in the saved `review.png`. The live chat
 and JSON contained the answer, but the review side column did not display it all.

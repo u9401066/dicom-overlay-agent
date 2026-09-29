@@ -11,14 +11,21 @@
 
 ## 開發證據（尚未發布）
 
+[新封裝36dc3c6](docs/evidence/2026-09/regional-package-2026-09-29.md) 已包含區域問答原圖上下文及長註記排版，
+20 項封裝 smoke、完整驗證與 86 個模組原始碼比對皆通過；可攜目錄337.15 MiB。
+[新版 EXE 實機驗收](docs/evidence/2026-09/frozen-regional-context-2026-09-29.md) 也已完成：
+133.130 秒初次發布、人工框兩輪／AI 框獨立問答、還原歷史、完整中文 PNG 與換圖阻擋舊匯出。
+10 個 Astra medium 回合及裁圖／原 ROI 附件均核對；不代表臨床驗收或正式發布。
+
 [匯出排版修正](docs/evidence/2026-09/review-export-layout-2026-09-29.md)：中英混排改按像素寬度換行，
 長篇註記會延長報告畫布，不再被側欄截掉。以保留的真實結果重繪驗證，原影像與
-標記像素不變；這次修正尚未重新完成 GUI／封裝 EXE 驗收。
+標記像素不變；上述新版 EXE 已另外完成實際 Export 的排版驗收。
 
 [帶原圖上下文的區域問答](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
 已完成真實 source App 驗證：同一問題附選取裁圖及原本授權 ROI，兩張 Gateway
 留存 PNG 均核對 SHA。人工框兩輪續問、AI 框獨立問答與歷史通過，不擴大截圖、
-不自動改報告。完整回歸 2,412 項通過／10 項跳過；新 EXE 與臨床驗收仍待完成。
+不自動改報告。完整 source 回歸 2,412 項通過／10 項跳過；新 EXE 實機證據見上，
+更廣泛臨床驗收仍待完成。
 
 9 月 29 日[科學判讀候選封裝 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
 已通過 20 項 EXE smoke 與完整封裝驗證；75 個 App、11 個公開 harness 模組

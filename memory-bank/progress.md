@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — new frozen regional context and actual readable Export
+
+- Packaged36dc3c6 with20 frozen smoke passes/full verifier/exact86-module proof;
+  portable337.15MiB, ZIP141.68MiB,7z105.21MiB, byte-verified round trips.
+- Real new EXE subscription/5-stage publication133.130s, manual2/AI1 threads,
+  unchanged reopen, image invalidation and actual Chinese PNG growth all pass.
+  Ten Astra-medium sessions; all3 crop+ROI payload pairs hash-verified. One
+  helper focus failure before inference retained, separate bounded-focus retry.
+- Runtime sealed; shutdown2s WebSocket timeout retained as open issue. Broader
+  clinical/public release/Pages/external-model/durable-history goals remain open.
+
 ## 2026-09-29 — readable saved regional notes
 
 - Pixel-width wrapping and content-driven PNG height remove Chinese-note clipping
