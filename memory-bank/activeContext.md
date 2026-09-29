@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-29 — recovered delta attempt; publication diagnostics
+
+- Authoritative candidate HEAD4d9717e, remote PR20 checks all successful. Main
+  unrelated dirt unchanged. Old App/Viewer processes no longer exist; reused
+  PID27156 is now svchost, never touch it. Port18796 absent. Delta runtime sealed.
+- Actual9/25 hostrun e62784cfbf774a03aded660d4cd9ada3 completed all5 model
+  stages, but publication failed viewer_unverifiable_before_publication before
+  Qt handoff/export. Reconcile22.518s/3507B, second look24.500s/3574B; wall127.649s.
+  Three localization records explicitly used, two rejected. Not clinical or UI
+  acceptance. Full details in scientific-reference-receipts evidence.
+- Stopped audit confirms7 public session/runtime matches, not just5: extra
+  capture00:12:38 has QC and interrupted blind turn; initiating action unknown
+  from saved driver. App UI Quit00:13:20. Public history query failed after stop;
+  retained sessions/host outputs audited offline, no restart or paid retry.
+- Recovered regression.xml records2389 tests,0 failures/errors,5 skips,364.828s;
+  this artifact's counts, not an inferred2417+ count. Native Mark1pass1.07s and
+  focused146pass31.61s recorded before interruption.
+- Added fixed-category publication failure diagnostics for precheck/capture/
+  postcheck/pixel comparison. Arbitrary exception/window text never logged;
+  same fail-closed behavior/no recapture retry.35 focused tests and mypy pass.
+  Need fresh isolated real App run; do not run visible Qt test suite alongside
+  real acceptance. Previous failure's exact cause remains unproven.
+
+
 ## 2026-09-25 — bounded scientific deltas and explicit localization dispositions
 
 - Reconcile/second-look now request a compact, prior-SHA-bound edit envelope,

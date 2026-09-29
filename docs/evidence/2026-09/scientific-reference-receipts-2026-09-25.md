@@ -206,3 +206,58 @@ stale base hashes, QC/provenance edits, duplicate/renamed IDs, dropped checklist
 false confirmations, omitted/rejected-but-linked geometry and wrong finding
 links. Synthetic output-byte reduction is not measured actual-model speed.
 Full regression and real App retest remain pending at this checkpoint.
+
+## Delta live attempt and September29 recovery
+
+Actual source4d9717e ran in the new private `dicom-scientific-desktop-20260925-delta`
+directory. Launcher27748/App17636/Gateway27156 used the same deidentified source,
+Viewer7832 and1500x864 authorized ROI. File-to-visible MAE0.4756584362. The first
+launcher invocation used Windows PowerShell5 and failed before process creation;
+PowerShell7 launched successfully, without restarting a recorded Gateway.
+
+Host run `e62784cfbf774a03aded660d4cd9ada3` retains all5 returned visible responses:
+
+| Stage | Run ID | Elapsed ms | Visible bytes |
+| --- | --- | ---: | ---: |
+| QC | fa0074de-cbf2-4f1a-890d-262225cb4514 | 14544 | 895 |
+| Blind | b83224f0-7883-4163-a7a7-76e661bc6579 | 46755 | 10102 |
+| Native localization | e23d57c1-86b0-4d55-9269-f529f89990db | 13590 | 233 |
+| Reconcile | 738f1dc4-c492-4a12-af57-d0aed49ad67f | 22518 | 3507 |
+| Second look | 6c3c44e2-f32a-434f-8078-32bdd74f4214 | 24500 | 3574 |
+
+Both compact challenges passed; the final delta preserves3 explicit geometry uses
+and2 rejects. This is receipt/reference adoption, not clinical box accuracy. The
+App then withheld publication as `viewer_unverifiable_before_publication` at
+00:11:55 UTC, before Qt handoff and Export. Actual driver wall127.649s; no complete
+desktop success or controlled speed-improvement claim. Attempt receipt SHA256:
+`ea67c1ee0faffd618c5d7515c83fd868e6702024b9d53211fc24843e6c29f9bc`.
+
+The9/29 recovery found another capture in that same runtime at00:12:38. Its
+initiating action is not established by the saved driver receipt; do not omit it
+or call it a successful automatic recovery. Host run0a11750ae6b34f1f8c6325d763b89abd
+retains QC runb6492799-2cd9-490c-804f-d1a6c157d665; blind run
+7c11da93-66f7-40b4-82e6-a41ff5a2f484 was interrupted. Actual UI Quit is logged at
+00:13:20; all owned processes/listener are absent now. Old PID27156 was reused by
+an unrelated system process and must not be treated as the old Gateway.
+
+Read-only public sessions saved in `public-evidence-20260925-001314` contain7
+sessions matching runtime Astra/medium metadata. The subsequent history query
+failed after Gateway stopped. `stopped-audit.json` independently verifies every
+saved visible artifact hash and joins saved session/runtime fields without
+restarting anything. Literal first5 input/output/total snapshots are:
+6722/196/6722,9185/2531/9185,10305/381/9852,12283/1063/12283,12455/894/12455.
+Additional QC is6719/191/6719; interrupted blind is null/null/0 (unknown, not free).
+Do not publish the private query configuration or count these as additive charges.
+
+Recovered `regression.xml` records2389 tests,0 failures/errors,5 skips,364.828s;
+no replacement count is inferred from earlier suites. Focused146pass31.61s and
+native Win32 blank-origin Mark1pass1.07s also completed. Both PR/push CI and secret
+checks for4d9717e passed. The old runtime is sealed, never restarted.
+
+The old broad exception handler did not retain which final check failed. A
+concurrent Qt regression process may have interfered with the desktop, but that
+is not proven. New diagnostics identify precheck/capture/postcheck/pixel-comparison
+and allowlisted monitor categories, never arbitrary exception text, titles or
+pixels. Failure still blocks publication with no retry.35 targeted guard and
+scientific-publication tests plus mypy pass; fresh isolated actual acceptance is
+required before claiming this resolves the observed failure.

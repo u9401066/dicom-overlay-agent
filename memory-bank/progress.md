@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — five model stages complete, desktop publication still open
+
+- Retained delta run completed5 stages under180s but failed final local image
+  verification. Explicit3-use/2-reject geometry decisions; no Qt/report/export
+  success, clinical improvement or regional-QA acceptance for scientific mode.
+- Offline stopped-runtime audit preserves7 total sessions (additional incomplete
+  attempt included); no missing usage treated as free. PR20 checks all green.
+- Fixed-category, PHI-free publication diagnostics added;35 focused tests/mypy
+  pass. Reproduce in a fresh runtime without concurrent visible Qt tests.
+
+
 ## 2026-09-25 — compact challenge transport, not clinical acceptance
 
 - Added bounded source-hash-bound scientific deltas and explicit per-geometry

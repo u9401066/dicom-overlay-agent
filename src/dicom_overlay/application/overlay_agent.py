@@ -60,6 +60,26 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Only these fixed monitor categories may enter a publication failure log.
+# Never log native exception text, window titles, source pixels or paths.
+_PUBLICATION_CAPTURE_CODES = frozenset(
+    {
+        "window_verification_unavailable",
+        "viewer_not_selected",
+        "selected_window_unavailable",
+        "selected_window_too_small",
+        "viewer_not_visible",
+        "viewer_identity_changed",
+        "viewer_geometry_changed",
+        "roi_outside_viewer",
+        "viewer_client_geometry_invalid",
+        "roi_outside_viewer_client",
+        "unstable_window_order",
+        "viewer_roi_obstructed",
+        "window_verification_failed",
+    }
+)
+
 _LOCAL_SIGNAL_AUDIT_KEYS = frozenset(
     {
         "status",
@@ -1433,12 +1453,24 @@ class OverlayAgent:
             self._withhold_review("review_invalidated_before_publication")
             return False
         rect = snapshot.display_rect or snapshot.capture_rect
+        check = "precheck"
         try:
             self._monitor.verify_capture_target(rect)
+            check = "capture"
             current = self._monitor.capture_region(rect)
+            check = "postcheck"
             self._monitor.verify_capture_target(rect)
+            check = "pixel_comparison"
             matches = self._processor.same_image_pixels(original, current)
-        except Exception:
+        except Exception as exc:
+            code = "unexpected_failure"
+            if isinstance(exc, CaptureBlockedError):
+                code = (
+                    str(exc)
+                    if str(exc) in _PUBLICATION_CAPTURE_CODES
+                    else "capture_blocked"
+                )
+            logger.warning("publication_recheck_failed", check=check, code=code)
             self._withhold_review("viewer_unverifiable_before_publication")
             return False
         if not matches:
