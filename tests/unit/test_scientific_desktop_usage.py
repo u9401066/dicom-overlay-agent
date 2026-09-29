@@ -6,6 +6,7 @@ import importlib.util
 import json
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -248,3 +249,62 @@ def test_retained_identity_or_inventory_tamper_fails(retained, tamper):
     write(path, turn)
     with pytest.raises((ValueError, KeyError)):
         module.inspect_export(export, live)
+
+
+@pytest.mark.parametrize(
+    "mode", ["valid", "export_changed", "turn_changed", "query_failed"]
+)
+def test_cli_is_read_only_create_only_and_rechecks_after_public_query(
+    retained, usage, monkeypatch, tmp_path, mode
+):
+    module, export, live, attempt, _ = retained
+    _, _, sessions, lines = usage
+    (live / "gateway.log").write_text("\n".join(lines), encoding="utf-8")
+    output = tmp_path / "usage.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["collector", str(export), "--live", str(live), "--output", str(output)],
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-not-a-real-key")
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", "unrelated-runtime")
+    calls = []
+
+    def query(command, **kwargs):
+        calls.append(command)
+        assert command[2:] == [
+            "sessions",
+            "--agent",
+            "main",
+            "--active",
+            "120",
+            "--limit",
+            "512",
+            "--json",
+        ]
+        assert "OPENAI_API_KEY" not in kwargs["env"]
+        assert kwargs["env"]["OPENCLAW_CONFIG_PATH"] == str(
+            live / "openclaw/openclaw.json"
+        )
+        if mode == "export_changed":
+            (export / "unexpected.txt").write_bytes(b"changed")
+        if mode == "turn_changed":
+            (attempt / "turn-0001/model-visible.txt").write_bytes(b"changed")
+        return SimpleNamespace(
+            returncode=1 if mode == "query_failed" else 0,
+            stdout=json.dumps({"sessions": sessions}).encode(),
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", query)
+    if mode != "valid":
+        with pytest.raises(ValueError):
+            module.main()
+        assert not output.exists()
+        return
+    module.main()
+    report = module.read(output)
+    assert report["model_requests"] == 0 and len(report["turns"]) == 5
+    assert report["source_results_mutated"] is False
+    assert report["gateway_log_prefix_bytes"] == (live / "gateway.log").stat().st_size
+    with pytest.raises(ValueError, match="output_already_exists"):
+        module.main()
+    assert len(calls) == 1

@@ -1,5 +1,31 @@
 # Active Context
 
+## 2026-09-29 — case1 published; case2 currently running
+
+- Same live exec77794: case1 exported_verified,141.270s wall/125886ms analysis,
+  MAE0,5 verified scientific Astra-medium turns. Actual summary viewed. Exactly5
+  Gateway run starts in its time interval match bound receipts (no extra recorded
+  inference after unaccepted-frame idle reconnect). This is not clinical scoring.
+- Export desktop-20260929-112204-936657; contract37169cc0bfd0e3590bc2165df3e38992a2d6bdd5ebf68f5ecc28cc68c7f914bd;
+  usage d38f882d6727ef05b9b46a77e0cec4f1062a5bad7958beb7ef66c91b38c7448a.
+- Case2 actual capture11:22:17UTC; do not restart driver/App/Gateway. Completion
+  of its limit2 tranche is still unobserved.2 actual publications of120 so far,
+  including case0 supplemented collector failure;118 not yet credited.
+
+## 2026-09-29 — linked scientific continuation LIVE
+
+- Collector committed f850315; App source stays9a84847. Private run-batch-v2.py
+  plan-v2 b960a9a5f3526c8f636134af25ff5d08e507ec83fbaabb1046d59182b912d029
+  prepared before new inference; validates old plan, exact case0 failure/recovery
+  and unchanged source/config/input/PIDs. Never repeats case0.
+- LIVE exec session77794 runs limit2 (cases1/2) on existing App32116/Gateway7204,
+  Viewer33040. Case1 began11:19:56UTC after idle unaccepted-frame reconnect/replay
+  with same idempotency key; all5 stages need usage accounting before success.
+  Do not restart a quiet process. Legacy full-batch auditor/scorer is insufficient
+  for recovered scientific receipts. New collector output lives inside case_dir,
+  outside runtime, and is separately hashed in successful case receipt.
+- Added4 CLI tests after f850315: total38 collector+33 verifier+4 docs=75pass.
+
 ## 2026-09-29 — scientific case0 published; collector-only failure recovered
 
 - Original run-batch.py session76098 exited1 after case0 actual Export. Science

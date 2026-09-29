@@ -1,5 +1,12 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — linked continuation reaches case1
+
+- Case0 preserved/recovered without inference; case1 succeeds with scientific
+  collector, five bound medium turns and exact source pixels. Case2 remains live
+  in original exec77794.2/120 publications, no clinical pass claim.
+- Additional CLI protections bring collector/verifier/docs checks to75pass.
+
 ## 2026-09-29 — scientific case0 and five-turn usage binding
 
 - Actual publication succeeds; driver stops on legacy collector mismatch. Original
