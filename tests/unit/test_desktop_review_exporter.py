@@ -12,9 +12,11 @@ import pytest
 from PIL import Image
 
 from dicom_overlay.application.regional_conversation import RegionalConversations
+from dicom_overlay.application.regional_history import decode_regional_history
 from dicom_overlay.infrastructure.desktop_review_exporter import (
     export_desktop_review,
 )
+from dicom_overlay.infrastructure.regional_history_io import load_regional_history
 from medical_image_harness.models import (
     AnalysisResult,
     Finding,
@@ -26,6 +28,62 @@ from medical_image_harness.models import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def test_actual_v3_export_keeps_past_ids_separate_and_can_load_after_restart(tmp_path):
+    buffer = io.BytesIO()
+    Image.new("RGB", (80, 40), "white").save(buffer, format="PNG")
+    image = base64.b64encode(buffer.getvalue()).decode()
+    old = RegionalConversations()
+    old.bind(image)
+    old.append(
+        old.thread(RegionRect(0.1, 0.2, 0.3, 0.4), "old-f1"),
+        question="Old",
+        answer="Historical",
+        review_turn_id="a" * 32,
+    )
+    history = decode_regional_history(
+        json.dumps(old.export()).encode(), source_image_sha256=old.image_sha256
+    )[0]
+    current = RegionalConversations()
+    current.bind(image)
+    thread = current.restore_archive(history)
+    current.append(thread, question="New", answer="Current", review_turn_id="b" * 32)
+    result = AnalysisResult(
+        modality=Modality.EKG,
+        summary="Synthetic",
+        severity=Severity.INFO,
+        findings=[],
+        checklist={},
+        analysis_trace=[
+            {
+                "stage": "interactive_review",
+                "status": "no_change",
+                "review_turn_id": "b" * 32,
+            }
+        ],
+    )
+    output = export_desktop_review(
+        image_base64=image,
+        result=result,
+        output_root=tmp_path,
+        regional_conversations=current.export(),
+    )
+    document = json.loads((output.parent / "regional-conversations.json").read_text())
+    assert document["schema_version"] == 3
+    assert document["threads"] == []
+    entry = document["archived_threads"][0]
+    assert entry["history"]["turns"][0]["review_turn_id"] == "a" * 32
+    assert entry["turns"][0]["review_turn_id"] == "b" * 32
+    exported_result = json.loads((output.parent / "result.json").read_text())
+    assert [event["review_turn_id"] for event in exported_result["analysis_trace"]] == [
+        "b" * 32
+    ]
+    reopened = load_regional_history(
+        output.parent / "regional-conversations.json",
+        source_image_sha256=current.image_sha256,
+    )
+    assert [turn.answer for turn in reopened[0].turns] == ["Historical", "Current"]
 
 
 def test_export_binds_complete_regional_history_to_original_pixels(tmp_path):

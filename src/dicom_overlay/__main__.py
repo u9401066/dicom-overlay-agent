@@ -92,6 +92,7 @@ from dicom_overlay.infrastructure.tts_speaker import speak_error, speak_result
 from dicom_overlay.infrastructure.vision_probe import VisionSmokeTester
 from dicom_overlay.presentation.control_bar import ControlBarWindow
 from dicom_overlay.presentation.overlay_window import OverlayWindow
+from dicom_overlay.presentation.regional_history_dialog import RegionalHistoryDialog
 from dicom_overlay.presentation.review_capture import capture_review_widgets
 from dicom_overlay.presentation.roi_setup import run_roi_setup
 from dicom_overlay.presentation.scientific_review import (
@@ -818,7 +819,7 @@ def main() -> None:
     _pending_user_region: dict[int, RegionRect] = {}
     regional_conversations = RegionalConversations()
     _pending_regional_threads: dict[int, RegionalThread] = {}
-    _active_region: list[tuple[RegionRect, str, bool] | None] = [None]
+    _active_region: list[tuple[RegionRect, str, bool, str] | None] = [None]
 
     # ─── Agent callbacks (called from bridge thread → emit signals) ───
     agent.on_state_change = signals.state_changed.emit
@@ -1266,8 +1267,48 @@ def main() -> None:
         dialog.analysis_settings_saved.connect(on_analysis_settings_changed)
         dialog.roi_setup_requested.connect(open_settings_roi_setup)
         dialog.capture_window_requested.connect(choose_capture_window)
+        dialog.regional_history_requested.connect(open_regional_history)
         dialog.vision_test_requested.connect(_run_vision_test)
         dialog.exec()
+
+    def open_regional_history() -> None:
+        snapshot = _current_review_snapshot()
+        if snapshot is None:
+            control_bar.set_status("Analyze the original image before loading history")
+            return
+        regional_conversations.bind(snapshot.image_base64)
+        dialog = RegionalHistoryDialog(
+            image_base64=snapshot.image_base64,
+            threads=regional_conversations.archived_threads,
+            parent=control_bar,
+        )
+        dialog.exec()
+        history = dialog.selected_history
+        if history is None:
+            return
+        current = _current_review_snapshot()
+        if (
+            current is None
+            or current.revision != snapshot.revision
+            or current.image_base64 != snapshot.image_base64
+        ):
+            control_bar.set_status("Image or report changed; open history again")
+            return
+        regional_conversations.bind(current.image_base64)
+        try:
+            thread = regional_conversations.restore_archive(history)
+        except ValueError:
+            control_bar.set_status("History could not be restored for this image")
+            return
+        _begin_chat_request()
+        control_bar.set_interaction_mode("passive")
+        overlay.set_interaction_mode("passive")
+        _active_region[0] = (history.region, "", False, history.archive_id)
+        last = thread.all_turns[-1]
+        overlay.show_chat_response(
+            last.question, last.answer, regional_history=thread.transcript()
+        )
+        control_bar.set_status("Imported history — Q&A only; Send to continue")
 
     def _run_vision_test(_profile) -> None:
         control_bar.set_status("Testing image support...")
@@ -1394,6 +1435,7 @@ def main() -> None:
         selected_region: RegionRect,
         selected_finding: Finding | None,
         allow_add: bool,
+        archive_id: str = "",
     ) -> None:
         current_result = snapshot.result
         revision = snapshot.revision
@@ -1401,9 +1443,19 @@ def main() -> None:
         review_turn_id = uuid4().hex
         regional_conversations.bind(snapshot.image_base64)
         finding_id = selected_finding.id if selected_finding is not None else ""
-        regional_thread = regional_conversations.thread(selected_region, finding_id)
+        if archive_id:
+            regional_thread = regional_conversations.archived_thread(archive_id)
+            if regional_thread is None or regional_thread.region != selected_region:
+                control_bar.set_status("History expired; select the current image again")
+                return
+            # Never let a past-run ID/box select a current finding or propose ADD.
+            selected_finding = None
+            finding_id = ""
+            allow_add = False
+        else:
+            regional_thread = regional_conversations.thread(selected_region, finding_id)
         _pending_regional_threads[request_id] = regional_thread
-        _active_region[0] = (selected_region, finding_id, allow_add)
+        _active_region[0] = (selected_region, finding_id, allow_add, archive_id)
         prior_regional_history = regional_thread.context()
         overlay.chat_panel.set_regional_history(
             regional_thread.transcript(), enabled=False
@@ -1426,7 +1478,15 @@ def main() -> None:
         async def _run_regional_review():
             turn_trace: list[dict[str, object]] = []
             refinement_evidence = ""
-            if config.analysis.multi_pass_enabled:
+            if archive_id:
+                turn_trace.append(
+                    {
+                        "stage": "regional_refine",
+                        "status": "skipped",
+                        "reason": "imported_history_qa_only",
+                    }
+                )
+            elif config.analysis.multi_pass_enabled:
                 if signal_audit.get("low_signal") is True:
                     turn_trace.append(
                         {
@@ -1586,7 +1646,7 @@ def main() -> None:
         if not thread.turns:
             return False
         _begin_chat_request()
-        _active_region[0] = (region, finding_id, allow_add)
+        _active_region[0] = (region, finding_id, allow_add, "")
         if agent.target_window:
             overlay.position_over_window(agent.target_window, agent.display_frame)
         last = thread.turns[-1]
@@ -1717,7 +1777,7 @@ def main() -> None:
             overlay.clear_chat()
             control_bar.set_status("Select a region on the current image first")
             return
-        region, finding_id, allow_add = target
+        region, finding_id, allow_add, archive_id = target
         selected = None
         if finding_id:
             matches = [
@@ -1745,6 +1805,7 @@ def main() -> None:
             selected_region=region,
             selected_finding=selected,
             allow_add=allow_add,
+            archive_id=archive_id,
         )
 
     overlay.chat_panel.followup_requested.connect(_continue_regional_chat)

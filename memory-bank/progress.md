@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — regional-history import candidate (source only)
+
+Explicit Settings load/select/reopen/Send supports exported same-image history
+without conflating past-run findings/IDs with current evidence. Preview and plain
+text, v2/v3 round-trip, bounded untrusted import and stale-selection/reply guards
+are wired into the App. Q&A-only continuation skips refinement; no measured
+speed/accuracy or real subscription acceptance claimed. Initial dependency-related
+smoke errors retained; broader verification and CI in progress. No new EXE or
+clinical case. See docs/architecture/regional-history-import.md.
+
 ## 2026-09-29 — website release and recovery CI confirmation
 
 Recovery1a7cb81 passes all Windows/Linux/compatibility/secret checks. Separate

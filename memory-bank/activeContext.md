@@ -1,5 +1,25 @@
 # Active Context
 
+## 2026-09-29 — isolated regional-history import candidate
+
+- Worktree/branch regional-history-import-20260929 based on3b3c5a6; preserves
+  MAIN user edits, sealed runtimes and pristine36dc3c6 bundle. No new paid turn,
+  desktop interference, EXE replacement or public-site overwrite.
+- Added Settings history file picker, same-source hash validation, preview and
+  plain-text archive selection/reopening/inline continuation. Archived context
+  is separate from current AI/manual threads and cannot propose report changes.
+  Imports are bounded/atomic; stale modal selection/late replies fail closed.
+- Export staysv2 without archives;v3 separates old historical IDs from new
+  current-run IDs, round-trips again after continuation. Q&A-only archive turns
+  skip refinement, not the crop+original-ROI structured model request.
+- First extended run247passed51errors: new worktree missing Node/OpenClaw modules.
+  Initial focused round-trip failure exposed extra RegionRect dataclass fields;
+  now explicit x/y/w/h serialization. Test IDs/skip-trace expectations corrected.
+  Completing dependency setup, broader checks and CI before publishing checkpoint.
+- See docs/architecture/regional-history-import.md. No actual new-App import
+  acceptance or rebuilt EXE yet; >=100-case scientific/clinical evaluation and
+  license/release goals remain open. Desktop-availability question unanswered.
+
 ## 2026-09-29 — Pages refresh deployed; recovery CI fully green
 
 - Recovery source1a7cb81 CI36571046138: Windows/Linux pytest and all four

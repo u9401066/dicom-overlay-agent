@@ -34,17 +34,51 @@ class RegionalTurn:
     review_turn_id: str = ""
 
 
+@dataclass(frozen=True)
+class ArchivedConversation:
+    """Untrusted past-run context, never a current finding or evidence receipt."""
+
+    source_image_sha256: str
+    finding_id: str
+    region: RegionRect
+    turns: tuple[RegionalTurn, ...]
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "source_image_sha256": self.source_image_sha256,
+            "finding_id": self.finding_id,
+            "region": {
+                name: getattr(self.region, name) for name in ("x", "y", "w", "h")
+            },
+            "turns": [asdict(turn) for turn in self.turns],
+        }
+
+    @property
+    def archive_id(self) -> str:
+        return hashlib.sha256(
+            json.dumps(self.to_payload(), sort_keys=True, ensure_ascii=False).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+
+
 @dataclass
 class RegionalThread:
     region: RegionRect
     finding_id: str
     turns: list[RegionalTurn] = field(default_factory=list)
+    history: ArchivedConversation | None = None
+
+    @property
+    def all_turns(self) -> list[RegionalTurn]:
+        return [*(self.history.turns if self.history else ()), *self.turns]
 
     def context(self) -> str:
         """Bound context cost without deleting the full visible/export history."""
         selected: list[dict[str, str]] = []
         remaining = 12_000
-        for turn in reversed(self.turns[-6:]):
+        turns = self.all_turns
+        for turn in reversed(turns[-6:]):
             pair = {"question": turn.question[:2_000], "answer": turn.answer[:8_000]}
             size = len(json.dumps(pair, ensure_ascii=False))
             if size > remaining:
@@ -52,30 +86,80 @@ class RegionalThread:
             selected.insert(0, pair)
             remaining -= size
         return json.dumps(
-            {"omitted_turns": len(self.turns) - len(selected), "turns": selected},
+            {"omitted_turns": len(turns) - len(selected), "turns": selected},
             ensure_ascii=False,
         )
 
     def transcript(self) -> str:
-        return "\n\n".join(
+        text = "\n\n".join(
             f"{index}. Q: {turn.question}\nA: {turn.answer}"
             + (
                 f"\nSuggested change (not confirmation): {turn.proposal}"
                 if turn.proposal
                 else ""
             )
-            for index, turn in enumerate(self.turns, 1)
+            for index, turn in enumerate(self.all_turns, 1)
         )
+        if self.history:
+            return (
+                f"Imported history: first {len(self.history.turns)} turns are "
+                "unverified past-run context, not current report evidence. "
+                "Continuation is Q&A only; use Inspect/Mark for report changes.\n\n"
+                + text
+            )
+        return text
 
 
 class RegionalConversations:
     def __init__(self) -> None:
         self.image_sha256 = ""
         self._threads: dict[tuple[object, ...], RegionalThread] = {}
+        self._archives: dict[str, RegionalThread] = {}
 
     def clear(self) -> None:
         self.image_sha256 = ""
         self._threads.clear()
+        self._archives.clear()
+
+    @property
+    def archived_threads(self) -> list[RegionalThread]:
+        return list(self._archives.values())
+
+    def archived_thread(self, archive_id: str) -> RegionalThread | None:
+        return self._archives.get(archive_id)
+
+    def restore_archive(self, history: ArchivedConversation) -> RegionalThread:
+        """Activate only an explicitly selected, same-source archive, separately.
+
+        IDs/boxes in an imported file cannot identify findings in a new analysis.
+        Do not merge with live/manual threads, even for identical geometry.
+        """
+        if not self.image_sha256 or history.source_image_sha256 != self.image_sha256:
+            raise ValueError("History belongs to a different original image")
+        key = history.archive_id
+        if key not in self._archives:
+            histories = [
+                current.history
+                for current in self._archives.values()
+                if current.history is not None
+            ]
+            histories.append(history)
+            if (
+                len(histories) > 64
+                or sum(len(item.turns) for item in histories) > 512
+                or sum(
+                    len(
+                        json.dumps(item.to_payload(), ensure_ascii=False).encode(
+                            "utf-8"
+                        )
+                    )
+                    for item in histories
+                )
+                > 4 * 1024 * 1024
+            ):
+                raise ValueError("Too many imported conversations for this image")
+            self._archives[key] = RegionalThread(history.region, "", history=history)
+        return self._archives[key]
 
     def bind(self, image_base64: str) -> None:
         digest = hashlib.sha256(
@@ -107,14 +191,15 @@ class RegionalConversations:
         review_turn_id: str | None = None,
     ) -> bool:
         # Detached objects from an invalidated image must never enter new history.
-        if not any(current is thread for current in self._threads.values()):
+        current_threads = [*self._threads.values(), *self._archives.values()]
+        if not any(current is thread for current in current_threads):
             return False
         turn_id = uuid4().hex if review_turn_id is None else review_turn_id
         validate_review_turn_id(turn_id)
         if any(
             turn.review_turn_id == turn_id
-            for current in self._threads.values()
-            for turn in current.turns
+            for current in current_threads
+            for turn in current.all_turns
         ):
             raise ValueError("Review turn ID already belongs to a conversation turn")
         thread.turns.append(
@@ -152,8 +237,8 @@ class RegionalConversations:
         return True
 
     def export(self) -> dict[str, object]:
-        return {
-            "schema_version": 2,
+        payload: dict[str, object] = {
+            "schema_version": 3 if self._archives else 2,
             "source_image_sha256": self.image_sha256,
             "coordinate_space": "normalized_original_roi",
             "content_role": "review_conversation_not_verified_findings",
@@ -170,3 +255,14 @@ class RegionalConversations:
                 if thread.turns
             ],
         }
+        if self._archives:
+            payload["archived_threads"] = [
+                {
+                    # Past-run turn IDs stay here, never in this run's turns.
+                    "history": thread.history.to_payload(),
+                    "turns": [asdict(turn) for turn in thread.turns],
+                }
+                for thread in self._archives.values()
+                if thread.history is not None
+            ]
+        return payload

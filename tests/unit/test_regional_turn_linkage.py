@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import base64
+import json
 from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ import pytest
 
 from dicom_overlay.__main__ import _SignalBridge
 from dicom_overlay.application.regional_conversation import RegionalConversations
+from dicom_overlay.application.regional_history import decode_regional_history
 from dicom_overlay.application.review_chat import ReviewChatResponse
 from dicom_overlay.domain.entities import AgentState, FindingDelta, FindingOp
 from medical_image_harness.models import Finding, Modality, RegionRect, Severity
@@ -30,8 +32,20 @@ class _ImmediateBridge:
         return future
 
 
-@pytest.mark.parametrize("outcome", ["no_change", "blocked", "applied", "dismissed"])
-def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(outcome):
+@pytest.mark.parametrize(
+    "outcome,archived",
+    [
+        ("no_change", False),
+        ("blocked", False),
+        ("applied", False),
+        ("dismissed", False),
+        ("no_change", True),
+        ("blocked", True),
+    ],
+)
+def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(
+    outcome, archived
+):
     image = base64.b64encode(b"synthetic pixels").decode()
     crop = base64.b64encode(b"synthetic selected crop pixels").decode()
     region = RegionRect(0.1, 0.2, 0.3, 0.4)
@@ -66,6 +80,21 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
     errors = []
     signals.chat_failed.connect(errors.append)
     store = RegionalConversations()
+    archive_id = ""
+    if archived:
+        old = RegionalConversations()
+        old.bind(image)
+        old.append(
+            old.thread(region, "same-id-from-old-report"),
+            question="Old question",
+            answer="Old answer",
+        )
+        history = decode_regional_history(
+            json.dumps(old.export()).encode(), source_image_sha256=old.image_sha256
+        )[0]
+        store.bind(image)
+        store.restore_archive(history)
+        archive_id = history.archive_id
     pending = [None]
     env = {
         "uuid4": uuid4,
@@ -84,12 +113,15 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
         "overlay": Mock(),
         "control_bar": Mock(),
         "logger": Mock(),
-        "config": SimpleNamespace(analysis=SimpleNamespace(multi_pass_enabled=False)),
+        "config": SimpleNamespace(
+            analysis=SimpleNamespace(multi_pass_enabled=archived)
+        ),
         "image_processor": Mock(),
         "openclaw_client": SimpleNamespace(
+            refine=AsyncMock(),
             review_region_about_image_with_trace=AsyncMock(
                 return_value=("synthetic raw response", {"run_id": "synthetic-run"})
-            )
+            ),
         ),
         "summarize_result_for_followup": Mock(return_value="synthetic context"),
         "build_region_review_prompt": Mock(return_value="synthetic prompt"),
@@ -120,6 +152,7 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
         selected_region=region,
         selected_finding=None,
         allow_add=True,
+        archive_id=archive_id,
     )
     assert not errors
     env["build_region_review_prompt"].assert_called_once()
@@ -132,7 +165,24 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
         image_base64=crop,
         context_image_base64=snapshot.image_base64,
     )
-    turn = store.export()["threads"][0]["turns"][0]
+    if archived:
+        env["openclaw_client"].refine.assert_not_awaited()
+        assert not store.export()["threads"]
+        assert (
+            env["build_region_review_prompt"].call_args.kwargs["selected_finding"]
+            is None
+        )
+        assert env["build_region_review_prompt"].call_args.kwargs["allow_add"] is False
+        assert (
+            "Old answer"
+            in env["build_region_review_prompt"].call_args.kwargs["regional_history"]
+        )
+        assert (
+            env["parse_region_review_response"].call_args.kwargs["allow_add"] is False
+        )
+        assert env["_active_region"][0] == (region, "", False, archive_id)
+    collection = "archived_threads" if archived else "threads"
+    turn = store.export()[collection][0]["turns"][0]
     turn_id = turn["review_turn_id"]
     assert len(turn_id) == 32
     if outcome == "applied":
@@ -146,6 +196,13 @@ def test_same_host_turn_id_crosses_model_reply_qt_signal_history_and_outcome(out
         assert call.kwargs["outcome"] == outcome
         agent.apply_finding_delta.assert_not_called()
     assert call.kwargs["review_turn_id"] == turn_id
-    assert call.kwargs["regional_review_trace"][0]["run_id"] == "synthetic-run"
+    trace = call.kwargs["regional_review_trace"]
+    assert trace[-1]["run_id"] == "synthetic-run"
+    if archived:
+        assert trace[0] == {
+            "stage": "regional_refine",
+            "status": "skipped",
+            "reason": "imported_history_qa_only",
+        }
     assert pending[0] is None
-    assert store.export()["threads"][0]["turns"][0] == turn
+    assert store.export()[collection][0]["turns"][0] == turn

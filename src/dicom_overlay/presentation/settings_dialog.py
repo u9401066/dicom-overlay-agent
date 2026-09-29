@@ -43,6 +43,7 @@ class SettingsDialog(QDialog):
     vision_test_requested = pyqtSignal(object)
     roi_setup_requested = pyqtSignal()
     capture_window_requested = pyqtSignal()
+    regional_history_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -126,7 +127,15 @@ class SettingsDialog(QDialog):
         window_btn.setObjectName("chooseCaptureWindow")
         window_btn.clicked.connect(self._choose_capture_window)
         form.addRow("", window_btn)
+        history_btn = QPushButton("區域對話歷史 / Regional history…")
+        history_btn.setObjectName("regionalHistory")
+        history_btn.clicked.connect(self._open_regional_history)
+        form.addRow("", history_btn)
         return tab
+
+    def _open_regional_history(self) -> None:
+        self.accept()
+        self.regional_history_requested.emit()
 
     def _choose_capture_window(self) -> None:
         self.accept()

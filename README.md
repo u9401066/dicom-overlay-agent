@@ -11,6 +11,12 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## Current development target — 2026-09-29 (not a release)
 
+[Regional history import candidate](docs/architecture/regional-history-import.md):
+Settings can load a same-source exported conversation, preview its region and
+reopen/continue it independently of current findings. Imported context is Q&A-only;
+old proposals and evidence IDs cannot modify the current report. Source/offscreen
+validation only; not yet real subscription acceptance or included in the EXE.
+
 [Source-App shutdown follow-up](docs/evidence/2026-09/gateway-close-desktop-2026-09-29.md):
 actual Quit drained10 queued events and exited without a close timeout. The same
 run's blind draft failed on mixed present/absent finding references; it is retained
