@@ -5,7 +5,10 @@ purposes. Start here; a dated successful smoke run is not current clinical appro
 
 Latest development wiring: [scientific desktop publication](evidence/2026-09/scientific-desktop-publication-2026-09-25.md)
 keeps prepared reports out of Export/QA until Qt availability and two source-pixel
-checks pass. Opt-in only, synthetic-tested, no new clinical/live-model acceptance.
+checks pass. Opt-in only; the [September29 actual replay](evidence/2026-09/scientific-regional-desktop-2026-09-29.md)
+now completes all5 model stages, Qt handoff, canonical export and separate manual/AI
+regional conversations.10 Astra-medium sessions verified; one exposed source,
+not clinical acceptance, a refreshed EXE or default activation.
 An [actual App follow-up](evidence/2026-09/native-scientific-startup-2026-09-25.md)
 found and corrected a missing transport-receipt opt-in before the first model
 request; successful live scientific interpretation is not yet established.
@@ -13,9 +16,9 @@ The next real run exposed canonical session naming; after correction, QC advance
 to blind reading, where multi-observation checklist references failed the prior
 single-ID contract. A [follow-up](evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
 adds typed multiple references and private exact visible-response persistence;
-fresh replay reaches the second-look request but the total deadline cancels it.
-Native localization evidence was not adopted in the reconciliation finding boxes;
-complete live acceptance remains pending.
+earlier replays failed the deadline or publication guard. Compact SHA-bound deltas
+and explicit geometry dispositions precede the successful September29 replay;
+all original failed attempts remain retained.
 
 ## Current checkpoint — September 24, 2026
 

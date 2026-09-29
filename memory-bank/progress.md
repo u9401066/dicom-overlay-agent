@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — actual five-stage publication and regional interaction
+
+- Source e9e1346 actual App:147.516s, all5 stages, Qt handoff/complete canonical
+  export; visible-source pixels identical.10 Astra-medium sessions verified.
+- Blank-origin manual Mark, two manual questions, separate AI-box question,
+  history reopening and image-change stale-export rejection passed. Report and
+  canonical result unchanged; manual coordinate edge error0.5px.
+- Single exposed source, not clinical acceptance/new EXE. Runtime sealed after
+  actual UI cleanup. Remaining UI time/context gaps documented; goal active.
+
+
 ## 2026-09-29 — five model stages complete, desktop publication still open
 
 - Retained delta run completed5 stages under180s but failed final local image

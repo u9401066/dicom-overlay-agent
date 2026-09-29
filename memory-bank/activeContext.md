@@ -1,5 +1,28 @@
 # Active Context
 
+## 2026-09-29 — actual scientific App and regional QA pass (one exposed source)
+
+- Clean e9e1346, fresh Ctemp/dicom-scientific-desktop-20260929-publication,
+  App6444/launcher8392/Gateway6768/Viewer29948/launcher33372. Five model stages,
+  Qt handoff, two pixel checks and real Export completed147.516s within180s.
+  Initial foreground preflight failed before inference; separate retry retained.
+- Native blank-origin Mark950,710→1200,865 (outside all AI boxes), manual2-turn
+  QA, existing f1 separate1-turn, manual reopen without inference all pass.
+  Source/canonical unchanged; manual edge drift0.5px. Actual file-dialog change
+  invalidated old panels and blocked stale Export without another request.
+- Public history/session/runtime audit binds10 Astra-medium sessions,5 science+
+  5 regional. Small AI crop71x24 correctly skipped refine. Regional-audit hash
+  ddc7e750ab3c504639a01ac8bf82415b52b7e74ac71d9870429b5bad39fa59b2.
+  Evidence: docs/evidence/2026-09/scientific-regional-desktop-2026-09-29.md.
+- Actual Quit/owned Viewer close. WebSocket close bounded2s timeout then Gateway
+  stopped. All owned processes and18796 absent. Runtime SEALED, never restart.
+  Both e9e1346 CI/secrets pass. Local39pass4.51s, mypy/Ruff passed.
+- Next real gaps: UI reports last-stage29525ms, not total; model label remains
+  openclaw-unverified until separate usage binding; tiny region loses clinical
+  context. No current scientific EXE, Pages update, external classifier or
+  >=100-case clinical improvement. Full goal remains active; do not claim it done.
+
+
 ## 2026-09-29 — recovered delta attempt; publication diagnostics
 
 - Authoritative candidate HEAD4d9717e, remote PR20 checks all successful. Main

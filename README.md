@@ -11,6 +11,13 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## Current development target — 2026-09-24 (not a release)
 
+September29 update: [actual scientific desktop and regional QA](docs/evidence/2026-09/scientific-regional-desktop-2026-09-29.md)
+now completes five model stages, Qt handoff and canonical export in147.516s on
+one exposed partial ECG. Blank-origin Mark, manual two-turn QA, separate AI-box
+QA, history reopening and stale-export blocking pass;10 Astra-medium sessions
+verified. This is source-App engineering acceptance, not a new EXE or clinical
+accuracy claim. Remaining UI timing/context limitations are documented.
+
 The requested desktop target is now **GPT-6 Astra medium**, selected through
 Settings as `openai-codex-astra`. Save the profile and restart the App/Gateway to
 apply it; an existing saved low setting is not silently rewritten. Clean build
@@ -58,7 +65,7 @@ negated-ST review false alarm is fixed in YAML, with original exports preserved.
 This is one-source engineering evidence, not vendor diversity or clinical accuracy.
 An opt-in [scientific continuation](docs/evidence/2026-09/scientific-localization-reconciliation-2026-09-25.md)
 now binds actual native bbox receipts after retained blind reading and requires
-explicit finding challenge decisions. It is not yet the desktop's active pipeline
+explicit finding challenge decisions. It is an opt-in, not the default desktop pipeline
 or an independent waveform classifier, and has no new clinical accuracy claim.
 The [EKG human/agent workflow](docs/clinical/ekg-reading-workflow.md) now documents
 the ten-step reading sequence and all sixteen axes. It is a specialist-review
@@ -82,15 +89,15 @@ synthetic 100/150/200% rendering passes, but native candidate/EXE acceptance is 
 
 An isolated [host execution journal](docs/architecture/execution-journal.md) now
 enforces ordered callbacks, quality-gated interpretation and cancellation records.
-It is not yet desktop-wired and does not retroactively certify prior model runs.
+It is wired into the explicit development flow, not the default or historical runs.
 The opt-in [image evidence request API](docs/architecture/gateway-evidence-capture.md)
 now connects Gateway requests to original output receipts, without the legacy
-parser or automatic paid parse retries. Actual staged desktop acceptance is pending.
+parser or automatic paid parse retries. The September29 replay verifies this path.
 An [executable stage adapter](docs/architecture/scientific-image-session.md) now
 runs intake, QC, blind reading, native localization, reconciliation and a separate
 source-image second look; non-diagnostic inputs make no blind-read request.
 Content preflight and a run/source/content-bound review-availability callback now
-precede full canonical validation. These stages are tested with synthetic replies;
+precede full canonical validation. Synthetic tests and the actual replay cover these stages;
 the independent classifier and default desktop activation remain open.
 See the [handoff checkpoint](docs/evidence/2026-09/scientific-review-handoff-2026-09-25.md).
 The concrete [Qt review surface](docs/evidence/2026-09/qt-scientific-review-2026-09-25.md)
@@ -99,16 +106,16 @@ native 150%-DPI synthetic-window and real-mouse close/revocation checks. This is
 component evidence, not yet default App/OpenClaw staged-pipeline acceptance.
 Explicit development [desktop wiring](docs/architecture/scientific-review-presentation.md)
 now uses `--scientific-review --deidentified-input`, two pixel checks, queued Qt
-handoff and validated canonical export. It is synthetic-tested, not live-model
-accepted, and does not yet integrate the legacy clinical-rule hooks. Regional edits
+handoff and validated canonical export. The actual source replay passes; it
+does not yet integrate the legacy clinical-rule hooks. Regional edits
 remain review drafts requiring reconciliation; the default workflow is unchanged.
 Initial [actual App runs](docs/evidence/2026-09/native-scientific-startup-2026-09-25.md)
 fixed missing receipt collection and canonical session naming. QC advanced to
 blind reading, where multi-observation checklist references blocked publication.
 The [follow-up](docs/evidence/2026-09/scientific-reference-receipts-2026-09-25.md)
 adds structured references and private exact visible-output retention; fresh live
-replays now reach the second-look request, but the total deadline and unadopted
-localization evidence still prevent complete live acceptance.
+failures led to compact review deltas and explicit geometry dispositions. The
+September29 replay completes this path without increasing the total deadline.
 
 Development Settings now offers **Choose image window** for browsers and other
 image applications, with a fresh, session-only ROI and no silent target fallback.

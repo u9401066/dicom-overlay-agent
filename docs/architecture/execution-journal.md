@@ -2,8 +2,10 @@
 
 `application.execution_journal.ExecutionJournal` records callbacks as they run,
 not a completed stage list inferred from the final model answer. It is a building
-block for [host evidence assembly](host-evidence-assembly.md), **not yet wired into
-the desktop or the active 120-case GUI cohort**. Existing results are not upgraded.
+block for [host evidence assembly](host-evidence-assembly.md), wired into the
+explicit scientific desktop development flow. The [September29 actual replay](../evidence/2026-09/scientific-regional-desktop-2026-09-29.md)
+verifies this path; it is not the default workflow or the sealed120-case cohort.
+Existing results are not upgraded.
 
 ## Execution boundary
 

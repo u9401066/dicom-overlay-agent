@@ -43,11 +43,16 @@ fresh source-image turns. It does not repeat blind inference or replace its draf
    stage. Explicit unavailable/rejected-only localization stays without boxes.
 5. **Reconciliation:** another source-image request receives the retained blind
    draft and verified geometry catalogue. It returns agreements, conflicts,
-   unsupported claims, uninspected regions and a scientific draft, plus exactly
+   unsupported claims, uninspected regions and a prior-SHA-bound compact delta, plus exactly
    one explicit challenge decision per old/new finding. Confirm/revise retain
    identity; retract/unevaluable remove the finding; add requires a new identity.
    Changed clinical wording, certainty or observations cannot masquerade as an
    unchanged confirmation. Original QC/partial-study and CT limits still apply.
+   The host applies explicit bounded stable-ID edits to a copy, then invokes the
+   unchanged full draft/reference/claim validators. Every supplied spatial record
+   requires an explicit use/reject disposition; use must match final finding and
+   observation links, and rejected geometry cannot remain linked. No implicit
+   attachment, forced localization, response repair or extended SLA occurs.
 
 No tool is permitted during reconciliation. This is post-observation rejection,
 not remote execution sandboxing. The concise decision rationale is reviewable
@@ -55,8 +60,8 @@ visible-evidence text, not hidden reasoning or a proof of medical correctness.
 The host checks decision coverage/identity and reference consistency, not the
 clinical truth or semantic completeness of the four model-authored lists.
 
-The original reconciliation envelope bytes/hash are retained separately from the
-strictly decoded nested draft (whose bytes are a canonical JSON projection).
+The original compact response bytes/hash are retained separately from the
+strictly validated materialized draft (a deterministic JSON projection).
 `localizations` and `reconciliation` return independent copies. The original
 blind response remains immutable and box-free; a later client send cannot replace
 the prior tool text/audit snapshot. Repeated/concurrent continuation, failure or
