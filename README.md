@@ -11,6 +11,11 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## Current development target — 2026-09-29 (not a release)
 
+[Review-export layout](docs/evidence/2026-09/review-export-layout-2026-09-29.md)
+now wraps mixed Chinese/English by pixel width and grows the report canvas instead
+of clipping long notes. Retained real-output rerender preserves source/marker pixels;
+this follow-up is not yet a new GUI or frozen acceptance.
+
 [Context-aware regional QA](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
 now passes an actual source-App replay: selected crop plus the unchanged authorized
 ROI in one question, verified against two retained Gateway PNGs. Manual two-turn

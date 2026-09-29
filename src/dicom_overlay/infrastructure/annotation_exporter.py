@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import math
-import textwrap
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
@@ -38,6 +37,7 @@ if TYPE_CHECKING:
 _PANEL_WIDTH = 520
 _MARGIN = 14
 _LINE_SPACING = 4
+_MAX_REVIEW_PIXELS = 40_000_000
 _COLORS = {
     "critical": (210, 35, 35),
     "warning": (226, 130, 18),
@@ -185,10 +185,7 @@ def export_eval_annotations(
         audit_records.extend(audits)
         bbox_audit_count = sum(
             isinstance(record, BboxAudit)
-            or (
-                isinstance(record, dict)
-                and record.get("audit_type") == "bbox"
-            )
+            or (isinstance(record, dict) and record.get("audit_type") == "bbox")
             for record in audits
         )
         if bbox_audit_count == 0:
@@ -265,8 +262,7 @@ def _render_annotated_result_with_audit(
 ) -> tuple[Path, list[BboxAudit | dict[str, Any]]]:
     """Draw review image and return per-bbox audit records."""
     source = Image.open(image_path).convert("RGB")
-    canvas = Image.new("RGB", (source.width + _PANEL_WIDTH, source.height), "white")
-    canvas.paste(source, (0, 0))
+    canvas = source.copy()
     draw = ImageDraw.Draw(canvas)
     font = _load_font(15)
     small = _load_font(13)
@@ -379,8 +375,8 @@ def _render_annotated_result_with_audit(
                 draw.rectangle(box, outline=_LEAD_MISMATCH, width=2)
             _draw_badge(draw, box[0], box[1], str(index), color, small)
 
-    _draw_panel(
-        draw,
+    panel_bottom = _draw_panel(
+        None,
         result,
         findings,
         source.width,
@@ -391,8 +387,30 @@ def _render_annotated_result_with_audit(
         audits_by_finding,
         analysis_crop_count=len(analysis_crops),
     )
+    review_size = (
+        source.width + _PANEL_WIDTH,
+        max(source.height, panel_bottom + _MARGIN),
+    )
+    if review_size[0] * review_size[1] > _MAX_REVIEW_PIXELS:
+        raise ValueError(
+            "Review image exceeds pixel budget; no truncated report rendered"
+        )
+    review = Image.new("RGB", review_size, "white")
+    review.paste(canvas, (0, 0))
+    _draw_panel(
+        ImageDraw.Draw(review),
+        result,
+        findings,
+        source.width,
+        review.height,
+        font,
+        small,
+        title,
+        audits_by_finding,
+        analysis_crop_count=len(analysis_crops),
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(output_path)
+    review.save(output_path)
     return output_path, audit_records
 
 
@@ -768,7 +786,7 @@ def _draw_dashed_rectangle(
 
 
 def _draw_panel(
-    draw: ImageDraw.ImageDraw,
+    draw: ImageDraw.ImageDraw | None,
     result: dict[str, Any],
     findings: list[dict[str, Any]],
     image_width: int,
@@ -779,9 +797,13 @@ def _draw_panel(
     audits_by_finding: dict[int, list[BboxAudit]],
     *,
     analysis_crop_count: int,
-) -> None:
+) -> int:
+    """Measure or draw the complete panel with the same pixel-based layout."""
     x = image_width
-    draw.rectangle((x, 0, x + _PANEL_WIDTH, image_height), fill=_PANEL_BG)
+    if draw is not None:
+        draw.rectangle((x, 0, x + _PANEL_WIDTH, image_height), fill=_PANEL_BG)
+    panel_text_width = _PANEL_WIDTH - 2 * _MARGIN
+    finding_text_width = panel_text_width - 28
     cursor = _MARGIN
     case_label = str(result.get("case") or "case")
     severity = str(result.get("severity") or "unknown")
@@ -791,7 +813,7 @@ def _draw_panel(
         f"{case_label}  [{_result_status_label(result)}]",
         title_font,
         _TEXT,
-        42,
+        panel_text_width,
     )
     summary = str(result.get("summary") or "(no summary)")
     cursor = _draw_wrapped(
@@ -800,7 +822,7 @@ def _draw_panel(
         f"Summary: {summary}",
         font,
         _TEXT,
-        56,
+        panel_text_width,
     )
     if analysis_crop_count:
         cursor = _draw_wrapped(
@@ -812,17 +834,18 @@ def _draw_panel(
             ),
             small,
             _ANALYSIS_CROP,
-            58,
+            panel_text_width,
         )
     cursor += 4
-    for idx, finding in enumerate(findings[:12], start=1):
+    for idx, finding in enumerate(findings, start=1):
         label = str(finding.get("label") or "finding")
         sev = str(finding.get("severity") or severity)
         regions = ", ".join(str(r) for r in finding.get("regions") or [])
         detail = str(finding.get("detail") or "")
         source_name = str(finding.get("source") or "")
         color = _color_for(sev)
-        _draw_badge(draw, x + _MARGIN, cursor + 1, str(idx), color, small)
+        if draw is not None:
+            _draw_badge(draw, x + _MARGIN, cursor + 1, str(idx), color, small)
         text_x = x + _MARGIN + 28
         cursor = _draw_wrapped(
             draw,
@@ -830,7 +853,7 @@ def _draw_panel(
             f"{label} [{sev}]",
             font,
             _TEXT,
-            48,
+            finding_text_width,
         )
         if regions:
             cursor = _draw_wrapped(
@@ -839,7 +862,7 @@ def _draw_panel(
                 f"Regions: {regions}",
                 small,
                 _MUTED,
-                54,
+                finding_text_width,
             )
         if source_name:
             cursor = _draw_wrapped(
@@ -848,7 +871,7 @@ def _draw_panel(
                 f"Source: {source_name}",
                 small,
                 _MUTED,
-                54,
+                finding_text_width,
             )
         if detail:
             cursor = _draw_wrapped(
@@ -857,7 +880,7 @@ def _draw_panel(
                 detail,
                 small,
                 _TEXT,
-                54,
+                finding_text_width,
             )
         for audit in audits_by_finding.get(idx, []):
             pixels = audit.pixels
@@ -882,20 +905,10 @@ def _draw_panel(
                 ),
                 small,
                 fill,
-                54,
+                finding_text_width,
             )
         cursor += 6
-        if cursor > image_height - 42:
-            remaining = len(findings) - idx
-            if remaining > 0:
-                _draw_text(
-                    draw,
-                    (x + _MARGIN, cursor),
-                    f"... {remaining} more findings in JSON",
-                    small,
-                    _MUTED,
-                )
-            break
+    return cursor
 
 
 def _draw_badge(
@@ -911,19 +924,66 @@ def _draw_badge(
 
 
 def _draw_wrapped(
-    draw: ImageDraw.ImageDraw,
+    draw: ImageDraw.ImageDraw | None,
     xy: tuple[int, int],
     text: str,
     font: PillowFont,
     fill: tuple[int, int, int],
-    width_chars: int,
+    width_px: int,
 ) -> int:
     x, y = xy
-    lines = textwrap.wrap(text, width=width_chars) or [""]
+    lines = _wrap_text_pixels(text, font, width_px)
     for line in lines:
-        _draw_text(draw, (x, y), line, font, fill)
-        y += _line_height(font) + _LINE_SPACING
+        left, top, _right, bottom = font.getbbox(line)
+        if draw is not None:
+            _draw_text(draw, (x - min(0, left), y - min(0, top)), line, font, fill)
+        y += max(_line_height(font), max(0, bottom) - min(0, top)) + _LINE_SPACING
     return y
+
+
+def _wrap_text_pixels(text: str, font: PillowFont, width_px: int) -> list[str]:
+    """Fit CJK/mixed text and unbroken identifiers without dropping paragraphs."""
+    if width_px <= 0:
+        raise ValueError("Text width must be positive")
+    lines: list[str] = []
+    for paragraph in (
+        text.replace("\r\n", "\n").replace("\r", "\n").expandtabs(4).split("\n")
+    ):
+        remaining = paragraph.strip()
+        if not remaining:
+            lines.append("")
+        while remaining:
+
+            def fits(length: int, line_text: str = remaining) -> bool:
+                left, _top, right, _bottom = font.getbbox(line_text[:length])
+                return max(0, right) - min(0, left) <= width_px
+
+            # Bound each measurement near one line rather than repeatedly
+            # measuring half of an entire long note (quadratic total work).
+            low, high = 0, min(64, len(remaining))
+            while fits(high):
+                low = high
+                if high == len(remaining):
+                    break
+                high = min(high * 2, len(remaining))
+            while low < high:
+                middle = (low + high + 1) // 2
+                if fits(middle):
+                    low = middle
+                else:
+                    high = middle - 1
+            if not low:
+                raise ValueError("One glyph exceeds the available text width")
+            cut = low
+            if low < len(remaining):
+                # Keep English words together where possible; CJK and long
+                # identifiers can safely use the measured character boundary.
+                spaces = [i for i, char in enumerate(remaining[:low]) if char.isspace()]
+                if spaces:
+                    cut = spaces[-1]
+            lines.append(remaining[:cut].rstrip())
+            remaining = remaining[cut:].lstrip()
+    return lines
 
 
 def _draw_text(

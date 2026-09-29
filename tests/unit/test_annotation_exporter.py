@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
+from dicom_overlay.infrastructure import annotation_exporter as exporter
 from dicom_overlay.infrastructure.annotation_exporter import (
     _result_status_label,
     export_eval_annotations,
@@ -13,9 +14,12 @@ from dicom_overlay.infrastructure.annotation_exporter import (
 
 
 def test_result_status_label_surfaces_incomplete_review_state() -> None:
-    assert _result_status_label(
-        {"severity": "normal", "incomplete": True, "review_required": True}
-    ) == "normal | INCOMPLETE | REVIEW"
+    assert (
+        _result_status_label(
+            {"severity": "normal", "incomplete": True, "review_required": True}
+        )
+        == "normal | INCOMPLETE | REVIEW"
+    )
     assert _result_status_label({"severity": "warning"}) == "warning"
 
 
@@ -80,9 +84,118 @@ def test_export_eval_annotations_draws_boxes_and_description_panel(
     assert len(output_paths) == 1
     annotated = Image.open(output_paths[0])
     assert annotated.size[0] > 100
-    assert annotated.size[1] == 80
+    assert annotated.size[1] > 80  # Full report can be taller than the source ROI.
     assert annotated.getpixel((10, 16)) != (255, 255, 255)
     assert (eval_dir / "review" / "index.html").exists()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "完整保留繁體中文註記，不能因為字寬而超出欄位。" * 12,
+        "Mixed 中文 and ECG V1–V6; gain not supplied. " * 8,
+        "LongIdentifierWithoutAnySpaces" * 12,
+        "First paragraph\n\n第二段文字\nLast line\n",
+        "Ág ŷ é gyp descent and accents " * 8,
+    ],
+)
+@pytest.mark.parametrize("font_size", [13, 17])
+def test_pixel_wrap_fits_and_retains_all_nonwhitespace_content(text, font_size):
+    font = exporter._load_font(font_size)
+    lines = exporter._wrap_text_pixels(text, font, 130)
+    assert "".join("".join(lines).split()) == "".join(text.split())
+    for line in lines:
+        left, _top, right, _bottom = font.getbbox(line)
+        assert max(0, right) - min(0, left) <= 130
+    if "\n\n" in text:
+        assert "" in lines
+        assert lines[-1] == ""
+
+
+@pytest.mark.parametrize("width", [0, -1, 1])
+def test_pixel_wrap_rejects_impossible_width_without_silent_clipping(width):
+    with pytest.raises(ValueError):
+        exporter._wrap_text_pixels("W", exporter._load_font(17), width)
+
+
+def test_long_note_measurements_stay_bounded_near_one_line():
+    measured = []
+
+    class MonospaceFont:
+        def getbbox(self, text):
+            measured.append(len(text))
+            return (0, 0, len(text) * 10, 12)
+
+    text = "中" * 10_000
+    lines = exporter._wrap_text_pixels(text, MonospaceFont(), 200)
+    assert "".join(lines) == text
+    assert len(lines) == 500
+    assert max(measured) <= 64
+
+
+def test_long_report_grows_without_scaling_source_or_omitting_later_findings(
+    tmp_path, monkeypatch
+):
+    source = Image.new("RGB", (140, 90), (71, 92, 113))
+    source_path = tmp_path / "source.png"
+    source.save(source_path)
+    findings = [
+        {
+            "id": str(i),
+            "label": f"Synthetic finding {i}",
+            "severity": "info",
+            "detail": f"起始{i}："
+            + "完整保留中文與英文 mixed notes；" * 30
+            + f"結尾{i}",
+        }
+        for i in range(15)
+    ]
+    drawn = []
+    original = exporter._draw_text
+
+    def observe(draw, xy, text, font, fill):
+        drawn.append((xy, text, font.getbbox(text)))
+        return original(draw, xy, text, font, fill)
+
+    monkeypatch.setattr(exporter, "_draw_text", observe)
+    output = tmp_path / "review.png"
+    exporter.render_annotated_result(
+        image_path=source_path,
+        result={"summary": "Synthetic summary\n第二段", "findings": findings},
+        output_path=output,
+    )
+    with Image.open(output) as review:
+        assert review.width == source.width + exporter._PANEL_WIDTH
+        assert review.height > source.height
+        assert (
+            ImageChops.difference(
+                source, review.crop((0, 0, source.width, source.height))
+            ).getbbox()
+            is None
+        )
+        for (x, y), _text, (left, top, right, bottom) in drawn:
+            assert x + left >= source.width
+            assert x + right <= review.width - exporter._MARGIN
+            assert y + top >= 0
+            assert y + bottom <= review.height - exporter._MARGIN
+        joined = "".join(text for _xy, text, _bbox in drawn)
+        for i in range(15):
+            assert f"Synthetic finding {i}" in joined
+            assert f"結尾{i}" in joined
+
+
+def test_excessive_report_size_fails_explicitly_instead_of_truncating(
+    tmp_path, monkeypatch
+):
+    source_path = tmp_path / "source.png"
+    Image.new("RGB", (20, 20), "white").save(source_path)
+    output = tmp_path / "review.png"
+    monkeypatch.setattr(exporter, "_MAX_REVIEW_PIXELS", 100)
+    with pytest.raises(ValueError, match="pixel budget"):
+        exporter.render_annotated_result(
+            image_path=source_path, result={"summary": "Synthetic"}, output_path=output
+        )
+    assert not output.exists()
 
 
 def test_export_eval_annotations_separates_analysis_crops_from_diagnostic_boxes(
@@ -203,8 +316,16 @@ def test_export_eval_annotations_writes_bbox_audit_and_crops(
                 "layout": {
                     "format": "12lead_rows",
                     "leads": [
-                        {"name": "I", "label_visible": True, "bbox": [0.0, 0.0, 1.0, 0.5]},
-                        {"name": "II", "label_visible": True, "bbox": [0.0, 0.5, 1.0, 0.5]},
+                        {
+                            "name": "I",
+                            "label_visible": True,
+                            "bbox": [0.0, 0.0, 1.0, 0.5],
+                        },
+                        {
+                            "name": "II",
+                            "label_visible": True,
+                            "bbox": [0.0, 0.5, 1.0, 0.5],
+                        },
                     ],
                 },
                 "findings": [

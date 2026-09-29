@@ -11,6 +11,10 @@
 
 ## 開發證據（尚未發布）
 
+[匯出排版修正](docs/evidence/2026-09/review-export-layout-2026-09-29.md)：中英混排改按像素寬度換行，
+長篇註記會延長報告畫布，不再被側欄截掉。以保留的真實結果重繪驗證，原影像與
+標記像素不變；這次修正尚未重新完成 GUI／封裝 EXE 驗收。
+
 [帶原圖上下文的區域問答](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
 已完成真實 source App 驗證：同一問題附選取裁圖及原本授權 ROI，兩張 Gateway
 留存 PNG 均核對 SHA。人工框兩輪續問、AI 框獨立問答與歷史通過，不擴大截圖、

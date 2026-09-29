@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — readable saved regional notes
+
+- Pixel-width wrapping and content-driven PNG height remove Chinese-note clipping
+  and the old12-finding limit. Original source-coordinate pixels remain unchanged.
+- Separate rerender of actual sealed output now2014x1062; no new inference or
+  clinical claim. Added multilingual/paragraph/many-finding/bounds/resource tests.
+- Fresh GUI/frozen acceptance remains pending; no archive or old receipt rewritten.
+- Follow-up Mark scope inspection: candidate native mouse4pass3.97s and regional/
+  history/geometry/export/core2/docs168pass3.25s. Main1c531a5 lacks alpha1 fix;
+  do not present candidate-only functionality as already shipped on main.
+
 ## 2026-09-29 — context-aware regional question source change
 
 - Actual c7fd1f8 source App now accepted on one exposed partial ECG:131.432s

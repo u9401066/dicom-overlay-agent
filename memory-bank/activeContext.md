@@ -1,5 +1,22 @@
 # Active Context
 
+## 2026-09-29 — review PNG long-note layout fix
+
+- Actual context-aware export showed Chinese detail text overflowing the fixed
+  side column. Replaced character counts with font-pixel wrapping, preserved
+  paragraphs, measured all finding entries before expanding canvas height.
+- Original image size/top-left/bboxes/crops unchanged;40M output-pixel budget
+  fails explicitly rather than returning clipped PNG. No new dependency/inference.
+- Private data/tmp/review-layout-20260929 rerenders sealed094548 actual export
+  into a separate directory:2014x858→2014x1062. Original annotated ROI pixels and
+  all five original evidence file hashes unchanged; inspected full Chinese panel.
+- Layout/core2/export/package/docs checks69pass/3opt-in-skip3.33s; mypy/Ruff pass.
+  Subsequent user-requested Mark/regional/history/geometry/export/core2/docs
+  regression168pass3.25s; real Windows mouse smoke4pass3.97s (not model turns).
+  Main worktree1c531a5 does not include the candidate's alpha1 ROI input fix.
+  New layout GUI/frozen gates remain pending. See review-export-layout-2026-09-29.md;
+  old runtimes stay sealed.
+
 ## 2026-09-29 — regional same-snapshot image context implementation
 
 - Actual source c7fd1f8 acceptance now PASS: fresh Ctemp/dicom-regional-context-20260929,

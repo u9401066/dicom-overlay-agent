@@ -3,6 +3,11 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+[Review PNG layout fix](evidence/2026-09/review-export-layout-2026-09-29.md)
+uses pixel-based text wrapping and a content-height side column. A separate
+rerender of retained actual App output fixes clipped Chinese notes without changing
+the original image/marker pixels; fresh GUI and EXE acceptance remain separate.
+
 New source change: [regional image context](architecture/regional-image-context.md)
 adds the same authorized ROI alongside a selected crop for regional questions.
 It preserves crop/writeback/history boundaries. Its
