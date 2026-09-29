@@ -1,5 +1,20 @@
 # Active Context
 
+## 2026-09-29 — scientific case0 published; collector-only failure recovered
+
+- Original run-batch.py session76098 exited1 after case0 actual Export. Science
+  124685ms, wall138.138s, MAE0/source,2bbox max0.4411px,8 workflow events.
+  Export desktop-20260929-111034-531785; canonical8e67b24d8753713a0ff0b352fe68c4b76951fcb99ceb2bcd38f48dd2d3f99d42.
+- Failure is old collector reading thin legacy trace (zero turns), NOT failed
+  model publication. Original receipt6e12334822ff9939661ab890ec6cddcd140d43801d8c2c58e7237f3da6e0e1d4 retained.
+  New scripts/collect-scientific-desktop-usage.py independently binds5 actual
+  scientific turns/source/host-run/public/runtime; no inference/export mutation.
+  Supplement case-000-scientific-usage-v2.json a3f193a6621d581f58d13c2113260362d993d0a9f56741164bb3c151895abc4e.
+-34 new collector+33 old verifier tests pass. Same App32116/Gateway7204/Viewer33040
+  remain LIVE; do not restart. Private run-batch-v2.py prepared but not yet launched
+  at this checkpoint. Requires linked create-only plan-v2.json before cases1/2;
+  freezes original plan/source/config/inputs and case0 supplement, never repeats0.
+
 ## 2026-09-29 — scientific paired120 plan and actual complete ROI
 
 -9a84847 full2435pass/10skip437.41s, both remote CI/secret scans pass.

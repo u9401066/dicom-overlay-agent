@@ -1,5 +1,13 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — scientific case0 and five-turn usage binding
+
+- Actual publication succeeds; driver stops on legacy collector mismatch. Original
+  failed receipt/zero-turn output preserved. New scientific usage collector binds
+  five real Astra-medium turns with no new inference or modified exports.
+-67 collector/verifier tests pass. Need linked continuation plan for cases1–119;
+  not a complete cohort or clinical pass. Same App/runtime remain live.
+
 ## 2026-09-29 — paired scientific120 execution preparation
 
 - Source9a84847 full2435pass/10skip and both CI/secret scans pass.

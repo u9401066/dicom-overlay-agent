@@ -1,6 +1,8 @@
 # Scientific desktop paired regression — 2026-09-29
 
-**Preparation checkpoint: 120 planned, zero model cases run at this checkpoint.**
+**Latest checkpoint: one actual case published; original driver stopped on usage
+collection, subsequently bound read-only. Remaining119 cases pending.**
+The preparation sections below describe the pre-inference state at their timestamp.
 This is a paired regression of the previously exposed
 [120-case medium cohort](medium-desktop-batch-2026-09-24.md), not120 new blind
 images or evidence of improved clinical accuracy. The old failed score remains
@@ -58,3 +60,43 @@ Source9a84847 full regression:2435 passed,10 conditional skips in437.41s.
 Both remote CI runs and both secret scans passed. These tests do not prove any
 new case completed. Original120-case clinical acceptance remains failed; no new
 clinical score or packaged release is claimed.
+
+## First case: actual publication, collector failure and read-only recovery
+
+Case0 completed actual Analyze/Export at11:10:34UTC. Analysis124685ms; driver
+wall138.138s includes the failed collector. Source pixels match its pre-analysis
+ROI at MAE0; file-to-screen resampling MAE0.5350714. All eight scientific workflow
+events reached handoff. One warning finding, two boxes, incomplete/review required;
+maximum observed projection error0.4411px. The actual exported summary was visually
+inspected. These are execution/UI observations, not clinical correctness.
+
+Export: `desktop-20260929-111034-531785`. Canonical SHA256:
+`8e67b24d8753713a0ff0b352fe68c4b76951fcb99ceb2bcd38f48dd2d3f99d42`.
+The initial driver stopped with `technical_failure`: its inherited legacy usage
+collector searched the projection's `analysis_trace`, which contains a Gateway
+receipt rather than the five scientific model turns. Its zero-turn, unverified
+usage output is retained. No image was resent and the original failed receipt
+SHA256 remains `6e12334822ff9939661ab890ec6cddcd140d43801d8c2c58e7237f3da6e0e1d4`.
+
+New `scripts/collect-scientific-desktop-usage.py` validates the public scientific
+contract, source identity, host-run association, immutable turn artifacts and
+all five stage/session/run identities against public sessions and Gateway logs.
+It checks source/receipt stability before and after its read-only query, records
+the log-prefix hash and collector hash, and writes outside the runtime using
+create-only output. It does not enable a different model/runtime or use API keys.
+Unknown/stale/ambiguous counts fail rather than becoming zero. Public snapshots
+are not a monetary bill or proof of clinical correctness/remote image bytes.
+
+Supplemental five-turn receipt `case-000-scientific-usage-v2.json` SHA256:
+`a3f193a6621d581f58d13c2113260362d993d0a9f56741164bb3c151895abc4e`.
+The earlier prototype supplement remains separately retained. Neither supplement
+changes the original driver status or any export bytes.34 new collector tests and
+33 existing batch-verifier tests pass (67 total); Ruff/format pass. Local source
+regression2435pass belongs to the preceding App code, not these new collector tests.
+
+Resume requires a new, explicitly linked continuation plan/driver: preserve the
+original plan and failed receipt, bind this usage supplement, and verify App code,
+input order, ROI/config and live process identities are unchanged. Only the
+driver/collector changes. Do not rerun case0. Independent scientific batch auditing
+and clinical scoring are still pending; the legacy complete-batch seal cannot be
+used unchanged to claim acceptance of this recovered scientific run.
