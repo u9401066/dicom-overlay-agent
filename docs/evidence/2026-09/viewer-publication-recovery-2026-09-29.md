@@ -46,6 +46,9 @@ using Node24.18.0. The five native input/recovery checks above separately cover
 their opt-in skips; other frozen/private/interactive skips remain explicit.
 JUnit receipt: `data/tmp/publication-recovery-regression.xml` (local artifact).
 A fresh actual App/subscription recovery acceptance remains pending.
+The subsequent [actual source-App canary](viewer-recovery-desktop-2026-09-29.md)
+observed recovery/publication and bound five real turns, but retains observer
+failure and missing final export; it is partial, not full acceptance.
 Native fixture success is not evidence of a
 new paid full-App run, clinical improvement, rebuilt EXE or released binary.
 

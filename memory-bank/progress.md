@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — real prepared-draft recovery; retain missing export gate
+
+Fresh sourceb3b4c1f App captured one exposed image, waited through actual owned
+Viewer minimization, then restored/published without another five-stage request.
+UI observer failed Chinese stdout decoding; receipt preserved. App was paused
+and closed before Export, actor unknown; no auto restart/paid retry. Offline
+source/five-stage/Astra-medium receipt audit passes, but full canary acceptance
+remains incomplete. Old cohort sealed unchanged at10pub/2failed/108pending.
+Windows CI exposed real10ms timer assumption in deadline unit; use controlled
+clock/sleep for exact/late boundary, no production change.55focused checks pass.
+
 ## 2026-09-29 — same-Viewer recovery and Mark scope checkpoint
 
 Isolated source now retains prepared drafts only within original SLA, with

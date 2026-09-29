@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -247,19 +246,48 @@ async def test_recovery_after_preview_still_needs_second_pixel_check(
     assert len(gateway.sent) == 5 and legacy.analyze_calls == 0
 
 
-async def test_deadline_does_not_accept_window_restored_too_late(recovering):
+@pytest.mark.parametrize("overshoot", [0.0, 0.1], ids=["at-deadline", "after-deadline"])
+async def test_deadline_does_not_accept_window_restored_too_late(
+    recovering, monkeypatch, overshoot
+):
+    from dicom_overlay.application import overlay_agent
+
     agent, monitor, _, _, _, published, window, _, _, _ = recovering
     await agent.start()
     agent._transition(AgentState.ANALYZING)
     monitor.window = None
-    agent.on_publication_status = lambda _message: setattr(monitor, "window", window)
-    # Polling wakes at the bounded deadline; finding a window then must not
-    # extend the original total SLA or silently revive a timed-out draft.
+    clock = [100.0]
+    deadline = clock[0] + 0.01
+    sleeps = []
+    reasons = []
+    original_withhold = agent._withhold_review
+
+    def withhold(reason, **kwargs):
+        reasons.append(reason)
+        original_withhold(reason, **kwargs)
+
+    monkeypatch.setattr(agent, "_withhold_review", withhold)
+
+    async def restore_at_deadline(delay):
+        sleeps.append(delay)
+        clock[0] = deadline + overshoot
+        monitor.window = window
+
+    # Real asyncio timers may wake before a 10ms deadline on Windows. Control
+    # this module's clock/sleep only, not asyncio's global scheduler or time.
+    monkeypatch.setattr(
+        overlay_agent, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+    monkeypatch.setattr(
+        overlay_agent, "asyncio", SimpleNamespace(sleep=restore_at_deadline)
+    )
     result = await agent._publication_window(
-        expected_identity=(55, 66, "SyntheticClass"), deadline=time.monotonic() + 0.01
+        expected_identity=(55, 66, "SyntheticClass"), deadline=deadline
     )
     assert result is None and not published and agent.pending_analysis
     assert agent.state is AgentState.MONITORING
+    assert sleeps == [pytest.approx(0.01)]
+    assert reasons == ["viewer_restore_timeout"]
 
 
 async def test_adapter_without_identity_fails_closed_and_clears_stale_result(

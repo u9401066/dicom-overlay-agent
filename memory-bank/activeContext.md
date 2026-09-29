@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-29 — actual b3b4c1f recovery observed; export unavailable after Quit
+
+- Old cohort runtime SEALED via actual Quit; App32116/Gateway7204/Viewer33040 and
+  launchers absent.10pub/2failed/108pending unchanged. No failed-case retries.
+- Fresh Ctemp/dicom-publication-recovery-b3b4c1f-20260929, exact18,771-file payload,
+  source App15940/Viewer15016/Gateway8012. Actual ROI reselected in Settings after
+  initial cancellation; Astra medium visible. One exposed-image Analyze.
+- Owned Viewer minimized12:45:33; Appwaiting12:47:51.307665. Driver's Chinese UI
+  stdout UTF8 decode failed, immutable c886215b… technical failure. Cleanup
+  restored same Viewer; Apprestored12:47:52.341418/displayed12:47:53.707395.
+  Real UI listing observed report,1finding/3boxes. No waiting screenshot/export.
+- AppPAUSED12:48:11 thenQuit12:48:25 before Export helper. App/Gateway absent;
+  Viewer15016 remains. Actor unknown; async user question sent, don't automatically
+  restart or repeat inference. Runtime must never restart in place.
+- Read-only offline retained-source/five-turn/public-session audit passed;
+  f7fd7303009860555d8059e2e932ce6e4c6b89074f352a23ec36b5646b2bf6c4.
+  Original source pixels match; five Astra-medium terminal turns, no sixth call.
+  Partial real recovery evidence, NOT full canary acceptance or clinical case.
+- b3b4c1f CI36569163748 Windows1fail2645pass12skip; Linux/compatibility green.
+  Deadline test assumed real10ms sleep crossed deadline. Deterministic local
+  clock/sleep now tests exact and overshot deadlines; production unchanged.
+  Focused55pass12.55s/Ruff pass. Secret scan36569163761 green. Follow new CI.
+- See docs/evidence/2026-09/viewer-recovery-desktop-2026-09-29.md.
+
 ## 2026-09-29 — isolated bounded Viewer publication recovery
 
 - Worktree viewer-publication-recovery-20260929 branches from242f5a9. Original
