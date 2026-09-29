@@ -9,19 +9,35 @@
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 (public development evidence, not a clinical release).
 
-## Current development checkpoint — 2026-09-24
+## Current development checkpoint — 2026-09-29
 
 The current target is **GPT-6 Astra medium** on the separate
-`agent/direct-harness-models-20260910` development branch, not the App on main.
-Real source-App checks cover blank-ROI Mark, two-turn regional QA, separate
-AI-marker QA, reviewer-confirmed revision and history reopening. The `bd8f303`
-interaction EXE passes package verification and 20 frozen smoke checks.
-Later source `ebbe2a5` preserves history after a confirmed manual ADD and rejects
-stale writeback UI events; it is not included in that EXE or native-retested yet.
+`agent/viewer-publication-recovery-20260929` branch, documented at `1a7cb81`,
+not the older App on main. Actual `36dc3c6` EXE checks cover blank-ROI Mark,
+two-turn manual QA, independent AI-region QA, history reopening, readable export
+and invalidation after an image change. Every question binds its selected crop
+plus the same original authorized ROI; no full-desktop capture. Restart-restorable
+history is not implemented. The old installed EXE is not automatically replaced.
+
+The sealed medium baseline executed **120 GUI cases**, but **failed clinical
+acceptance**: strict 0/46 complete references, all urgent reference concerns caught
+5/24, legacy schema 115/120. The 74 partially uncertain references remain separate;
+there are no confirmed cannot-miss cases or normal controls. The newer scientific
+paired regression reuses those exposed cases: **10 publications, 2 technical
+failures, 108 pending**, not clinically scored. Its separate Viewer-recovery
+canary observed publication with five original turns, but observer failure and
+App closure prevented final Export; it is partial, not full acceptance.
+
+Measured `36dc3c6` package: **4.81 MiB launcher / 54.55 MiB App layer / 337.15 MiB
+folder**; ZIP141.68 MiB or optional 7z105.21 MiB, with all18,771 extracted hashes
+verified. These are local candidates, not published binaries. Later recovery
+source is not in that EXE; no clinical-accuracy or model-speedup claim is made.
 
 Use the [ROI and regional QA guide](https://u9401066.github.io/dicom-overlay-agent/docs.html#regional-qa)
-and [pinned checkpoint evidence](https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md).
-Browser end-to-end, cross-DPI and >=100 current-model clinical acceptance remain
+and [pinned actual EXE evidence](https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/frozen-regional-context-2026-09-29.md).
+The [scientific workflow and evidence guide](https://u9401066.github.io/dicom-overlay-agent/docs.html#scientific-review)
+links the sealed baseline, current failures and exact source setup.
+Broad browser/vendor, cross-DPI and >=100 current-model clinical acceptance remain
 open. This website/documentation update does not merge candidate App code into
 main or publish a binary release.
 

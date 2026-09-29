@@ -3,6 +3,18 @@
 > Dated evidence history. The newest section describes current work;
 > older results are not evidence for untested current code or models.
 
+## 2026-09-29 Website/source guide matches current measured evidence
+
+- Updated current cards, dated evidence ledger, both READMEs and setup/regional/
+  scientific/bundle/troubleshooting guide without changing the main App.
+-120 executed medium cases remain a clinical failure, separate from10published/
+  2failed/108pending scientific rerun. Actual36dc3c6 regional EXE evidence remains
+  separate from later source-only recovery and its incomplete Export acceptance.
+-19 static site tests and10 immutable evidence targets pass. Actual headless
+  Edge1440/820/390-width flows, mobile controls/focus/no-JS and console/layout
+  checks pass; screenshots remain outside the repo. Publication pending.
+- Recovery branch1a7cb81 Windows/Linux/compatibility CI and secret scan pass.
+
 ## 2026-09-24 Website-only source checkpoint
 
 - Updated Pages and both READMEs for Astra medium, ROI-wide manual Mark and
