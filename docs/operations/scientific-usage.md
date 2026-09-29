@@ -81,3 +81,33 @@ a currently installed binary. Complete evidence is not clinical scoring, patient
 independence or fresh blind accuracy. The legacy scorer/sealer is not compatible
 with this scientific recovery format. New continuation formats require an
 explicit audited extension, not an ignore-failure switch.
+
+### Continue after a preserved terminal publication failure
+
+The explicit v3 continuation additionally requires all four options:
+
+```powershell
+  --resume-plan PATH_TO_RUN/plan-v3.json `
+  --resume-sha256 PREDECLARED_V3_PLAN_HASH `
+  --terminal-audit PATH_TO_FAILED_CASE_TERMINAL_SUPPLEMENT `
+  --app-log PATH_TO_ORIGINAL_APP_LOG
+```
+
+The v3 hash must have been preserved before new inference. The plan retains every
+earlier receipt hash and names exactly one additional failed case immediately
+before the resume boundary. Only the driver may change; interpretation source,
+collector, model, ROI and inputs must match v2. The failed case stays a
+`technical_failure`, counts in the denominator and is not rerun. Unlisted failures
+still prevent later cases from being accepted.
+
+The verifier rechecks the failure's retained image/turn inventory, five terminal
+model turns, public usage bindings, App log prefix and recorded idle/physical-ROI
+observation. It rejects reused identities across failed and published cases.
+Every new case must bind the v3 hash and start after its declaration. These are
+historical local observations, not a fresh attestation that the App is idle now.
+The offline preflight replay is never reclassified as GUI handoff/publication.
+
+`all_cases_terminal` can eventually be true even with a retained technical failure;
+`complete_evidence` remains false in that situation. Neither means clinical
+acceptance. Exit1 also remains expected while that failure is present, even when
+the continuation chain is valid. Inspect the separate counts and case records.

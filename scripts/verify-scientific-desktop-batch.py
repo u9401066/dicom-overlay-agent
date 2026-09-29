@@ -63,6 +63,223 @@ def timestamp(value):
     return result
 
 
+def log_prefix(path, size, expected_sha):
+    require(type(size) is int and size > 0, "invalid log prefix length")
+    with path.open("rb") as stream:
+        value = stream.read(size)
+    require(
+        len(value) == size and hashlib.sha256(value).hexdigest() == expected_sha,
+        "retained log prefix changed",
+    )
+    return value.decode("utf-8")
+
+
+def verify_failure_terminal(folder, live, path, expected_sha):
+    """Recheck retained failed-turn bytes and usage, never promote to publication."""
+    require(digest(path) == expected_sha, "terminal supplement changed")
+    report = read(path)
+    require(
+        report["original_failure_sha256"] == digest(folder / "receipt.json"),
+        "terminal failure link changed",
+    )
+    require(
+        report["original_failure_preserved"] is True
+        and report["model_requests"] == 0
+        and report["clinical_scored"] is False,
+        "unexpected terminal audit mode",
+    )
+    replay = report["replay"]
+    require(
+        replay["preflight_completed"] is True
+        and replay["new_gui_handoff"] is False
+        and replay["new_publication"] is False
+        and replay["retained_turns_replayed"] == 5,
+        "terminal audit is not a retained preflight",
+    )
+    matches = [
+        p.parent
+        for p in (live / "data/scientific-attempts").glob("*/intake.json")
+        if read(p).get("source_image_sha256") == report["source_sha256"]
+    ]
+    require(len(matches) == 1, "failed source attempt missing or ambiguous")
+    attempt = legacy.contained(matches[0], live / "data/scientific-attempts")
+    files = inventory(attempt)
+    require(
+        files == report["retained_files"]
+        and files["source.png"] == report["source_sha256"],
+        "failed attempt artifacts changed",
+    )
+    require(
+        read(attempt / "intake.json")["run_id"] == attempt.name,
+        "failed host identity changed",
+    )
+    require(
+        legacy.pixels(folder / "visible-roi.png", attempt / "source.png") == 0,
+        "failed source differs from visible ROI",
+    )
+    turns = []
+    require(
+        all((p / "receipt.json").is_file() for p in attempt.glob("turn-*")),
+        "incomplete failed retained turn",
+    )
+    for receipt in sorted(attempt.glob("turn-*/receipt.json")):
+        turn = read(receipt)
+        require(
+            turn["sequence"] == len(turns) + 1
+            and turn["image_sha256"] == report["source_sha256"],
+            "failed turn source or sequence changed",
+        )
+        require(
+            {p.name for p in receipt.parent.iterdir()}
+            == {"receipt.json", *turn["artifacts"]},
+            "failed turn inventory changed",
+        )
+        for name, expected in turn["artifacts"].items():
+            require(
+                Path(name).name == name and "/" not in name and "\\" not in name,
+                "unsafe failed artifact",
+            )
+            require(
+                digest(receipt.parent / name) == expected, "failed turn bytes changed"
+            )
+        require(
+            digest(receipt.parent / "model-visible.txt") == turn["model_text_sha256"],
+            "failed model text changed",
+        )
+        turns.append(turn)
+    prefix = log_prefix(
+        live / "gateway.log",
+        report["gateway_log_prefix_bytes"],
+        report["gateway_log_prefix_sha256"],
+    )
+    sessions = [
+        dict(t["public_session_fields"], key=t["session_key"]) for t in report["turns"]
+    ]
+    require(
+        len({s["sessionId"] for s in sessions}) == len(sessions),
+        "reused failed public session",
+    )
+    require(
+        usage.bind_usage(turns, sessions, prefix) == report["turns"],
+        "failed usage binding changed",
+    )
+    require(
+        inventory(attempt) == files and digest(path) == expected_sha,
+        "terminal evidence changed during audit",
+    )
+    return {
+        "host_run_id": attempt.name,
+        "run_ids": [t["gateway_run_id"] for t in turns],
+        "session_keys": [t["session_key"] for t in turns],
+        "public_session_ids": [s["sessionId"] for s in sessions],
+    }
+
+
+def verify_resume(
+    run, live, previous, previous_sha, path, expected_sha, terminal, app_log
+):
+    """One explicitly declared terminal failure can precede a new plan, not vanish."""
+    require(digest(path) == expected_sha, "resume plan changed")
+    resumed = read(path)
+    require(resumed["previous_plan_sha256"] == previous_sha, "resume plan link changed")
+    require(
+        all(
+            resumed[k] == value
+            for k, value in previous.items()
+            if k not in {"started_utc", "bindings", "changes"}
+        ),
+        "resume interpretation scope changed",
+    )
+    require(
+        set(resumed["bindings"]) == set(previous["bindings"])
+        and all(
+            resumed["bindings"][k] == value
+            for k, value in previous["bindings"].items()
+            if k != "driver_sha256"
+        ),
+        "resume frozen bindings changed",
+    )
+    start = resumed["resume_from_index"]
+    require(
+        type(start) is int and 1 < start < len(previous["planned_cases"]),
+        "invalid resume boundary",
+    )
+    failure = resumed["preserved_failure"]
+    require(
+        failure["index"] == start - 1
+        and failure["status"] == "technical_failure"
+        and failure["count_in_denominator"] is True
+        and failure["rerun"] is False,
+        "failure denominator or identity changed",
+    )
+    require(
+        set(resumed["prior_receipt_sha256"]) == {str(i) for i in range(start)},
+        "incomplete resume prefix",
+    )
+    for index in range(start):
+        receipt = run / f"case-{index:03d}/receipt.json"
+        require(
+            digest(receipt) == resumed["prior_receipt_sha256"][str(index)],
+            "prior receipt changed",
+        )
+        if index not in {0, start - 1}:
+            require(
+                read(receipt)["status"] == "exported_verified",
+                "undeclared earlier failure",
+            )
+    folder = run / f"case-{start - 1:03d}"
+    failed = read(folder / "receipt.json")
+    require(
+        digest(folder / "receipt.json") == failure["receipt_sha256"]
+        and failed["status"] == "technical_failure",
+        "declared failure changed",
+    )
+    require(
+        timestamp(previous["started_utc"])
+        <= timestamp(failed["finished_utc"])
+        <= timestamp(resumed["started_utc"]),
+        "resume predates failure termination",
+    )
+    observed = resumed["terminal_observation"]
+    require(
+        observed["original_driver_exit_code"] == 1
+        and observed["app_monitoring"] is True
+        and observed["ai_ready"] is True,
+        "missing idle terminal observation",
+    )
+    left, top, width, height = previous["bindings"]["roi"]
+    require(
+        observed["viewer"]
+        == {
+            "found": True,
+            "pid": previous["bindings"]["viewer_pid"],
+            "visible": True,
+            "minimized": False,
+            "physical_rect": [left, top, left + width, top + height],
+        },
+        "resume viewer observation mismatch",
+    )
+    prefix = log_prefix(
+        app_log, observed["app_log_prefix_bytes"], observed["app_log_prefix_sha256"]
+    )
+    states = [
+        line.rsplit("State: ", 1)[1].strip()
+        for line in prefix.splitlines()
+        if "State: " in line
+    ]
+    require(
+        bool(states)
+        and states[-1] == "WAITING → MONITORING"
+        and "ANALYZING → WAITING" in states,
+        "terminal App log sequence missing",
+    )
+    identities = verify_failure_terminal(
+        folder, live, terminal, failure["terminal_audit_sha256"]
+    )
+    require(digest(path) == expected_sha, "resume plan changed during audit")
+    return resumed, identities
+
+
 def verify_usage(export, live, receipt_path, expected_hash, collector_hash):
     require(digest(receipt_path) == expected_hash, "usage receipt changed")
     record = read(receipt_path)
@@ -245,11 +462,41 @@ def verify_case(folder, row, index, plan, manifest, live, recovery, previous_fin
     }
 
 
-def audit(run, manifest, live, recovery, original_sha, continuation_sha):
+def audit(
+    run,
+    manifest,
+    live,
+    recovery,
+    original_sha,
+    continuation_sha,
+    *,
+    resume_plan=None,
+    resume_sha=None,
+    terminal=None,
+    app_log=None,
+):
     original_path, continuation_path = run / "plan.json", run / "plan-v2.json"
     require(digest(original_path) == original_sha, "original plan changed")
     require(digest(continuation_path) == continuation_sha, "continuation plan changed")
     original, plan = read(original_path), read(continuation_path)
+    resume_options = (resume_plan, resume_sha, terminal, app_log)
+    require(
+        all(v is None for v in resume_options)
+        or all(v is not None for v in resume_options),
+        "incomplete resume audit arguments",
+    )
+    resumed, failed_identities = (None, None)
+    if resume_plan is not None:
+        resumed, failed_identities = verify_resume(
+            run,
+            live,
+            plan,
+            continuation_sha,
+            resume_plan,
+            resume_sha,
+            terminal,
+            app_log,
+        )
     require(plan["original_plan_sha256"] == original_sha, "plan link changed")
     require(
         plan["source_head"] == original["source_head"], "source changed between plans"
@@ -335,6 +582,14 @@ def audit(run, manifest, live, recovery, original_sha, continuation_sha):
             require(not gap, "terminal case after unresolved gap")
             if index:
                 previous = max(previous, timestamp(plan["started_utc"]))
+            if resumed and index >= resumed["resume_from_index"]:
+                previous = max(previous, timestamp(resumed["started_utc"]))
+                for name in ("attempt.json", "receipt.json"):
+                    require(
+                        read(run / f"case-{index:03d}" / name)["driver_plan_sha256"]
+                        == resume_sha,
+                        "resumed case plan binding changed",
+                    )
             result = verify_case(
                 run / f"case-{index:03d}",
                 row,
@@ -346,8 +601,50 @@ def audit(run, manifest, live, recovery, original_sha, continuation_sha):
                 previous,
             )
             if result["status"] == "technical_failure":
+                declared = resumed and index == resumed["preserved_failure"]["index"]
+                if declared:
+                    failed_folder = run / f"case-{index:03d}"
+                    source = (manifest.parent / row["image"]).resolve(strict=True)
+                    measured = legacy.pixels(
+                        source, failed_folder / "visible-roi.png", resize=True
+                    )
+                    failure_receipt = read(failed_folder / "receipt.json")
+                    require(
+                        measured < 2
+                        and abs(
+                            failure_receipt["file_to_visible_bilinear_mae"] - measured
+                        )
+                        < 1e-8,
+                        "failed visible input binding changed",
+                    )
+                    with Image.open(failed_folder / "visible-roi.png") as captured:
+                        require(
+                            list(captured.size) == plan["bindings"]["roi"][2:],
+                            "failed ROI size changed",
+                        )
+                    require(
+                        not sessions.intersection(failed_identities["session_keys"])
+                        and not runs.intersection(failed_identities["run_ids"])
+                        and not public_sessions.intersection(
+                            failed_identities["public_session_ids"]
+                        )
+                        and failed_identities["host_run_id"] not in host_runs,
+                        "reused failed case identity",
+                    )
+                    sessions.update(failed_identities["session_keys"])
+                    runs.update(failed_identities["run_ids"])
+                    public_sessions.update(failed_identities["public_session_ids"])
+                    host_runs.add(failed_identities["host_run_id"])
+                    result.update(
+                        failed_identities,
+                        preserved_by_resume_plan=True,
+                        terminal_audit_sha256=resumed["preserved_failure"][
+                            "terminal_audit_sha256"
+                        ],
+                    )
+                    previous = timestamp(result["finished_utc"])
                 cases.append(result)
-                gap = True
+                gap = not declared
                 continue
             require(
                 not sessions.intersection(result["session_keys"])
@@ -379,6 +676,8 @@ def audit(run, manifest, live, recovery, original_sha, continuation_sha):
         and digest(manifest) == plan["bindings"]["inference_sha256"],
         "plan changed during audit",
     )
+    if resumed:
+        require(digest(resume_plan) == resume_sha, "resume plan changed during audit")
     counts = {
         status: sum(c["status"] == status for c in cases)
         for status in (
@@ -397,6 +696,7 @@ def audit(run, manifest, live, recovery, original_sha, continuation_sha):
         },
         "plan_sha256": original_sha,
         "continuation_plan_sha256": continuation_sha,
+        "resume_plan_sha256": resume_sha,
         "planned": len(rows),
         "counts": counts,
         "complete_evidence": counts["pending"]
@@ -404,6 +704,7 @@ def audit(run, manifest, live, recovery, original_sha, continuation_sha):
         == counts["technical_failure"]
         == 0,
         "clinical_scored": False,
+        "all_cases_terminal": counts["pending"] == counts["invalid_evidence"] == 0,
         "gold_read": False,
         "model_requests": 0,
         "cases": cases,
@@ -422,6 +723,10 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--original-sha256", required=True)
     parser.add_argument("--continuation-sha256", required=True)
+    parser.add_argument("--resume-plan", type=Path)
+    parser.add_argument("--resume-sha256")
+    parser.add_argument("--terminal-audit", type=Path)
+    parser.add_argument("--app-log", type=Path)
     args = parser.parse_args()
     require(not args.output.exists(), "output already exists")
     require(
@@ -438,6 +743,10 @@ def main():
         args.recovery,
         args.original_sha256,
         args.continuation_sha256,
+        resume_plan=args.resume_plan,
+        resume_sha=args.resume_sha256,
+        terminal=args.terminal_audit,
+        app_log=args.app_log,
     )
     with args.output.open("x", encoding="utf-8") as stream:
         json.dump(report, stream, indent=2)

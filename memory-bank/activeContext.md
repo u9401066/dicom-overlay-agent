@@ -1,5 +1,32 @@
 # Active Context
 
+## 2026-09-29 — v3 continuation LIVE exec28335, source still9a84847
+
+- Previous goal turn made concrete progress: verifier50 tests, case7 original
+  terminal failure independently diagnosed, commit5eff6ee pushed; CI now green.
+- Actual UI rechecked Monitoring/AI ready, physical Viewer33040 rect30,30,1530,1110
+  visible/not minimized. New plan-v3 declared BEFORE case8:
+ 480e6ada45aa7a115806a6d9748f0693125ac6bde824f47ccf7c8d2dff676d2b.
+  It binds v2/all receipts0–7/case7 terminal supplement. Original failure remains,
+  no rerun. App32116/Gateway7204/Viewer33040 unchanged. No gold read.
+- LIVE exec28335: private run-batch-v3.py --app-pid32116 --viewer-pid33040 --limit112.
+  Driver records owned Viewer native state transitions, stops promptly on
+  ANALYZING→WAITING, never auto-restores/reruns. Freeze driver/collector/source/
+  config/public harness while live. New audit scripts/tests/docs remain outside
+  source fingerprint and may change. Do NOT poll completed60442.
+- Cases8/9/10 published133.220s/154.447s/148.933s; case8 saved summary viewed.
+ 10 publications +1 preserved failure +109 pending at12:00:41UTC; case11 active.
+  Case8 contract729d532edbf6b8d3c233fb698f8c15eb037947c00084df14ff4162c23f62f400;
+  usagec3534ab94b572a791bca8c423aad72f4dbe8e8037f5c35d2eafc052cc87e1595.
+- Auditor now accepts explicit resume-plan/hash/terminal-audit/app-log as a group;
+  checks source/ROI/collector invariance, original receipt prefix, failed source/
+  turns/usage and later case plan/time binding. Failed IDs participate in reuse
+  checks. all_cases_terminal != complete_evidence; retained failure keeps exit1.
+ 37 new tests;162 related/documentation checks passed22.39s, Ruff clean.
+- Resumed-nine-case private checkpoint SHA d662fe3788ad718b0f8f58227a4e7aff426ccaacaba8d1f7381df01f78acea89
+  verified8 publications/1failure/111pending at that earlier checkpoint. It is
+  not clinical scoring or independent physical-input attestation.
+
 ## 2026-09-29 — exec60442 TERMINAL; case7 publication failure
 
 - Exec60442 EXIT1 at11:41:22UTC; case7 observation timeout360.201s. No driver

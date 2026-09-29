@@ -1,5 +1,13 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — v3 resumed real GUI cohort without erasing case7
+
+Declared480e6ada… continuation binds prior plan/receipts and exact terminal audit.
+Same App/source/config/collector, no inference retries. Live exec28335 starts at
+case8; cases8–10 now published, case11 active (10pub/1failure/109pending). Auditor
+explicitly validates the failure/continuation chain;37 more tests,162 related
+tests/docs checks passed. Prior5eff6ee CI green. No clinical scoring/new binary.
+
 ## 2026-09-29 — scientific batch audit; case7 failure retained
 
 New offline linked scientific verifier +50 edge tests;121 related tests pass,

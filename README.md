@@ -77,6 +77,11 @@ urgent concerns caught 5/24, legacy draft schema 115/120. The 74 partially uncer
 references remain separate. Mean analysis/workflow times were 93.993/106.485 s;
 these are not controlled speed comparisons. See the evidence page for intervals,
 hashes, limitations and the no-inference seal/score procedure.
+The [September29 scientific paired regression](docs/evidence/2026-09/scientific-paired-cohort-2026-09-29.md)
+is now running through the actual desktop on the same previously exposed cohort.
+Its explicit continuation preserves a publication-time Viewer failure in the
+denominator, without rerunning paid cases. It is not a fresh blind evaluation and
+does not supersede the failed clinical baseline above; scoring remains pending.
 The [first failure-driven correction](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
 removes a prompt assumption that local row detection always supplies lead geometry.
 One actual exposed-case replay now has 12 explicit panels and zero schema warnings,

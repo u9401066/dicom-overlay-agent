@@ -215,3 +215,45 @@ Next continuation must explicitly bind case7's failure/terminal evidence, keep i
 in the evaluation denominator, and proceed to case8 without repeating paid cases.
 Do not rewrite old driver/plans or count offline preflight as App publication.
 Later source work must add an explicit missing-Viewer terminal signal and tests.
+
+### Explicit v3 continuation — original failure remains in denominator
+
+Before further inference, the actual owned UI again showed Monitoring/AI ready.
+The same Viewer33040 was visible/not minimized at physical `(30,30)-(1530,1110)`.
+No App/Gateway restart, source/config/model change or failure rerun occurred.
+
+Create-only `plan-v3.json` SHA256:
+`480e6ada45aa7a115806a6d9748f0693125ac6bde824f47ccf7c8d2dff676d2b`.
+It binds v2, all original receipts0–7 and case7's exact terminal supplement.
+The new driver continues from index8 and retains case7 as `technical_failure`.
+It observes only the owned Viewer's visibility/minimized state/physical rectangle
+during inference. Those observations do not move/restore the Viewer or widen
+capture. The explicit ANALYZING→WAITING transition now stops observation promptly;
+this driver change is not an App source fix or a new clinical method.
+
+Live exec28335 started with limit112. Case8 completed the actual GUI loop in
+133.220s, analysis119615ms. Export `desktop-20260929-115534-008496` has exact
+visible/export pixels, two findings and retained incomplete/review-required
+status. Its saved summary was visually inspected. Five original stages bind to
+Astra medium; the earlier unaccepted idle-frame replay is not itself evidence of
+exactly-once inference.
+
+- Case8 contract:`729d532edbf6b8d3c233fb698f8c15eb037947c00084df14ff4162c23f62f400`.
+- Case8 usage:`c3534ab94b572a791bca8c423aad72f4dbe8e8037f5c35d2eafc052cc87e1595`.
+- Independent resumed-nine-case checkpoint:
+  `d662fe3788ad718b0f8f58227a4e7aff426ccaacaba8d1f7381df01f78acea89`.
+  This records eight publications, one preserved failure and111 pending, not a
+  nine-case clinical pass; it rechecks failed-case usage and subsequent plan links.
+
+The same handle subsequently completed case9 at11:58:13UTC (154.447s) and case10
+at12:00:41UTC (148.933s), each `exported_verified`. At this checkpoint ten actual
+publications, one retained technical failure and109 pending remain. Case11 is
+active; do not start a second driver or edit frozen inference source/config.
+
+37 new resume tests cover changed plan/source/collector/ROI/input order,
+undeclared skips, rewritten failures, removed denominator membership, premature
+resume, missing terminal state, source/turn/log tampering and wrong new-case plan
+bindings. With existing scientific/legacy verifier/collector and documentation
+checks,162 tests pass in22.39s; Ruff passes. Previous commit5eff6ee's Windows/Linux
+test and Python3.11/3.12 compatibility jobs all passed. This checkpoint still has
+no gold scoring, complete seal or new public binary.
