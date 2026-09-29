@@ -257,3 +257,36 @@ bindings. With existing scientific/legacy verifier/collector and documentation
 checks,162 tests pass in22.39s; Ruff passes. Previous commit5eff6ee's Windows/Linux
 test and Python3.11/3.12 compatibility jobs all passed. This checkpoint still has
 no gold scoring, complete seal or new public binary.
+
+### v3 stopped at case11: native minimization observed
+
+Exec28335 subsequently exited1 at12:03:00UTC. Case11 took138.726s and did not
+publish. Unlike the earlier case7 inference about Viewer loss, the new observer
+recorded an actual native transition at12:02:01.533752UTC: Viewer33040 remained
+present/visible but `IsIconic=True`, rectangle `(-32000,-32000)-(-31763,-31961)`.
+The App changed ANALYZING→WAITING at12:03:00.493493UTC and rediscovered the normal
+Viewer at12:03:03.381744UTC. The cause of minimization is not yet established.
+The new driver stopped promptly on WAITING rather than waiting360s. This is a
+measured observation response, not a controlled model-speed improvement.
+
+- Original case11 receipt SHA256:
+  `cc5f10f4690b5e741460d1dff8b8726338fae05aca848508eb877c27cc80f88e`.
+- Retained attempt:`3e5ecfc3075445268591d8204277c902`.
+- Create-only terminal supplement SHA256:
+  `512ef32567b308cc6f2afe354196b7d4db6a091afeef811762c45e29cc127ec1`.
+- Independent `v3-stopped-case011-audit.json` SHA256:
+  `3f75f8c1bab0f9491a6ef6b3c8167cfd14157e8ac4bdb4cad9450a1e5a05685e`.
+
+All five original case11 turns are terminal and bound to Astra medium. A separate
+offline replay of retained bytes/native bbox artifacts passes contract preflight,
+without any new inference or GUI handoff. Source pixels match the original
+visible ROI. Original failure remains unchanged. Final checkpoint: ten published
+cases, two technical failures,108 pending, zero invalid evidence. Gold is still
+unopened. No batch driver is live; App/Gateway/Viewer remain running.
+
+Repeated minimization/publication failure needs a safe desktop recovery design,
+not repeated paid analysis. Ask whether concurrent desktop use explains the
+native event, and investigate retaining a prepared draft until the original
+authorized ROI is again verifiably visible and unchanged. Do not auto-restore
+foreign windows or publish while the source cannot be verified. Any source fix
+must be isolated/versioned so it does not silently change this cohort's method.

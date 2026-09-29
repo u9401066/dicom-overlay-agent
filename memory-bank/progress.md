@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — v3 stopped; confirmed Viewer minimization
+
+Exec28335 EXIT1 atcase11 after138.726s; native observer captured IsIconic=True
+mid-analysis. Five original model turns and offline contract preflight pass,
+but no GUI publication.10 publications/2 technical failures/108 pending remain.
+Cause unknown; concurrent-use question sent. Investigate safely retaining prepared
+drafts until same ROI/source is verified again; don't repeat paid cases. Source
+changes must be isolated/versioned, not silently mixed into frozen cohort.
+
 ## 2026-09-29 — v3 resumed real GUI cohort without erasing case7
 
 Declared480e6ada… continuation binds prior plan/receipts and exact terminal audit.

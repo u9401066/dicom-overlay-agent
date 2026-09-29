@@ -1,5 +1,30 @@
 # Active Context
 
+## 2026-09-29 — exec28335 TERMINAL; confirmed native minimization case11
+
+- Exec28335 EXIT1 at12:03:00. Case11 failed138.726s; native Viewer33040 observed
+  minimized12:02:01.533752UTC, rect(-32000,-32000,-31763,-31961). Actual App
+  ANALYZING→WAITING12:03:00.493493, MONITORING12:03:03.381744. No driver live.
+  App32116/Gateway7204/Viewer33040 remain; never restart/repeat original failures.
+-10 publications +2 technical failures +108 pending. New offline v3 audit SHA
+ 3f75f8c1bab0f9491a6ef6b3c8167cfd14157e8ac4bdb4cad9450a1e5a05685e.
+  Case11 receipt cc5f10f4690b5e741460d1dff8b8726338fae05aca848508eb877c27cc80f88e.
+  Attempt3e5ecfc3075445268591d8204277c902;5 Astra-medium turns bound, source pixels
+  exact. Private audit-terminal-attempt.py --index11 ... replayed retained bytes
+  through contract preflight, no new inference/GUI. Supplement
+ 512ef32567b308cc6f2afe354196b7d4db6a091afeef811762c45e29cc127ec1.
+- Cause of minimization unknown. Async question sent about user's desktop use at
+ 20:02:01; unanswered at checkpoint, not a blocker to safe local investigation.
+  Root is the ONLY live collaboration agent. Candidate src contains no minimize
+  call found by rg; UI helper also no minimization. Do not claim an external actor.
+- Next prioritize safe prepared-draft recovery on Viewer restore (revalidate same
+  original ROI/pixels; no paid rerun/no capture widening), plus explicit terminal
+  log/UX. Isolate/version any source change to preserve current cohort method;
+  no generic skip/failure-erasure. Current v3 verifier supports ONE declared
+  additional terminal failure; case11 is retained, not permitted to skip silently.
+- Latest code/tests/README checkpoint2b9ad47 pushed;162 tests passed, gitleaksclean.
+  Docs following this section supersede earlier LIVE wording as historical notes.
+
 ## 2026-09-29 — v3 continuation LIVE exec28335, source still9a84847
 
 - Previous goal turn made concrete progress: verifier50 tests, case7 original
