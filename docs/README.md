@@ -3,6 +3,11 @@
 Current operating guidance, component contracts and dated evidence have different
 purposes. Start here; a dated successful smoke run is not current clinical approval.
 
+Latest local [scientific package 575bcdc](evidence/2026-09/scientific-package-2026-09-29.md)
+passes 20 frozen smoke tests and complete bundle verification, with 86 App/public
+harness code modules matching exact source. Folder 337.14 MiB; new-EXE native,
+subscription, clinical and distribution-license acceptance remain open.
+
 Latest development wiring: [scientific desktop publication](evidence/2026-09/scientific-desktop-publication-2026-09-25.md)
 keeps prepared reports out of Export/QA until Qt availability and two source-pixel
 checks pass. Opt-in only; the [September29 actual replay](evidence/2026-09/scientific-regional-desktop-2026-09-29.md)
@@ -11,7 +16,7 @@ regional conversations.10 Astra-medium sessions verified; one exposed source,
 not clinical acceptance, a refreshed EXE or default activation.
 An [actual App follow-up](evidence/2026-09/native-scientific-startup-2026-09-25.md)
 found and corrected a missing transport-receipt opt-in before the first model
-request; successful live scientific interpretation is not yet established.
+request; that earlier run did not establish successful live interpretation.
 The next real run exposed canonical session naming; after correction, QC advances
 to blind reading, where multi-observation checklist references failed the prior
 single-ID contract. A [follow-up](evidence/2026-09/scientific-reference-receipts-2026-09-25.md)

@@ -1,5 +1,26 @@
 # Active Context
 
+## 2026-09-29 — current scientific candidate packaged at575bcdc
+
+- Fresh isolated no-dev Python3.13.12/UPX5.2.1 build, no dependency changes.
+  Package dist-scientific-575bcdc-upx; all75 App+11 public harness modules match
+  exact host575bcdc/submodule d9798da code. Native90 approved; runtime clean.
+- Frozen20pass126.37s; full verifierOK.18771 files, EXE4.81MiB, App54.55MiB,
+  full337.14MiB. Private build/code/test/verifier receipts under data/tmp.
+  Evidence: docs/evidence/2026-09/scientific-package-2026-09-29.md.
+- Both575bcdc remote CI and secret scans passed. No paid inference, source/old
+  runtimes untouched. New frozen GUI/OAuth/clinical/license gates remain open.
+- Transfer ZIP141.68MiB/20.454s and7z105.20MiB/81.703s,25.75% smaller; 7z
+  extraction8.36s. All18771 files roundtrip hash-equal,53 UPX integrity checks
+  pass, original bundle unchanged. Private package-transfer-scientific-575bcdc
+  receipts retained. No public archive upload. Docs12pass; secrets scan clean.
+- Next: create a fresh isolated copy for real frozen GUI/OAuth/scientific/Mark
+  acceptance, bind actual EXE SHA10d35be2... to build575bcdc rather than relabel
+  source-GUI receipts. Never launch the clean master bundle or sealed old runtime.
+- Website local source still contains older Astra-low target/size text; needs
+  explicit current medium/clinical-failure/packaging update and browser QA before
+  renewed Pages deployment. Do not treat prior Pages deployment as current.
+
 ## 2026-09-29 — scientific timing and readable metadata follow-up
 
 - Scientific report timing uses immutable intake-start through second-look-end

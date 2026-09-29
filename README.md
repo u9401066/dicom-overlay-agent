@@ -9,7 +9,15 @@
 Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 (updated and browser-verified on September 24; development evidence, not a clinical release).
 
-## Current development target — 2026-09-24 (not a release)
+## Current development target — 2026-09-29 (not a release)
+
+September 29 package: [scientific candidate 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
+now passes 20 frozen smoke checks and the complete bundle verifier; all 75 App and
+11 public-harness code modules match their pinned sources. Launcher 4.81 MiB,
+App/Python/Qt 54.55 MiB, portable folder 337.14 MiB. This includes the timing-display
+fix; new-EXE native/subscription/clinical and distribution-license gates remain open.
+Byte-verified local archives: ZIP 141.68 MiB or optional 7z 105.20 MiB (25.75%
+smaller); neither has been published as a binary release.
 
 September29 update: [actual scientific desktop and regional QA](docs/evidence/2026-09/scientific-regional-desktop-2026-09-29.md)
 now completes five model stages, Qt handoff and canonical export in147.516s on

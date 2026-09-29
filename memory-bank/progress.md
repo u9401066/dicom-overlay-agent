@@ -1,5 +1,16 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-09-29 — scientific host-assembly EXE build and frozen smoke
+
+- Clean575bcdc built with isolated no-dev Python3.13.12/UPX;75 App+11 public
+  harness modules exactly match Git sources,90 native sources approved.
+- Frozen20pass126.37s; complete verifierOK, clean runtime,18771files/337.14MiB.
+  New frozen native/OAuth/clinical/license gates remain open. Both source CI runs
+  and secret scans passed. README/docs distinguish this from source-GUI evidence.
+- ZIP141.68MiB versus7z105.20MiB (25.75% smaller), both18771-file roundtrips
+  hash-verified;53 UPX payloads pass integrity and source stays unchanged. Local
+  artifacts only, no binary release. Documentation12pass and secret scan clean.
+
 ## 2026-09-29 — corrected scientific timing display
 
 - Host journal now supplies full analysis-stage elapsed time, frozen before
