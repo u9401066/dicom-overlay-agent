@@ -154,7 +154,7 @@ def test_pages_site_reports_public_repository_and_absent_release() -> None:
     )
 
     assert "https://github.com/u9401066/dicom-overlay-agent" in pages
-    assert "No GitHub Release is published as of 2026-09-24" in pages
+    assert "No GitHub Release is published as of 2026-09-29" in pages
     assert "repository is private" not in pages
 
 
@@ -207,7 +207,10 @@ def test_pages_does_not_promote_geometry_or_development_reruns_to_accuracy() -> 
     assert "no normal controls" in docs
     assert "in-bounds geometry is not clinical localization" in docs
     assert "Development reruns never replace sealed predictions" in docs
-    assert "Complete canonical evidence-ledger integration is still open" in docs
+    assert (
+        "Full-cohort verification, external-model integration and clinical acceptance"
+        in docs
+    )
 
 
 def test_current_site_distinguishes_source_package_and_actual_interaction():
@@ -217,15 +220,18 @@ def test_current_site_distinguishes_source_package_and_actual_interaction():
     assert "GPT-6 Astra low is the active target" not in index
     assert "110.874 s initial analysis" in index
     assert "10 bound Astra-medium analysis/regional turns" in index
-    assert "not in the bd8f303 executable" in index
+    assert "not in the 36dc3c6 EXE" in index
     assert 'id="regional-qa"' in docs
     for text in (
-        "Choose image window", "not the whole desktop", "Apply to report",
-        "regional-conversations.json", "still needs native retesting",
+        "Choose image window",
+        "not the whole desktop",
+        "Apply to report",
+        "regional-conversations.json",
+        "same original authorized ROI",
         "No 100-case medium clinical cohort has passed",
         "git submodule update --init --recursive",
-        "git checkout --detach ebbe2a5e0c883126da40c62e2d6d88195698a381",
-        "--branch agent/direct-harness-models-20260910",
+        "git checkout --detach 1a7cb81c90f25ac41c1c568c911389d39231cc01",
+        "--branch agent/viewer-publication-recovery-20260929",
         "--bundle dist\\DICOMOverlayAgent",
         "Sealed Astra-low baseline: 121 primary cases scored",
         "https://learn.chatgpt.com/docs/auth",
@@ -258,10 +264,47 @@ def test_evidence_links_pin_the_published_development_checkpoint():
         if "github.com/u9401066/dicom-overlay-agent/blob/" in reference
     ]
     assert len(links) >= 7
-    assert all(
-        "/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/" in link
-        for link in links
-    )
+    pins = {
+        "ebbe2a5e0c883126da40c62e2d6d88195698a381",  # Retained historical evidence.
+        "1a7cb81c90f25ac41c1c568c911389d39231cc01",  # September29 checkpoint.
+    }
+    assert {
+        urlparse(link).path.split("/blob/")[1].split("/")[0] for link in links
+    } == pins
+    assert all(any(f"/blob/{pin}/docs/" in link for pin in pins) for link in links)
+
+
+def test_september29_separates_execution_scoring_reruns_and_partial_recovery():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    assert "120 actual GUI cases · 482 bound stages" in index
+    assert "strict 0/46 complete references; urgent concerns 5/24" in index
+    assert "10 publications · 2 technical failures · 108 pending" in index
+    for text in (
+        "74 partially uncertain references",
+        "no confirmed cannot-miss cases or normal controls",
+        "not another successful cohort case",
+        "observer error and App closure prevented final Export",
+        "180-second deadline",
+        "--scientific-review --deidentified-input",
+        "flag does not deidentify an image for you",
+        "five original turns",
+    ):
+        assert text in docs
+    for filename in ("README.md", "README.zh-TW.md"):
+        readme = (REPO_ROOT / filename).read_text("utf-8")
+        assert "2026-09-29" in readme and "1a7cb81" in readme
+        assert "0/46" in readme and "5/24" in readme and "115/120" in readme
+
+
+def test_current_package_transfer_sizes_are_not_install_or_speed_claims():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    for text in ("4.81 MiB", "54.55 MiB", "337.15 MiB", "141.68 MiB", "105.21 MiB"):
+        assert text in index and text in docs
+    assert "does not reduce installed size or model latency" in index
+    assert "Later Viewer-recovery code is not in this package" in docs
+    assert "All 18,771 extracted files match their source hashes" in docs
 
 
 def test_evidence_statistics_can_wrap_within_their_own_grid_cells() -> None:

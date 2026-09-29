@@ -1,5 +1,29 @@
 # Active Context
 
+## 2026-09-29 Website-only current evidence refresh
+
+- Based on public main37d6ed3, not the older site in the App development branch.
+  Website/READMEs now pin source1a7cb81, distinguish actual36dc3c6 EXE, sealed
+  120-case medium baseline clinical failure, and scientific rerun10pub/2fail/108pending.
+  Partial recovery canary is not full acceptance or an additional independent case.
+- Documented crop plus original-ROI regional context, history/export limitations,
+  opt-in scientific flags, fixed Node24.18.0 download, measured337.15MiB folder /
+  141.68MiB ZIP /105.21MiB7z, and source-only recovery timeout/identity/pixel checks.
+  No runtime/model/schema/dependency/binary changes, no patient media published.
+- Browser plugin not available; existing Playwright1.62.1 + isolated headless Edge.
+  Local127.0.0.1:8766 passed1440x1000,820x1000,390x844: page identity/content,
+  no overlays/errors/warnings/failed resources/horizontal overflow; development
+  navigation, regional/scientific/setup anchors, mobile menu/Escape/focus and
+  no-JS navigation. Screenshots/private QA in Ctemp/dicom-pages-20260929.
+- First QA script assumed a nonexistent Development nav link; added useful direct
+  navigation. Second used a name-based Menu locator after label changed to Close;
+  fixed test locator, no false product defect. Final browser checks passed.
+-19 Pages smoke checks pass;10 pinned evidence documents verified in exact Git
+  objects. Public deployment still pending at this source checkpoint.
+- Recovery source1a7cb81 CI36571046138 ALLGREEN; secret36571046102 green.
+  Actual recovery runtime App/Gateway closed before Export; no automatic restart.
+  Need user desktop-availability response before resuming intrusive GUI work.
+
 ## 2026-09-24 Website-only interaction checkpoint refresh
 
 - Main App/runtime pins remain unchanged. Site/READMEs explicitly describe

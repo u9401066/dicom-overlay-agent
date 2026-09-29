@@ -9,18 +9,31 @@
 網站：[u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dicom-overlay-agent/)
 （公開開發證據，不是臨床正式版本）。
 
-## 目前開發進度 — 2026-09-24
+## 目前開發進度 — 2026-09-29
 
 目前目標為 **GPT-6 Astra medium**，實作位於獨立開發分支
-`agent/direct-harness-models-20260910`，不是 main 的 App。真實 source App
-已驗證 ROI 空白處 Mark、人工框兩輪續問、AI 框獨立問答、人工確認修改與歷史重開。
-`bd8f303` 互動版 EXE 通過封裝總檢查及 20 項 frozen smoke；後續 `ebbe2a5`
-修正人工框確認 ADD 後的歷史移交，以及延遲回寫重現舊畫面，尚未納入該 EXE，
-也尚待實機重測。
+`agent/viewer-publication-recovery-20260929`，文件固定於 `1a7cb81`，不是 main
+的舊 App。真實 `36dc3c6` EXE 已驗證 ROI 空白處 Mark、人工框兩輪續問、
+AI 框獨立問答、歷史重開、可讀匯出及換圖失效。每次區域問題會綁定框內裁切圖
+與同一份原始授權 ROI，不截整個桌面。重啟後還原歷史尚未完成，舊 EXE 未自動替換。
+
+已封存的 medium 基準確實跑完 **120 例 GUI 流程**，但**臨床驗收失敗**：
+完整參考嚴格符合 0/46、所有緊急參考疑慮辨識 5/24、舊版 schema 115/120。
+74 例部分不確定參考分開處理；沒有確診 cannot-miss 案例或正常對照。
+新版五階段重測使用同一批已曝光影像：**10 次發布、2 次技術失敗、108 例未測**，
+尚未臨床計分。另一次視窗恢復驗收觀察到原五回合完成發布，但操作助手失敗、
+App 又在 Export 前關閉，因此僅為部分證據，不算完整通過或新增獨立案例。
+
+`36dc3c6` 實測為 **4.81 MiB launcher／54.55 MiB App layer／337.15 MiB 資料夾**；
+ZIP 141.68 MiB、選用 7z 105.21 MiB，18,771 個解壓檔案雜湊皆一致。
+這些是本機候選封裝，未公開發布；後續視窗恢復程式尚未納入該 EXE，
+也不據此宣稱判讀更準或模型更快。
 
 請見[ROI 與區域問答指南](https://u9401066.github.io/dicom-overlay-agent/docs.html#regional-qa)
-及[固定版本證據](https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md)。
-瀏覽器完整流程、跨 DPI 與至少 100 例目前模型的臨床驗收仍未完成。
+及[固定版本 EXE 實測證據](https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/frozen-regional-context-2026-09-29.md)。
+[五階段工作流程與證據指南](https://u9401066.github.io/dicom-overlay-agent/docs.html#scientific-review)
+另列基準、失敗紀錄與固定 source 啟動方法。
+廣泛瀏覽器／廠牌、跨 DPI 與至少 100 例目前模型的臨床驗收仍未完成。
 本次網站／文件更新不合併候選 App 程式至 main，也不發布執行檔。
 
 ## 歷史開發證據 — 2026-09-11（尚未發布）

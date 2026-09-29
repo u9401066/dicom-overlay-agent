@@ -60,6 +60,7 @@
           <a href="#subscription">Subscription route</a>
           <a href="#roi">ROI and privacy</a>
           <a href="#regional-qa">Mark and regional QA</a>
+          <a href="#scientific-review">Scientific review</a>
           <a href="#clinical-rules">Clinical-rule audit</a>
           <a href="#harness">Image harness</a>
           <a href="#bundle">Portable bundle</a>
@@ -73,7 +74,7 @@
             <ul>
               <li>Windows 10 or 11.</li>
               <li><code>uv</code> for the repository-local Python environment.</li>
-              <li>Node.js 22+ for source runs; the portable bundle carries pinned Node.js.</li>
+              <li>The documented checkpoint uses Node.js 24.18.0; use the repository's verified portable download rather than an unrelated system Node version.</li>
               <li>A viewer window whose image area can be selected without PHI.</li>
               <li>A local ChatGPT/Codex subscription sign-in only when using the subscription route.</li>
             </ul>
@@ -83,19 +84,21 @@
             <h2>Run from source</h2>
             <p>
               The <a href="https://github.com/u9401066/dicom-overlay-agent">source repository</a>
-              is public. No GitHub Release exists as of 2026-09-24, so repository
+              is public. No GitHub Release exists as of 2026-09-29, so repository
               archives must not be treated as verified portable bundles.
             </p>
             <p>These instructions describe the <strong>development branch</strong>,
               not the older App on main. The documented source checkpoint is
-              <code>ebbe2a5</code>; its later history fix is not in the separately
-              verified <code>bd8f303</code> executable. All dependencies stay local.</p>
-            <pre><code>git clone --recurse-submodules --branch agent/direct-harness-models-20260910 ^
+              <code>1a7cb81</code>. The separately verified <code>36dc3c6</code>
+              executable does not include its later Viewer-recovery change.
+              All dependencies stay local; use a fresh clone, not a recorded test runtime.</p>
+            <pre><code>git clone --recurse-submodules --branch agent/viewer-publication-recovery-20260929 ^
   https://github.com/u9401066/dicom-overlay-agent.git
 cd dicom-overlay-agent
-git checkout --detach ebbe2a5e0c883126da40c62e2d6d88195698a381
+git checkout --detach 1a7cb81c90f25ac41c1c568c911389d39231cc01
 git submodule update --init --recursive
 uv sync --locked --all-extras
+powershell -NoProfile -File scripts\fetch-node.ps1
 scripts\install-openclaw-local.bat
 start.bat</code></pre>
             <p>
@@ -149,7 +152,7 @@ start.bat</code></pre>
                 and did not prove real subscription authentication or clinical accuracy.
                 Later clean candidate EXEs passed package checks and actual local
                 subscription import; historical image turns bind to Astra low,
-                newer September 24 runs to Astra medium, with public session usage.
+                newer September 24–29 runs to Astra medium, with public session usage.
                 These engineering checks do not establish
                 clinical accuracy. Broader UI, clinical and distribution-license
                 gates remain open. No candidate binary is released.
@@ -170,8 +173,9 @@ start.bat</code></pre>
             <p>Explicit window selection pins its identity for this App session,
               never silently falls back to another window, and does not overwrite
               another viewer's saved ROI. Closing/restarting the source requires
-              reselection and a fresh ROI. Full third-party/browser acceptance is
-              still pending; the picker alone is not proof of successful analysis.</p>
+              reselection and a fresh ROI. One exposed browser-image workflow has
+              source-App evidence, not broad third-party viewer or cross-monitor
+              acceptance; the picker alone is not proof of successful analysis.</p>
             <p>
               Every refinement crop is a subset of the original ROI. Neither crop/refine
               nor overlay calibration is permitted to widen capture beyond that boundary.
@@ -198,18 +202,64 @@ start.bat</code></pre>
             <p>The model receives at most six recent pairs within a 12,000-character
               context budget; full completed history remains readable/exportable.
               A new image or fresh analysis clears its old review context.</p>
+            <p>Each structured regional question includes the selected crop and
+              the <strong>same original authorized ROI</strong> as context, not a
+              fresh screenshot or the full desktop. Answers must distinguish
+              evidence inside the box from surrounding leads or labels. Context
+              does not bypass small-crop, calibration or explicit-approval gates.</p>
             <div class="docs-callout docs-callout-neutral">
               <strong>What was actually tested</strong>
-              <p>Real source-App interaction covers a blank-area manual mark, two
-                questions, separate AI-region QA, confirmed revision and history
-                reopening. Source ebbe2a5 additionally transfers history after a
-                manual ADD becomes a finding and rejects stale writeback callbacks;
-                that later path has regression coverage but still needs native
-                retesting. Browser QA, cross-DPI selection and restart import are
-                not accepted. No 100-case medium clinical cohort has passed.</p>
+              <p>The actual 36dc3c6 EXE completed a blank-area manual mark, two
+                questions, independent AI-region QA, history reopening without
+                inference and invalidation after an image change. All three
+                crop/context payload pairs were independently bound. A separate
+                source-App replay tested confirmed manual ADD and continued history.
+                Broad browser/vendor, cross-DPI and restart import acceptance remain
+                open. No 100-case medium clinical cohort has passed.</p>
             </div>
-            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/regional-history-2026-09-24.md">Read the actual regional interaction evidence</a> ·
-              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/interaction-package-and-promotion-2026-09-24.md">Compare source and executable checkpoints</a></p>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/frozen-regional-context-2026-09-29.md">Read the actual EXE regional interaction evidence</a> ·
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/native-marker-promotion-2026-09-24.md">Confirmed manual ADD and continued QA</a></p>
+          </section>
+
+          <section id="scientific-review">
+            <h2>Evidence-first scientific review</h2>
+            <p>This opt-in development mode is separate from the legacy default
+              launch path. Only use the deidentified-input assertion after
+              verifying that the selected image and ROI contain no patient identifiers;
+              the flag does not deidentify an image for you.</p>
+            <pre><code>start "" ".venv\Scripts\pythonw.exe" -m dicom_overlay ^
+  --config config.yaml --scientific-review --deidentified-input</code></pre>
+            <ol>
+              <li><strong>Quality gate:</strong> establish visible content and whether interpretation is possible.</li>
+              <li><strong>Blind pass:</strong> retain observations before reconciliation.</li>
+              <li><strong>Independent evidence:</strong> bind source-localized evidence and native geometry receipts.</li>
+              <li><strong>Reconciliation:</strong> resolve conflicts without treating a coordinate receipt as clinical confirmation.</li>
+              <li><strong>Targeted second look:</strong> revisit unresolved image evidence before contract validation and human handoff.</li>
+            </ol>
+            <p>The pipeline rechecks the same source pixels before preview and
+              final publication. Later source can retain a prepared draft while
+              the same Viewer is unavailable, but only within the original total
+              180-second deadline. It does not restore windows itself or resend
+              inference. Changed window identity, pixels, ROI, pause or cancellation
+              withhold the draft.</p>
+            <div class="docs-callout">
+              <strong>Execution and clinical correctness are separate.</strong>
+              <p>The sealed September 24 medium baseline completed 120 GUI cases
+                and 482 bound stages, but failed clinical acceptance: strict 0/46
+                complete references, all urgent reference concerns caught 5/24,
+                legacy schema 115/120. The 74 partially uncertain references are
+                separate; the urgent concerns are not confirmed diagnoses, and
+                there are no confirmed cannot-miss cases or normal controls.</p>
+              <p>The September 29 scientific paired regression reuses those exposed
+                images: 10 publications, 2 technical failures, 108 pending, not yet
+                clinically scored. A separate recovery canary observed publication
+                after restoration with five original turns, but an observer error
+                and App closure prevented final Export. It is partial acceptance,
+                not another successful cohort case.</p>
+            </div>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/medium-desktop-batch-2026-09-24.md">Sealed medium baseline and denominators</a> ·
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/scientific-paired-cohort-2026-09-29.md">Scientific regression checkpoint</a> ·
+              <a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/viewer-recovery-desktop-2026-09-29.md">Partial recovery evidence and retained failures</a></p>
           </section>
 
           <section id="clinical-rules">
@@ -321,6 +371,8 @@ uv run python scripts\verify-packaged-app.py ^
               </p>
             </div>
             <dl class="docs-facts">
+              <div><dt>Current measured package · 36dc3c6</dt><dd>4.81 MiB launcher; 54.55 MiB App layer; 337.15 MiB full folder. All 86 compiled App/harness modules match source; 20 frozen smoke checks and the separate actual EXE regional replay pass. Later Viewer-recovery code is not in this package.</dd></div>
+              <div><dt>Transfer · 36dc3c6</dt><dd>141.68 MiB ZIP or 105.21 MiB optional 7z. All 18,771 extracted files match their source hashes. This reduces download size, not installed size or inference time; it is not a published release.</dd></div>
               <div><dt>Interaction package · bd8f303</dt><dd>4.70 MiB launcher; 54.44 MiB App layer; 337.01 MiB full folder. Package verifier and 20 frozen smoke checks pass. The later ebbe2a5 promotion fix is source-only; no binary release.</dd></div>
               <div><dt>Historical actual · 2026-08-09</dt><dd>7.05 MiB launcher; 94.74 MiB app + Python/Qt; 368.01 MiB full zero-install bundle.</dd></div>
               <div><dt>Verified candidate · 0e55a61</dt><dd>4.68 MiB launcher; 54.42 MiB App layer; 337.01 MiB full folder. Clean source, static verifier and 20 frozen packaging smoke checks passed.</dd></div>
@@ -330,8 +382,11 @@ uv run python scripts\verify-packaged-app.py ^
             <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/architecture/direct-harness-integration.md">Inspect package provenance and the direct-model extraction boundary.</a>
               The public harness owns scientific model types, the current bounded
               multi-pass engine, ECG layout parser and analyzer lifecycle port.
-              Complete canonical evidence-ledger integration is still open; this
-              is not a claim that the whole scientific workflow is integrated.</p>
+              The newer opt-in scientific path now reaches canonical validation,
+              image-bound human handoff and export in actual runs. Full-cohort
+              verification, external-model integration and clinical acceptance
+              remain open.</p>
+            <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/regional-package-2026-09-29.md">Read exact package hashes, size and compression checks</a>.</p>
           </section>
 
           <section id="evidence">
@@ -342,7 +397,8 @@ uv run python scripts\verify-packaged-app.py ^
               <div><dt>Historical batch · 2026-09-02–03</dt><dd>103 attempts produced 60 source-matched exports and 43 timeouts. Reasoning effort was unverified; these are not Astra results.</dd></div>
               <div><dt>Astra low · 2026-09-10 10:22 UTC</dt><dd>Two calibration attempts on one case took 179.252 and 165.043 seconds. A second distinct case completed four turns in 140.481 seconds with source/model/effort receipts; clinical scoring is pending. A terminal-obstructed capture is excluded.</dd></div>
               <div><dt>Important multi-128 v1</dt><dd>Sealed Astra-low baseline: 121 primary cases scored, six pilots excluded; clinical acceptance failed. All 128 selected cases remain excluded from future blind selection.</dd></div>
-              <div><dt>Current · Astra medium</dt><dd>September 24 actual single-image development replays and regional interactions exist. They are exposed cases, not a new blind cohort, and do not satisfy the requested 100-case acceptance.</dd></div>
+              <div><dt>Sealed medium baseline · September 24</dt><dd>120 GUI cases executed; clinical acceptance failed. Strict 0/46 complete references, urgent concerns 5/24 and legacy schema 115/120. The 74 partially uncertain references remain separate.</dd></div>
+              <div><dt>Scientific regression · September 29</dt><dd>10 publications, 2 technical failures, 108 pending on those previously exposed images. Not a fresh blind cohort or a new clinical score. Regional replays and the partial recovery canary do not increase its independent-case count.</dd></div>
               <div><dt>Incomplete ECG partial-v2</dt><dd>Eight transformed inputs passed mock schema/bbox plumbing only. That is not a clinical accuracy result.</dd></div>
             </dl>
             <p>
@@ -359,6 +415,18 @@ uv run python scripts\verify-packaged-app.py ^
           <section id="troubleshooting">
             <h2>Troubleshooting</h2>
             <dl class="troubleshooting-list">
+              <div>
+                <dt>Mark only starts on an AI box</dt>
+                <dd>The old Windows overlay let clicks pass through fully transparent blank pixels. The candidate has an almost-transparent input surface over the authorized ROI in Mark mode. Confirm your exact build; main and an older installed EXE are not updated by reading this guide. ROI edges still limit selection.</dd>
+              </div>
+              <div>
+                <dt>Viewer minimized while analysis is finishing</dt>
+                <dd>The later source can wait within the original deadline for the same window. Restore that window without changing its image. It must pass identity, geometry and pixel checks before publication; it will not resend merely to recover a draft. The real canary is only partially accepted, and this fix is not in the 36dc3c6 EXE.</dd>
+              </div>
+              <div>
+                <dt>Need to use the desktop during a recorded run</dt>
+                <dd>Pause before switching cases. Closing the App before Export can leave no canonical export or screenshot, even after visible publication. Do not restart a recorded runtime in place: startup can truncate its logs. Preserve failures and use a fresh runtime for a newly declared attempt.</dd>
+              </div>
               <div>
                 <dt>Gateway port is occupied</dt>
                 <dd>The app requires a matching app-owned process receipt plus authenticated public <code>connect</code>. A healthy unknown listener is not ownership proof and will not be reused or terminated.</dd>
