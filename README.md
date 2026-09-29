@@ -11,6 +11,12 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 
 ## Current development target — 2026-09-29 (not a release)
 
+[Context-aware regional QA](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
+now passes an actual source-App replay: selected crop plus the unchanged authorized
+ROI in one question, verified against two retained Gateway PNGs. Manual two-turn
+and independent AI-box QA/history pass; no capture widening or automatic report
+change. Full regression2412pass/10skip. Updated EXE and clinical acceptance remain pending.
+
 September 29 package: [scientific candidate 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
 now passes 20 frozen smoke checks and the complete bundle verifier; all 75 App and
 11 public-harness code modules match their pinned sources. Launcher 4.81 MiB,

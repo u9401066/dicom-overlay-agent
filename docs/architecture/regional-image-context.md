@@ -65,3 +65,8 @@ selection rather than a newer live image, preserved low-signal/multi-marker
 gates, and history/outcome trace preservation. Source changes are not present in
 the previously accepted575bcdc EXE. A fresh actual App/usage/UI replay and a later
 rebuild are required; the old sealed runtime must not be restarted or relabeled.
+
+The subsequent [actual source-App replay](../evidence/2026-09/regional-context-desktop-2026-09-29.md)
+now verifies three two-image questions, exact Gateway-retained PNG hashes,
+separate histories and source invalidation. Updated EXE acceptance and broader
+clinical validation remain pending.

@@ -5,8 +5,10 @@ purposes. Start here; a dated successful smoke run is not current clinical appro
 
 New source change: [regional image context](architecture/regional-image-context.md)
 adds the same authorized ROI alongside a selected crop for regional questions.
-It preserves crop/writeback/history boundaries and needs separate live acceptance;
-the preceding frozen evidence remains crop-only.
+It preserves crop/writeback/history boundaries. Its
+[actual source-App acceptance](evidence/2026-09/regional-context-desktop-2026-09-29.md)
+now verifies two PNGs per question against retained Gateway bytes and separate
+regional histories. The preceding frozen evidence remains crop-only.
 
 Latest local [scientific package 575bcdc](evidence/2026-09/scientific-package-2026-09-29.md)
 passes 20 frozen smoke tests and complete bundle verification, with 86 App/public

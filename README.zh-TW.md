@@ -11,6 +11,11 @@
 
 ## 開發證據（尚未發布）
 
+[帶原圖上下文的區域問答](docs/evidence/2026-09/regional-context-desktop-2026-09-29.md)
+已完成真實 source App 驗證：同一問題附選取裁圖及原本授權 ROI，兩張 Gateway
+留存 PNG 均核對 SHA。人工框兩輪續問、AI 框獨立問答與歷史通過，不擴大截圖、
+不自動改報告。完整回歸 2,412 項通過／10 項跳過；新 EXE 與臨床驗收仍待完成。
+
 9 月 29 日[科學判讀候選封裝 575bcdc](docs/evidence/2026-09/scientific-package-2026-09-29.md)
 已通過 20 項 EXE smoke 與完整封裝驗證；75 個 App、11 個公開 harness 模組
 均與指定原始碼一致。EXE 4.81 MiB、App/Python/Qt 54.55 MiB、零安裝目錄

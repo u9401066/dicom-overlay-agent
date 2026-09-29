@@ -2,6 +2,21 @@
 
 ## 2026-09-29 — regional same-snapshot image context implementation
 
+- Actual source c7fd1f8 acceptance now PASS: fresh Ctemp/dicom-regional-context-20260929,
+  App17488/launcher6476/Gateway31516/Viewer32620/launcher29500. Five-stage initial
+  publication131.432s; source pixel MAE0. Manual2+existingf1 one-question threads,
+  identical history reopen, file-dialog invalidation/stale-export rejection pass.
+- Public sessions/runtime bind10 Astra-medium turns. All3 structured QA turns
+  have2 PNGs; independently recomputed crop/source hashes match public media order,
+  size and retained Gateway inbound bytes. AI small crop43x22 remains read-only.
+  Answers distinguish crop versus originalROI evidence, no automatic report edit.
+- Source/canonical unchanged; maxmanual edge0.5px. Audit d609217e3a4587677ef82351a529bf0e570cecd54ddcec2cc45791c0b8860650.
+  Full2412pass/10skip448.36s; both c7fd1f8 CI+secrets pass. Evidence page:
+  docs/evidence/2026-09/regional-context-desktop-2026-09-29.md.
+- Runtime now SEALED after actual Quit/ownedViewerclose, all5 processes and18796
+  absent. Never restart. New EXE/context clinical eval remain pending; next gaps
+  include PNG long-note clipping, safe occlusion recovery, external model and Pages.
+
 - Actual tiny46x20px crop-only QA motivated attaching selected crop plus original
   approved ReviewSnapshot ROI in the same structured question. No new capture,
   expanded ROI, model switch or extra request; image input volume increases.
@@ -9,8 +24,8 @@
   source-resolution writeback gates remain unchanged. Refine stays crop-only.
 - Public attachments array only; locked trace retains both SHA256s and count2.
   Invalid base64 fails before send. Focused175pass6.33s; Ruff/mypy5files pass.
-- Full suite running; fresh Ctemp/dicom-regional-context-20260929 static runtime
-  prepared, not launched yet. Source acceptance must not be attributed to the
+- At implementation checkpoint, full suite was running and the fresh runtime was
+  not launched; the later acceptance above supersedes that status. Do not attribute it to the
   unchanged575bcdc executable; all old runtimes remain sealed.
 - Design: docs/architecture/regional-image-context.md. No accuracy/speed claim.
 

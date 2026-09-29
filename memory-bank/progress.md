@@ -2,10 +2,16 @@
 
 ## 2026-09-29 — context-aware regional question source change
 
+- Actual c7fd1f8 source App now accepted on one exposed partial ECG:131.432s
+  initial five-stage publication, manual2turn/existing1turn/reopen/invalidation.
+- Three dual-image questions match recomputed source/crop and Gateway-retained
+  PNG hashes;10 Astra-medium sessions accounted for. Full2412pass/10skip448.36s,
+  both remote CI+secrets pass. Runtime sealed; no clinical or new EXE claim.
+
 - Same-snapshot original ROI now accompanies the selected crop in one structured
   QA request. No capture widening or weakened crop/writeback/thread guards.
 - Both payload hashes retained with run trace; focused175pass, static checks pass.
-  Actual dual-image App acceptance and updated EXE remain separate pending gates.
+  Actual dual-image acceptance is now recorded above; updated EXE remains pending.
 
 ## 2026-09-29 — frozen native/subscription/Mark acceptance
 
