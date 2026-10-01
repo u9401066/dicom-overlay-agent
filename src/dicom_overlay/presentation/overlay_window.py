@@ -6,11 +6,12 @@ import json
 from typing import TYPE_CHECKING, cast
 
 import structlog
-from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
+from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen, QResizeEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
     QTabWidget,
@@ -39,6 +40,14 @@ SEVERITY_COLORS: dict[str, QColor] = {
     "warning": QColor(255, 193, 7, 200),  # yellow
     "normal": QColor(40, 167, 69, 180),  # green
     "info": QColor(108, 117, 125, 150),  # gray
+}
+# Text needs higher contrast than translucent image overlays. Keep this palette
+# separate so readability changes cannot change diagnostic box appearance.
+_REPORT_TEXT_COLORS = {
+    "critical": "#ff8787",
+    "warning": "#ffcf66",
+    "normal": "#8ee6a8",
+    "info": "#c8ced9",
 }
 _USER_REGION_HIGHLIGHT_ID = "__user_region__"
 
@@ -133,6 +142,29 @@ class _DraggableWindowMixin:
         a0.accept()
 
 
+class _WrappingReportLabel(QLabel):
+    """Preserve wrapped text height inside nested, dynamically sized scroll layouts."""
+
+    def _sync_text_height(self) -> None:
+        if self.wordWrap() and self.width() > 0:
+            required = self.heightForWidth(self.width())
+            if required >= 0 and self.minimumHeight() != required:
+                self.setMinimumHeight(required)
+
+    def setText(self, text: str | None) -> None:
+        super().setText(text)
+        self._sync_text_height()
+
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
+        super().resizeEvent(event)
+        self._sync_text_height()
+
+    def changeEvent(self, event: QEvent | None) -> None:
+        super().changeEvent(event)
+        if event and event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._sync_text_height()
+
+
 class SummaryPanel(_DraggableWindowMixin, QWidget):
     """Draggable report panel with findings, checklist, and run provenance."""
 
@@ -169,6 +201,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             "QTabBar::tab:selected { color: white; background: #3d4655; }"
         )
         report_page, self._report_layout = self._scroll_page()
+        self._report_scroll = report_page
         checklist_page, self._checklist_layout = self._scroll_page()
         process_page, self._process_layout = self._scroll_page()
         self._content_layout = self._checklist_layout
@@ -177,7 +210,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._tabs.addTab(process_page, "Process")
         self._layout.addWidget(self._tabs, stretch=1)
 
-        self._summary_label = QLabel("")
+        self._summary_label = _WrappingReportLabel("")
         self._summary_label.setWordWrap(True)
         self._summary_label.setTextFormat(Qt.TextFormat.PlainText)
         self._summary_label.setFont(QFont("Segoe UI", 10))
@@ -190,7 +223,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         # Degradation badge: shown when the result failed schema checks
         # (partial JSON, missing checklist keys) so the physician never reads
         # a degraded result as a clean "all normal".
-        self._incomplete_label = QLabel("")
+        self._incomplete_label = _WrappingReportLabel("")
         self._incomplete_label.setWordWrap(True)
         self._incomplete_label.setTextFormat(Qt.TextFormat.PlainText)
         self._incomplete_label.setFont(QFont("Segoe UI", 9))
@@ -201,7 +234,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         # Manual-zoom hint: shown when a lesion is too small in the screen
         # capture to resolve further by digital crop, so the user is asked to
         # zoom in their DICOM viewer and re-capture.
-        self._zoom_hint_label = QLabel("")
+        self._zoom_hint_label = _WrappingReportLabel("")
         self._zoom_hint_label.setWordWrap(True)
         self._zoom_hint_label.setTextFormat(Qt.TextFormat.PlainText)
         self._zoom_hint_label.setFont(QFont("Segoe UI", 9))
@@ -214,13 +247,27 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         # elevation described yet rated normal). Distinct, alarming styling so
         # the physician treats it as a "double-check this" prompt, not a benign
         # note. Carries the guideline citation behind the flag.
-        self._review_label = QLabel("")
+        self._review_button = QPushButton("")
+        self._review_button.setAccessibleName("查看完整人工複核原因")
+        self._review_button.setStyleSheet(
+            "color: #ff8787; background: #33232b; text-align: left; "
+            "padding: 6px; border: 1px solid #a45b67; border-radius: 4px;"
+        )
+        self._review_button.clicked.connect(
+            lambda: self._set_report_scroll(self._review_label.y())
+        )
+        self._review_button.setVisible(False)
+        self._report_layout.addWidget(self._review_button)
+
+        self._review_label = _WrappingReportLabel("")
         self._review_label.setWordWrap(True)
         self._review_label.setTextFormat(Qt.TextFormat.PlainText)
         self._review_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        self._review_label.setStyleSheet("color: #ff5252; padding-top: 6px;")
+        self._review_label.setStyleSheet("color: #ff8787; padding-top: 6px;")
+        self._review_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._review_label.setVisible(False)
-        self._report_layout.addWidget(self._review_label)
 
         findings_heading = QLabel("Findings")
         findings_heading.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
@@ -229,6 +276,10 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._findings_layout = QVBoxLayout()
         self._findings_layout.setSpacing(8)
         self._report_layout.addLayout(self._findings_layout)
+        # Keep every warning/citation available, but do not bury actionable
+        # findings beneath a long repeated review block. The compact alert above
+        # remains visible and provides keyboard/mouse navigation to these details.
+        self._report_layout.addWidget(self._review_label)
         protect_widget_from_capture(self)
 
     @staticmethod
@@ -236,6 +287,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         body = QWidget()
         body.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(body)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -249,6 +301,11 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             "QScrollBar::handle:vertical { background: #666; border-radius: 3px; }"
         )
         return scroll, layout
+
+    def _set_report_scroll(self, value: int) -> None:
+        scrollbar = self._report_scroll.verticalScrollBar()
+        if scrollbar is not None:
+            scrollbar.setValue(value)
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
@@ -287,15 +344,13 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         )
         self._tabs.setTabText(1, "Checklist*" if report_reconciliation else "Checklist")
         if report_reconciliation:
-            reconciliation_label = QLabel(
+            reconciliation_label = _WrappingReportLabel(
                 "Retained from the initial report; pending reconciliation with "
                 "the reviewer-confirmed regional update."
             )
             reconciliation_label.setWordWrap(True)
             reconciliation_label.setTextFormat(Qt.TextFormat.PlainText)
-            reconciliation_label.setStyleSheet(
-                "color: #ffb000; padding: 2px 0 6px 0;"
-            )
+            reconciliation_label.setStyleSheet("color: #ffb000; padding: 2px 0 6px 0;")
             self._checklist_layout.addWidget(reconciliation_label)
 
         severity_rank = {
@@ -311,19 +366,14 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         for key, checklist_item in checklist_rows:
             display_key = _humanize_checklist_key(key)
             display_val = _humanize_checklist_value(checklist_item.value)
-            label = QLabel(
+            label = _WrappingReportLabel(
                 f"{checklist_item.status.value.upper()}  {display_key}: {display_val}"
             )
             label.setWordWrap(True)
             label.setTextFormat(Qt.TextFormat.PlainText)
             label.setFont(QFont("Segoe UI", 9))
-            color = SEVERITY_COLORS.get(
-                checklist_item.status.value, SEVERITY_COLORS["info"]
-            )
-            label.setStyleSheet(
-                f"color: rgb({color.red()}, {color.green()}, {color.blue()}); "
-                "padding: 2px 0px;"
-            )
+            color = _REPORT_TEXT_COLORS[checklist_item.status.value]
+            label.setStyleSheet(f"color: {color}; padding: 2px 0px;")
             self._content_layout.addWidget(label)
 
         metadata = " | ".join(
@@ -340,7 +390,12 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         )
 
         if result.findings:
-            for index, finding in enumerate(result.findings, start=1):
+            # Presentation-only stable priority ordering; preserve entity and
+            # export order, IDs, and all source-bound box coordinates.
+            findings = sorted(
+                result.findings, key=lambda item: severity_rank[item.severity]
+            )
+            for index, finding in enumerate(findings, start=1):
                 regions = ", ".join(finding.regions) or "unlocalized"
                 lines = [
                     f"{index}. {finding.label} [{finding.severity.value}]",
@@ -356,20 +411,16 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                         f"Source: {finding.source.replace('_', ' ').replace('+', ' + ')}"
                     )
                 lines.extend(f"Note: {note}" for note in finding.notes)
-                finding_label = QLabel("\n".join(lines))
+                finding_label = _WrappingReportLabel("\n".join(lines))
                 finding_label.setWordWrap(True)
                 finding_label.setTextFormat(Qt.TextFormat.PlainText)
                 finding_label.setTextInteractionFlags(
                     Qt.TextInteractionFlag.TextSelectableByMouse
                 )
                 finding_label.setFont(QFont("Segoe UI", 9))
-                color = SEVERITY_COLORS.get(
-                    finding.severity.value,
-                    SEVERITY_COLORS["info"],
-                )
+                color = _REPORT_TEXT_COLORS[finding.severity.value]
                 finding_label.setStyleSheet(
-                    f"color: rgb({color.red()}, {color.green()}, {color.blue()}); "
-                    "padding: 3px 0; border-bottom: 1px solid #3f3f49;"
+                    f"color: {color}; padding: 3px 0; border-bottom: 1px solid #3f3f49;"
                 )
                 self._findings_layout.addWidget(finding_label)
         else:
@@ -383,13 +434,13 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 if isinstance(result.image_quality, dict)
                 else result.image_quality
             )
-            quality_label = QLabel(f"Image quality: {quality}")
+            quality_label = _WrappingReportLabel(f"Image quality: {quality}")
             quality_label.setWordWrap(True)
             quality_label.setTextFormat(Qt.TextFormat.PlainText)
             quality_label.setStyleSheet("color: #c8ced9; padding: 4px 0;")
             self._findings_layout.addWidget(quality_label)
         if result.next_steps:
-            next_label = QLabel(
+            next_label = _WrappingReportLabel(
                 "Next steps:\n"
                 + "\n".join(
                     f"{index}. {step}"
@@ -407,14 +458,12 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             if inventory.missing_names:
                 lead_text += "\nMissing: " + ", ".join(inventory.missing_names)
             if inventory.duplicate_names:
-                lead_text += "\nDuplicates: " + ", ".join(
-                    inventory.duplicate_names
-                )
+                lead_text += "\nDuplicates: " + ", ".join(inventory.duplicate_names)
             if inventory.malformed_entries:
                 lead_text += (
                     f"\nMalformed/hidden entries: {inventory.malformed_entries}"
                 )
-            layout_label = QLabel(lead_text)
+            layout_label = _WrappingReportLabel(lead_text)
             layout_label.setWordWrap(True)
             layout_label.setTextFormat(Qt.TextFormat.PlainText)
             layout_label.setStyleSheet(
@@ -437,13 +486,17 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 summary_lines.append("Local aids: " + ", ".join(internal_aids))
             sla_receipt = process_summary["sla_receipt"]
             if isinstance(sla_receipt, dict):
-                timings = sla_receipt.get("timings_ms")
-                timings = timings if isinstance(timings, dict) else {}
-                met = sla_receipt.get("met")
-                met = met if isinstance(met, dict) else {}
+                raw_timings = sla_receipt.get("timings_ms")
+                summary_timings: dict[str, object] = (
+                    raw_timings if isinstance(raw_timings, dict) else {}
+                )
+                raw_met = sla_receipt.get("met")
+                summary_met: dict[str, object] = (
+                    raw_met if isinstance(raw_met, dict) else {}
+                )
 
                 def timing_text(key: str) -> str:
-                    value = timings.get(key)
+                    value = summary_timings.get(key)
                     return (
                         f"{float(value) / 1000:.1f}s"
                         if isinstance(value, int | float)
@@ -451,8 +504,14 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     )
 
                 def met_text(key: str) -> str:
-                    value = met.get(key)
-                    return "met" if value is True else "missed" if value is False else "n/a"
+                    value = summary_met.get(key)
+                    return (
+                        "met"
+                        if value is True
+                        else "missed"
+                        if value is False
+                        else "n/a"
+                    )
 
                 summary_lines.append(
                     "SLA initial / first crop / total: "
@@ -461,15 +520,13 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     f"{met_text('first_crop_refinement')} / "
                     f"{timing_text('total')} {met_text('total')}"
                 )
-            process_summary_label = QLabel("\n".join(summary_lines))
+            process_summary_label = _WrappingReportLabel("\n".join(summary_lines))
             process_summary_label.setWordWrap(True)
             process_summary_label.setTextFormat(Qt.TextFormat.PlainText)
             process_summary_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
-            process_summary_label.setFont(
-                QFont("Segoe UI", 9, QFont.Weight.DemiBold)
-            )
+            process_summary_label.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
             process_summary_label.setStyleSheet(
                 "color: #8ad0ff; padding: 5px 0; border-bottom: 1px solid #526273;"
             )
@@ -489,15 +546,15 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                 details.append(f"Target: {entry['target_id']}")
             if entry.get("operation"):
                 details.append(f"Operation: {entry['operation']}")
-            if isinstance(entry.get("turn_elapsed_ms"), int | float):
-                details.append(f"OpenClaw turn: {int(entry['turn_elapsed_ms'])} ms")
-            if isinstance(entry.get("turn_budget_ms"), int | float):
-                details.append(f"App turn budget: {int(entry['turn_budget_ms'])} ms")
-            if isinstance(entry.get("absolute_deadline_ms"), int | float):
-                details.append(
-                    "Absolute analysis deadline: "
-                    f"{int(entry['absolute_deadline_ms'])} ms"
-                )
+            elapsed_ms = entry.get("turn_elapsed_ms")
+            budget_ms = entry.get("turn_budget_ms")
+            deadline_ms = entry.get("absolute_deadline_ms")
+            if isinstance(elapsed_ms, int | float):
+                details.append(f"OpenClaw turn: {int(elapsed_ms)} ms")
+            if isinstance(budget_ms, int | float):
+                details.append(f"App turn budget: {int(budget_ms)} ms")
+            if isinstance(deadline_ms, int | float):
+                details.append(f"Absolute analysis deadline: {int(deadline_ms)} ms")
             if isinstance(entry.get("fast_mode_requested"), bool):
                 requested = "yes" if entry["fast_mode_requested"] else "no"
                 details.append(f"OpenClaw fast mode requested: {requested}")
@@ -532,8 +589,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     )
                 if entry.get("skipped_refinement_count"):
                     details.append(
-                        "Skipped refinements: "
-                        f"{entry['skipped_refinement_count']}"
+                        f"Skipped refinements: {entry['skipped_refinement_count']}"
                     )
             reconciliation = entry.get("report_reconciliation")
             if isinstance(reconciliation, dict):
@@ -664,14 +720,16 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                             for prediction in predictions[:5]:
                                 if not isinstance(prediction, dict):
                                     continue
-                                label = str(prediction.get("label") or "").strip()
+                                candidate_label = str(
+                                    prediction.get("label") or ""
+                                ).strip()
                                 score = prediction.get("probability")
-                                if not label:
+                                if not candidate_label:
                                     continue
                                 ranked.append(
-                                    f"{label} {float(score):.3f}"
+                                    f"{candidate_label} {float(score):.3f}"
                                     if isinstance(score, int | float)
-                                    else label
+                                    else candidate_label
                                 )
                             if ranked:
                                 details.append(
@@ -711,7 +769,7 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
                     action = str(decision.get("action", "decision")).upper()
                     rationale = str(decision.get("rationale", "")).strip()
                     details.append(f"{action}: {rationale}".rstrip(": "))
-            process_label = QLabel(
+            process_label = _WrappingReportLabel(
                 f"{index}. {stage} [{status}]"
                 + ("\n" + "\n".join(details) if details else "")
             )
@@ -756,9 +814,16 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
             body = "\n".join(f"• {r}" for r in reasons)
             self._review_label.setText(f"需人工複核\n{body}".rstrip())
             self._review_label.setVisible(True)
+            count = len(reasons)
+            count_text = f" · {count} 項" if count else ""
+            self._review_button.setText(f"需人工複核{count_text} — 查看完整原因")
+            self._review_button.setVisible(True)
         else:
             self._review_label.setText("")
             self._review_label.setVisible(False)
+            self._review_button.setText("")
+            self._review_button.setVisible(False)
+        self._set_report_scroll(0)
 
     def clear(self) -> None:
         self._clear_layout(self._findings_layout)
@@ -766,6 +831,17 @@ class SummaryPanel(_DraggableWindowMixin, QWidget):
         self._clear_layout(self._process_layout)
         self._summary_label.setText("")
         self._title_label.setText("Waiting")
+        for label in (
+            self._incomplete_label,
+            self._zoom_hint_label,
+            self._review_label,
+        ):
+            label.setText("")
+            label.setVisible(False)
+        self._review_button.setText("")
+        self._review_button.setVisible(False)
+        self._tabs.setTabText(1, "Checklist")
+        self._set_report_scroll(0)
 
 
 class ChatPanel(_DraggableWindowMixin, QWidget):
