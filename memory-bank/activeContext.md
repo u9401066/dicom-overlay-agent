@@ -1,5 +1,25 @@
 # Active Context
 
+## 2026-10-02 — generated clinical website catalogue (MVP manual files)
+
+- User refined requirement6: keep manual YAML maintenance; no administration
+  backend, login service or browser write API requested for MVP.
+- New build-clinical-knowledge-site.py validates canonical YAML/generated views,
+  builds a temporary application-owned SQLite and verifies every table/column/row
+  before rendering complete rule cards. Same unchanged7-rule registry digest
+  d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c.
+- Catalogue includes human/agent steps, preconditions/evidence/exclusions,
+  citations, full structured runtime/tests/legacy, and canonical GitHub file links.
+  Search/modality/empty/reset/deep-link flows, native details, no-JS readable.
+- Pages workflow now watches registry/generator changes and regenerates before
+  upload. A failed governance/parity check prevents a new deployment. No claim
+  of installed-App DB synchronization or clinical certification.
+-23 scoped smoke checks pass; existing Playwright1.62.1/headless Edge checks
+ 1440/820/390 plus no-JS. Browser plugin absent; screenshots reviewed. Evidence
+  outside repository: Ctemp/dicom-clinical-site-20261002/local-final. Source/Pages
+  deployment CI still pending. No desktop input, paid model use or sealed replay.
+
+
 ## 2026-09-29 — website-only explicit history workflow
 
 Separate branch from public mainf3b4d8d; no candidate App code merged. Added
