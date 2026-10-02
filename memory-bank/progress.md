@@ -1,5 +1,19 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-10-02 — four external source images acquired, none inference-cleared
+
+Bounded real download and visual review completed for three same-record image
+variants and one author photograph preview.4 files/2678389B, original hashes
+verified; headers/QR/machine report require exclusion, so all remain quarantined.
+No model call, blind case, image transformation or clinical result added. The
+source helper uses no new dependency or credentials; initial HEAD404 was followed
+by successful bounded GET, not an access-control bypass. Ruff fixes verified.
+
+New goal6 clarification exposes a real gap: generated YAML agent steps are not
+the actual scientific stage prompts. Contract extraction/integration and native
+verification remain required; website publication alone does not satisfy it.
+
+
 ## 2026-09-29 — sealed cohort headline corrected from authoritative closure
 
 Report incorrectly retained an early "remaining117 resumed" headline. Actual

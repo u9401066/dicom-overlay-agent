@@ -14,6 +14,27 @@
 | 10,001-identity scale fixture | 10,001 identities | atomic resume/checkpoint set behavior | source smoke complete | resumability scale, not 10,001 medical images |
 | Historical 32/8 sets | 32 paired + 8 unseen | 2026-08-09 engineering evidence | complete under their recorded protocol | only the dated metrics in their evidence record |
 
+## Non-MEETI source inspection — 2026-10-02
+
+The [ECG-Image-Database](https://www.kaggle.com/datasets/physionet/ecg-image-database)
+version2 public metadata advertises CC BY-ND4.0; do not substitute the associated
+[paper's license](https://pmc.ncbi.nlm.nih.gov/articles/PMC13402943/) for dataset terms.
+`scripts/fetch-external-ecg-samples.py` acquires only three version-bound image
+variants of one record and one author-published precordial photograph preview.
+No waveform/header/gold files, credentials, paid requests or bulk download.
+
+Actual local acquisition:4 originals/2,678,389 bytes; all four decoded and hashes
+rechecked. Visual inspection found red/green grid variants, a scan-like image,
+and a perspective-distorted thermal-paper photo. Headers/QR or machine-report
+text remain visible: **all four remain quarantined and inference_ready=false**.
+Original pixels were not edited or redistributed. Source images and review
+receipts stay in ignored local data, not code/test fixtures or the public site.
+
+These are development-exposed inputs, not four independent cases, not a blind
+diagnostic cohort, not accepted App runs, and not full legacy/vendor coverage.
+Privacy-cleared authorized ROI and screenshot/source binding are still required.
+The author preview has no asserted exact dataset-record or diagnostic-gold link.
+
 ## 9,922-case source
 
 The canonical full MEETI image cohort contains 9,922 ordered cases. Inference

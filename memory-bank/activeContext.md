@@ -1,5 +1,34 @@
 # Active Context
 
+## 2026-10-02 — external ECG quarantine and YAML contract gap audit
+
+- Actual bounded download via new fetch-external-ecg-samples.py:3 version2
+  ECG-Image-Database variants of ONE record plus1 author thermal-paper preview,
+  2678389B total. Original files/Pillow decode/all hashes verified; no gold/header
+  or waveform acquisition, no transformation, no model request. Private root:
+  MAIN/data/external/ecg-image-database-v2-20261002. acquisition.json SHA256
+  a0ff425b707f8b54866871ed5d1cce501f058b32b3c7e2307e01f702cb3854a9.
+- All4 original images visually inspected. Metadata/QR or printed machine report
+  remain visible; visual-review.json retains inference_ready=false for every file.
+  No raw image or header text copied into repository. Development exposure only;
+  three variants are not three independent cases and preview has no verified gold.
+- Kaggle API advertises CC BY-ND4.0/version2; paper CC BY terms do not establish
+  dataset rights. No redistribution; preview-specific terms not separately verified.
+- User explicitly clarified YAML agent steps must be the actual OpenClaw reading
+  contract. Audit: generated agent-steps.md is packaged/selfchecked but NOT loaded
+  by ScientificImageSession or legacy initial prompt; stages currently use inline
+  instructions and pinned public harness schema. Existing7 rules are consistency
+  checks, not a complete staged reading workflow. This requirement remains OPEN.
+- Next implementation must make a stage-scoped, modality-scoped YAML contract
+  authoritative, preserve technical-only QC/blind-pass/tool/evidence boundaries,
+  and bind generated contract version/digest to actual sent prompts/receipts.
+  Do not append every rule to all stages or mistake schema tests for native proof.
+- Public Pages currently renders main registry d22a03e0; candidate App registry
+ 81949332 includes later negation-aware ST rule1.0.1. They are different source
+  checkpoints, not proof of installed-App/site identity. Website labels this limit.
+- Desktop availability question still unanswered; no fresh native input/replay.
+
+
 ## 2026-09-29 — reconcile sealed cohort state and remaining desktop gate
 
 - Read-only audit found a stale evidence-doc headline claiming117 cases resumed.
