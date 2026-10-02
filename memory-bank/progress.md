@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-10-02 — candidate website shows executable reading contract
+
+Reconciled newer public website into candidate and extended canonical generator
+to render every human/agent workflow step, modality QC, JSON and rule catalogue,
+with SQLite2 parity. Deployment source links bind Git SHA; local previews avoid
+misleading main/edit attribution.29 static/documentation checks plus real headless Edge at
+1440/820/390 and no-JS pass; screenshots visually reviewed outside repo. Prior
+ebe5ac6 full remote CI/secret scan SUCCESS. Public deployment remains pending,
+and no native screenshot/input, model inference or binary publication occurred.
+
 ## 2026-10-02 — source-level reading contract connected to transport
 
 Five scientific stage instructions now derive from paired human/agent YAML.

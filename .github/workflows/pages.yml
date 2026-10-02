@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "clinical_knowledge/**"
+      - "scripts/*clinical-knowledge*.py"
+      - "src/dicom_overlay/domain/generated_clinical_rules.py"
+      - "tests/smoke/test_clinical_knowledge_site.py"
       - "tests/smoke/test_github_pages_site.py"
       - "pyproject.toml"
       - "uv.lock"
@@ -41,7 +45,14 @@ jobs:
           enable-cache: true
       - name: Validate Pages source
         # Static HTML/CSS checks do not need the desktop Qt plugin or libEGL.
-        run: uv run --frozen python -m pytest -q tests/smoke/test_github_pages_site.py -p no:pytest-qt
+        run: |
+          uv run --frozen python scripts/build-clinical-knowledge-site.py
+          uv run --frozen python -m pytest -q tests/smoke/test_github_pages_site.py tests/smoke/test_clinical_knowledge_site.py -p no:pytest-qt
+      - name: Bind published catalogue to deployment source
+        env:
+          SITE_SOURCE_REF: ${{ github.sha }}
+          SITE_EDIT_REF: ${{ github.ref_name }}
+        run: uv run --frozen python scripts/build-clinical-knowledge-site.py --source-ref "$SITE_SOURCE_REF" --edit-ref "$SITE_EDIT_REF"
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload site

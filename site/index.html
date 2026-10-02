@@ -34,11 +34,13 @@
       >Menu</button>
       <nav id="site-navigation" class="site-navigation" aria-label="Primary">
         <a href="#overview">Overview</a>
+        <a href="#development">Development</a>
         <a href="#workflow">Workflow</a>
         <a href="#evidence">Live evidence</a>
         <a href="#safety">Safety</a>
         <a href="#install">Install</a>
         <a href="docs.html">Docs</a>
+        <a href="clinical-rules.html">Clinical rules</a>
       </nav>
     </header>
 
@@ -122,6 +124,44 @@
         </figure>
       </section>
 
+      <section id="development" class="development section-band" aria-labelledby="development-heading">
+        <div class="section-heading compact-heading">
+          <div>
+            <h2 id="development-heading">September 29: what works, what remains.</h2>
+            <p>GPT-6 Astra medium is the current development target. No 100-case medium acceptance or public binary release yet.</p>
+          </div>
+        </div>
+        <div class="status-grid">
+          <article>
+            <span class="status-label status-auditable">36dc3c6 · actual EXE interaction</span>
+            <h3>Mark anywhere inside the ROI</h3>
+            <p>Start in blank image space, not only an AI box. The real EXE completed two questions on one manual region, an independent AI-region question, history reopening and image-change invalidation. The old installed EXE is not automatically updated.</p>
+          </article>
+          <article>
+            <span class="status-label status-deferred">Clinical acceptance failed</span>
+            <h3>120 cases executed, not 120 correct</h3>
+            <p>The September 24 medium baseline completed 120 actual GUI cases. Strict complete-reference match: 0/46; all urgent reference concerns caught: 5/24. Uncertain references remain separate. A newer scientific rerun has 10 publications, 2 technical failures and 108 pending.</p>
+          </article>
+          <article>
+            <span class="status-label status-auditable">Measured, unreleased package</span>
+            <h3>337.15 MiB installed · 105.21 MiB transfer</h3>
+            <p>The 36dc3c6 package has a 4.81 MiB launcher and 54.55 MiB App layer. ZIP is 141.68 MiB; optional 7z is 105.21 MiB with every extracted file hash checked. Download compression does not reduce installed size or model latency.</p>
+          </article>
+          <article>
+            <span class="status-label status-deferred">b3b4c1f · partial actual recovery</span>
+            <h3>Wait for the same image window</h3>
+            <p>The source App was observed waiting through minimization and publishing after restoration, with five original model turns and no resend. The observer failed and the App closed before Export: full acceptance is still incomplete. This later fix is not in the 36dc3c6 EXE.</p>
+          </article>
+        </div>
+        <p><a href="docs.html#regional-qa">Mark and regional QA guide</a> ·
+          <a href="docs.html#scientific-review">Scientific workflow and current limits</a> ·
+          <a href="https://github.com/u9401066/dicom-overlay-agent/blob/1a7cb81c90f25ac41c1c568c911389d39231cc01/docs/evidence/2026-09/frozen-regional-context-2026-09-29.md">Exact EXE interaction evidence</a></p>
+        <p><a href="docs.html#regional-history">Load a saved regional conversation</a>:
+          a newer development candidate can reopen same-image history for Q&amp;A.
+          This is separate from the real 36dc3c6 replay above; native restart/import
+          acceptance is still pending, and no installed EXE is automatically updated.</p>
+      </section>
+
       <section id="workflow" class="workflow section-band">
         <div class="section-heading compact-heading">
           <span class="section-number">01</span>
@@ -191,14 +231,14 @@
               Bounding boxes within the image do not establish correct localization.
             </p>
             <p>Six pilots and retained technical failures are separate. Candidate reruns are exposed development checks, not new blind accuracy evidence.</p>
-            <a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/docs/evidence/2026-09/evaluation-desktop-astra-2026-09-11.md">Read denominators, uncertainty and limitations</a>
+            <a href="https://github.com/u9401066/dicom-overlay-agent/blob/ebbe2a5e0c883126da40c62e2d6d88195698a381/docs/evidence/2026-09/evaluation-desktop-astra-2026-09-11.md">Read denominators, uncertainty and limitations</a>
           </aside>
         </div>
         <div class="evidence-ledger">
           <h3>Actual desktop-App run ledger</h3>
           <p>
             These rows came from the real viewer → desktop app → OpenClaw route.
-            GPT-6 Astra low is the active target; GPT-5.6 Luna rows are historical.
+            GPT-6 Astra medium is the active target; GPT-6 Astra low and GPT-5.6 Luna rows are historical.
             Artifact IDs bind each statement to its export. Reported session token
             snapshots are not a lifetime billing ledger or a subscription dollar charge.
           </p>
@@ -211,7 +251,32 @@
                   <th scope="col">Recorded outcome</th>
                 </tr>
               </thead>
-              <tbody>
+                <tbody>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-29">2026-09-29</time><br>scientific paired regression</th>
+                  <td>10 publications · 2 technical failures · 108 pending</td>
+                  <td>Same previously exposed 120 cases; failed attempts retained, no paid retries. Not a fresh blind cohort or a replacement for the failed clinical baseline. The separate recovery canary is not an additional case.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-29">2026-09-29</time><br>36dc3c6 actual EXE</th>
+                  <td>133.130 s initial workflow · 10 bound Astra-medium sessions</td>
+                  <td>Five-stage publication, manual two-turn QA, independent AI-region QA, original-ROI context, readable saved notes and invalidation. One exposed partial ECG; not a speedup or clinical-accuracy claim.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-24">2026-09-24</time><br>sealed medium baseline</th>
+                  <td>120 actual GUI cases · 482 bound stages</td>
+                  <td>Clinical acceptance failed: strict 0/46 complete references; urgent concerns 5/24; legacy schema 115/120. Seventy-four partially uncertain references remain separate. No confirmed cannot-miss cases or normal controls.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-24">2026-09-24</time><br>regional-history source App</th>
+                  <td>110.874 s initial analysis · 10 bound Astra-medium analysis/regional turns</td>
+                  <td>Blank-area manual drag, two linked questions, independent AI-region QA, Apply and history reopening. Exposed development case; incomplete findings, not clinical acceptance.</td>
+                </tr>
+                <tr>
+                  <th scope="row"><time datetime="2026-09-24">2026-09-24</time><br>9a27b61 medium EXE replay</th>
+                  <td>105.468 s · 4 bound Astra-medium turns</td>
+                  <td>Partial hidden-label ROI; incomplete result. The misleading NORMAL heading was corrected later in bd8f303 presentation, without rewriting the original result.</td>
+                </tr>
                 <tr>
                   <th scope="row"><time datetime="2026-09-11">2026-09-11</time><br>sealed primary cohort</th>
                   <td>121 distinct cases · mean analysis 136.662 s · 460 bound session snapshots</td>
@@ -290,7 +355,7 @@
           <article>
             <span class="status-label status-deferred">Candidate under verification</span>
             <h3>OpenClaw 2.x candidate</h3>
-            <p>Candidate 2026.9.3 now runs in the actual EXE with subscription OAuth and observed Astra low. The sealed baseline used 2026.7.1-2. Clinical, broader UI and binary-license release gates remain open.</p>
+            <p>Candidate 2026.9.3 runs in the actual EXE with subscription OAuth; newer development runs observe Astra medium. The sealed baseline used 2026.7.1-2. Clinical, broader UI and binary-license release gates remain open.</p>
           </article>
         </div>
         <p class="evidence-footnote">
@@ -340,7 +405,7 @@
           <li>
             <span>1</span>
             <h3>Clone and build</h3>
-            <p>The repository is public. No GitHub Release is published as of 2026-09-11. Source builds remain development software.</p>
+            <p>The repository is public. No GitHub Release is published as of 2026-09-29. Follow the guide's explicit development branch; main does not yet contain these App changes.</p>
             <code>scripts\build-exe.bat</code>
           </li>
           <li>
@@ -352,7 +417,7 @@
           <li>
             <span>3</span>
             <h3>Connect subscription</h3>
-            <p>Sign in locally, then choose OpenAI GPT-6 Astra via Codex Subscription with low reasoning.</p>
+            <p>Sign in locally, then choose OpenAI GPT-6 Astra via Codex Subscription with medium reasoning; save and restart the App/Gateway.</p>
             <code>codex login</code>
           </li>
           <li>
@@ -365,7 +430,7 @@
         <div class="install-actions">
           <a class="button button-primary" href="docs.html">Read the setup guide</a>
           <a class="button button-secondary" href="https://github.com/u9401066/dicom-overlay-agent">Browse the public repository</a>
-          <p>Verified candidate: 4.68 MiB launcher, 54.42 MiB App layer, 337.01 MiB portable folder. Binary publication awaits licensing and release gates.</p>
+          <p>36dc3c6 candidate: 4.81 MiB launcher, 54.55 MiB App layer, 337.15 MiB portable folder. Binary publication awaits licensing and release gates; the later recovery source is not packaged here.</p>
         </div>
       </section>
     </main>

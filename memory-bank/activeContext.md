@@ -1,5 +1,31 @@
 # Active Context
 
+## 2026-10-02 — candidate five-stage website, browser verified locally
+
+- Previous ebe5ac6 source contract CI36986375160 and secret36986375182 both
+  completed SUCCESS. This turn is on agent/reading-contract-site-20261002,
+  same isolated worktree; no MAIN edits or native/paid activity.
+- Imported current public main65797b6 website/catalogue implementation into the
+  candidate, preserving newer public regional/history evidence rather than
+  replacing it with stale App-branch pages. No broad runtime merge into main.
+- Builder now renders paired human/agent workflow steps, modality QC focuses,
+  complete workflow JSON, seven rules and schema2/digest v2 parity. Local preview
+  is explicitly unattributed and has no Git edit links. Deployment build uses
+  github.sha for view links and github.ref_name for edit links, never silently main.
+  Pages checkout retains submodules required by the candidate's public harness.
+- Actual headless Edge/Playwright1.62.1 at localhost8873 passed1440/820/390:
+  navigation, stage expansion, paired text, focus inventory, JSON, search/empty/
+  reset, stage hash/reload, no overflow/errors, no-JS readability. Screenshots
+  inspected: catalogue1440, reading1440/390. Browser plugin not available;
+  reused existing Playwright without installation or desktop input.
+  Private QA roots Ctemp/dicom-reading-site-20261002/local and final;
+  check.cjs in parent. Final rerun passed after generation/docs integration.
+- Website/static/documentation smoke29 passed; Ruff passed. README's old claim that sealed
+  paired cohort was still running corrected to10publications/2failures/108pending.
+- Still local/source candidate, NOT deployed or an EXE release. Public main lacks
+  ScientificImageSession; do not claim its older runtime uses the new workflow.
+  Real model/native acceptance, legacy migration and clinical scope remain open.
+
 ## 2026-10-02 — YAML scientific reading contract source integration
 
 - Added workflows/reading.workflow.yaml and strict reading-contract schema:

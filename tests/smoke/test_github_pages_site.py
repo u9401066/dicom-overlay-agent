@@ -16,11 +16,14 @@ class _SiteParser(HTMLParser):
         super().__init__()
         self.references: list[str] = []
         self.section_ids: set[str] = set()
+        self.element_ids: set[str] = set()
         self.h1_text: list[str] = []
         self._in_h1 = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
+        if values.get("id"):
+            self.element_ids.add(values["id"] or "")
         if tag in {"a", "link"} and values.get("href"):
             self.references.append(values["href"] or "")
         if tag in {"img", "script"} and values.get("src"):
@@ -56,7 +59,7 @@ def test_pages_site_has_one_literal_product_h1_and_required_sections() -> None:
 
 def test_pages_site_local_references_exist() -> None:
     missing: list[str] = []
-    for filename in ("index.html", "docs.html"):
+    for filename in ("index.html", "docs.html", "clinical-rules.html"):
         parser = _parse_site(filename)
         for reference in parser.references:
             parsed = urlparse(reference)
@@ -151,18 +154,18 @@ def test_pages_site_reports_public_repository_and_absent_release() -> None:
     )
 
     assert "https://github.com/u9401066/dicom-overlay-agent" in pages
-    assert "No GitHub Release is published as of 2026-09-11" in pages
+    assert "No GitHub Release is published as of 2026-09-29" in pages
     assert "repository is private" not in pages
 
 
 def test_pages_public_setup_uses_real_subscription_and_harness_commands() -> None:
     docs = (SITE_ROOT / "docs.html").read_text(encoding="utf-8")
 
-    assert "uv sync --all-extras" in docs
+    assert "uv sync --locked --all-extras" in docs
     assert "codex login" in docs
     assert "OpenAI GPT-6 Astra via Codex Subscription" in docs
     assert "openai/gpt-6-astra" in docs
-    assert "thinking=low" in docs
+    assert "thinking=medium" in docs
     assert "openai-chatgpt-responses" in docs
     assert "DICOMOverlayAgent.exe --selfcheck" in docs
     assert "run-image-harness-smoke.py" in docs
@@ -204,7 +207,125 @@ def test_pages_does_not_promote_geometry_or_development_reruns_to_accuracy() -> 
     assert "no normal controls" in docs
     assert "in-bounds geometry is not clinical localization" in docs
     assert "Development reruns never replace sealed predictions" in docs
-    assert "complete scientific engine and canonical study ledger are not yet extracted" in docs
+    assert (
+        "Full-cohort verification, external-model integration and clinical acceptance"
+        in docs
+    )
+
+
+def test_current_site_distinguishes_source_package_and_actual_interaction():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    assert "GPT-6 Astra medium is the active target" in index
+    assert "GPT-6 Astra low is the active target" not in index
+    assert "110.874 s initial analysis" in index
+    assert "10 bound Astra-medium analysis/regional turns" in index
+    assert "not in the 36dc3c6 EXE" in index
+    assert 'id="regional-qa"' in docs
+    for text in (
+        "Choose image window",
+        "not the whole desktop",
+        "Apply to report",
+        "regional-conversations.json",
+        "same original authorized ROI",
+        "No 100-case medium clinical cohort has passed",
+        "git submodule update --init --recursive",
+        "git checkout --detach 1a7cb81c90f25ac41c1c568c911389d39231cc01",
+        "--branch agent/viewer-publication-recovery-20260929",
+        "--bundle dist\\DICOMOverlayAgent",
+        "Sealed Astra-low baseline: 121 primary cases scored",
+        "https://learn.chatgpt.com/docs/auth",
+    ):
+        assert text in docs
+    assert "complete Astra real-App cohort is still pending" not in docs
+    assert "main baseline: low; current development branch: medium" in (
+        REPO_ROOT / "README.md"
+    ).read_text("utf-8")
+    assert "main 基準：low；目前開發分支：medium" in (
+        REPO_ROOT / "README.zh-TW.md"
+    ).read_text("utf-8")
+
+
+def test_all_local_navigation_fragments_exist():
+    for filename in ("index.html", "docs.html", "clinical-rules.html"):
+        for reference in _parse_site(filename).references:
+            parsed = urlparse(reference)
+            if parsed.scheme or parsed.netloc or not parsed.fragment:
+                continue
+            destination = parsed.path or filename
+            assert parsed.fragment in _parse_site(destination).element_ids, reference
+
+
+def test_evidence_links_pin_the_published_development_checkpoint():
+    links = [
+        reference
+        for filename in ("index.html", "docs.html")
+        for reference in _parse_site(filename).references
+        if "github.com/u9401066/dicom-overlay-agent/blob/" in reference
+    ]
+    assert len(links) >= 7
+    pins = {
+        "ebbe2a5e0c883126da40c62e2d6d88195698a381",  # Retained historical evidence.
+        "1a7cb81c90f25ac41c1c568c911389d39231cc01",  # September29 checkpoint.
+        "3e94a77d2f23cb25e91aa337d4eab6099e540370",  # History/diagnostic candidate.
+    }
+    assert {
+        urlparse(link).path.split("/blob/")[1].split("/")[0] for link in links
+    } == pins
+    assert all(any(f"/blob/{pin}/docs/" in link for pin in pins) for link in links)
+
+
+def test_history_import_guide_separates_candidate_workflow_and_native_acceptance():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    assert 'href="docs.html#regional-history"' in index
+    assert 'id="regional-history"' in docs
+    for text in (
+        "native acceptance pending",
+        "not the main App runtime or your installed EXE",
+        "Closing without Export does not save new turns",
+        "current published review is required",
+        "Settings → Trigger → Regional history",
+        "Open conversation makes no model request",
+        "SHA-256 of the encoded source PNG",
+        "old proposals cannot change the current report",
+        "Nothing is auto-saved",
+        "malformed, oversized or mismatched files are rejected",
+    ):
+        assert text in docs
+
+
+def test_september29_separates_execution_scoring_reruns_and_partial_recovery():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    assert "120 actual GUI cases · 482 bound stages" in index
+    assert "strict 0/46 complete references; urgent concerns 5/24" in index
+    assert "10 publications · 2 technical failures · 108 pending" in index
+    for text in (
+        "74 partially uncertain references",
+        "no confirmed cannot-miss cases or normal controls",
+        "not another successful cohort case",
+        "observer error and App closure prevented final Export",
+        "180-second deadline",
+        "--scientific-review --deidentified-input",
+        "flag does not deidentify an image for you",
+        "five original turns",
+    ):
+        assert text in docs
+    for filename in ("README.md", "README.zh-TW.md"):
+        readme = (REPO_ROOT / filename).read_text("utf-8").replace("／", "/")
+        assert "2026-09-29" in readme and "1a7cb81" in readme
+        assert "0/46" in readme and "5/24" in readme and "115/120" in readme
+
+
+def test_current_package_transfer_sizes_are_not_install_or_speed_claims():
+    index = " ".join((SITE_ROOT / "index.html").read_text("utf-8").split())
+    docs = " ".join((SITE_ROOT / "docs.html").read_text("utf-8").split())
+    for text in ("4.81 MiB", "54.55 MiB", "337.15 MiB", "141.68 MiB", "105.21 MiB"):
+        assert text in index and text in docs
+    assert "does not reduce installed size or model latency" in index
+    assert "Later Viewer-recovery code is not in this package" in docs
+    assert "All 18,771 extracted files match their source hashes" in docs
 
 
 def test_evidence_statistics_can_wrap_within_their_own_grid_cells() -> None:

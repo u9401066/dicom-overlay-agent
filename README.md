@@ -10,6 +10,12 @@ Website: [u9401066.github.io/dicom-overlay-agent](https://u9401066.github.io/dic
 (updated and browser-verified on September 29, including the explicit history guide;
 development evidence, not a clinical release).
 
+The public website retains the 2026-09-29 `1a7cb81` source checkpoint and
+separately measured package/history evidence. Its model distinction is
+main baseline: low; current development branch: medium. The October 2 source
+candidate adds the [generated five-stage reading contract](site/clinical-rules.html)
+and SQLite v2 parity; this candidate page has not yet replaced the deployed site.
+
 ## Current development target — 2026-09-29 (not a release)
 
 [Regional history import candidate](docs/architecture/regional-history-import.md):
@@ -94,9 +100,10 @@ references remain separate. Mean analysis/workflow times were 93.993/106.485 s;
 these are not controlled speed comparisons. See the evidence page for intervals,
 hashes, limitations and the no-inference seal/score procedure.
 The [September29 scientific paired regression](docs/evidence/2026-09/scientific-paired-cohort-2026-09-29.md)
-is now running through the actual desktop on the same previously exposed cohort.
-Its explicit continuation preserves a publication-time Viewer failure in the
-denominator, without rerunning paid cases. It is not a fresh blind evaluation and
+was sealed and stopped on September29: ten publications, two retained technical
+failures and108 pending. Do not restart its sealed runtime. The same previously
+exposed cases are not a fresh blind evaluation; failed attempts stay in the
+denominator. This partial run
 does not supersede the failed clinical baseline above; scoring remains pending.
 The [first failure-driven correction](docs/evidence/2026-09/explicit-lead-inventory-2026-09-25.md)
 removes a prompt assumption that local row detection always supplies lead geometry.

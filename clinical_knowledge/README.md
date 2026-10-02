@@ -68,8 +68,29 @@ semantic validator allow-list 控制。Unknown key、unknown axis、錯誤 opera
 
 這次只接入 `ScientificImageSession`。Legacy initial／MultiPass 路徑仍使用既有
 `SKILL.md`，public output schema／delta contract 仍由 pinned harness 與 decoder
-強制執行，不能靠 YAML 改掉安全邊界。網站尚須整合本候選的五階段展示；目前
-公開站與已封裝 EXE 不得標示為使用此新版 contract。
+強制執行，不能靠 YAML 改掉安全邊界。候選網站已加入五階段展示並完成本機
+瀏覽器檢查，但尚未部署；目前公開站與已封裝 EXE 不得標示為使用此新版 contract。
+
+## 網站自動展示
+
+`scripts/build-clinical-knowledge-site.py` 先驗證 canonical registry、生成文件，
+再建立暫存 SQLite 並逐表對照，才輸出 `site/clinical-rules.html`。
+頁面完整顯示五階段的人用／agent 配對步驟、三模態品質重點、完整 workflow JSON，
+以及七條規則的適用／排除條件、證據、來源、runtime／tests／legacy 欄位。
+原生 details 在停用 JavaScript 時仍能閱讀；規則篩選不會隱藏共用判讀階段。
+
+```powershell
+uv run python scripts/build-clinical-knowledge-site.py
+uv run python -m pytest -q tests/smoke/test_clinical_knowledge_site.py `
+  tests/smoke/test_github_pages_site.py -p no:pytest-qt
+```
+
+預設生成可重現的本機預覽，不假定它屬於 main，不提供編輯連結。
+Pages workflow 通過檢查後以 `--source-ref` 綁定本次 Git SHA，`--edit-ref`
+指定維護分支。檢視連結固定到建置來源；編輯連結指向該分支的最新內容，
+修改前仍須確認 diff。網站不收集 token，也不直接更新執行中的 SQLite／App。
+修改 YAML 後的自動發布只適用已設定的 main Pages 流程；候選分支推送不會自動
+取代公開站。網站來源／registry digest 可稽核，但不等於使用者已安裝版本相同。
 
 端到端的 [EKG 系統化共讀流程](../docs/clinical/ekg-reading-workflow.md) 補上
 品質、高風險優先、十六軸、鑑別、來源定位、challenge 與結論的十步人用／agent
