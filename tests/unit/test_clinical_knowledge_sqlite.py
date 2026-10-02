@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sqlite3
 from pathlib import Path
 
@@ -36,19 +37,26 @@ def test_quick_lookup_is_deterministic_and_matches_yaml(tmp_path: Path) -> None:
     module.build_quick_lookup_db(registry, second, registry_digest=digest)
 
     assert first.read_bytes() == second.read_bytes()
-    assert module.verify_quick_lookup_db(
-        registry, first, registry_digest=digest
-    ) == []
+    assert module.verify_quick_lookup_db(registry, first, registry_digest=digest) == []
     with sqlite3.connect(first) as connection:
         assert connection.execute("SELECT count(*) FROM rules").fetchone() == (7,)
-        assert connection.execute("SELECT count(*) FROM legacy_map").fetchone() == (
-            10,
+        assert connection.execute("SELECT count(*) FROM legacy_map").fetchone() == (10,)
+        assert (
+            connection.execute("SELECT count(*) FROM agent_steps").fetchone()[0] >= 28
         )
-        assert connection.execute(
-            "SELECT count(*) FROM agent_steps"
-        ).fetchone()[0] >= 28
         metadata = dict(connection.execute("SELECT key, value FROM metadata"))
-        assert metadata["registry_digest_scope"] == module._load_validator().REGISTRY_DIGEST_SCOPE
+        assert (
+            metadata["registry_digest_scope"]
+            == module._load_validator().REGISTRY_DIGEST_SCOPE
+        )
+        stages = dict(
+            connection.execute(
+                "SELECT entry_id, value_json FROM reading_contract WHERE section='stage'"
+            )
+        )
+        assert {key: json.loads(value) for key, value in stages.items()} == {
+            stage["id"]: stage for stage in registry["reading_contract"]["stages"]
+        }
 
 
 def test_quick_lookup_tamper_fails_closed(tmp_path: Path) -> None:
@@ -63,11 +71,18 @@ def test_quick_lookup_tamper_fails_closed(tmp_path: Path) -> None:
             "WHERE rule_id='cxr.pneumothorax_undercall.v1'"
         )
 
-    errors = module.verify_quick_lookup_db(
-        registry, database, registry_digest=digest
-    )
+    errors = module.verify_quick_lookup_db(registry, database, registry_digest=digest)
 
     assert "quick-lookup table diverged: rules" in errors
+
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE reading_contract SET value_json='{}' WHERE section='stage'"
+        )
+    assert (
+        "quick-lookup table diverged: reading_contract"
+        in module.verify_quick_lookup_db(registry, database, registry_digest=digest)
+    )
 
 
 def test_quick_lookup_rejects_schema_version_and_metadata_spoofing(
@@ -80,7 +95,7 @@ def test_quick_lookup_rejects_schema_version_and_metadata_spoofing(
     module.build_quick_lookup_db(registry, database, registry_digest=digest)
     with sqlite3.connect(database) as connection:
         connection.execute(
-            "UPDATE metadata SET value='2' WHERE key='db_schema_version'"
+            "UPDATE metadata SET value='999' WHERE key='db_schema_version'"
         )
         connection.execute(
             "UPDATE metadata SET value=? WHERE key='registry_sha256'",

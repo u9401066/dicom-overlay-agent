@@ -1,5 +1,37 @@
 # Active Context
 
+## 2026-10-02 — YAML scientific reading contract source integration
+
+- Added workflows/reading.workflow.yaml and strict reading-contract schema:
+  five enforced stage IDs, shared human/agent step IDs, three modality QC focuses.
+  Generated pure domain data now supplies ScientificImageSession's real prompts;
+  only reconciliation/second-look receive applicable active rule guidance.
+  No new inference turn, dependency, image capture or Gateway protocol change.
+- Digest scope intentionally bumped to canonical-input-documents-v2; current
+  registry SHA730998ad1d8c665980bda2257c519921bdc6ebd71f158e51bc0591ecee962c73.
+  SQLite schema2 adds full human/agent reading_contract rows and parity checking.
+  Packaged file inventory/selfcheck require workflow and schema. No EXE rebuilt.
+- Actual loopback WebSocket connect/chat.send, three modalities x five turns,
+  verifies generated instructions, stage/modality rule isolation, unchanged
+  image bytes, and exact sent-prompt SHA plus contract identity in private receipts.
+  Replies/pixels are synthetic: not actual OpenClaw/model/native/clinical proof.
+  Focused registry/SQLite/package/session/receipt/review/transport suite143 passed;
+  handwritten-source Ruff and targeted mypy passed. SQLite build/check passed.
+- Additional localization smoke initially failed because this fresh worktree
+  lacked OpenClaw npm dependencies. After pinned npm ci --ignore-scripts,192
+  additional clinical/delta/harness/localization/documentation checks passed on
+  supported Node24.18.0 (system Node25 emitted engine warnings during install).
+  These include actual local bbox-tool execution, not desktop/model execution.
+- Manual YAML maintenance remains MVP; generation/build/restart required, no
+  hot reload or website admin. Public website integration of this new workflow,
+  legacy initial/MultiPass prompt migration, real model cost/latency/accuracy,
+  new frozen package/native acceptance remain OPEN. Added guidance increases
+  prompt size in two stages; no speedup/accuracy claim. Generated instruction-only
+  character counts (not full prompts/tokens): EKG reconcile6758/second7187,
+  CXR3406/3835, CT751/1180; no inference timing/cost measured.
+- Existing sealed cohort and installed binaries untouched. Desktop availability
+  still unconfirmed: no fresh screenshot, GUI action or paid inference.
+
 ## 2026-10-02 — external ECG quarantine and YAML contract gap audit
 
 - Actual bounded download via new fetch-external-ecg-samples.py:3 version2

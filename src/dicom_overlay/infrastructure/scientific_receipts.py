@@ -75,7 +75,13 @@ class ScientificReceiptStore:
                 "scientific_receipts_initialization_failed"
             ) from None
 
-    def save_turn(self, stage: str, turn: ImageEvidenceTurn) -> None:
+    def save_turn(
+        self,
+        stage: str,
+        turn: ImageEvidenceTurn,
+        *,
+        reading_contract: dict[str, str] | None = None,
+    ) -> None:
         if self._failed:
             raise ScientificReceiptError("scientific_receipts_failed_store")
         self._sequence += 1
@@ -105,6 +111,7 @@ class ScientificReceiptStore:
                         "sequence": self._sequence,
                         "image_sha256": turn.image_sha256,
                         "prompt_sha256": turn.prompt_sha256,
+                        "reading_contract": reading_contract,
                         "elapsed_ms": turn.elapsed_ms,
                         "request_id": gateway.request_id,
                         "session_key": gateway.session_key,

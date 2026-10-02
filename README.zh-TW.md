@@ -224,8 +224,11 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
   label、短邊 48 px）。目前 8/8 只證明 mock schema/bbox/partial-input plumbing；
   尚無真實 Luna 診斷分數。
 - 七條 deterministic clinical-consistency rules 以 canonical YAML 為唯一人工
-  維護來源，生成 human/agent views 與 application-owned SQLite；registry SHA-256
-  為 `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
+  維護來源，生成 human/agent views 與 application-owned SQLite；registry digest
+  見[生成目錄](clinical_knowledge/generated/human-catalogue.md)。來源候選的五階段
+  scientific Gateway 指令也已接上 YAML（digest scope v2／SQLite schema v2），
+  三模態 loopback 傳輸與收據檢查通過，尚非真實模型或桌面驗收。Legacy initial／
+  MultiPass prompt、公開網站與已安裝 EXE 不會因此自動更新；MVP 維持人工檔案維護。
   Schema/parity 通過不等於專科臨床審查或來源授權完成；詳見
   [clinical knowledge governance](clinical_knowledge/README.md)。
 - Managed Gateway 只有在原子、無 secret 的 ownership receipt 同時綁定 PID、port、

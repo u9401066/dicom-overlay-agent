@@ -15,10 +15,11 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "build" / "clinical-knowledge.sqlite"
-DB_SCHEMA_VERSION = "1"
+DB_SCHEMA_VERSION = "2"
 CANONICAL_SOURCE = "clinical_knowledge canonical YAML/JSON inputs"
 
 _TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    "reading_contract": ("section", "entry_id", "value_json"),
     "rules": (
         "rule_id",
         "version",
@@ -90,6 +91,19 @@ def expected_rows(registry: dict[str, Any]) -> dict[str, list[tuple[object, ...]
     """Return the canonical relational projection of one validated registry."""
 
     rows = {table: [] for table in _TABLE_COLUMNS}
+    contract = registry["reading_contract"]
+    rows["reading_contract"] = (
+        [("stage", stage["id"], _json(stage)) for stage in contract["stages"]]
+        + [
+            ("quality_focus", key, _json(value))
+            for key, value in contract["quality_focus"].items()
+        ]
+        + [
+            ("metadata", key, _json(value))
+            for key, value in contract.items()
+            if key not in {"stages", "quality_focus"}
+        ]
+    )
     for rule in sorted(registry["rules"], key=lambda item: item["rule_id"]):
         rule_id = str(rule["rule_id"])
         human = rule["human"]
@@ -106,7 +120,9 @@ def expected_rows(registry: dict[str, Any]) -> dict[str, list[tuple[object, ...]
                 _text(human["rationale"]),
                 str(priority["tier"]),
                 str(priority["basis"]),
-                "" if output.get("severity_floor_if_confirmed") is None else str(output["severity_floor_if_confirmed"]),
+                ""
+                if output.get("severity_floor_if_confirmed") is None
+                else str(output["severity_floor_if_confirmed"]),
                 str(human["reviewed_on"]),
                 str(human["review_due"]),
             )
@@ -193,6 +209,12 @@ def _create_schema(connection: sqlite3.Connection) -> None:
         PRAGMA journal_mode=DELETE;
         PRAGMA synchronous=FULL;
         PRAGMA foreign_keys=ON;
+        CREATE TABLE reading_contract (
+            section TEXT NOT NULL,
+            entry_id TEXT NOT NULL,
+            value_json TEXT NOT NULL,
+            PRIMARY KEY (section, entry_id)
+        ) STRICT;
         CREATE TABLE metadata (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -362,15 +384,13 @@ def verify_quick_lookup_db(
             errors.append("quick-lookup table schema diverged: metadata")
         for table, columns in _TABLE_COLUMNS.items():
             actual_columns = tuple(
-                str(row[1])
-                for row in connection.execute(f"PRAGMA table_info({table})")
+                str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")
             )
             if actual_columns != columns:
                 errors.append(f"quick-lookup table schema diverged: {table}")
                 continue
             actual = connection.execute(
-                f"SELECT {','.join(columns)} FROM {table} ORDER BY "
-                + ",".join(columns)
+                f"SELECT {','.join(columns)} FROM {table} ORDER BY " + ",".join(columns)
             ).fetchall()
             if actual != expected[table]:
                 errors.append(f"quick-lookup table diverged: {table}")

@@ -49,10 +49,37 @@ def test_registry_digest_covers_inventory_schema_and_document_paths() -> None:
     path_changed = _registry(module)
     path_changed["rule_documents"][0]["path"] = "rules/renamed.rule.yaml"
 
-    assert module.REGISTRY_DIGEST_SCOPE == "canonical-input-documents-v1"
+    assert module.REGISTRY_DIGEST_SCOPE == "canonical-input-documents-v2"
     assert module.registry_digest(inventory_changed) != baseline_digest
     assert module.registry_digest(schema_changed) != baseline_digest
     assert module.registry_digest(path_changed) != baseline_digest
+
+    for audience in ("human", "agent"):
+        changed = _registry(module)
+        changed["reading_contract"]["stages"][0]["steps"][0][audience] += " changed"
+        assert module.registry_digest(changed) != baseline_digest
+        assert module.write_or_check_views(changed, check=True)
+    changed = _registry(module)
+    changed["reading_schema"]["title"] = "Changed workflow schema"
+    assert module.registry_digest(changed) != baseline_digest
+
+
+def test_reading_contract_rejects_missing_steps_order_and_weakened_schema() -> None:
+    module = _module()
+    for change in ("missing", "order", "duplicate", "schema", "version"):
+        registry = _registry(module)
+        stages = registry["reading_contract"]["stages"]
+        if change == "missing":
+            del stages[0]["steps"][0]["agent"]
+        elif change == "order":
+            stages.reverse()
+        elif change == "duplicate":
+            stages[0]["steps"].append(copy.deepcopy(stages[0]["steps"][0]))
+        elif change == "schema":
+            registry["reading_schema"] = {"$id": registry["reading_schema"]["$id"]}
+        else:
+            registry["reading_schema"]["properties"]["schema_version"]["const"] = 2
+        assert module.validate_registry(registry), change
 
 
 def test_registry_rejects_empty_schema_and_wrong_schema_version() -> None:

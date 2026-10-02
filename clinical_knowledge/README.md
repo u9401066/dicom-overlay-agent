@@ -10,6 +10,7 @@
 clinical_knowledge/rules/*.rule.yaml
           + axes/*.axes.yaml
           + legacy-inventory.yaml
+          + workflows/reading.workflow.yaml
                     │
                     ├─ schema + semantic governance gate
                     ├─ generated/human-catalogue.md（各條一致性規則的人用鑑別流程）
@@ -19,8 +20,9 @@ clinical_knowledge/rules/*.rule.yaml
 ```
 
 Canonical input 是所有 `rules/*.rule.yaml`、`axes/*.axes.yaml`、
-`legacy-inventory.yaml` 與 `schema/rule.schema.json`；生成的 Python、Markdown 與
-SQLite 都不可手改。`canonical-input-documents-v1` digest 會雜湊每個相對路徑與
+`legacy-inventory.yaml`、`workflows/reading.workflow.yaml` 與兩份 `schema/*.json`；
+生成的 Python、Markdown 與 SQLite 都不可手改。
+`canonical-input-documents-v2` digest 會雜湊每個相對路徑與
 解析後內容，刻意不含生成物，避免 self-reference。Domain 只讀生成後的純資料，
 不做 YAML／GUI／網路／OpenClaw I/O，維持 DDD 邊界。網站或文件若與 registry
 digest 或 digest scope 不同，一律視為 stale。
@@ -46,6 +48,28 @@ semantic validator allow-list 控制。Unknown key、unknown axis、錯誤 opera
 過期 clinical review、未映射 runtime 或失效 pytest node 都 fail closed。
 
 ## 人用流程與 agent 流程
+
+`workflows/reading.workflow.yaml` 現在提供 scientific 路徑的五階段 contract：
+品質檢查、無工具初讀、原圖定位、整合反證、針對性再檢視。每一步都有相同 ID
+的人用說明與精簡 agent 指令；它不是新增的疾病規則。
+`application/reading_contract.py` 讀取生成的純資料，組入實際 `chat.send` prompt，
+不在執行期讀 YAML。修改後必須重新生成、驗證、建置並重新啟動；不是熱更新。
+
+品質檢查只含技術品質與模態 focus；初讀保持無外部分類／既往答案。
+現有 active 規則的 `agent.steps`、前提、證據及排除條件，只按模態加入整合與
+再檢視，不冒充觀察或診斷證據。沒有新增推論輪次，但這兩階段 prompt 會變長；
+速度、費用與正確率必須另以真實模型量測，不能由接線成功推論改善。
+
+每個送出 prompt 含 stage、contract version、registry SHA 與 digest scope；
+啟用私有 scientific receipts 時，同一身分連同實際送出 prompt SHA／影像 SHA
+存入收據。此身分是 host 的來源追溯資料，不是模型遵守指令的證明。
+三種模態的真實 loopback WebSocket 已驗證五次 `chat.send` 與收據一致；回覆及
+影像是合成資料，並未啟動真正 OpenClaw、模型或桌面 UI。
+
+這次只接入 `ScientificImageSession`。Legacy initial／MultiPass 路徑仍使用既有
+`SKILL.md`，public output schema／delta contract 仍由 pinned harness 與 decoder
+強制執行，不能靠 YAML 改掉安全邊界。網站尚須整合本候選的五階段展示；目前
+公開站與已封裝 EXE 不得標示為使用此新版 contract。
 
 端到端的 [EKG 系統化共讀流程](../docs/clinical/ekg-reading-workflow.md) 補上
 品質、高風險優先、十六軸、鑑別、來源定位、challenge 與結論的十步人用／agent
@@ -90,7 +114,8 @@ uv run python scripts/build-clinical-knowledge-sqlite.py `
 ```
 
 資料表包含 `rules`、`human_steps`、`agent_steps`、`sources`、
-`runtime_conditions`、`lookup_terms`、`legacy_map` 與 `axes`。DB metadata 綁定
+`runtime_conditions`、`lookup_terms`、`legacy_map`、`axes`，以及 schema v2 新增的
+`reading_contract`（完整人用／agent 階段、模態 focus 與 metadata）。DB metadata 綁定
 canonical registry SHA-256；verifier 逐表比對 YAML 投影，不能只靠 DB 自己宣稱
 digest 正確。SQLite 使用 Python 標準庫，不增加封裝 dependency，且 DB 不含
 MEETI gold、expected labels、scorer aliases 或 PHI。
@@ -106,7 +131,8 @@ stale/空殼 DB、空殼 schema 或單獨竄改的文件通過發布。
 
 ## 維護與稽核流程
 
-1. 在 `rules/*.rule.yaml` 修改或新增規則；不要手改任何 generated file。
+1. 在 `rules/*.rule.yaml` 修改規則，或在 `workflows/reading.workflow.yaml` 修改
+   分階段步驟；維持 MVP 人工檔案維護，不新增網站管理後台。不要手改 generated file。
 2. 使用新的 rule major 時同步更新 `.vN`；保留舊版本只能以明確 retired status
    存在，不能偷偷同時啟用互相衝突的版本。
 3. 更新來源的 title/version/effective date/URL/locator，以及 `reviewed_on` 與

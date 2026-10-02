@@ -310,9 +310,9 @@ def test_inspect_bundle_reports_required_runtime_and_versions(
     assert clinical["ok"] is True
     assert clinical["registry_sha256"] == clinical_digest
     assert clinical["computed_registry_sha256"] == clinical_digest
-    assert clinical["registry_digest_scope"] == "canonical-input-documents-v1"
+    assert clinical["registry_digest_scope"] == "canonical-input-documents-v2"
     assert clinical["rule_count"] == 7
-    assert clinical["db_schema_version"] == "1"
+    assert clinical["db_schema_version"] == "2"
     assert clinical["canonical_schema_version"] == 1
     assert clinical["sqlite_quick_check"] == "ok"
     assert clinical["generated_view_digests"] == {

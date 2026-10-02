@@ -1,5 +1,20 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-10-02 — source-level reading contract connected to transport
+
+Five scientific stage instructions now derive from paired human/agent YAML.
+Generated Python, human/agent Markdown and SQLite schema2 share v2 registry
+digest; receipts bind contract identity to sent-prompt SHA. Three modality
+loopback WebSocket sequences pass, including rule exclusion from QC/blind and
+modality-specific guidance only in challenge stages.143 focused checks pass,
+plus192 additional clinical/delta/harness/localization/documentation checks,
+SQLite build/check, Ruff and targeted mypy. These are synthetic transport and
+regression results, not new desktop/clinical/model acceptance. Fresh worktree
+OpenClaw dependency gap resolved with pinned npm ci --ignore-scripts; actual
+local bbox-tool smoke rerun passed using supported Node24.18.0.
+Website workflow rendering and legacy routes still need integration; existing
+public site/EXE have not been changed. No automatic inference retry or release.
+
 ## 2026-10-02 — four external source images acquired, none inference-cleared
 
 Bounded real download and visual review completed for three same-record image

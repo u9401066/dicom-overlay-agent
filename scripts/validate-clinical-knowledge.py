@@ -20,10 +20,15 @@ HUMAN_VIEW = KNOWLEDGE_ROOT / "generated" / "human-catalogue.md"
 AGENT_VIEW = KNOWLEDGE_ROOT / "generated" / "agent-steps.md"
 RUNTIME_VIEW = ROOT / "src" / "dicom_overlay" / "domain" / "generated_clinical_rules.py"
 CLINICAL_SCHEMA_VERSION = 1
-CLINICAL_SCHEMA_ID = (
-    "https://dicom-overlay-agent.local/schema/clinical-rule-v1.json"
+CLINICAL_SCHEMA_ID = "https://dicom-overlay-agent.local/schema/clinical-rule-v1.json"
+REGISTRY_DIGEST_SCOPE = "canonical-input-documents-v2"
+READING_STAGES = (
+    "quality_gate",
+    "blind_pass",
+    "independent_evidence",
+    "reconcile",
+    "targeted_second_look",
 )
-REGISTRY_DIGEST_SCOPE = "canonical-input-documents-v1"
 TEST_KINDS = frozenset({"positive", "negative", "uncertain", "partial"})
 _TEXT_OPS = frozenset(
     {
@@ -172,7 +177,18 @@ def load_registry(root: Path = KNOWLEDGE_ROOT) -> dict[str, Any]:
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             load_errors.append(f"cannot load {schema_path}: {exc}")
 
+    reading_path = root / "workflows" / "reading.workflow.yaml"
+    reading = _yaml_mapping(reading_path, load_errors)
+    try:
+        reading_schema = json.loads(
+            (root / "schema" / "reading-contract.schema.json").read_text("utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        load_errors.append("missing or unreadable reading contract schema")
+        reading_schema = {}
     return {
+        "reading_contract": reading,
+        "reading_schema": reading_schema,
         "versions": versions,
         "rules": rules,
         "axes": axes,
@@ -505,14 +521,97 @@ def validate_registry(
 ) -> list[str]:
     """Validate syntax, governance, clinical chronology, and runtime parity."""
     errors = [str(item) for item in registry.get("load_errors", [])]
+    reading_schema = registry.get("reading_schema")
+    if not isinstance(reading_schema, dict) or reading_schema.get("$id") != (
+        "https://dicom-overlay-agent.local/schema/reading-contract-v1.json"
+    ):
+        errors.append("invalid reading contract schema identity")
+    else:
+        reading_errors = _schema_definition_errors(reading_schema)
+        properties = reading_schema.get("properties", {})
+        definitions = reading_schema.get("$defs", {})
+        shapes = (
+            {
+                "root": (
+                    reading_schema,
+                    {
+                        "schema_version",
+                        "contract_version",
+                        "scope",
+                        "quality_focus",
+                        "stages",
+                        "rule_guidance_stages",
+                    },
+                ),
+                "pair": (definitions.get("pair", {}), {"human", "agent"}),
+                "step": (definitions.get("step", {}), {"id", "human", "agent"}),
+                "stage": (definitions.get("stage", {}), {"id", "human_title", "steps"}),
+            }
+            if isinstance(definitions, dict)
+            else {}
+        )
+        if not shapes or not isinstance(properties, dict):
+            reading_errors.append("reading contract schema is incomplete")
+        else:
+            for label, (node, required) in shapes.items():
+                if (
+                    not isinstance(node, dict)
+                    or node.get("type") != "object"
+                    or node.get("additionalProperties") is not False
+                    or not isinstance(node.get("required"), list)
+                    or not required.issubset(node["required"])
+                    or not isinstance(node.get("properties"), dict)
+                    or not required.issubset(node["properties"])
+                ):
+                    reading_errors.append(
+                        f"reading contract schema is incomplete: {label}"
+                    )
+            if properties.get("schema_version") != {"const": 1}:
+                reading_errors.append("reading contract schema version must be 1")
+        if not reading_errors:
+            reading_errors = _schema_errors(
+                registry.get("reading_contract"),
+                reading_schema,
+                root=reading_schema,
+                path="reading_contract",
+            )
+        errors.extend(reading_errors)
+        if not reading_errors:
+            stages = registry["reading_contract"].get("stages")
+            if not isinstance(stages, list) or any(
+                not isinstance(stage, dict)
+                or not isinstance(stage.get("steps"), list)
+                or any(
+                    not isinstance(step, dict)
+                    or not isinstance(step.get("id"), str)
+                    or not isinstance(step.get("agent"), str)
+                    for step in stage["steps"]
+                )
+                for stage in stages
+            ):
+                errors.append("invalid reading contract stages/steps")
+                stages = []
+            if tuple(stage.get("id") for stage in stages) != READING_STAGES:
+                errors.append(
+                    "reading contract stages must match the enforced execution order"
+                )
+            for stage in stages:
+                if _duplicates([step["id"] for step in stage["steps"]]):
+                    errors.append(f"duplicate reading step ID: {stage['id']}")
+                for step in stage["steps"]:
+                    if any(
+                        pattern.search(step["agent"]) for pattern in _AGENT_BOILERPLATE
+                    ):
+                        errors.append(
+                            f"reading contract boilerplate: {stage['id']}/{step['id']}"
+                        )
     schema = registry.get("schema")
     if not isinstance(schema, dict) or not schema:
         errors.append("clinical rule schema is unavailable")
         return errors
     if schema.get("$id") != CLINICAL_SCHEMA_ID:
         errors.append(
-            "clinical rule schema id/version mismatch: "
-            f"expected {CLINICAL_SCHEMA_ID!r}"
+            f"clinical rule schema id/version mismatch: expected {CLINICAL_SCHEMA_ID!r}"
         )
     if schema.get("additionalProperties") is not False:
         errors.append("clinical rule schema root must reject additional properties")
@@ -540,8 +639,7 @@ def validate_registry(
     for label, node in version_nodes.items():
         if not isinstance(node, dict) or node.get("const") != CLINICAL_SCHEMA_VERSION:
             errors.append(
-                f"clinical {label} schema version must be "
-                f"{CLINICAL_SCHEMA_VERSION}"
+                f"clinical {label} schema version must be {CLINICAL_SCHEMA_VERSION}"
             )
     required_definitions = {
         "rule",
@@ -913,8 +1011,8 @@ def validate_registry(
 def registry_digest(registry: dict[str, Any]) -> str:
     """Hash every canonical input document, including its relative path.
 
-    Scope ``canonical-input-documents-v1`` covers parsed rule YAML, axis YAML,
-    ``legacy-inventory.yaml``, and ``schema/rule.schema.json``. Generated
+    Scope ``canonical-input-documents-v2`` additionally binds the staged reading
+    workflow and its schema alongside rules, axes, inventory and rule schema. Generated
     Markdown, generated Python, and SQLite are projections and are deliberately
     excluded so they can carry this digest without making it self-referential.
     """
@@ -929,6 +1027,10 @@ def registry_digest(registry: dict[str, Any]) -> str:
         ),
         "inventory_document": registry["inventory_document"],
         "schema": registry["schema"],
+        "reading_documents": {
+            "workflows/reading.workflow.yaml": registry["reading_contract"],
+            "schema/reading-contract.schema.json": registry["reading_schema"],
+        },
     }
     canonical = json.dumps(
         _json_value(payload),
@@ -964,6 +1066,20 @@ def render_views(registry: dict[str, Any]) -> tuple[str, str]:
         "This generated view contains no evaluation gold labels or scorer aliases.",
         "",
     ]
+    contract = registry["reading_contract"]
+    for view in (human, agent):
+        view.extend([f"## Reading contract v{contract['contract_version']}", ""])
+    for stage in contract["stages"]:
+        human.extend([f"### {stage['id']} — {stage['human_title']}", ""])
+        agent.extend([f"### {stage['id']}", ""])
+        for step in stage["steps"]:
+            human.append(f"1. [{step['id']}] {_markdown_text(step['human'])}")
+            agent.append(f"- [{step['id']}] {_markdown_text(step['agent'])}")
+        human.append("")
+        agent.append("")
+    for modality, focus in contract["quality_focus"].items():
+        human.extend([f"### {modality} quality focus", "", focus["human"], ""])
+        agent.extend([f"### {modality} quality focus", "", focus["agent"], ""])
     for rule in sorted(registry["rules"], key=lambda row: row["rule_id"]):
         human.extend(
             [
@@ -1032,6 +1148,38 @@ def runtime_rule_specs(registry: dict[str, Any]) -> tuple[dict[str, object], ...
 def render_runtime_view(registry: dict[str, Any]) -> str:
     digest = registry_digest(registry)
     specs = pprint.pformat(runtime_rule_specs(registry), width=88, sort_dicts=False)
+    contract = registry["reading_contract"]
+    reading_specs = {
+        "version": contract["contract_version"],
+        "rule_guidance_stages": contract["rule_guidance_stages"],
+        "stages": {
+            stage["id"]: [
+                {"id": step["id"], "instruction": _markdown_text(step["agent"])}
+                for step in stage["steps"]
+            ]
+            for stage in contract["stages"]
+        },
+        "quality_focus": {
+            key: _markdown_text(value["agent"])
+            for key, value in contract["quality_focus"].items()
+        },
+        "rules": [
+            {
+                key: rule[key]
+                for key in (
+                    "rule_id",
+                    "version",
+                    "modality",
+                    "preconditions",
+                    "evidence",
+                    "exclusions",
+                    "agent",
+                )
+            }
+            for rule in registry["rules"]
+            if rule["status"] == "active"
+        ],
+    }
     return (
         '"""Generated from clinical_knowledge YAML; do not edit by hand."""\n\n'
         "from __future__ import annotations\n\n"
@@ -1039,6 +1187,9 @@ def render_runtime_view(registry: dict[str, Any]) -> str:
         f'REGISTRY_DIGEST_SCOPE = "{REGISTRY_DIGEST_SCOPE}"\n\n'
         "BUILTIN_RULE_SPECS: tuple[dict[str, object], ...] = "
         f"{specs}\n"
+        "\nREADING_CONTRACT: dict[str, object] = "
+        + pprint.pformat(reading_specs, width=88, sort_dicts=False)
+        + "\n"
     )
 
 

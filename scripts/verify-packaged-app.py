@@ -33,7 +33,7 @@ MAX_GATEWAY_PROTOCOL = 4
 PLUGIN_RUNTIME_INSPECT_TIMEOUT_SEC = 180
 PACKAGE_BUILD_RECEIPT_SCHEMA_VERSION = 1
 RELEASE_PYTHON = "3.13.12"
-CLINICAL_DB_SCHEMA_VERSION = "1"
+CLINICAL_DB_SCHEMA_VERSION = "2"
 
 OPENCLAW_WORKSPACE_TEMPLATE_FILES = (
     "openclaw/node_modules/openclaw/docs/reference/templates/AGENTS.md",
@@ -101,6 +101,8 @@ REQUIRED_FILES = (
     "clinical_knowledge/axes/cxr.axes.yaml",
     "clinical_knowledge/rules/core.rule.yaml",
     "clinical_knowledge/schema/rule.schema.json",
+    "clinical_knowledge/schema/reading-contract.schema.json",
+    "clinical_knowledge/workflows/reading.workflow.yaml",
     "clinical_knowledge/generated/human-catalogue.md",
     "clinical_knowledge/generated/agent-steps.md",
     "clinical_knowledge/clinical-knowledge.sqlite",

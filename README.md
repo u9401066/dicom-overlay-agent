@@ -271,8 +271,12 @@ accuracy, latency acceptance, or release readiness.
   diagnostic score is claimed.
 - Seven deterministic clinical-consistency rules now come from canonical YAML,
   with generated human/agent views and an application-owned SQLite projection
-  bound to registry SHA-256
-  `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`.
+  bound to the digest in [the generated catalogue](clinical_knowledge/generated/human-catalogue.md).
+  The source candidate also uses YAML-defined steps in all five scientific
+  Gateway turns (digest scope v2 / SQLite schema v2). Three-modality loopback
+  transport/receipt checks pass, not actual model or native acceptance. Legacy
+  initial/MultiPass prompts, the deployed website and installed EXE are not
+  migrated by this source change. Manual file maintenance remains the MVP.
   Schema/parity checks do not substitute for specialist clinical review or
   source licensing review; see [clinical knowledge governance](clinical_knowledge/README.md).
 - Managed Gateway reuse now requires an atomic, secret-free ownership receipt

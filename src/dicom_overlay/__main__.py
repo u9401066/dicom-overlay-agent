@@ -257,6 +257,8 @@ def _run_selfcheck(base_dir: Path, config_path: Path) -> int:
     clinical_knowledge_files = (
         clinical_knowledge_root / "rules" / "core.rule.yaml",
         clinical_knowledge_root / "schema" / "rule.schema.json",
+        clinical_knowledge_root / "schema" / "reading-contract.schema.json",
+        clinical_knowledge_root / "workflows" / "reading.workflow.yaml",
         clinical_knowledge_root / "generated" / "human-catalogue.md",
         clinical_knowledge_root / "generated" / "agent-steps.md",
         clinical_knowledge_root / "clinical-knowledge.sqlite",
