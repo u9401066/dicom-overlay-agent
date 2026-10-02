@@ -1,5 +1,22 @@
 # Active Context
 
+## 2026-10-02 — catalogue published and public browser acceptance complete
+
+- PR23 head8f5db070d5a2afee937c9c3bfcc94902bc3c09ea passed CI36982216041
+  and both secret checks; merged at08:10:00UTC as main65797b6ae3313d2e6d66e4ab5b820579da771636.
+- Pages36982503454 SUCCESS. Public clinical-rules.html and six other HTML/CSS/JS
+  files exactly match source after newline normalization. Public headless Edge
+ 1440/820/390 search/filter/empty/reset/details/deep-link/no-JS checks pass;
+  screenshots viewed. Artifacts Ctemp/dicom-clinical-site-20261002/public/qa.json.
+- Main postmerge CI36982503353 remains in progress at this checkpoint; original
+  PR CI is green. Monitor existing watcher59669, not a new CI run.
+- The owned local HTTP8872/PID4420 was identity-checked and stopped after local
+  QA, exec54865 reaped (intentional stop). No App, paid request or desktop input.
+- Goal6 MVP explicitly retains manual YAML file maintenance. Earlier backend
+  preference question is obsolete. This catalogue is not a full ECG guideline,
+  installed-App update, new clinical validation, or broader goal completion.
+
+
 ## 2026-10-02 — generated clinical website catalogue (MVP manual files)
 
 - User refined requirement6: keep manual YAML maintenance; no administration

@@ -1,5 +1,14 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-10-02 — generated catalogue live on GitHub Pages
+
+PR23 merged as main65797b6 after all PR CI/secrets passed; Pages36982503454
+succeeded. Public catalogue and six related assets match source. Three-width
+headless browser flows, no-JS reading, console/layout and inspected screenshots
+pass. Main postmerge CI remains running at checkpoint. Rules stay manually
+maintained YAML; no admin backend, clinical content change or installed-App update.
+
+
 ## 2026-10-02 — complete YAML-derived catalogue prepared for Pages
 
 Added full7-rule human/agent/citation/runtime view with search, modality filter,
