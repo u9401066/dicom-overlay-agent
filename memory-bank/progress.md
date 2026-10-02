@@ -1,5 +1,15 @@
 # Progress (Updated: 2026-09-24)
 
+## 2026-10-02 — complete YAML-derived catalogue prepared for Pages
+
+Added full7-rule human/agent/citation/runtime view with search, modality filter,
+clear/empty handling and no-JS reading. Build fails closed on registry/generated
+view/SQLite row parity errors; Pages automatically regenerates after canonical
+changes. MVP authoring stays manual YAML plus review, no new backend or runtime
+dependency.23 focused smoke checks and three-width headless browser QA pass;
+publication still pending. No clinical rule content or clinical acceptance changed.
+
+
 ## 2026-09-29 — history guide candidate, local browser QA passed
 
 Website-only workflow explains manual import versus previous36dc3c6 native QA,

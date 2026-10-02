@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="由 canonical YAML 自動生成的臨床一致性規則目錄：人用鑑別步驟、agent 流程、SQLite 對照與人工維護入口。">
+  <title>臨床規則目錄 · DICOM Overlay Agent</title>
+  <link rel="icon" type="image/png" href="assets/synthetic-ecg.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="clinical-rules.css">
+  <script src="app.js" defer></script>
+  <script src="clinical-rules.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到規則目錄</a>
+  <header class="site-header">
+    <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"></span><span>DICOM Overlay Agent</span></a>
+    <button class="menu-button" type="button" aria-expanded="false" aria-controls="site-navigation">Menu</button>
+    <nav id="site-navigation" class="site-navigation" aria-label="網站導覽">
+      <a href="index.html">Overview</a><a href="docs.html#clinical-rules">使用說明</a><a href="#maintenance">人工維護</a>
+    </nav>
+  </header>
+  <main id="main" class="clinical-shell">
+    <header class="clinical-hero">
+      <p class="rule-meta">CANONICAL KNOWLEDGE · YAML → WEBSITE / SQLITE</p>
+      <h1>臨床規則，從依據到執行。</h1>
+      <p>完整人用鑑別流程與精簡 agent 步驟，來自同一份版本化 YAML。目前 {{COUNT}} 條規則是輸出一致性檢查，不是完整心電圖／胸片診斷指南。</p>
+      <div class="registry-receipt">
+        <strong>建置檢查通過：YAML、生成文件、SQLite 逐表／逐欄／逐列一致</strong>
+        <p>Registry SHA-256：<code id="registry-digest">{{DIGEST}}</code></p>
+        <p>Digest scope：<code>{{SCOPE}}</code></p>
+        <p>此結果只證明本次網站建置的資料投影一致，不代表你的已安裝 App 使用相同版本，也不是臨床內容認證。</p>
+      </div>
+    </header>
+    <section id="maintenance" class="clinical-maintenance">
+      <h2>MVP：人工檔案維護與審查</h2>
+      <ol>
+        <li>找到規則，展開人用步驟、agent 步驟、來源及完整欄位，記下 rule ID 與 digest。</li>
+        <li>使用每條規則的「在 GitHub 網頁編輯此來源檔」連結；登入 GitHub，修改 canonical YAML，建立分支並提出 Pull Request。多條規則可能共用一份檔案。</li>
+        <li>同步再生 human／agent／runtime views，由具相關專科資格的 reviewer 檢查臨床內容，並通過 schema、規則測試與 SQLite parity。不要只修改生成頁面或複核日期。</li>
+        <li>經審查合併 main 後，Pages 自動重建目錄；驗證失敗則不發布新版。App 規則仍須透過另外驗證的軟體版本更新。</li>
+      </ol>
+      <p>這是靜態網站的 GitHub 審查維護入口，不是在此頁直接儲存的管理後台；網站不收集 GitHub token、不寫入臨床執行中的資料庫。GitHub 編輯入口開啟的是最新 main，提交前請核對差異。</p>
+      <p><a href="https://github.com/u9401066/dicom-overlay-agent/blob/main/clinical_knowledge/README.md">完整治理、生成命令與來源授權說明</a></p>
+    </section>
+    <section aria-labelledby="catalogue-heading">
+      <h2 id="catalogue-heading">規則目錄</h2>
+      <div class="clinical-filters" hidden>
+        <label>搜尋規則、步驟或來源<input id="rule-search" type="search" placeholder="例如 STEMI、裁切、pneumothorax" autocomplete="off"></label>
+        <label>影像類型<select id="rule-modality"><option value="">全部類型</option><option value="EKG">EKG</option><option value="CXR">CXR</option><option value="CT_BRAIN">CT_BRAIN</option></select></label>
+        <button type="button" id="rule-reset">清除篩選</button>
+      </div>
+      <p id="rule-count" role="status">共 {{COUNT}} 條規則</p>
+      <p id="rule-empty" hidden>沒有符合條件的規則。請清除篩選或改用其他關鍵字。</p>
+      <details class="clinical-index"><summary>跳至指定規則</summary><ul>{{TOC}}</ul></details>
+      <div id="clinical-catalogue">{{RULES}}</div>
+    </section>
+  </main>
+</body>
+</html>

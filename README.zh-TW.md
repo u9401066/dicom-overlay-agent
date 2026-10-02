@@ -100,6 +100,9 @@ input US$0.20/M、cached input US$0.02/M、output US$1.20/M；它們不是訂閱
   為 `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`。
   Schema/parity 通過不等於專科臨床審查或來源授權完成；詳見
   [clinical knowledge governance](clinical_knowledge/README.md)。
+  [網站完整規則目錄](https://u9401066.github.io/dicom-overlay-agent/clinical-rules.html)
+  由同份 YAML 自動生成，建置前核對 generated views 與 SQLite 逐列一致性。
+  MVP 維持人工檔案維護，不另建網站寫入後台。
 - Managed Gateway 只有在原子、無 secret 的 ownership receipt 同時綁定 PID、port、
   token SHA-256、launch owner 與唯一 canonical absolute bbox audit path 時才可重用；
   健康但 receipt 不符的 listener 會被拒絕，不會被接管或終止。

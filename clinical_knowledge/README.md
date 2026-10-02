@@ -123,6 +123,29 @@ stale/空殼 DB、空殼 schema 或單獨竄改的文件通過發布。
 7. 發布前從乾淨 worktree 重新生成、檢查 SQLite parity、跑 smoke，再確認
    packaged runtime 使用同一 registry SHA。
 
+## 網站自動目錄（MVP 人工檔案維護）
+
+`site/clinical-rules.html` 由以下命令生成，不可手改：
+
+```powershell
+uv run python scripts/build-clinical-knowledge-site.py
+```
+
+生成器先驗證 canonical registry 與現有 human／agent／runtime views，再於暫存
+目錄建立 application-owned SQLite 並逐表、逐欄、逐列比對。全部通過才產生
+HTML，保留相同 registry digest/scope。網頁列出所有規則的人用步驟、agent
+步驟、適用／排除條件、引用來源，以及包含 runtime/tests/legacy 的完整欄位；
+可搜尋與依 modality 篩選，停用 JavaScript 仍可閱讀全部內容。
+
+MVP 保留人工編輯 YAML 檔案、再生 views、專科審查與 Git PR 流程；頁面上的
+GitHub 編輯連結只是 canonical 檔案入口，不是本站寫入 API，也不收集 token。
+更改 YAML 後先執行既有 `--render` 命令，再生成網站並提交相應生成物。
+合併 main 時，Pages workflow 也會因 canonical inputs 或生成器變更而自動觸發，
+重新生成並檢查後才發布。驗證失敗保留原已發布版本，不發布不一致的新版。
+
+網站建置使用的是該 checkout 的規則；這不表示使用者已安裝 App 的 SQLite
+同步更新，更不代表臨床內容或來源授權通過。App 仍需獨立版本／封裝驗證。
+
 ## 引用與授權
 
 Registry 只保存書目資料與本專案獨立撰寫的高階判讀流程，不複製指南全文。

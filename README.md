@@ -118,6 +118,9 @@ accuracy, latency acceptance, or release readiness.
   `d22a03e037293636c86ca029452a8486f93f5625cb5655b3381088b8cc1fc22c`.
   Schema/parity checks do not substitute for specialist clinical review or
   source licensing review; see [clinical knowledge governance](clinical_knowledge/README.md).
+  The [full website catalogue](https://u9401066.github.io/dicom-overlay-agent/clinical-rules.html)
+  is generated from this YAML after generated-view and SQLite row-parity checks.
+  MVP authoring remains manual file maintenance; there is no website write backend.
 - Managed Gateway reuse now requires an atomic, secret-free ownership receipt
   binding PID, port, token SHA-256, launch owner, and one canonical absolute bbox
   audit path. A healthy listener without that exact receipt is refused, not
